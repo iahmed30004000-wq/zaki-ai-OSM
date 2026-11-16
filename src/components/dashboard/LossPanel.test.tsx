@@ -28,8 +28,8 @@ import { LossPanel } from './LossPanel';
 
 afterEach(cleanup);
 
-function give(rows: Parameters<typeof summariseLoss>[0]) {
-  fetched.body = { ...summariseLoss(rows), period: 'all', scanned: 0, total: 0, truncated: false };
+function give(rows: Parameters<typeof summariseLoss>[0], extra: { cadenceOn?: boolean } = {}) {
+  fetched.body = { ...summariseLoss(rows), period: 'all', scanned: 0, total: 0, truncated: false, ...extra };
 }
 
 describe('the panel', () => {
@@ -107,5 +107,130 @@ describe('the panel', () => {
     give([]);
     render(<LossPanel period="all" />);
     await waitFor(() => expect(screen.getByText('لا طلبَ خسرناه في هذه الفترة')).toBeTruthy());
+  });
+});
+
+/**
+ * «أُغلق بلا رد» — ONE ROW WITH THE TWO STORED CODES UNDER IT (the planner 15/11, answer 8). What is DRAWN merges; the payload the panel received (below, `give`) still holds two lines.
+ * A company with only the older code — every company with the plan off — sees exactly the row it always saw.
+ */
+describe('the no-answer close, drawn as one row', () => {
+  const rejectionHalf = (container: HTMLElement) => container.querySelector('section') as HTMLElement;
+
+  it('both codes: one merged row with its sum, and the two codes’ own rows nested under it with their own labels and counts', async () => {
+    give([
+      { field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 6, money: 0 },
+      { field: 'rejectionReason', reason: 'NO_ANSWER_5_ATTEMPTS', count: 4, money: 0 },
+      { field: 'rejectionReason', reason: 'PRICE_TOO_HIGH', count: 5, money: 0 },
+    ]);
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+
+    const topLevel = [...rejectionHalf(container).querySelectorAll(':scope > ul > li')];
+    const merged = topLevel.find((li) => li.textContent?.includes('أُغلق بلا رد'))!;
+    // The merged row's own cells: the label, whose defect it is, and «10 · 66.67%» (10 of 15).
+    expect(merged.querySelector(':scope > span')?.textContent).toBe('أُغلق بلا رد');
+    expect(merged.textContent).toContain('لم نصل إليه في وقته');
+    expect(merged.textContent).toContain('10 · 66.67%');
+    // The two codes: nested, indented, each with its own words and count — and nowhere at the top level.
+    const nested = merged.querySelector(':scope > ul')!;
+    expect(nested.getAttribute('aria-label')).toBe('تفصيل «أُغلق بلا رد»');
+    expect([...nested.querySelectorAll(':scope > li')].map((li) => li.textContent)).toEqual([
+      expect.stringMatching(/^أُغلق بعد ثلاث محاولات بلا ردّ6 · 40%$/),
+      expect.stringMatching(/^أُغلق بعد خمس محاولات بلا ردّ4 · 26.67%$/),
+    ]);
+    expect(nested.className).toMatch(/ps-5/);
+    for (const li of topLevel) {
+      if (li !== merged) expect(li.textContent, 'a code drawn on its own as well').not.toMatch(/ثلاث محاولات|خمس محاولات/);
+    }
+    expect(screen.getByText('السعر مرتفع')).toBeTruthy();
+  });
+
+  it('only the older code (the plan off): today’s single row — its own label, three cells, no merged label, nothing nested', async () => {
+    give([
+      { field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 7, money: 0 },
+      { field: 'rejectionReason', reason: 'PRICE_TOO_HIGH', count: 3, money: 0 },
+    ]);
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بعد ثلاث محاولات بلا ردّ')).toBeTruthy());
+
+    expect(screen.queryByText('أُغلق بلا رد')).toBeNull();
+    expect(container.querySelector('ul ul')).toBeNull();
+    const row = [...container.querySelectorAll('li')].find((li) => li.textContent?.includes('ثلاث محاولات'))!;
+    expect(row.children.length, 'the row’s cells: label, fault, count — as before').toBe(3);
+    expect(row.textContent).toBe('أُغلق بعد ثلاث محاولات بلا ردّلم نصل إليه في وقته7 · 70%');
+  });
+
+  it('only the new code: its own row too, with nothing to merge with', async () => {
+    give([{ field: 'rejectionReason', reason: 'NO_ANSWER_5_ATTEMPTS', count: 2, money: 0 }]);
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بعد خمس محاولات بلا ردّ')).toBeTruthy());
+    expect(screen.queryByText('أُغلق بلا رد')).toBeNull();
+    expect(container.querySelector('ul ul')).toBeNull();
+  });
+});
+
+/**
+ * RULING 27 (the planner 15/11 22:30, KEY ONLY): with «جدول المحاولات» on — the route says so with `cadenceOn: true` — the merged row and its detail line show even for ONE code.
+ * Key off (the flag absent, or false) the screen above is what it was.
+ */
+describe('the no-answer close, with the plan’s key on', () => {
+  const rejectionHalf = (container: HTMLElement) => container.querySelector('section') as HTMLElement;
+
+  it('only the older code: the merged row «أُغلق بلا رد» with ONE detail line — its own label and count', async () => {
+    give(
+      [
+        { field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 7, money: 0 },
+        { field: 'rejectionReason', reason: 'PRICE_TOO_HIGH', count: 3, money: 0 },
+      ],
+      { cadenceOn: true },
+    );
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+    const merged = [...rejectionHalf(container).querySelectorAll(':scope > ul > li')].find((li) => li.textContent?.includes('أُغلق بلا رد'))!;
+    expect(merged.querySelector(':scope > span')?.textContent).toBe('أُغلق بلا رد');
+    expect(merged.textContent).toContain('7 · 70%');
+    const nested = merged.querySelector(':scope > ul')!;
+    expect(nested.getAttribute('aria-label')).toBe('تفصيل «أُغلق بلا رد»');
+    expect([...nested.querySelectorAll(':scope > li')].map((li) => li.textContent)).toEqual([expect.stringMatching(/^بالقاعدة القديمة7 · 70%$/)]); // ruling 40 (16/11): the key-on detail names the rule, no number
+    // The code is not also drawn on its own at the top level.
+    expect([...rejectionHalf(container).querySelectorAll(':scope > ul > li')].filter((li) => li !== merged).some((li) => /ثلاث محاولات/.test(li.textContent ?? ''))).toBe(false);
+  });
+
+  it('only the new code: the same, with the new code’s label under the merged row', async () => {
+    give([{ field: 'rejectionReason', reason: 'NO_ANSWER_5_ATTEMPTS', count: 2, money: 0 }], { cadenceOn: true });
+    const { container } = render(<LossPanel period="all" />);
+    await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+    expect(container.querySelectorAll('ul ul > li')).toHaveLength(1);
+    expect(container.querySelector('ul ul > li')?.textContent).toMatch(/^بجدول المحاولات2 · 100%$/);
+  });
+
+  it('the flag false or absent: today’s single row, nothing merged, nothing nested (the OFF pin, through the screen)', async () => {
+    for (const extra of [{}, { cadenceOn: false }]) {
+      give([{ field: 'rejectionReason', reason: 'NO_ANSWER_3_ATTEMPTS', count: 7, money: 0 }], extra);
+      const { container, unmount } = render(<LossPanel period="all" />);
+      await waitFor(() => expect(screen.getByText('أُغلق بعد ثلاث محاولات بلا ردّ')).toBeTruthy());
+      expect(screen.queryByText('أُغلق بلا رد')).toBeNull();
+      expect(container.querySelector('ul ul')).toBeNull();
+      unmount();
+    }
+  });
+
+  it('both codes with the key on: the same merged row as with it off — the detail words aside (number-free with the key on, ruling 40)', async () => {
+    const rows = [
+      { field: 'rejectionReason' as const, reason: 'NO_ANSWER_3_ATTEMPTS', count: 6, money: 0 },
+      { field: 'rejectionReason' as const, reason: 'NO_ANSWER_5_ATTEMPTS', count: 4, money: 0 },
+    ];
+    const html: string[] = [];
+    for (const extra of [{}, { cadenceOn: true }]) {
+      give(rows, extra);
+      const { container, unmount } = render(<LossPanel period="all" />);
+      await waitFor(() => expect(screen.getByText('أُغلق بلا رد')).toBeTruthy());
+      html.push(container.innerHTML);
+      unmount();
+    }
+    const words = (s: string) => s.replaceAll('بالقاعدة القديمة', 'أُغلق بعد ثلاث محاولات بلا ردّ').replaceAll('بجدول المحاولات', 'أُغلق بعد خمس محاولات بلا ردّ');
+    expect(words(html[1])).toBe(html[0]);
+    expect(html[1]).not.toMatch(/ثلاث|خمس/);
   });
 });

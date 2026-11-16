@@ -56,6 +56,9 @@ import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNo
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
 import { CallHelperCard } from '@/components/confirmation/CallHelperCard';
 import { useHelperReading } from '@/components/confirmation/useHelperReading';
+import { useCallProofClock } from '@/components/confirmation/useCallProofClock';
+import { CALL_PROOF_WORDS, CLIENT_MARGIN_MS, MIN_CALL_MS, secondsLeft, type CallProofState } from '@/lib/call-proof-words';
+import { flushContactLines, openedWaiting } from '@/lib/contact-line';
 import { onAndroid } from '@/lib/call-helper/android';
 import { LoadFailed } from '@/components/ui/LoadFailed';
 import {
@@ -123,6 +126,10 @@ interface OrderRow {
   orderNumber: string;
   /** «مساعد الاتصال»: the signed link «اتصل» opens when her phone is paired (`/api/confirmation/mine`). Absent = `tel:`. */
   callHelperLink?: string;
+  /** «جدول المحاولات» is on: a press made NOW would close this order — a fact of the server's clock. Absent = the count decides, as it always did. */
+  closesOnNext?: boolean;
+  /** RV2391: the server's number-free sentence for a closed card whose count is not the close's. Absent = print the count as always. */
+  closedWords?: string;
   merchantRef: string | null;
   confirmationStatus: string;
   state: string;
@@ -171,6 +178,8 @@ interface OrderRow {
   /** What the customer added after ordering — absent on a response from before this field existed. */
   addOns?: { id: string; productName: string; quantity: number; total: number }[];
   _count: { contactAttempts: number; notes: number };
+  /** «إثبات المكالمات» (only while it is on, only on a held card of her own desk): what her «لا يرد» waits for — the server's word, ticked here. */
+  callProof?: CallProofState;
   risk?: RiskInfo | null;
   changeRequests?: { id: string }[];
   /**
@@ -205,6 +214,8 @@ interface MineResponse {
   noAnswerLimit: number;
   /** «نظام الجولات» is on: the counter is a round («جولة n من 3»). */
   rounds?: boolean;
+  /** «جدول المحاولات» is on: the limit is 5 and the cards carry the server's words («محاولة 2 من 5 — جاهز الساعة 17:30»). */
+  cadenceOn?: boolean;
   /** «الشغل أول»: how many calls she owes right now, the oldest of them, and the banner's sentence — the banner and the pull button. */
   due?: { count: number; first: { id: string; orderNumber: string } | null; sentence?: string | null; button?: string | null };
   /** The country's calling code («963») — WhatsApp needs the number in full. */
@@ -213,6 +224,8 @@ interface MineResponse {
   whatsappRoute?: 'COMPANY';
   /** The server's clock, so a wrong clock on her machine changes nothing. */
   serverNow: string;
+  /** «إثبات المكالمات» is on: each held card carries `callProof`. Absent = off, and nothing below reads or draws anything new. */
+  callProofOn?: boolean;
   /** «اتصلي هلّق» — a call is owed on these right now (and the orders whose last call reached the customer and need a decision). */
   work: OrderRow[];
   /** «بانتظار» — they did not answer and are not due to be rung again yet. */
@@ -268,8 +281,8 @@ const lacksRegion = (order: { regionId?: string | null }) =>
   order.regionId === null || (typeof order.regionId === 'string' && order.regionId.trim() === '');
 
 /** Why the call sheet's «تأكيد الطلب» is shut — the card's own two locks, in the card's own words. */
-const sheetConfirmLock = (order: { _count: { contactAttempts: number }; regionId?: string | null }) =>
-  needsContact(order) ? CONTACT_FIRST_MESSAGE : lacksRegion(order) ? REGION_REQUIRED_MESSAGE : null;
+const sheetConfirmLock = (order: { _count: { contactAttempts: number }; regionId?: string | null }, first = CONTACT_FIRST_MESSAGE) =>
+  needsContact(order) ? first : lacksRegion(order) ? REGION_REQUIRED_MESSAGE : null;
 
 const ONE_ANSWER_PER_CALL = 'جواب هالمكالمة انبعت — ما بينحفظ جواب تاني لنفس المكالمة.';
 const SEND_BEFORE_REJECT = '«رقم غلط» لسا ما انبعت — استني الخط وبعدين ألغِ، حتى ما يوصل بعد الإلغاء.';
@@ -294,7 +307,20 @@ function refusalText(e: unknown): string {
   const said = e instanceof Error && e.message ? e.message : 'تعذر تنفيذ الإجراء';
   const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
   if (code === 'CONTACT_FIRST') {
-    return `${CONTACT_FIRST_MESSAGE}. سجّل المحاولة بزر «لا يرد» أو «مغلق أو خارج التغطية» وبعدها بتفتح الأزرار.`;
+    // With «إثبات المكالمات» on the door says its own sentence (`contactFirstV2`), and «لا يرد» is no way out of it: that sentence, alone.
+    return said === CALL_PROOF_WORDS.contactFirstV2
+      ? said
+      : `${CONTACT_FIRST_MESSAGE}. سجّل المحاولة بزر «لا يرد» أو «مغلق أو خارج التغطية» وبعدها بتفتح الأزرار.`;
+  }
+  // «إثبات المكالمات»: the three refusals say what the server said (its Arabic); the screen's own words only if that did not arrive in Arabic.
+  if (code === 'CALL_NOT_STARTED' || code === 'CALL_TOO_SOON' || code === 'CALL_NOT_LOGGED') {
+    return /[؀-ۿ]/.test(said)
+      ? said
+      : code === 'CALL_NOT_LOGGED'
+        ? CALL_PROOF_WORDS.notLogged
+        : code === 'CALL_TOO_SOON'
+          ? CALL_PROOF_WORDS.refusedTooSoon(Number((e as { data?: { waitSeconds?: unknown } }).data?.waitSeconds) || 30)
+          : CALL_PROOF_WORDS.refusedNotStarted;
   }
   if (code === 'REGION_REQUIRED') {
     return `${REGION_REQUIRED_MESSAGE}. اختر المحافظة من الخانة بالبطاقة.`;
@@ -358,11 +384,14 @@ function RegionGate({
   locked,
   busy,
   onSave,
+  contactFirst = CONTACT_FIRST_MESSAGE,
 }: {
   order: OrderRow;
   locked: boolean;
   busy: boolean;
   onSave: (regionId: string) => void;
+  /** The «call first» sentence — the proof's own when «إثبات المكالمات» is on. */
+  contactFirst?: string;
 }) {
   const { regions, countryName } = useRegions();
   const fieldId = React.useId();
@@ -395,7 +424,7 @@ function RegionGate({
           onClick={() => onSave(value)}
           busy={busy}
           locked={locked || !value}
-          lockedTitle={locked ? CONTACT_FIRST_MESSAGE : 'اختر المحافظة أولاً'}
+          lockedTitle={locked ? contactFirst : 'اختر المحافظة أولاً'}
         >
           احفظ المحافظة
         </Action>
@@ -421,6 +450,9 @@ function sourceLabel(order: OrderRow): string {
   if (order.source) return SOURCE_AR[order.source] ?? order.source;
   return 'مصدر غير مسجَّل';
 }
+
+/** The phone's clock, read ONLY inside an event handler (a «اتصال» press) — never during a render. */
+const phoneClock = (): number => Date.now();
 
 export function ConfirmationMineScreen() {
   const toast = useToast();
@@ -566,6 +598,10 @@ export function ConfirmationMineScreen() {
   const askedTab = asked.get('tab');
   const [tab, setTab] = useState<'work' | 'noAnswer' | 'done' | 'postponed'>(askedTab === 'postponed' ? 'postponed' : 'work');
   const serverOffset = useRef(0);
+  /** The same offset, as state, for what a render reads (a render never reads a ref). */
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
+  /** «إثبات المكالمات»: a card's own wait, set by her «اتصال» press (no reload follows it) or by the door's «too soon». `at` is the phone's clock. */
+  const [localProof, setLocalProof] = useState<Record<string, CallProofState & { at: number }>>({});
   /**
    * ── THE REFUSAL'S LINK TAKES HER DOWN TO THE CARD ──
    *
@@ -608,11 +644,17 @@ export function ConfirmationMineScreen() {
       if (donePage > 1) qs.set('page', String(donePage));
       if (watched) qs.set('agent', watched.id);
       const suffix = qs.toString();
+      const askedAt = Date.now();
       const fresh = await apiJson<MineResponse>(`/api/confirmation/mine${suffix ? `?${suffix}` : ''}`);
       // The server's clock against this phone's — what «since the call started» means in the contact log.
       const serverAt = Date.parse(fresh.serverNow);
-      if (!Number.isNaN(serverAt)) serverOffset.current = serverAt - Date.now();
+      if (!Number.isNaN(serverAt)) {
+        serverOffset.current = serverAt - Date.now();
+        setServerOffsetMs(serverAt - Date.now());
+      }
       setData(fresh);
+      // The server's number replaces what a press made locally — unless the press came after this request left.
+      setLocalProof((p) => (Object.keys(p).length ? Object.fromEntries(Object.entries(p).filter(([, v]) => v.at > askedAt)) : p));
       return fresh;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
@@ -735,7 +777,7 @@ export function ConfirmationMineScreen() {
    */
   /** One line in the contact log — the card's buttons and the call sheet send it through here, with `attemptBody`. */
   const postAttempt = async (order: { id: string; orderNumber: string }, body: string) => {
-    const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number }>(
+    const res = await apiJson<{ autoClosed: boolean; noAnswerCount: number; cadence?: { words?: string } }>(
       `/api/orders/${order.id}/contact-attempts`,
       {
         method: 'POST',
@@ -746,12 +788,20 @@ export function ConfirmationMineScreen() {
     setNotice(
       res.autoClosed
         ? `أُغلق الطلب ${order.orderNumber} تلقائياً بعد ${res.noAnswerCount} محاولات بلا رد.`
-        : null
+        : (res.cadence?.words ?? null)
     );
     return res;
   };
   const logAttempt = (order: OrderRow, method: 'PHONE' | 'WHATSAPP' | 'SMS', result: string) =>
-    act(order.id, () => postAttempt(order, attemptBody(method, result)));
+    act(order.id, () => postAttempt(order, attemptBody(method, result)), undefined, (e) => {
+      // «too soon»: nothing was written, and the card waits again for exactly what the server said. The red line is still drawn.
+      const d = (e as { data?: { code?: unknown; waitSeconds?: unknown; unlocksAt?: unknown } } | null)?.data;
+      if (d?.code === 'CALL_TOO_SOON') {
+        const ms = typeof d.waitSeconds === 'number' ? d.waitSeconds * 1000 : Date.parse(String(d.unlocksAt)) - (Date.now() + serverOffset.current);
+        if (Number.isFinite(ms)) holdFor(order.id, Math.max(0, ms));
+      }
+      return false;
+    });
 
   /**
    * CONFIRMING WAS SILENT.
@@ -890,12 +940,45 @@ export function ConfirmationMineScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, call.pending, callOrder]);
 
+  /*
+   * «إثبات المكالمات» — WHAT HER «لا يرد» / «مغلق أو خارج التغطية» WAIT FOR, ON THE CARD.
+   *
+   * The server says (`order.callProof`: NO_OPENED · WAIT until a server-clock instant · READY); the screen prints it and ticks the seconds
+   * against the server's clock (`serverOffset`). It never decides the rule. A press of «اتصال» does not reload the desk, so it sets the wait
+   * itself (server now + thirty seconds + the clocks' margin) until the next reload brings the server's own number.
+   */
+  const proofOn = !!data?.callProofOn;
+  const holdFor = (orderId: string, ms: number) => {
+    const at = phoneClock();
+    setLocalProof((p) => ({ ...p, [orderId]: { state: 'WAIT', unlocksAtMs: at + serverOffset.current + ms, at } }));
+  };
+  // The one-second tick runs only until the last waiting card unlocks, and stops by itself (the instants are server-clock; the hook wants the phone's).
+  const proofUntil = proofOn && data
+    ? Math.max(0, ...[...data.work, ...data.noAnswer].map((o) => {
+        const p = localProof[o.id] ?? o.callProof;
+        return p?.state === 'WAIT' && p.unlocksAtMs !== null ? p.unlocksAtMs - serverOffsetMs : 0;
+      }))
+    : 0;
+  const clockNow = useCallProofClock(proofUntil > 0 ? proofUntil : null);
+  /** A wait is never longer than the thirty seconds and the clocks' margin: a stale first frame cannot print a wild number. */
+  const MAX_WAIT_S = Math.ceil((MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS) / 1000);
+  const proofLock = (order: OrderRow): { text: string | null; wait: boolean } => {
+    const p = proofOn ? localProof[order.id] ?? order.callProof : undefined;
+    const left = p?.state === 'WAIT' && p.unlocksAtMs !== null ? Math.min(MAX_WAIT_S, secondsLeft(p.unlocksAtMs, clockNow + serverOffsetMs)) : 0;
+    return { text: p?.state === 'NO_OPENED' ? CALL_PROOF_WORDS.noOpened : left > 0 ? CALL_PROOF_WORDS.wait(left) : null, wait: left > 0 };
+  };
+  /** The «call first» sentence: the proof's own when on (the old one said «أو اكبس لا يرد», no longer a way out). */
+  const contactFirstText = proofOn ? CALL_PROOF_WORDS.contactFirstV2 : CONTACT_FIRST_MESSAGE;
+
+  /** Outbox items the door refused for «too soon» / «no press yet»: NOTHING was written, so their retry skips the «already logged?» question. */
+  const nothingWritten = useRef(new Set<string>());
   const sendOutgoing = async (item: Outgoing): Promise<SendAnswer> => {
     const mine = call.pending && item.key === `${call.pending.orderId}:${call.pending.startedAt}`;
+    const skipAsk = nothingWritten.current.delete(item.key);
     try {
       if (item.door === 'attempt') {
         // Its first answer was lost on the way: ask the log before writing the same line twice.
-        if (item.uncertain) {
+        if (item.uncertain && !skipAsk) {
           const r = await apiJson<{ attempts?: { result?: string; employeeId?: string; createdAt?: string }[] }>(
             `/api/orders/${item.orderId}/contact-attempts`
           );
@@ -917,6 +1000,15 @@ export function ConfirmationMineScreen() {
       return 'sent';
     } catch (e) {
       if (isNetworkFailure(e)) return 'network';
+      // «إثبات المكالمات»: «too soon» is kept and sent again. «No press logged» is kept too while her «اتصال» line is still queued
+      // (the press and the outcome travel in two queues, and after a reconnect the outcome can arrive first): the press is sent
+      // now, and the outcome tried again. Without a press waiting it is final, like «not logged».
+      const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
+      if (code === 'CALL_TOO_SOON' || (code === 'CALL_NOT_STARTED' && openedWaiting(item.orderId))) {
+        if (code === 'CALL_NOT_STARTED') await flushContactLines(true);
+        nothingWritten.current.add(item.key);
+        return 'network';
+      }
       const said = refusalText(e);
       setError(said);
       if (mine) setSheetRefusal(said);
@@ -1147,7 +1239,7 @@ export function ConfirmationMineScreen() {
   const tabNotes = {
     work: 'اللي لازم ترني عليه هلّق',
     // With «نظام الجولات» off nothing falls due by the clock: the old sentence is the true one.
-    noAnswer: `${data.rounds ? 'ما ردّ — بيصير جاهز بوقتو' : 'محاولة أو محاولتين — التالية تُغلق'}${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
+    noAnswer: `${data.rounds || data.cadenceOn ? 'ما ردّ — بيصير جاهز بوقتو' : 'محاولة أو محاولتين — التالية تُغلق'}${data.closedToday.length > 0 ? ` · و${data.closedToday.length} أُغلقت اليوم` : ''}`,
     done: confirmed.q ? `بحث «${confirmed.q}»` : 'يوم واحد في كلّ مرّة',
     postponed: 'ما أجّلتَه لموعد — تعمل على ما حلّ موعده',
   };
@@ -1435,16 +1527,19 @@ export function ConfirmationMineScreen() {
               <Action
                 onClick={() => setOpenOrderId(order.id)}
                 locked={needsContact(order)}
-                lockedTitle={CONTACT_FIRST_MESSAGE}
+                lockedTitle={contactFirstText}
                 icon={<RiPencilLine className="w-4 h-4" />}
               >
                 افتح وعدّل
               </Action>
             );
             /* 1/2/3 counter — the third no-answer closes the order by rule */
+            const lock = proofLock(order);
+            const lockProps = lock.text ? { locked: true, lockedTitle: lock.text } : {};
             const noAnswerBtn = (
               <Action
                 onClick={() => logAttempt(order, 'PHONE', 'NO_ANSWER')}
+                {...lockProps}
                 busy={busyId === order.id}
                 icon={<RiPhoneLockLine className="w-4 h-4" />}
                 danger={remaining <= 1}
@@ -1469,6 +1564,7 @@ export function ConfirmationMineScreen() {
             const unreachableBtn = (
               <Action
                 onClick={() => logAttempt(order, 'PHONE', 'UNREACHABLE')}
+                {...lockProps}
                 busy={busyId === order.id}
                 icon={<RiPhoneLockLine className="w-4 h-4" />}
                 danger={remaining <= 1}
@@ -1513,7 +1609,16 @@ export function ConfirmationMineScreen() {
                 }}
                 orderId={order.id}
                 callHref={order.callHelperLink}
-                onContacted={sheetOn ? (method) => method === 'PHONE' && startCall(order) : undefined}
+                onContacted={
+                  sheetOn || proofOn
+                    ? (method) => {
+                        if (method !== 'PHONE') return;
+                        // Every phone press, sheet or not: the card's «لا يرد» starts its thirty seconds now.
+                        if (proofOn) holdFor(order.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS);
+                        if (sheetOn) startCall(order);
+                      }
+                    : undefined
+                }
               />
             );
             /*
@@ -1543,7 +1648,7 @@ export function ConfirmationMineScreen() {
                 onClick={() => confirm(order)}
                 busy={busyId === order.id}
                 locked={needsContact(order) || lacksRegion(order)}
-                lockedTitle={needsContact(order) ? CONTACT_FIRST_MESSAGE : REGION_REQUIRED_MESSAGE}
+                lockedTitle={needsContact(order) ? contactFirstText : REGION_REQUIRED_MESSAGE}
                 icon={<RiCheckboxCircleLine className="w-4 h-4" />}
                 wide={phone}
               >
@@ -1555,7 +1660,7 @@ export function ConfirmationMineScreen() {
                 onClick={() => setDialog({ kind: 'postpone', order })}
                 busy={busyId === order.id}
                 locked={needsContact(order)}
-                lockedTitle={CONTACT_FIRST_MESSAGE}
+                lockedTitle={contactFirstText}
                 icon={<RiTimerLine className="w-4 h-4" />}
                 wide={phone}
               >
@@ -1575,11 +1680,21 @@ export function ConfirmationMineScreen() {
             );
             const contactFirstHint = needsContact(order) && (
               <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                اتصل بالزبون أول — بعدها بتفتح الأزرار
-                {canLogContact
-                  ? ' (سجّل المحاولة بـ«لا يرد» أو «مغلق أو خارج التغطية» إذا ما ردّ).'
-                  : ' (تسجيل نتيجة الاتصال يحتاج صلاحية ما عندك — اطلبها من المسؤول).'}
+                {proofOn && canLogContact ? (
+                  CALL_PROOF_WORDS.contactFirstV2
+                ) : (
+                  <>
+                    اتصل بالزبون أول — بعدها بتفتح الأزرار
+                    {canLogContact
+                      ? ' (سجّل المحاولة بـ«لا يرد» أو «مغلق أو خارج التغطية» إذا ما ردّ).'
+                      : ' (تسجيل نتيجة الاتصال يحتاج صلاحية ما عندك — اطلبها من المسؤول).'}
+                  </>
+                )}
               </p>
+            );
+            /* «إثبات المكالمات»: why «لا يرد» and «مغلق أو خارج التغطية» are shut — in words, because a phone has no tooltip. */
+            const proofHint = canLogContact && lock.text && (
+              <p className="w-full text-xs leading-relaxed tabular-nums text-[var(--sys-warning)]">{lock.text}</p>
             );
             const regionHint = lacksRegion(order) && (
               <p className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">اختر المحافظة لتفتح التأكيد</p>
@@ -1661,7 +1776,7 @@ export function ConfirmationMineScreen() {
                   )}
                   {closed && (
                     <span className="text-xs font-medium text-[var(--sys-destructive)]">
-                      أُغلق اليوم تلقائيّاً — {noAnswerWords(order.noAnswerCount)}
+                      أُغلق اليوم تلقائيّاً — {order.closedWords ?? noAnswerWords(order.noAnswerCount)}
                     </span>
                   )}
                   <CustomerHistoryButton
@@ -1710,6 +1825,7 @@ export function ConfirmationMineScreen() {
                   <RegionGate
                     order={order}
                     locked={needsContact(order)}
+                    contactFirst={contactFirstText}
                     busy={busyId === order.id}
                     onSave={(regionId) => void saveRegion(order, regionId)}
                   />
@@ -1756,7 +1872,7 @@ export function ConfirmationMineScreen() {
                 */}
                 {closed ? (
                   <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
-                    للقراءة فقط — أُغلق بعد {data.noAnswerLimit} محاولات بلا رد. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
+                    للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${data.cadenceOn ? order.noAnswerCount : data.noAnswerLimit} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
                   </p>
                 ) : readOnly ? (
                   /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */
@@ -1784,6 +1900,7 @@ export function ConfirmationMineScreen() {
                         {unreachableBtn}
                       </div>
                       {remainingHint}
+                      {proofHint}
                     </div>
                   )}
                   <div className="space-y-2">
@@ -1817,6 +1934,7 @@ export function ConfirmationMineScreen() {
                   {postponeBtn}
                   {rejectBtn}
                   {contactFirstHint}
+                  {proofHint}
                   {regionHint}
                   {issueBtn}
                   {storeOrderNote}
@@ -2046,6 +2164,7 @@ export function ConfirmationMineScreen() {
           orderNumber={dialog.order.orderNumber}
           postponeCount={dialog.order.postponeCount}
           busy={busyId === dialog.order.id}
+          noAnswerLock={proofOn ? proofLock(dialog.order).text : null}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitPostpone(dialog.order, value)}
         />
@@ -2115,8 +2234,11 @@ export function ConfirmationMineScreen() {
           customerName={callOrder.customer.fullName}
           awayMs={call.awayMs}
           reading={helperReading}
-          closesOnNext={(workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit}
-          confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder)}
+          closesOnNext={(workable(callOrder.id) ?? callOrder).closesOnNext ?? ((workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit)}
+          confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder, contactFirstText)}
+          proofOn={proofOn}
+          orderId={callOrder.id}
+          startedAt={call.pending.startedAt}
           waiting={
             waitingItem
               ? {

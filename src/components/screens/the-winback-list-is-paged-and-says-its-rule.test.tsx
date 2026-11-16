@@ -87,6 +87,8 @@ let total: number;
 let rowsOf: (page: number) => ReturnType<typeof row>[];
 let getFails: boolean;
 let postFails: Error | null;
+/** «جدول المحاولات» — the server sends `cadenceOn: true` only while it is on, and no such key otherwise. */
+let planOn: boolean;
 
 const gets = () =>
   api.mock.calls
@@ -105,6 +107,7 @@ beforeEach(() => {
   rowsOf = (page) => [row(`P${page}`)];
   getFails = false;
   postFails = null;
+  planOn = false;
   ask.mockResolvedValue('10');
   api.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'PUT') {
@@ -132,6 +135,7 @@ beforeEach(() => {
       facts,
       rule,
       canEditRule: canEdit,
+      ...(planOn ? { cadenceOn: true } : {}),
     };
   });
 });
@@ -191,6 +195,44 @@ describe('the rule, printed on the screen', () => {
     rule = { ...rule, afterShipping: false };
     await draw();
     expect(screen.getByText(RULE_LINE).textContent).toBe(SENTENCE_OFF);
+  });
+
+  /**
+   * THE PLAN'S SWITCH WORDS THE «NO ANSWER» CLOSE (the planner 15/11, answer 6). The server sends `cadenceOn: true` only while «جدول المحاولات» is on; the sentence above is the
+   * switch-off one, byte for byte (the first claim), and with the key present only that one phrase reads number-free — in the sentence and in the editor's tick.
+   */
+  it('the plan ON: the same sentence with the no-answer close number-free, nothing else moved — and the editor’s tick says the same words', async () => {
+    planOn = true;
+    await draw();
+    expect(screen.getByText(RULE_LINE).textContent).toBe(SENTENCE_ON.replace('أُغلق بعد ثلاث محاولات بلا ردّ', 'أُغلق تلقائياً بعد محاولات بلا ردّ'));
+    fireEvent.click(screen.getByRole('button', { name: 'عدّل القاعدة' }));
+    expect((screen.getByRole('checkbox', { name: 'أُغلق تلقائياً بعد محاولات بلا ردّ' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByRole('checkbox', { name: 'أُغلق بعد ثلاث محاولات بلا ردّ' })).toBeNull();
+  });
+
+  it('the plan OFF (no key in the payload): the numbered sentence and the numbered tick — as before the plan', async () => {
+    await draw();
+    expect(screen.getByText(RULE_LINE).textContent).toBe(SENTENCE_ON);
+    fireEvent.click(screen.getByRole('button', { name: 'عدّل القاعدة' }));
+    expect((screen.getByRole('checkbox', { name: 'أُغلق بعد ثلاث محاولات بلا ردّ' }) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('a key that is not a plain true is not the plan: `cadenceOn: false` or "yes" read as OFF', async () => {
+    for (const bad of [false, 'yes']) {
+      cleanup();
+      api.mockImplementation(async () => ({ rows: [], pagination: { total: 0, page: 1, limit: 25, totalPages: 1 }, facts, rule, canEditRule: true, cadenceOn: bad }));
+      await draw();
+      expect(screen.getByText(RULE_LINE).textContent, String(bad)).toBe(SENTENCE_ON);
+    }
+  });
+
+  it('the reason filter keeps the TWO codes as two options with their own words — a merged option would change what the filter selects', async () => {
+    planOn = true;
+    facts = { ...facts, reasons: [{ reason: 'NO_ANSWER_5_ATTEMPTS', count: 5 }, { reason: 'NO_ANSWER_3_ATTEMPTS', count: 3 }, { reason: 'PRICE_TOO_HIGH', count: 2 }] };
+    await draw();
+    const names = options('سبب الإلغاء');
+    expect(names).toContain('أُغلق بعد خمس محاولات بلا ردّ (5)');
+    expect(names).toContain('أُغلق بعد ثلاث محاولات بلا ردّ (3)');
   });
 
   it('and the owner’s own rule, the moment it is stored: ten days, ninety, an eighth, one reason', async () => {
@@ -732,7 +774,8 @@ describe('how it is built', () => {
 
   it('and it decides nothing about the rule: the sentence is the library’s, the verdict and the ceiling are the server’s', () => {
     expect(src()).toContain("from '@/lib/winback'");
-    expect(src()).toContain('ruleSentence(rule)');
+    // The sentence is the library's; the screen hands it only the plan's switch, the one thing it cannot know (answer 6).
+    expect(src()).toContain('ruleSentence(rule, { planOn })');
     expect(src()).not.toMatch(/winbackVerdict|maxWinbackDiscount|parseWinbackRule/);
     expect(src()).not.toMatch(/Date\.now\(\)|new Date\(\)/);
   });

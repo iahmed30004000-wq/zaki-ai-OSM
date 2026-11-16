@@ -1,10 +1,16 @@
 import { z } from 'zod';
 import { landingThemeSchema } from './landing-theme';
 import { toLatinDigits } from './latin-digits';
+import { WORK_HOURS_FORMAT_MESSAGE } from './work-hours';
 
 /** Request schemas for /api/geo/* — shared so create and update stay identical. */
 
-const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'الوقت يجب أن يكون بصيغة HH:mm');
+// The format half of the working-hours rule; the order half (start before end,
+// judged against the stored row for a half that was not sent) lives in
+// `workHoursError` (work-hours.ts), which the create and update routes call.
+const hhmm = z
+  .string({ error: WORK_HOURS_FORMAT_MESSAGE })
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, WORK_HOURS_FORMAT_MESSAGE);
 
 const timezone = z.string().refine((tz) => {
   try {

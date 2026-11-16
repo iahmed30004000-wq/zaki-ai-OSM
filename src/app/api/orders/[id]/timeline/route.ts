@@ -25,6 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
     const order = access.order as StateSource & { orderNumber: string };
 
+    // «رجع للطابور فوراً» reads in the words of the rule that WROTE the line (the planner 15/11 22:30, ruling 28): the line carries its own mark, so the door reads no switch.
     const events = await orderTimeline(db, id);
     const state = deriveCoreState(order);
 

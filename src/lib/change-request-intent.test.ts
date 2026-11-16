@@ -89,8 +89,9 @@ describe('what each ask must carry', () => {
     expect(missingFor('CANCEL', { cancelReason: 'OTHER', reason: '' })).toBeTruthy();
   });
 
-  it('only a choice a person may make — never the two the system owns, never an invented word', () => {
+  it('only a choice a person may make — never the three the system owns, never an invented word', () => {
     expect(cancelReasonProblem('NO_ANSWER_3_ATTEMPTS', 'x'.repeat(9))).toBe('سبب الإلغاء غير صالح — اختر واحداً من القائمة');
+    expect(cancelReasonProblem('NO_ANSWER_5_ATTEMPTS', 'x'.repeat(9))).toBe('سبب الإلغاء غير صالح — اختر واحداً من القائمة');
     expect(cancelReasonProblem('MODERATOR_DATA_ERROR', 'x'.repeat(9))).toBeTruthy();
     expect(cancelReasonProblem('NOT_A_REASON', 'x'.repeat(9))).toBeTruthy();
     expect(cancelReasonProblem('', 'x'.repeat(9))).toBe('اختر سبب الإلغاء');

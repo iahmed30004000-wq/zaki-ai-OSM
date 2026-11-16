@@ -9,7 +9,7 @@ import { peekRateLimit, rateLimit } from '@/lib/rate-limit';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
-import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
+import { mustHoldToWork, NOT_HELD_MESSAGE, orderReleasedByHerOwnPress } from '@/lib/confirmation-queue';
 import { ruleFor } from '@/lib/phone-rules';
 import { waNumber } from '@/lib/message-templates';
 import { getAccessToken, getPhoneNumberId } from '@/lib/whatsapp/config';
@@ -29,6 +29,14 @@ import { afterNoAnswer, routeFor, templateBodyValues } from '@/lib/whatsapp/afte
  * template is named, the customer's number has no country, Meta said no. The sheet then shows the reason in one line and the
  * agent's own WhatsApp button under it, so a press never ends in nothing.
  *
+ * ── THE ORDER SHE JUST LET GO ──
+ *
+ * With «جدول المحاولات» on (`cadenceSince` — the plan's own switch, NOT the older «الطلب يرجع للطابور فوراً» mode) her counted «لا يرد» sends the
+ * order back to the queue in the same press, and the sheet offers this button AFTER the press landed. So an order she no longer holds is accepted here — but only
+ * when her own press released it in the last two minutes (`orderReleasedByHerOwnPress`), nobody has taken it since, and it is
+ * still open at the desk. Every other unheld order is refused exactly as before; the audit row says `afterHerOwnPress`.
+ * A company on the older returns mode with the plan OFF keeps today's refusal word for word (403 NOT_HELD / 404) — RV1651 stays open for it (the planner, answer 14).
+ *
  * ── WHAT IT TOUCHES ──
  *
  * A message on the WhatsApp conversation for that number (found or opened on the active connection, keyed the way inbound
@@ -39,6 +47,9 @@ import { afterNoAnswer, routeFor, templateBodyValues } from '@/lib/whatsapp/afte
 
 const refuse = (status: number, error: string, code: string) =>
   NextResponse.json({ fallback: true, error, errorAr: error, code }, { status });
+
+/** The four fields the rest of this door reads: the full row when she holds the order, the exception's four when she does not. */
+type DoorOrder = { id: string; orderNumber: string; customerId: string; countryId: string | null; claimedById?: string | null };
 
 /** One person's sends in a minute — the inbox's own budget (`send.ts`), shared with it. */
 const PERSON_LIMIT = 30;
@@ -61,12 +72,20 @@ export async function POST(req: Request) {
 
     // The order she holds — the door the call sheet's other presses use (contact-attempts, confirmation).
     const access = await assertOrderAccess(orderId, user, { companyId, storeId }, ORDER_WORK_DOOR);
-    if (!access.allowed) {
-      return NextResponse.json({ error: ORDER_NOT_FOUND, errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
-    }
-    const order = access.order;
-    if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
-      return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
+    let order = (access.allowed ? access.order : null) as DoorOrder | null;
+    let afterHerPress = false;
+    if (!order || (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id)) {
+      // The ONE exception (ruling 7): her own counted «لا يرد» released this order in the last RETURNED_PRESS_GRACE_MS and nobody has it now — the call sheet offers this button
+      // AFTER the press landed (`CallOutcomeSheet`). Both refusals below are today's, word for word. Asked only here, so a held order pays no extra read.
+      const letGo = await orderReleasedByHerOwnPress(db, { companyId, storeId, orderId, userId: user.id });
+      if (!letGo) {
+        if (!access.allowed) {
+          return NextResponse.json({ error: ORDER_NOT_FOUND, errorAr: ORDER_NOT_FOUND }, { status: ORDER_ACCESS_STATUS[access.reason] });
+        }
+        return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
+      }
+      order = letGo;
+      afterHerPress = true;
     }
 
     // The order's own country; its calling code is what the owner chose by. An order with none is the store's country.
@@ -178,7 +197,8 @@ export async function POST(req: Request) {
       action: 'whatsapp.template.send',
       entity: 'Order',
       entityId: order.id,
-      newData: { templateName: setting.templateName, dialCode, messageId },
+      // `afterHerOwnPress` is there only when the send went through the exception: why a message left on an order she no longer held.
+      newData: { templateName: setting.templateName, dialCode, messageId, ...(afterHerPress ? { afterHerOwnPress: true } : {}) },
     }).catch(() => {});
 
     return NextResponse.json({ ok: true, logged });

@@ -67,6 +67,9 @@ const ACTION_AR: Record<string, string> = {
   // «تسوية السطور النظيفة عند الاعتماد» (`/api/settings/per-line-settlement`): the owner's switch for settling a statement's clean orders at the approval; and the press that settles them on an already-approved statement (`.../settle-clean`).
   PER_LINE_SETTLEMENT_SWITCHED: 'تشغيل أو إيقاف «تسوية السطور النظيفة عند الاعتماد»',
   STATEMENT_CLEAN_LINES_SETTLED: 'تسوية الطلبات النظيفة لكشف معتمد',
+  // «إثبات المكالمات وجدول المحاولات» (`/api/settings/call-proof`, step A of Confirmation Center v2): the owner's switch; and a «لا يرد» the server refused for want of a logged «اتصال» press.
+  CALL_PROOF_SWITCHED: 'تشغيل أو إيقاف «إثبات المكالمات وجدول المحاولات»',
+  CALL_PROOF_REFUSED: 'رفض تسجيل «لا يرد» لأنه ما في ضغطة «اتصال» مسجّلة (أو ما مرّت 30 ثانية)',
   WALLET_TRANSFER: 'تحويل بين محافظ', WALLET_MOVEMENT_RECORDED: 'تسجيل حركة محفظة', WALLET_MOVEMENT_REVERSED: 'عكس حركة محفظة',
   // «القيد العكسي على تحويل» (`PATCH /api/finance/transfers/:id`, and the reversal of one leg from the wallet): both legs, one reason.
   WALLET_TRANSFER_REVERSED: 'عكس تحويل بين محافظ',

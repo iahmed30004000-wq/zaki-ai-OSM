@@ -89,7 +89,7 @@ export function roundsOn(sw: RoundsSwitch | null | undefined): sw is RoundsSwitc
   return !!sw && sw.enabled === true && sw.enabledAt instanceof Date && !Number.isNaN(sw.enabledAt.getTime());
 }
 
-const NOT_A_CALL = ['OPENED', 'MESSAGE_SENT'];
+export const NOT_A_CALL = ['OPENED', 'MESSAGE_SENT'];
 
 export function isNoAnswer(result: string): boolean {
   return (NO_ANSWER_RESULTS as readonly string[]).includes(result);
@@ -217,7 +217,7 @@ export interface Rounds {
 const at = (a: AttemptFact) => new Date(a.createdAt);
 
 /** Oldest first; the attempt number breaks a tie of the same instant. */
-function chronological(attempts: readonly AttemptFact[]): AttemptFact[] {
+export function chronological(attempts: readonly AttemptFact[]): AttemptFact[] {
   return [...attempts].sort((x, y) => at(x).getTime() - at(y).getTime() || (x.attemptNumber ?? 0) - (y.attemptNumber ?? 0));
 }
 

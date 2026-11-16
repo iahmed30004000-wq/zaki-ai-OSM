@@ -41,21 +41,22 @@ describe('the reasons', () => {
   });
 
   /**
-   * AND THE TWO THE SYSTEM OWNS ARE NOT OFFERED.
+   * AND THE THREE THE SYSTEM OWNS ARE NOT OFFERED.
    *
-   * «Closed after three attempts» is not a choice anybody makes, and putting
-   * «our own data error» in the picker invites an agent to use it as the
-   * shortest way out of a hard call.
+   * «Closed after three attempts» (and its five-attempt twin under the plan)
+   * is not a choice anybody makes, and putting «our own data error» in the
+   * picker invites an agent to use it as the shortest way out of a hard call.
    */
   it('offers a person everything except what the system writes for itself', () => {
     // Named, not counted. A first version looped over
     // `SYSTEM_ONLY_REJECTION_REASONS` and compared lengths — so emptying that
     // list satisfied both, which is exactly the change it exists to stop.
     expect(PICKABLE_REJECTION_REASONS, 'الإغلاق التلقائيّ معروضٌ للاختيار').not.toContain('NO_ANSWER_3_ATTEMPTS');
+    expect(PICKABLE_REJECTION_REASONS, 'إغلاق «جدول المحاولات» معروضٌ للاختيار').not.toContain('NO_ANSWER_5_ATTEMPTS');
     expect(PICKABLE_REJECTION_REASONS, '«خطأ إدخال» معروضٌ للاختيار').not.toContain('MODERATOR_DATA_ERROR');
-    expect(SYSTEM_ONLY_REJECTION_REASONS).toHaveLength(2);
+    expect(SYSTEM_ONLY_REJECTION_REASONS).toHaveLength(3);
     expect(PICKABLE_REJECTION_REASONS).toContain('OTHER');
-    expect(PICKABLE_REJECTION_REASONS.length).toBe(REJECTION_REASONS.length - 2);
+    expect(PICKABLE_REJECTION_REASONS.length).toBe(REJECTION_REASONS.length - 3);
   });
 
   /** One list. A screen with its own copy is a screen that falls behind it. */

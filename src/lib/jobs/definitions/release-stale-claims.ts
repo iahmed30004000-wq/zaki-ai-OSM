@@ -1,8 +1,9 @@
 import { db } from '../../db';
 import type { JobDefinition, JobResult } from '../runner';
-import { releaseNoAnswerRounds, releaseStaleClaims } from '../../confirmation-queue';
+import { readReturnsMode, releaseNoAnswerRounds, releaseStaleClaims } from '../../confirmation-queue';
 import { ROUNDS_OFF, roundsOn } from '../../no-answer-rounds';
 import { roundsSwitch } from '../../no-answer-rounds-switch';
+import { cadenceSince } from '../../no-answer-cadence-switch';
 import { activeStores } from './shared';
 
 /**
@@ -31,6 +32,11 @@ export const releaseClaims: JobDefinition = {
       // ON: the rounds release in a transaction of its own, so a pass that runs out of time cannot roll back the one above.
       if (roundsOn(rounds)) {
         released += await db.$transaction((tx) => releaseNoAnswerRounds(tx, scope, cal, now, { rounds }));
+      } else if (await cadenceSince(db, store.companyId)) {
+        // The five-attempt cadence (step B) brings «الطلب يرجع للطابور فوراً» with it, so ITS idle release runs without «نظام الجولات» — in a transaction of its own, like the rounds'.
+        // The cadence is asked FIRST: with it off nothing else is read and no second transaction opens.
+        const returns = await readReturnsMode(db, store.companyId, { now, calendar: () => cal, rounds });
+        released += await db.$transaction((tx) => releaseNoAnswerRounds(tx, scope, cal, now, { rounds, returns }));
       }
     }
     return { processed: released, detail: released ? `حُرِّر ${released} طلباً` : 'لا طلبات متأخرة' };

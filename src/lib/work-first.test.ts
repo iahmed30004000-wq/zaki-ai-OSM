@@ -21,6 +21,7 @@ import {
   dueVerdict,
   isDueNow,
   ordersCounted,
+  promiseArrived,
   readyAtWords,
   summariseDue,
   verdictFromCount,
@@ -40,6 +41,9 @@ import {
  *     wall a desk that already holds a pile.
  *  5. An order whose last call reached the customer, with no date and no cycle, needs a decision: not due, tab as before.
  *  6. The tab, the count and the refusal are made from this one verdict.
+ *  7. THE PROMISE FACT (`promiseArrived`, the planner 15/11 ruling 9): a date the customer asked on has ARRIVED (the later of the two columns, at or before now — exactly now has arrived) and no
+ *     line of any kind sits at or after it (a line AT the date counts as logged). It is pure, takes the same stance as the rounds' verdict — which is built on it, so the two cannot drift —
+ *     and answers the same from all of an order's lines or from its newest one only (what the pull reads).
  *
  * Amman, 09:00–17:00, Friday and Saturday off (as no-answer-rounds.test.ts): 1 November 2026 is a Sunday; Thursday = 5,
  * Friday 6 and Saturday 7 are the weekend, Sunday = 8, Monday = 9.
@@ -490,5 +494,88 @@ describe('«جاهز الساعة» — on the store’s clock', () => {
   it('a timezone that is not one does not throw: the machine’s clock is used', () => {
     expect(readyAtWords(t(1, 13), t(1, 10), 'Not/AZone')).toMatch(/^جاهز (بكرة )?الساعة \d\d:\d\d$/);
     expect(readyAtWords('not a date', t(1, 10), JO.timezone)).toBe('');
+  });
+});
+
+describe('7 · the promise fact: one definition, read by the rounds, the plan and the pull', () => {
+  const asked = t(2, 10);
+  const line = (at: Date) => ({ createdAt: at });
+
+  it('the date exactly NOW has arrived; one millisecond ahead has not', () => {
+    expect(promiseArrived({ postponedUntil: asked }, [], asked)).toBe(true);
+    expect(promiseArrived({ postponedUntil: asked }, [], minus(asked, 1))).toBe(false);
+    expect(promiseArrived({ nextFollowUpAt: asked }, [], new Date(asked.getTime() + 1))).toBe(true);
+  });
+
+  it('a line logged AT the date’s own millisecond counts as logged; one millisecond before it does not; any line after does', () => {
+    const now = t(2, 11);
+    expect(promiseArrived({ postponedUntil: asked }, [line(asked)], now)).toBe(false);
+    expect(promiseArrived({ postponedUntil: asked }, [line(minus(asked, 1))], now)).toBe(true);
+    expect(promiseArrived({ postponedUntil: asked }, [line(new Date(asked.getTime() + 1))], now)).toBe(false);
+    expect(promiseArrived({ postponedUntil: asked }, [line(t(1, 9)), line(t(2, 10, 30))], now)).toBe(false);
+  });
+
+  it('no line at all, or only lines from before the date: the promise stands', () => {
+    expect(promiseArrived({ postponedUntil: asked }, [], t(2, 11))).toBe(true);
+    expect(promiseArrived({ nextFollowUpAt: asked }, [line(t(1, 9)), line(t(1, 15))], t(2, 11))).toBe(true);
+  });
+
+  it('no date at all — null, undefined, nothing that parses — is no promise, whatever the lines', () => {
+    const now = t(2, 11);
+    expect(promiseArrived({}, [], now)).toBe(false);
+    expect(promiseArrived({ postponedUntil: null, nextFollowUpAt: null }, [], now)).toBe(false);
+    expect(promiseArrived({ postponedUntil: undefined, nextFollowUpAt: undefined }, [line(t(1, 9))], now)).toBe(false);
+    expect(promiseArrived({ postponedUntil: 'tomorrow', nextFollowUpAt: 'soon' }, [], now)).toBe(false);
+  });
+
+  it('a date still ahead is no promise yet, with or without lines', () => {
+    expect(promiseArrived({ postponedUntil: t(3, 10) }, [], t(2, 11))).toBe(false);
+    expect(promiseArrived({ nextFollowUpAt: t(3, 10) }, [line(t(1, 9))], t(2, 11))).toBe(false);
+  });
+
+  it('both dates present: the LATER one decides — the same stance the rounds take', () => {
+    const both = { postponedUntil: t(2, 10), nextFollowUpAt: t(2, 14) };
+    // The later is still ahead: not a promise yet, though one date has passed.
+    expect(promiseArrived(both, [], t(2, 12))).toBe(false);
+    // Both arrived, a line between the two dates is before the LATER one: still a promise.
+    expect(promiseArrived(both, [line(t(2, 12))], t(2, 15))).toBe(true);
+    // A line at the later date, or after, ends it.
+    expect(promiseArrived(both, [line(t(2, 14))], t(2, 15))).toBe(false);
+    expect(promiseArrived(both, [line(t(2, 14, 30))], t(2, 15))).toBe(false);
+    // The order of the columns does not matter.
+    expect(promiseArrived({ postponedUntil: t(2, 14), nextFollowUpAt: t(2, 10) }, [line(t(2, 12))], t(2, 15))).toBe(true);
+  });
+
+  it('dates and lines may be strings (a JSON row) as well as Dates', () => {
+    expect(promiseArrived({ postponedUntil: asked.toISOString() }, [{ createdAt: minus(asked, 1).toISOString() }], t(2, 11))).toBe(true);
+    expect(promiseArrived({ postponedUntil: asked.toISOString() }, [{ createdAt: asked.toISOString() }], t(2, 11))).toBe(false);
+  });
+
+  it('all the lines or only the newest one give the same answer (the pull reads one line per order)', () => {
+    const lines = [line(t(1, 9)), line(t(1, 15)), line(minus(asked, 1))];
+    for (const now of [asked, t(2, 11)]) {
+      expect(promiseArrived({ postponedUntil: asked }, [lines[2]], now)).toBe(promiseArrived({ postponedUntil: asked }, lines, now));
+    }
+    const withAfter = [...lines, line(t(2, 10, 5))];
+    expect(promiseArrived({ postponedUntil: asked }, [withAfter[3]], t(2, 11))).toBe(promiseArrived({ postponedUntil: asked }, withAfter, t(2, 11)));
+  });
+
+  it('the rounds’ verdict is built on it: where nothing else excludes the order, PROMISE ⇔ the fact, on a grid of dates and lines', () => {
+    // Held since 09:00 Sunday, one answered call on Sunday morning (a decision is pending, not a round), and a `now` close to the date so the release has not taken it.
+    const claimedAt = t(1, 9);
+    const base = [logged(t(1, 10), 'ANSWERED')];
+    let compared = 0;
+    for (const date of [t(2, 9), t(2, 10), t(2, 10, 30)]) {
+      for (const extra of [[], [logged(minus(date, 1), 'ANSWERED')], [logged(date, 'ANSWERED')], [opened(new Date(date.getTime() + 1))]]) {
+        for (const now of [date, new Date(date.getTime() + 60_000), new Date(date.getTime() + 600_000)]) {
+          const lines = [...base, ...extra];
+          const rounds = dueVerdict({ claimedAt, claimedById: 'sara', postponedUntil: date }, lines, ctxAt(now));
+          // An «اتصال» alone after the date leaves the order owed as a ROUND, never a PROMISE: the fact is false there too.
+          expect(rounds.reason === 'PROMISE', `${date.toISOString()} ${now.toISOString()} ${extra.length}`).toBe(promiseArrived({ postponedUntil: date }, lines, now));
+          compared++;
+        }
+      }
+    }
+    expect(compared).toBe(36);
   });
 });

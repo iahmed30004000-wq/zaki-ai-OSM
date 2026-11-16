@@ -34,6 +34,11 @@ export interface QueueResponse {
   waitingNew?: number;
   waitingReturned?: number;
   waitingDue?: number;
+  /**
+   * WITH THE PLAN ON (ruling 24): the counter in the server's own words — جديد / وعد وصل / إعادة حان موعدها / الباقي, in the pull's order — and the sentence that says
+   * the same order. Absent with the plan off: the three parts above and the old sentence are drawn.
+   */
+  waitingPlan?: { parts: { label: string; hint: string; value: number }[]; rule: string };
   /** `heldForHer`: held for her and not yet pulled — counted in the cap with what is in her hands (RV706). */
   owned: { total: number; withoutAttempt: number; heldForHer?: number };
   caps: { withoutAttempt: number; total: number };
@@ -278,7 +283,8 @@ export function PullPanel({
 
   const rule = !notMyDesk && (
     <p className={`${compact ? 'mt-3' : 'mt-4'} text-xs text-[var(--sys-muted)]`}>
-      طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال {data.leadDays} يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.
+      {data.waitingPlan?.rule ??
+        `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال ${data.leadDays} يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.`}
     </p>
   );
 
@@ -290,30 +296,44 @@ export function PullPanel({
     ruling of 7/11); only the figure is cut, in the server's own parts, which add up to it. Drawn only when the server sent them,
     and only when there is something to pull: three zeroes over a greyed button say nothing.
   */
-  const hasParts = data.waitingNew !== undefined && data.waitingReturned !== undefined;
-  const showParts = hasParts && data.waiting > 0;
+  /*
+    WITH THE PLAN ON (ruling 24) the server sends its own parts and its own sentence — جديد / وعد وصل / إعادة حان موعدها / الباقي, in the
+    pull's order — and this screen draws them as they come. Without `waitingPlan` (the plan off, or a server that does not send it) the
+    three old parts and the old sentence stand, word for word.
+  */
   const due = data.waitingDue ?? 0;
-  const parts = showParts && (
+  const shown =
+    data.waiting > 0 &&
+    (data.waitingPlan
+      ? data.waitingPlan.parts.filter((p, i) => i === 0 || p.value > 0)
+      : data.waitingNew !== undefined && data.waitingReturned !== undefined
+        ? [
+            { label: 'جديد', hint: 'ما حدا اتصل فيه', value: data.waitingNew },
+            { label: 'راجع', hint: 'اتّصلوا فيه ورجع للطابور', value: data.waitingReturned },
+            ...(due > 0 ? [{ label: 'مؤجَّل حان موعده', hint: 'موعده وصل', value: due }] : []),
+          ]
+        : null);
+  const parts = shown && (
     <div
       role="group"
       aria-label="تفصيل الطلبات الجاهزة للسحب"
-      className={`${compact ? 'mt-3' : 'mt-4'} grid gap-3 text-center ${due > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}
+      className={`${compact ? 'mt-3' : 'mt-4'} grid gap-3 text-center ${['grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][shown.length - 1]}`}
     >
-      <Part strong label="جديد" hint="ما حدا اتصل فيه" value={data.waitingNew ?? 0} />
-      <Part label="راجع" hint="اتّصلوا فيه ورجع للطابور" value={data.waitingReturned ?? 0} />
-      {due > 0 && <Part label="مؤجَّل حان موعده" hint="موعده وصل" value={due} />}
+      {shown.map((p, i) => (
+        <Part key={p.label} strong={i === 0} label={p.label} hint={p.hint} value={p.value} />
+      ))}
     </div>
   );
-  /** The slim bar sits above the first order on every visit: the same parts, as ONE line instead of three tiles. */
-  const partsLine = showParts && (
+  /** The slim bar sits above the first order on every visit: the same parts, as ONE line instead of tiles. */
+  const partsLine = shown && (
     <p role="group" aria-label="تفصيل الطلبات الجاهزة للسحب" className="mt-3 text-xs text-[var(--sys-muted-foreground)]">
-      منها <b className="text-[var(--sys-heading)] tabular-nums">{data.waitingNew ?? 0}</b> جديد ·{' '}
-      <b className="text-[var(--sys-heading)] tabular-nums">{data.waitingReturned ?? 0}</b> راجع
-      {due > 0 && (
-        <>
-          {' '}· <b className="text-[var(--sys-heading)] tabular-nums">{due}</b> مؤجَّل حان موعده
-        </>
-      )}
+      منها{' '}
+      {shown.map((p, i) => (
+        <React.Fragment key={p.label}>
+          {i > 0 && ' · '}
+          <b className="text-[var(--sys-heading)] tabular-nums">{p.value}</b> {p.label}
+        </React.Fragment>
+      ))}
     </p>
   );
 

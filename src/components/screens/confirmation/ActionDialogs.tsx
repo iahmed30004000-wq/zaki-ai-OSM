@@ -96,6 +96,7 @@ export function PostponeDialog({
   orderNumber,
   postponeCount,
   busy,
+  noAnswerLock,
   onClose,
   onSubmit,
 }: {
@@ -103,6 +104,11 @@ export function PostponeDialog({
   orderNumber: string;
   postponeCount: number;
   busy?: boolean;
+  /**
+   * «إثبات المكالمات» on: why the reason «لا يرد» cannot be picked yet (no «اتصال» press of hers, or the thirty seconds are not over) — the same sentence the
+   * card prints, given by the screen. The option is disabled and the sentence shown; the server refuses it anyway. Absent/null = today's dialog.
+   */
+  noAnswerLock?: string | null;
   onClose: () => void;
   onSubmit: (value: PostponeValue) => void;
 }) {
@@ -129,6 +135,7 @@ export function PostponeDialog({
         id={formId}
         onSubmit={(e) => {
           e.preventDefault();
+          if (noAnswerLock && value.reason === 'NO_ANSWER') return;
           onSubmit(value);
         }}
         className="space-y-3"
@@ -169,11 +176,12 @@ export function PostponeDialog({
             className={FIELD_CLS}
           >
             {POSTPONE_REASONS.map((r) => (
-              <option key={r.value} value={r.value}>
+              <option key={r.value} value={r.value} disabled={!!noAnswerLock && r.value === 'NO_ANSWER'}>
                 {r.label}
               </option>
             ))}
           </select>
+          {noAnswerLock && <p className="mt-1 text-xs text-[var(--sys-warning)]">{noAnswerLock}</p>}
         </Field>
         <Field label="ملاحظة (اختياري)">
           <input

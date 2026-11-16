@@ -28,6 +28,7 @@ import {
   LOST_STATUSES,
   NEVER_WINBACK_REASONS,
   SELECTABLE_WINBACK_REASONS,
+  WINBACK_RIDERS,
   winbackVerdict,
   type WinbackRule,
   type WinbackSource,
@@ -232,7 +233,7 @@ function matrix(): { name: string; row: OrderRow }[] {
   for (const closed of COOLING_EDGES) add(`closed ${daysAgo(closed)} days ago`, order({ statusLogs: [lost(closed)] }));
   for (const made of CREATED_EDGES) add(`made ${daysAgo(made)} days ago`, order({ createdAt: made, statusLogs: [lost(ago(30))] }));
   for (const status of ['REJECTED', 'CANCELLED', 'CONFIRMED', 'NEW', 'POSTPONED']) add(`status ${status}`, order({ confirmationStatus: status }));
-  for (const reason of [...SELECTABLE_WINBACK_REASONS, 'DUPLICATE_ORDER', 'WRONG_NUMBER', 'FAKE_ORDER', 'MODERATOR_DATA_ERROR', null]) {
+  for (const reason of [...SELECTABLE_WINBACK_REASONS, ...Object.keys(WINBACK_RIDERS), 'DUPLICATE_ORDER', 'WRONG_NUMBER', 'FAKE_ORDER', 'MODERATOR_DATA_ERROR', null]) {
     add(`reason ${reason}`, order({ rejectionReason: reason }));
   }
   add('shipped', order({ shippedAt: ago(35) }));
@@ -246,6 +247,8 @@ function matrix(): { name: string; row: OrderRow }[] {
   add('re-opened and lost again at the edge', order({ statusLogs: [lost(ago(60)), lost(ago(14, 1))] }));
   add('re-opened and lost again just inside', order({ statusLogs: [lost(ago(60)), lost(ago(14, -1))] }));
   add('cancelled by the no-answer rule', order({ confirmationStatus: 'CANCELLED', rejectionReason: 'NO_ANSWER_3_ATTEMPTS', statusLogs: [lost(ago(20), 'CANCELLED')] }));
+  add('cancelled by the plan (the fifth counted «لا يرد»)', order({ confirmationStatus: 'CANCELLED', rejectionReason: 'NO_ANSWER_5_ATTEMPTS', statusLogs: [lost(ago(20), 'CANCELLED')] }));
+  add('cancelled by the plan, still cooling', order({ confirmationStatus: 'CANCELLED', rejectionReason: 'NO_ANSWER_5_ATTEMPTS', statusLogs: [lost(ago(2), 'CANCELLED')] }));
   add('shipped AND cooling', order({ shippedAt: ago(1), statusLogs: [lost(ago(2))] }));
   add('wrong reason AND cooling', order({ rejectionReason: 'FAKE_ORDER', statusLogs: [lost(ago(2))] }));
   add('too old AND shipped', order({ createdAt: ago(400), shippedAt: ago(390) }));
@@ -254,7 +257,7 @@ function matrix(): { name: string; row: OrderRow }[] {
   for (const received of COOLING_EDGES) add(`back, received ${daysAgo(received)} days ago`, back({ returnReceipt: { inspectedAt: received } }));
   for (const made of CREATED_EDGES) add(`back, made ${daysAgo(made)} days ago`, back({ createdAt: made }));
   for (const status of ['CONFIRMED', 'REJECTED', 'CANCELLED']) add(`back, ${status}`, back({ confirmationStatus: status }));
-  for (const reason of [...SELECTABLE_WINBACK_REASONS, ...NEVER_WINBACK_REASONS, null]) add(`back, reason ${reason}`, back({ rejectionReason: reason }));
+  for (const reason of [...SELECTABLE_WINBACK_REASONS, ...Object.keys(WINBACK_RIDERS), ...NEVER_WINBACK_REASONS, null]) add(`back, reason ${reason}`, back({ rejectionReason: reason }));
   add('back, never received — at the desk, or written off', back({ returnReceipt: null }));
   add('back, never received, and lost at confirmation', back({ returnReceipt: null, confirmationStatus: 'REJECTED', rejectionReason: 'PRICE_TOO_HIGH', statusLogs: [lost(ago(60))] }));
   add('back, already offered', back({ replacedBy: { orderNumber: 'ORD-9' } }));
@@ -281,9 +284,15 @@ function matrix(): { name: string; row: OrderRow }[] {
   return out;
 }
 
+// A rule SAVED before the plan existed lists only the old code (the stored list wins over the default), and a rule may leave the host out.
+const SAVED_OLD: WinbackRule = { ...RULE, reasons: ['NO_ANSWER_3_ATTEMPTS'] };
+const WITHOUT_HOST: WinbackRule = { ...RULE, reasons: ['PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND'] };
+
 const RULES: [string, WinbackRule][] = [
   ['the defaults — the switch on', RULE],
   ['the switch off', OFF],
+  ['a rule saved with only the old no-answer code', SAVED_OLD],
+  ['a rule without the no-answer reason at all', WITHOUT_HOST],
 ];
 
 describe.each(RULES)('one rule, two writings — over every boundary, %s', (_which, rule) => {
@@ -359,6 +368,24 @@ describe('the same agreement under a rule the owner changed', () => {
       const byVerdict = viewByVerdict(row, rule);
       if (byVerdict === null) expect(inBase(row, rule), name).toBe(false);
       else expect(viewsOf(row, rule), name).toEqual([byVerdict]);
+    }
+  });
+
+  /**
+   * THE PLAN'S CLOSE RIDES ON ITS HOST. A parity alone would pass if both writings agreed on the WRONG view
+   * (both dropping the five-attempt close for a saved rule), so the views are stated here.
+   */
+  it('and an order the plan closed is work under every rule that lists «no answer» — saved with only the old code or not — and skipped under one that does not', () => {
+    const THREE = order({ confirmationStatus: 'CANCELLED', rejectionReason: 'NO_ANSWER_3_ATTEMPTS', statusLogs: [lost(ago(20), 'CANCELLED')] });
+    const FIVE = order({ confirmationStatus: 'CANCELLED', rejectionReason: 'NO_ANSWER_5_ATTEMPTS', statusLogs: [lost(ago(20), 'CANCELLED')] });
+    for (const [what, rule] of [['default', RULE], ['switch off', OFF], ['saved with only the old code', SAVED_OLD]] as [string, WinbackRule][]) {
+      expect(viewsOf(THREE, rule), `old, ${what}`).toEqual(['ready']);
+      expect(viewsOf(FIVE, rule), `plan, ${what}`).toEqual(['ready']);
+      expect(viewByVerdict(FIVE, rule), `verdict, plan, ${what}`).toBe('ready');
+    }
+    for (const row of [THREE, FIVE]) {
+      expect(viewsOf(row, WITHOUT_HOST), String(row.rejectionReason)).toEqual(['skipped']);
+      expect(viewByVerdict(row, WITHOUT_HOST), String(row.rejectionReason)).toBe('skipped');
     }
   });
 

@@ -29,7 +29,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 
-const { world, sw, rsw } = vi.hoisted(() => ({
+const { world, sw, rsw, cad } = vi.hoisted(() => ({
+  // The plan's own switch («جدول المحاولات»): off for every test but the ones that say so — the whole file runs on the two LEGACY switches below.
+  cad: { since: null as Date | null },
   world: { orders: [] as Row[], history: [] as Row[], logs: [] as Row[], activities: [] as Row[], notices: [] as Row[][], audience: [] as { id: string }[], clock: new Date('2026-11-02T10:00:00.000Z') },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
   rsw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
@@ -120,6 +122,10 @@ vi.mock('./db', () => {
           .filter((h) => matches(h, where ?? {}))
           .map((h) => (select ? Object.fromEntries(Object.keys(select).filter((k) => select[k]).map((k) => [k, h[k] ?? null])) : { ...h }))
       ),
+      findFirst: vi.fn(async ({ where }: Row) => {
+        const hit = world.history.find((h) => matches(h, where ?? {}));
+        return hit ? { ...hit } : null;
+      }),
     },
     notification: { createMany: vi.fn(async ({ data }: Row) => void world.notices.push(data)) },
     orderStatusLog: { create: vi.fn(async ({ data }: Row) => void world.logs.push(data)) },
@@ -132,6 +138,7 @@ vi.mock('./db', () => {
 // The two switches the pull reads before its transaction — the test says what they are.
 vi.mock('./no-answer-rounds-switch', () => ({ roundsSwitch: async () => sw.value }));
 vi.mock('./no-answer-returns-switch', () => ({ returnsSwitch: async () => rsw.value }));
+vi.mock('./no-answer-cadence-switch', () => ({ cadenceSince: async () => cad.since }));
 vi.mock('./notification-audience', () => ({ resolveAudience: vi.fn(async () => world.audience) }));
 
 import {
@@ -143,6 +150,7 @@ import {
   postponedNotDueCount,
   pullNextOrder,
   readReturnsMode,
+  orderReleasedByHerOwnPress,
   returnToThePool,
   waitingCount,
 } from './confirmation-queue';
@@ -229,6 +237,7 @@ beforeEach(() => {
   world.clock = NOW;
   sw.value = ON;
   rsw.value = ON;
+  cad.since = null;
   vi.clearAllMocks();
 });
 
@@ -622,5 +631,97 @@ describe('the writer of «the order leaves her hand»', () => {
     expect(await release(o, { claimedAt: minutesAgo(999) })).toBe(false);
     expect(o.claimedById).toBe('sara');
     expect(await release(o, { claimedAt: o.claimedAt })).toBe(true);
+  });
+});
+
+/**
+ * THE ORDER SHE LET GO A MOMENT AGO — for a door that SENDS something (the company-WhatsApp template, ruling 7; narrowed to the plan by the planner 15/11, answer 14).
+ *
+ * `returnedByHerOwnPress` says only «her press released it». A door that acts on the order also needs it unheld, open and still at the desk — so a colleague who
+ * pulled it since, a close and a shipment all answer null.
+ *
+ * DEFINITION OF DONE (answer 14): the exception exists ONLY with the plan on (`cadenceSince` non-null). The older «الطلب يرجع للطابور فوراً» mode — both legacy switches
+ * plainly on, the world of the rest of this file — releases the order with her press too, but this answers null for it BEFORE any other read: the door refuses exactly as it
+ * did (RV1651 stays open for that mode). The plan on with both legacy switches off is enough. Blockers: any read of the history or the order without the plan.
+ */
+describe('the order she let go, for a door that acts on it', () => {
+  // The plan is on for this block (the file's world is the legacy mode); the tests that are about the legacy mode say so.
+  beforeEach(() => {
+    cad.since = t(1, 8);
+  });
+  const hers = (over: Row = {}) => mine(2, { assignedAt: minutesAgo(5), ...over });
+  const ask = (o: Row, extra: Row = {}) =>
+    orderReleasedByHerOwnPress(db as never, { companyId: 'c1', storeId: 's1', orderId: o.id, userId: 'sara', now: NOW, ...extra });
+  /** Her counted press: the order goes back to the pool and the line is written. */
+  const pressed = async (over: Row = {}) => {
+    const o = hers(over);
+    expect(await returnToThePool(db as never, { companyId: 'c1', orderId: o.id, holderId: 'sara', reason: NO_ANSWER_RETURNED_REASON })).toBe(true);
+    vi.clearAllMocks();
+    return o;
+  };
+
+  it('her press, a moment ago, nobody has it: the order’s four fields — and the order read asks for exactly those', async () => {
+    const o = await pressed();
+    expect(await ask(o)).toMatchObject({ id: o.id, orderNumber: o.orderNumber, customerId: o.customerId });
+    expect(vi.mocked(db.order.findFirst).mock.calls[0][0]).toMatchObject({ select: { id: true, orderNumber: true, customerId: true, countryId: true } });
+  });
+
+  it('the plan on is ENOUGH: both legacy switches off, and the exception still stands', async () => {
+    const o = await pressed();
+    sw.value = OFF;
+    rsw.value = OFF;
+    expect(await ask(o)).toMatchObject({ id: o.id });
+  });
+
+  it('the plan OFF: null before ANY other read — whatever the legacy switches say (answer 14: the older mode keeps today’s refusal)', async () => {
+    const o = await pressed();
+    cad.since = null;
+    // The legacy returns mode PLAINLY ON (both switches) with the plan off is the case the exception used to cover and no longer does; then the other three states of the two switches.
+    const legacy: [typeof sw.value, typeof rsw.value][] = [[ON, ON], [OFF, ON], [ON, OFF], [OFF, OFF]];
+    for (const [rounds, returns] of legacy) {
+      sw.value = rounds;
+      rsw.value = returns;
+      expect(await ask(o)).toBeNull();
+      expect(db.orderClaimHistory.findFirst).not.toHaveBeenCalled();
+      expect(db.order.findFirst).not.toHaveBeenCalled();
+    }
+  });
+
+  it('no line at all (she never pressed, or it was another release): null, and the order is not read', async () => {
+    const o = hers();
+    expect(await ask(o)).toBeNull();
+    expect(db.order.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('a line of ANOTHER person is not hers: null', async () => {
+    const o = await pressed();
+    expect(await ask(o, { userId: 'noor' })).toBeNull();
+  });
+
+  it('a line of another REASON (a date, the idle release) is not her «لا يرد»: null', async () => {
+    const o = hers();
+    world.history.push({ createdAt: NOW, companyId: 'c1', orderId: o.id, userId: 'sara', action: 'RELEASED', reason: 'DATE_RETURNED', metadata: null });
+    expect(await ask(o)).toBeNull();
+  });
+
+  it('the window is the pinned grace: 119 seconds after the press is still hers, 121 is not', async () => {
+    const o = await pressed();
+    expect(await ask(o, { now: new Date(NOW.getTime() + 119_000) })).not.toBeNull();
+    expect(await ask(o, { now: new Date(NOW.getTime() + 121_000) })).toBeNull();
+  });
+
+  it.each([
+    ['a colleague pulled it since', { claimedById: 'noor' }],
+    ['it is confirmed now', { confirmationStatus: 'CONFIRMED' }],
+    ['it is cancelled now', { confirmationStatus: 'CANCELLED' }],
+    ['it went on a trolley', { shippingBatchId: 'b1' }],
+    ['it has a tracking number', { trackingNumber: 'T-1' }],
+    ['its label was printed', { labelPrintedAt: NOW }],
+    ['it is shipping', { shippingStatus: 'PACKING' }],
+    ['it is in another store', { storeId: 's2' }],
+  ])('NEGATIVE: %s — her line is there, and still null', async (_why, over) => {
+    const o = await pressed();
+    Object.assign(o, over);
+    expect(await ask(o)).toBeNull();
   });
 });

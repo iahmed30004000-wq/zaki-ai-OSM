@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
-import { CONTACT_RESULTS, REJECTION_REASONS } from '@/lib/confirmation-workflow';
+import { CONTACT_RESULTS, NO_ANSWER_CLOSE, REJECTION_REASONS } from '@/lib/confirmation-workflow';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
@@ -21,6 +21,11 @@ import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
  *
  * Nothing on screen calls this door (OrderDetailModal says so); it is kept for the API, and it stays on `'orders.view'` and off the
  * work door (`the-order-she-holds.test.ts` holds that) — the holder check is an extra refusal, not a wider entrance.
+ *
+ * LEGACY — this writes the old `CallLog` table. The live attempt log is `OrderContactAttempt` (`../contact-attempts`): the desk, the scores, the close,
+ * the releases and the watching all read THAT one, and «إثبات المكالمات» (Confirmation Center v2, step A) asks its question there. This door is
+ * deliberately NOT guarded and NOT filled by anything else (the planner's ruling, 15/11/2026): it moves no order, counts nothing, and no screen calls it.
+ * An empty `CallLog` is not «no attempts were made».
  */
 export async function POST(
   req: Request,
@@ -97,7 +102,8 @@ export async function POST(
      * sentence. Two doors to the same shelf, one of them locked.
      */
     if (result === 'REJECTED') {
-      if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
+      // «خمس محاولات» is the plan's own close and did not exist before it: a hand that sends it gets the answer any unknown value always got.
+      if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason) || rejectionReason === NO_ANSWER_CLOSE.five.reason) {
         return NextResponse.json({ error: 'سبب الإلغاء مطلوب' }, { status: 400 });
       }
       if (rejectionReason === 'OTHER' && (!notes || String(notes).trim().length < 5)) {

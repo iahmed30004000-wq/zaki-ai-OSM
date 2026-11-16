@@ -121,7 +121,7 @@ describe('an old request, stored without its reason', () => {
     expect(db.orderChangeRequest.updateMany).not.toHaveBeenCalled();
   });
 
-  it.each(['NO_ANSWER_3_ATTEMPTS', 'MODERATOR_DATA_ERROR', 'NOT_A_REASON'])(
+  it.each(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS', 'MODERATOR_DATA_ERROR', 'NOT_A_REASON'])(
     'NEGATIVE: %j is not a choice a person may make, and nothing is written',
     async (bad) => {
       const res = await press({ reason: bad });

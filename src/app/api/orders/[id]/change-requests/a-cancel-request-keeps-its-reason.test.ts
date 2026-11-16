@@ -131,7 +131,7 @@ describe('and it is demanded, in Arabic, before anything is written', () => {
     expect(db.orderChangeRequest.create).not.toHaveBeenCalled();
   });
 
-  it.each(['NO_ANSWER_3_ATTEMPTS', 'MODERATOR_DATA_ERROR', 'SOMETHING_I_MADE_UP', ''])(
+  it.each(['NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS', 'MODERATOR_DATA_ERROR', 'SOMETHING_I_MADE_UP', ''])(
     'NEGATIVE: %j is not a choice a person may make',
     async (bad) => {
       const res = await raise({ ...CANCEL, cancelReason: bad });

@@ -1,4 +1,4 @@
-import { REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
+import { NO_ANSWER_CLOSE, REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
 import { DELIVERY_FAILURE_REASON_LABELS, RETURN_REASON_LABELS } from './shipping-workflow';
 
 /**
@@ -87,6 +87,32 @@ export const SELECTABLE_WINBACK_REASONS: readonly string[] = [...WINBACK_REASONS
  * into ringing somebody who already has the parcel is not a rule worth having.
  */
 export const NEVER_WINBACK_REASONS = ['DUPLICATE_ORDER', 'WRONG_NUMBER', 'FAKE_ORDER', 'MODERATOR_DATA_ERROR'] as const;
+
+/**
+ * ONE REASON, TWO STORED CODES. «Closed because nobody answered» is one winback reason whether the rule that closed it said three or five: the rule's tick (and every rule
+ * already saved, which names only the old code) stands for both. A code listed here rides on the code it maps to — asked of the rule, never stored in it.
+ */
+export const WINBACK_RIDERS: Readonly<Record<string, string>> = { [NO_ANSWER_CLOSE.five.reason]: NO_ANSWER_CLOSE.three.reason };
+
+/** The stored codes a rule's reasons stand for: what it lists, plus every code riding on one it lists. The verdict and the database filter both ask THIS. */
+export const winbackCodes = (reasons: readonly string[]): string[] => [
+  ...reasons,
+  ...Object.keys(WINBACK_RIDERS).filter((code) => reasons.includes(WINBACK_RIDERS[code])),
+];
+
+/**
+ * The words of the RULE's tick and sentence UNDER THE PLAN: the host reads without a number, because with «جدول المحاولات» on it stands for three AND five.
+ * Rows and filters always say their own code's words (`REJECTION_REASON_AR`).
+ */
+export const WINBACK_LABEL_AR: Readonly<Record<string, string>> = { [NO_ANSWER_CLOSE.three.reason]: 'أُغلق تلقائياً بعد محاولات بلا ردّ' };
+
+/**
+ * A reason as the rule's tick and sentence say it. THE SWITCH DECIDES (the planner 15/11, answer 6): with it OFF (the default — nothing handed) the label is
+ * `REJECTION_REASON_AR`'s own, «أُغلق بعد ثلاث محاولات بلا ردّ», byte for byte as before the plan; `planOn: true` swaps in the number-free one above. An options object, not a
+ * second positional: `.map(winbackLabel)` would hand it the index.
+ */
+export const winbackLabel = (code: string, opts: { planOn?: boolean } = {}): string =>
+  (opts.planOn === true ? WINBACK_LABEL_AR[code] : undefined) ?? REJECTION_REASON_AR[code] ?? code;
 
 /** And why each of the others is left alone — in the reader's language, on the screen. */
 export const NOT_WINBACK_AR: Record<string, string> = {
@@ -236,7 +262,8 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
   if (new Set(o.reasons).size !== o.reasons.length) return refuse('REASONS', 'سببٌ مكرَّر');
   const bad = o.reasons.find((r) => typeof r !== 'string' || !SELECTABLE_WINBACK_REASONS.includes(r));
   if (bad !== undefined) {
-    const label = typeof bad === 'string' ? (REJECTION_REASON_AR[bad] ?? bad) : String(bad);
+    // A body that lists the five-attempt code by hand lands here too (it rides on its host, it is never stored): the editor never sends it.
+    const label = typeof bad === 'string' ? winbackLabel(bad) : String(bad);
     return refuse('REASONS', `«${label}» لا يمكن الاتصال لأجله بأيّ إعداد`);
   }
   if (o.afterShipping !== undefined && typeof o.afterShipping !== 'boolean') {
@@ -276,9 +303,12 @@ export function validateWinbackRule(input: unknown): WinbackRuleInput {
  * Both kinds while the switch is on, and the reasons said to be the before-shipping
  * kind's, because that is the only kind they gate. Off, the sentence is the one the
  * screen printed before 28/10, word for word — the switch puts back what it takes.
+ *
+ * `opts.planOn` is «جدول المحاولات» being on — a second, unrelated switch: left out (or false) the sentence is exactly what it was before the plan, «أُغلق بعد ثلاث محاولات
+ * بلا ردّ» included; on, the no-answer close reads number-free (`winbackLabel`). The caller reads the switch the normal way (`cadenceSince`).
  */
-export function ruleSentence(rule: WinbackRule): string {
-  const reasons = rule.reasons.map((r) => REJECTION_REASON_AR[r] ?? r).join('، ');
+export function ruleSentence(rule: WinbackRule, opts: { planOn?: boolean } = {}): string {
+  const reasons = rule.reasons.map((r) => winbackLabel(r, opts)).join('، ');
   const pct = Math.round(rule.maxDiscountShare * 10_000) / 100;
   if (rule.afterShipping !== true) {
     return `ملغى · لم يُشحن · لم يُعرض عليه من قبل · السبب: ${reasons} · بعد ${rule.coolingDays} يوماً من الإلغاء · من طلباتِ آخر ${rule.lookbackDays} يوماً · خصمٌ حتى ${pct}٪`;
@@ -457,7 +487,7 @@ export function winbackVerdict(order: WinbackSource, now: Date, rule: WinbackRul
   // A return is not gated by the rule's reasons — the courier's feed records none, so gating it would show
   // nothing — but a return whose order was once marked a duplicate, a wrong number, a fake or an entry error
   // has nobody to ring after it came back either.
-  if (back ? neverCalled : !reason || neverCalled || !rule.reasons.includes(reason)) {
+  if (back ? neverCalled : !reason || neverCalled || !winbackCodes(rule.reasons).includes(reason)) {
     return {
       eligible: false,
       code: 'REASON_NOT_WINBACK',

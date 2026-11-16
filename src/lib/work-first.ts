@@ -39,7 +39,10 @@ import type { ReturnsMode } from './no-answer-returns';
  *                  «اتصل» before it does not count — R5 — so she must dial, then log it), or at least
  *                  `ROUND_GAP_BUSINESS_MINUTES` working minutes have passed since the START of the last counted round.
  *   3 · PROMISE  — a date came due (`postponedUntil` or `nextFollowUpAt` ≤ now) and nothing was logged on the order since
- *                  that date: the customer asked to be called, the day came, she has not worked it.
+ *                  that date: the customer asked to be called, the day came, she has not worked it. THAT FACT (`promiseArrived`) is
+ *                  written once and read by three: this verdict, the plan's (`cadenceVerdict` — the plan reads it whether or not
+ *                  the rounds are on) and the pull's ranking. The exclusions below (a release about to take the order, a close)
+ *                  are the ROUNDS' own and apply to the rounds' verdict only.
  *
  * ── AND WHEN IT IS NOT ──
  *
@@ -71,7 +74,8 @@ export interface DueVerdict {
 const NOT_DUE: DueVerdict = Object.freeze({ due: false, reason: null, waiting: false, dueAt: null });
 const DUE_NEW: DueVerdict = Object.freeze({ due: true, reason: 'NEW', waiting: false, dueAt: null });
 const DUE_ROUND: DueVerdict = Object.freeze({ due: true, reason: 'ROUND', waiting: false, dueAt: null });
-const DUE_PROMISE: DueVerdict = Object.freeze({ due: true, reason: 'PROMISE', waiting: false, dueAt: null });
+/** A PROMISE is due — the rounds' answer for it, and the plan's (`cadenceVerdict`): the same verdict, so no screen can tell which system said it. */
+export const DUE_PROMISE: DueVerdict = Object.freeze({ due: true, reason: 'PROMISE', waiting: false, dueAt: null });
 
 /** What `dueVerdict` needs to know about the order — all of it is on the row the desk and the pull already read. */
 export interface DueOrder {
@@ -101,6 +105,26 @@ const ms = (v: Date | string | null | undefined): number => (v ? new Date(v).get
 const NEVER_MS = 8.64e15;
 
 /**
+ * THE DATE THE CUSTOMER ASKED TO BE CALLED ON, in ms — the LATER of the two date columns (a postponement writes the same date in both; a callback writes only `nextFollowUpAt`; with a stale
+ * `postponedUntil` beside a fresher `nextFollowUpAt` the fresher one is the ask). Null when the order carries no date, or none that parses.
+ */
+export function askedDate(order: Pick<DueOrder, 'postponedUntil' | 'nextFollowUpAt'>): number | null {
+  const dates = [ms(order.postponedUntil), ms(order.nextFollowUpAt)].filter((n) => !Number.isNaN(n));
+  return dates.length ? Math.max(...dates) : null;
+}
+
+/**
+ * THE PROMISE FACT («الزبون طلب نكلمو هلّق», the planner 15/11, ruling 9) — the ONE definition, read by the rounds' verdict (`dueVerdict`), by the plan's (`cadenceVerdict`) and by the pull's
+ * ranking (`firstPromiseByDate`), so that a card's tag, a due block and the order the pool hands out cannot disagree. The customer asked for a call on a date, the date has ARRIVED (the later of
+ * the two columns is at or before `now`: a date exactly now has arrived) and NO line of any kind was logged at or after it (a line AT the date's own millisecond counts as logged; so does an
+ * «اتصال» alone — she is on the call). Pure: the caller hands the order's dates and its lines — all of them, or only the newest, which answers the same question.
+ */
+export function promiseArrived(order: Pick<DueOrder, 'postponedUntil' | 'nextFollowUpAt'>, lines: readonly Pick<AttemptFact, 'createdAt'>[], now: Date): boolean {
+  const asked = askedDate(order);
+  return asked !== null && asked <= now.getTime() && !lines.some((l) => new Date(l.createdAt).getTime() >= asked);
+}
+
+/**
  * THE VERDICT FOR ONE ORDER. `attempts` are ALL of the order's contact attempts, in any order.
  *
  * The cases are checked in the order that matters: a date ahead and an order that is leaving or closed are never due,
@@ -113,8 +137,7 @@ export function dueVerdict(order: DueOrder, attempts: readonly AttemptFact[], ct
   if (!roundsOn(sw)) return NOT_DUE;
 
   const now = ctx.now.getTime();
-  const dates = [ms(order.postponedUntil), ms(order.nextFollowUpAt)].filter((n) => !Number.isNaN(n));
-  const later = dates.length ? Math.max(...dates) : null;
+  const later = askedDate(order);
   /** Since the last call that reached somebody, only no-answers and presses: the cycle a round is made of. */
   const cycle = sinceLastReached(attempts).length > 0;
 
@@ -138,8 +161,8 @@ export function dueVerdict(order: DueOrder, attempts: readonly AttemptFact[], ct
   // Leaving within minutes (the next release pass takes it) or closed by the third round: not a call she owes.
   if (leaving || roundsClose(rounds)) return { due: false, reason: null, waiting: cycle, dueAt: null };
 
-  // 3 · PROMISE — the date came and nothing was logged on the order since (an attempt AT the date's instant counts as logged).
-  if (later !== null && !attempts.some((a) => new Date(a.createdAt).getTime() >= later)) return DUE_PROMISE;
+  // 3 · PROMISE — the date came and nothing was logged on the order since (an attempt AT the date's instant counts as logged): `promiseArrived`, the fact the plan and the pull read as well.
+  if (promiseArrived(order, attempts, ctx.now)) return DUE_PROMISE;
 
   // Reached the customer, no date, no cycle: a decision to take, not a call to make.
   if (!cycle) return NOT_DUE;

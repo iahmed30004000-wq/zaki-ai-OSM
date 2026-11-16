@@ -4,16 +4,23 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess, assertOrderReadable } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
-import { CONTACT_METHODS, CONTACT_RESULTS, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
+import { CONTACT_METHODS, CONTACT_RESULTS, NO_ANSWER_CLOSE, NO_ANSWER_RESULTS } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
 import { NO_ANSWER_LIMIT } from '@/lib/confirmation-workflow';
 import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from '@/lib/confirmation-queue';
-import { NO_ANSWER_RETURNED_REASON } from '@/lib/no-answer-returns';
+import { NO_ANSWER_RETURNED_REASON, markPlanReturnLine } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
+import { callProofOn } from '@/lib/call-proof-switch';
+import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
+import { callProofState } from '@/lib/call-proof';
+import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
+import { cadenceSince } from '@/lib/no-answer-cadence-switch';
+import { CADENCE_LIMIT, cadenceCalOf, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
+import { MAX_TALK_S } from '@/lib/call-helper/core';
 
 /**
  * GET  /api/orders/[id]/contact-attempts — chronological attempt history
@@ -38,6 +45,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
 
     const last = attempts.length ? attempts[attempts.length - 1] : null;
+    /*
+     * «إثبات المكالمات» — with the switch on, the answer also says what the VIEWER's «لا يرد» is waiting for on this order (`callProof`), computed by the same function
+     * the door asks, so the order window never decides the rule: it ticks `unlocksAtMs` against `serverNow`. With it off the answer has no such key.
+     */
+    const proof = (await callProofOn(db, companyId))
+      ? { callProof: { on: true, serverNow: Date.now(), ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date() }) } }
+      : {};
     return NextResponse.json({
       attempts,
       summary: {
@@ -47,6 +61,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         lastResult: last?.result ?? null,
         nextFollowUpAt: last?.nextFollowUpAt ?? null,
       },
+      ...proof,
     });
   } catch (error: any) {
     return apiErrorResponse(error);
@@ -116,8 +131,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const body = await req.json();
-    const { contactMethod, result, note, nextFollowUpAt } = body as {
+    const { contactMethod, result, note, nextFollowUpAt, durationSeconds } = body as {
       contactMethod?: string; result?: string; note?: string; nextFollowUpAt?: string;
+      /** «كم ثانية» — read only with «إثبات المكالمات» on, and only for a result that is not a «didn't answer» (the server measures those itself). */
+      durationSeconds?: unknown;
     };
 
     // ── Server-side validation (never trust frontend) ──
@@ -146,13 +163,64 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // «الطلب يرجع للطابور فوراً» — on only with the rounds on as well (their counting is what closes), cached, and OFF on any failure.
     const returnsOn = await returnsModeOn(db, companyId, rounds);
 
+    /*
+     * «إثبات المكالمات» (step A of Confirmation Center v2) — the owner's switch, read once (cached) before the transaction; OFF on any failure, and OFF is the rule
+     * above and below exactly as it is today: the guard is never asked, `durationSeconds` is neither read nor validated nor written.
+     *
+     * With it ON, a «didn't answer» (`NO_ANSWER_RESULTS`) is recorded only after a logged «اتصال» press of hers that is at least thirty seconds old (`call-proof.ts`),
+     * asked INSIDE the transaction below, as its first statement: a refusal writes nothing — no line, no close, no release. For any other result a typed
+     * `durationSeconds` is stored when it is a whole number of seconds (an answered call's talk time, as the phone measured it).
+     */
+    const proofOn = await callProofOn(db, companyId);
+    const guardedClass = (NO_ANSWER_RESULTS as readonly string[]).includes(result!);
+    /*
+     * «جدول المحاولات» (step B) — the SAME switch as the proof above (one switch: proof off means cadence off, and then it is not even asked). `cadenceAt` is the moment the switch
+     * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world (the country's timezone, rest days and work hours — the SAME builder the desk uses). Null, and every line below is today's, key for key.
+     */
+    const cadenceAt = proofOn ? await cadenceSince(db, companyId) : null;
+    const cal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
+    let enteredDuration: number | null = null;
+    if (proofOn && !guardedClass && durationSeconds !== undefined && durationSeconds !== null && durationSeconds !== '') {
+      if (typeof durationSeconds !== 'number' || !Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > MAX_TALK_S) {
+        return NextResponse.json({ error: CALL_PROOF_WORDS.invalidDuration, errorAr: CALL_PROOF_WORDS.invalidDuration, code: 'INVALID_DURATION' }, { status: 400 });
+      }
+      enteredDuration = durationSeconds;
+    }
+
     // ── The 1/2/3 no-answer rule ──
     // The third no-answer closes the order under its OWN reason, in the same
     // transaction as the attempt, and releases the reservation. It is not a
     // customer rejection and must never be reported as one.
-    const { attempt, autoClosed, noAnswerCount, announce, returned } = await db.$transaction(async (tx) => {
+    const { attempt, autoClosed, noAnswerCount, announce, returned, cad, pressedAt } = await db.$transaction(async (tx) => {
+      // The proof comes BEFORE the first write of this transaction (a refusal is a sentinel answered in the `catch`).
+      let measured: number | null = null;
+      if (proofOn) {
+        measured = (
+          await assertCallProven(tx, { companyId, orderId: id, employeeId: user.id, claimedAt: order.claimedAt ?? null, result: result!, door: 'ATTEMPT' })
+        ).durationSeconds;
+      }
+      /*
+       * THE PLAN, read through THIS transaction right after the guard and BEFORE the line is written (the guard's refusal has already thrown: nothing below runs for it). `pressedAt` is
+       * the instant the plan decides with AND the instant the line is stamped with, so the replay of the stored rows can never disagree with this decision, not even by the engine's
+       * own clock stamp. The line is written ONCE with its due on it (`OrderContactAttempt` is append-only: no update is ever issued).
+       */
+      const pressedAt = new Date();
+      const cad = cal
+        ? cadencePress(
+            await tx.orderContactAttempt.findMany({
+              where: { orderId: id, companyId },
+              select: { createdAt: true, result: true, attemptNumber: true },
+            }),
+            { at: pressedAt, result: result! },
+            cal
+          )
+        : null;
       const created = await tx.orderContactAttempt.create({
         data: {
+          // With the switch off the data object carries no new key at all.
+          ...(proofOn ? { durationSeconds: guardedClass ? measured : enteredDuration } : {}),
+          // With the plan on, a no-answer-class line carries the instant the plan used.
+          ...(cad && guardedClass ? { createdAt: pressedAt } : {}),
           companyId,            // from session — never client
           orderId: id,
           employeeId: user.id,  // server-derived — forged employeeId impossible
@@ -161,7 +229,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           contactMethod: contactMethod!,
           result: result!,
           note: note?.trim() || null,
-          nextFollowUpAt: fu.date,
+          // With the plan on, the date of a no-answer-class line is the PLAN's: the due when the press counted, nothing when it was early (a date the client sent is still validated above).
+          nextFollowUpAt: cad && guardedClass ? (cad.counted ? cad.dueAt : null) : fu.date,
         },
         include: { employee: { select: { id: true, name: true } } },
       });
@@ -171,7 +240,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
        * one, a press with no «اتصل» before it is not counted, and three rounds on ONE day close nothing. The same function
        * counts «جولة n من 3» on her desk, so the number she reads is the number that closes.
        */
-      const roundsNow = roundsOn(rounds)
+      const roundsNow = !cad && roundsOn(rounds)
         ? countedRounds(
             await tx.orderContactAttempt.findMany({
               where: { orderId: id },
@@ -185,13 +254,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             })
           )
         : null;
-      const noAnswers = roundsNow
-        ? roundsNow.counted.length
-        : await tx.orderContactAttempt.count({
-            where: { orderId: id, result: { in: [...NO_ANSWER_RESULTS] } },
-          });
-      // Three rounds, all on one day: not yet (R3). OFF this is always false.
-      const roundsOnOneDay = roundsNow ? !roundsClose(roundsNow) : false;
+      // With the plan on the number is the COUNTED attempts (`no-answer-cadence.ts`) and the close below waits for five over two days; with it off, today's counting, line for line.
+      const noAnswers = cad
+        ? cad.next.counted.length
+        : roundsNow
+          ? roundsNow.counted.length
+          : await tx.orderContactAttempt.count({
+              where: { orderId: id, result: { in: [...NO_ANSWER_RESULTS] } },
+            });
+      // Three rounds, all on one day: not yet (R3); under the plan, not five counted over two days. OFF this is always false.
+      const roundsOnOneDay = cad ? !cad.closes : roundsNow ? !roundsClose(roundsNow) : false;
 
       const terminal = ['CONFIRMED', 'REJECTED', 'CANCELLED'].includes(order.confirmationStatus);
       /*
@@ -229,6 +301,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         !terminal &&
         neverShipped
       ) {
+        // Under the plan the close is the plan's own code («خمس»); every other way into this branch (switch off, the rounds) is the rule of three, byte for byte as ever.
+        const closeAs = cad ? NO_ANSWER_CLOSE.five : NO_ANSWER_CLOSE.three;
         const closed = await endOrder({
           orderId: id,
           companyId,
@@ -237,10 +311,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           door: 'CONTACT_AUTO_CLOSE',
           kind: 'CANCEL',
           endAs: 'CANCELLED',
-          reason: 'NO_ANSWER_3_ATTEMPTS',
+          reason: closeAs.reason,
           rejectionNote: `إغلاق تلقائي بعد ${noAnswers} محاولات بلا رد`,
           data: { followUpStatus: order.nextFollowUpAt ? 'CANCELLED' : order.followUpStatus },
-          logNote: 'AUTO_CLOSE_NO_ANSWER_3_ATTEMPTS',
+          logNote: closeAs.note,
           noteBody: `أُغلق الطلب تلقائياً بعد ${noAnswers} محاولات اتصال بلا رد.`,
           tx,
         });
@@ -256,6 +330,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           noAnswerCount: noAnswers,
           announce: closed.ok ? closed.afterCommit : undefined,
           returned: false,
+          cad,
+          pressedAt,
         };
       }
       /*
@@ -269,8 +345,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         returnsOn &&
         order.claimedById === user.id &&
         (NO_ANSWER_RESULTS as readonly string[]).includes(result!) &&
+        // Under the plan only a COUNTED press releases: an early one is kept and told, and leaves the order where it was.
+        (!cad || cad.counted) &&
         (await returnToThePool(tx, { companyId, orderId: id, holderId: user.id, reason: NO_ANSWER_RETURNED_REASON }));
-      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined, returned };
+      /*
+       * THE LINE WEARS THE WORD OF THE RULE THAT WROTE IT (the planner 15/11 22:30, ruling 28). With the plan deciding this press (`cad`), the line just written is stamped
+       * `{ "rule": "plan" }` in its metadata, in this same transaction; the older doors (`cad` null) write nothing new, so their line reads the older word forever.
+       */
+      if (returned && cad) await markPlanReturnLine(tx, { companyId, orderId: id, holderId: user.id });
+      return { attempt: created, autoClosed: false, noAnswerCount: noAnswers, announce: undefined, returned, cad, pressedAt };
     });
     // The transaction has committed: only now does anybody hear the order closed.
     await announce?.();
@@ -278,19 +361,50 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await logAudit({
       companyId, userId: user.id, action: 'CONTACT_ATTEMPT_RECORDED',
       entity: 'Order', entityId: id,
-      newData: { attemptNumber, contactMethod, result, nextFollowUpAt: fu.date },
+      newData: {
+        attemptNumber,
+        contactMethod,
+        result,
+        // What was STORED: under the plan the due (or null for an early press), never the client's date.
+        nextFollowUpAt: cad && guardedClass ? attempt.nextFollowUpAt ?? null : fu.date,
+        ...(proofOn ? { durationSeconds: attempt.durationSeconds ?? null } : {}),
+        ...(cad && guardedClass ? { cadence: { attempt: cad.next.counted.length, counted: cad.counted, dueAt: cad.next.dueAt?.toISOString() ?? null } } : {}),
+      },
     });
 
     return NextResponse.json({
       success: true,
       attempt,
       noAnswerCount,
-      noAnswerLimit: NO_ANSWER_LIMIT,
+      noAnswerLimit: cal ? CADENCE_LIMIT : NO_ANSWER_LIMIT,
       autoClosed,
       // Said only when it happened (the mode is off otherwise, and the answer is what it always was): the order is out of her hand.
       ...(returned ? { returnedToQueue: true } : {}),
+      // The plan's own answer, only for a no-answer-class line with the switch on: where she stands, whether it counted, when the next counts, and the words the desk prints.
+      ...(cad && guardedClass
+        ? {
+            cadence: {
+              attempt: cad.next.counted.length,
+              of: CADENCE_LIMIT,
+              counted: cad.counted,
+              dueAt: cad.next.dueAt?.toISOString() ?? null,
+              words: cadencePressWords({
+                counted: cad.counted,
+                closed: autoClosed,
+                released: !!returned,
+                attempt: cad.next.counted.length,
+                dueAt: cad.next.dueAt,
+                now: pressedAt,
+                timeZone: country.timezone,
+              }),
+            },
+          }
+        : {}),
     });
   } catch (error: any) {
+    // A «لا يرد» the proof refused: a sentinel thrown inside the transaction (nothing was written), answered as a 409 she can act on.
+    const refused = await answerCallProofRefusal(error);
+    if (refused) return refused;
     return apiErrorResponse(error);
   }
 }

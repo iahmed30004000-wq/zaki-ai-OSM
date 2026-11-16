@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/geo-context';
 import { ORDER_ACCESS_STATUS, assertOrderAccess } from '@/lib/rbac';
 import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { AlreadyBlocked, blockPhone } from '@/lib/blacklist';
-import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, REJECTION_REASONS, isValidTransition, type ConfirmationStatus } from '@/lib/confirmation-workflow';
+import { CONFIRMATION_STATUSES, CONFIRMATION_STATUS_AR, FOLLOW_UP_REASONS, NO_ANSWER_CLOSE, NO_ANSWER_CLOSE_REASONS, REJECTION_REASONS, isValidTransition, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 import { logAudit } from '@/lib/audit';
 import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
@@ -19,9 +19,23 @@ import {
   returnToThePool, returnsModeOn, returnedByHerOwnPress,
 } from '@/lib/confirmation-queue';
 import { DATE_RETURNED_REASON } from '@/lib/no-answer-returns';
+import { callProofOn } from '@/lib/call-proof-switch';
+import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
+import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
+import { cadenceSince } from '@/lib/no-answer-cadence-switch';
+import { CADENCE_LIMIT } from '@/lib/no-answer-cadence';
 import {
   TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
 } from '@/lib/confirmed-twin';
+
+/**
+ * With «جدول المحاولات» on, the two no-answer close codes (`NO_ANSWER_CLOSE_REASONS`) are reasons only the system writes (the contact door closes at the fifth COUNTED attempt over two days, in its own transaction):
+ * nobody can meet that rule by hand. Arabic in both keys, through an identifier — this door is a fixed door of `arabic-refusals.test.ts`.
+ */
+const NO_ANSWER_BY_HAND_AR = `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${CADENCE_LIMIT} محاولات «لا يرد» محسوبة على يومين. اختر سبباً تانياً من القائمة.`;
+
+/** The answer to a reason that is not on the list — one sentence, so the plan's code with the switch off can be answered with it byte for byte. */
+const PICK_A_REASON_AR = 'اختر سبب الرفض من القائمة';
 
 /**
  * POST /api/orders/[id]/confirmation — controlled confirmation workflow action.
@@ -145,10 +159,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           (await db.orderContactAttempt.count({ where: { orderId: order.id }, take: 1 })) > 0,
       })
     ) {
+      // With «إثبات المكالمات» on, «أو اكبس لا يرد» is no longer a way out of this refusal — the copy says «اتصال» (the constant keeps its text for OFF).
+      const contactFirstWords = (await callProofOn(db, companyId)) ? CALL_PROOF_WORDS.contactFirstV2 : CONTACT_FIRST_MESSAGE;
       return NextResponse.json(
         {
-          error: CONTACT_FIRST_MESSAGE,
-          errorAr: CONTACT_FIRST_MESSAGE,
+          error: contactFirstWords,
+          errorAr: contactFirstWords,
           code: 'CONTACT_FIRST',
         },
         { status: 409 }
@@ -222,7 +238,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // drops the same reservation, so with the override (orders.unlock) it
         // could free the units of a parcel already labelled or on a trolley.
         if (!rejectionReason || !(REJECTION_REASONS as readonly string[]).includes(rejectionReason)) {
-          return NextResponse.json({ error: 'اختر سبب الرفض من القائمة' }, { status: 400 });
+          return NextResponse.json({ error: PICK_A_REASON_AR }, { status: 400 });
+        }
+        // The switch is asked ONLY for this action and these two reasons: nothing else on this door reads it. Off, or unreadable: the old code is accepted exactly as it always was.
+        if ((NO_ANSWER_CLOSE_REASONS as readonly string[]).includes(rejectionReason)) {
+          if (await cadenceSince(db, companyId)) {
+            return NextResponse.json({ error: NO_ANSWER_BY_HAND_AR, errorAr: NO_ANSWER_BY_HAND_AR, code: 'SYSTEM_ONLY_REASON' }, { status: 409 });
+          }
+          // «خمس محاولات» belongs to the plan and did not exist before it: with the plan off a hand that sends it gets the answer any unknown value always got.
+          if (rejectionReason === NO_ANSWER_CLOSE.five.reason) {
+            return NextResponse.json({ error: PICK_A_REASON_AR }, { status: 400 });
+          }
         }
         if (rejectionReason === 'OTHER' && (!note || note.trim().length < 5)) {
           return NextResponse.json({ error: 'سبب الرفض «أخرى» يحتاج ملاحظة — خمسة أحرف على الأقل' }, { status: 400 });
@@ -416,7 +442,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
        * action made them — and `returnToThePool` is conditional, so an order that moved in the same instant is left where it is.
        */
       const releasesOnDate = writesADate && order.claimedById === user.id && (await returnsModeOn(db, companyId));
+      /*
+       * «إثبات المكالمات» (step A of Confirmation Center v2) — two ways onto «لا يرد» that must not be a side door around the thirty seconds, asked only with the
+       * company switch on (read here, and only when one of the two applies — no other action pays for the read):
+       *   · `contact_result` that lands on «لا يرد» (NO_ANSWER, BUSY, and WRONG_NUMBER, which maps there too): the second half of a pair whose first half, the attempt
+       *     line, already passed the proof at the contact door — here her own newest outcome line must be that result (`STATUS`);
+       *   · a date saved with the reason «لا يرد» (`schedule_follow_up`, or a `contact_result` that is not itself a «لا يرد»): no line is written here, so it asks the
+       *     proof itself (`ATTEMPT`) — otherwise «اتصال» then the postpone dialog's «لا يرد — إعادة المحاولة لاحقاً» would release the order with no wait.
+       * Not asked of a supervisor's audited override — the exit this door already has: the transition table refused the move and an `orders.unlock` holder carried it with a written reason of five characters. Asked inside the
+       * transaction below, before its first write; a refusal is a sentinel answered in the `catch`, nothing written.
+       */
+      const statusGuarded = action === 'contact_result' && target === 'NO_ANSWER';
+      const reasonGuarded =
+        !statusGuarded && !!nextFollowUpAt && followUpReason === 'NO_ANSWER' && (action === 'schedule_follow_up' || action === 'contact_result');
+      // Only when the override was ACTUALLY used — the transition table refused the move and an `orders.unlock` holder carried it with a written reason (the exit above). A note on a valid move exempts nothing.
+      const noteOverride =
+        !!target && !isValidTransition(from, target) && from !== target && can(user, 'orders.unlock') && !!note && note.trim().length >= 5;
+      const proofOn = (statusGuarded || reasonGuarded) && !noteOverride ? await callProofOn(db, companyId) : false;
       await db.$transaction(async (tx) => {
+        if (proofOn) {
+          await assertCallProven(tx, {
+            companyId,
+            orderId: id,
+            employeeId: user.id,
+            claimedAt: order.claimedAt ?? null,
+            result: statusGuarded ? result! : 'NO_ANSWER',
+            door: statusGuarded ? 'STATUS' : 'ATTEMPT',
+          });
+        }
         /*
          * ── THE SECOND «نعم» FOR THE SAME CUSTOMER (the owner, 2/11) ──
          *
@@ -611,6 +664,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (error instanceof TwinConfirmedRefusal) {
       return NextResponse.json(twinConfirmedBody(error.twins), { status: 409 });
     }
+    // A «لا يرد» the proof refused (thrown inside the transaction, nothing written): a 409 she can act on.
+    const proofRefused = await answerCallProofRefusal(error);
+    if (proofRefused) return proofRefused;
     if (error?.message?.startsWith('VERSION_CONFLICT')) {
       return NextResponse.json(
         {

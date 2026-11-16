@@ -14,11 +14,15 @@ import {
 } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
 import { returnsSwitch } from './no-answer-returns-switch';
+import { cadenceSince } from './no-answer-cadence-switch';
 import {
   IDLE_RETURNED_REASON,
   NO_ANSWER_RETURNED_REASON,
+  cadenceDueLineWhere,
+  firstPromiseByDate,
+  firstRetryByDue,
   handLimitMessage,
-  noRecentNoAnswerWhere,
+  noAnswerReadyWhere,
   returnsMode,
   returnsReadyAnd,
   returnsSwitchOn,
@@ -26,7 +30,7 @@ import {
   type ReturnsReason,
 } from './no-answer-returns';
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
-import { workFirstGate, type WorkFirstRefusal } from './work-first';
+import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -34,8 +38,9 @@ type Tx = Prisma.TransactionClient | typeof db;
  * CONFIRMATION QUEUE — agents never see a list, they pull the next order.
  *
  * Priority (`pickNextCandidate`, the owner 7/11: «الأولوية دائما للطلبات الجديدة»): what is held for her; then a NEW order —
- * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest.
- * An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
+ * one nobody has rung yet — the oldest first; then a postponed order due within the lead days; then the oldest of the rest — with the
+ * cadence on: first the customer's PROMISE whose date arrived (the planner 15/11, ruling 13, `pickPromiseArrived`), then the retry with the OLDEST due (the planner's ruling 2,
+ * `pickMostOverdueRetry`). An agent cannot pull while holding an order they have not tried to contact yet, and a claim with no attempt is
  * auto-released after 90 BUSINESS minutes (frozen outside work hours and on weekends). Nor can she pull faster than
  * `PULL_PACE` (40 in any rolling hour, the owner 8/11) — that refusal comes last (`pullPaceRefusal`).
  */
@@ -909,8 +914,12 @@ export async function releaseNoAnswerRounds(
   opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
-  if (!roundsOn(rounds)) return 0;
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
+  if (!roundsOn(rounds)) {
+    // The cadence (step B) brings the returns mode with it, so ITS idle release runs without «نظام الجولات» — but only when the CALLER handed the cadence mode in (the pull does,
+    // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
+    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit) : 0;
+  }
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
   const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
@@ -920,13 +929,19 @@ export async function releaseNoAnswerRounds(
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
 
-/**
- * IS THE MODE ON? Both switches plainly on — the mode's own and «نظام الجولات»', whose counting the close uses. A read that fails is
- * off (each switch says so for itself), and the second switch is not even asked while the rounds are off.
- */
-export async function returnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
+/** The two legacy switches: both plainly on — «نظام الجولات» (whose counting the close uses) and the mode's own. The second is not asked while the first is off. */
+async function legacyReturnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
   if (!roundsOn(rounds ?? (await roundsSwitch(client, companyId)))) return false;
   return returnsSwitchOn(await returnsSwitch(client, companyId));
+}
+
+/**
+ * IS THE MODE ON? The cadence switch (step B, `no-answer-cadence-switch.ts`) brings it with it — the plan's re-entry, the hand limit and the idle release are this mode's
+ * behaviours — OR both legacy switches are plainly on: the mode's own and «نظام الجولات»', whose counting the close uses. A read that fails is off (each switch says so for
+ * itself), and the legacy switches are not even asked while the cadence is on or the rounds are off.
+ */
+export async function returnsModeOn(client: Tx, companyId: string, rounds?: RoundsSwitch): Promise<boolean> {
+  return !!(await cadenceSince(client, companyId)) || (await legacyReturnsModeOn(client, companyId, rounds));
 }
 
 /** The mode with its cut-offs placed once from the store's calendar — or null when it is off. `calendar` is called only when it is on. */
@@ -935,8 +950,10 @@ export async function readReturnsMode(
   companyId: string,
   args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch }
 ): Promise<ReturnsMode | null> {
-  if (!(await returnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes);
+  // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
+  const since = await cadenceSince(client, companyId);
+  if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
+  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes, since);
 }
 
 /**
@@ -1025,6 +1042,37 @@ export async function returnedByHerOwnPress(
     select: { id: true },
   });
   return !!line;
+}
+
+/**
+ * THE ORDER SHE LET GO A MOMENT AGO, FOR A DOOR THAT ACTS ON IT (the company-WhatsApp template; the owner's ruling 7, narrowed by the planner 15/11, answer 14).
+ * `returnedByHerOwnPress` only says her counted press released the order. A door that SENDS something must also be sure nobody has taken it since, and that it is still at the desk:
+ * returns the order's four fields, or null. Asked only when the door would refuse (not held / not visible).
+ *
+ * ONLY WITH THE PLAN ON (`cadenceSince` non-null — «جدول المحاولات», the one switch). The older «الطلب يرجع للطابور فوراً» mode (`returnsModeOn` reads it too) also releases the order with her
+ * «لا يرد», but that mode keeps the door exactly as it was: NOT_HELD, and RV1651 stays open for it. So this asks the plan's switch and nothing else — null before any other read.
+ */
+export async function orderReleasedByHerOwnPress(
+  client: Tx,
+  args: { companyId: string; storeId: string; orderId: string; userId: string; now?: Date }
+): Promise<{ id: string; orderNumber: string; customerId: string; countryId: string | null } | null> {
+  if (!(await cadenceSince(client, args.companyId))) return null;
+  if (!(await returnedByHerOwnPress(client, args))) return null;
+  return client.order.findFirst({
+    where: {
+      id: args.orderId,
+      companyId: args.companyId,
+      storeId: args.storeId,
+      claimedById: null, // nobody pulled it since
+      confirmationStatus: { in: OPEN_CONFIRMATION }, // still at the desk, not closed
+      // the very guard `returnToThePool` wrote with: never a parcel that entered the shipment
+      shippingStatus: 'NOT_READY',
+      shippingBatchId: null,
+      trackingNumber: null,
+      labelPrintedAt: null,
+    },
+    select: { id: true, orderNumber: true, customerId: true, countryId: true },
+  });
 }
 
 /**
@@ -1312,6 +1360,74 @@ export async function waitingBreakdown(
 }
 
 /**
+ * THE SAME NUMBER, SAID IN THE PLAN'S FOUR (the planner 15/11, ruling 24) — ONLY WITH THE PLAN ON (`returns.cadence`).
+ *
+ * The pull's order under the plan is: held for her, then NEW, then the promise that arrived (`pickPromiseArrived`, any status), then the retry whose due came (`pickMostOverdueRetry`),
+ * then the rest by age. Said in four parts that follow that order, over the very predicates the pull picks from, and a PARTITION of the pool (`readyToPullWhere` + `duePostponedWhere`):
+ *
+ *   · `fresh`   — ready and nobody has rung it: the pull's step 2 (the same count as `waitingBreakdown`).
+ *   · `promise` — any other pullable order whose customer-asked date arrived with no line logged since (`promiseArrived`, the fact the desk's tag reads).
+ *   · `retry`   — any other order whose time came again: a ready order carrying a due on a «لا يرد» line (`cadenceDueLineWhere`), or a postponed order whose date came and was
+ *                 worked after it (the pull hands that one out right after the promises and before the retries, so it is counted with them).
+ *   · `rest`    — what is left: the pool minus the three, so the sum is always the pool (`waitingCount`).
+ *
+ * Two phases like the pick: the database counts what a filter can say, and the promise fact (the later of two dates against the newest line) is made here over the DATED orders of the pool,
+ * oldest-created first and bounded by `RETRY_SCAN_PAGE` like the pick's own scan — an order past the page is in `rest`, so the figure still adds up. Nothing is written, and nothing of an order is
+ * read into a log (this scan does not warn: it runs on every poll, and the pull's own scans say it once per pull).
+ */
+export interface WaitingByPlan {
+  fresh: number;
+  promise: number;
+  retry: number;
+  rest: number;
+}
+
+export async function waitingByPlan(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode & { cadence: { since: Date } }
+): Promise<WaitingByPlan> {
+  const ready = readyToPullWhere(scope, forUserId, now, returns);
+  const duePostponed = duePostponedWhere(scope, now, returns);
+  const lines = cadenceDueLineWhere(returns.cadence.since);
+  const [dueTotal, readyTotal, fresh, undatedRetry, dated] = await Promise.all([
+    tx.order.count({ where: duePostponed }),
+    tx.order.count({ where: ready }),
+    tx.order.count({ where: { ...ready, contactAttempts: { none: {} } } }),
+    // A ready, rung order with a due and NO date: never a promise, so a retry outright.
+    tx.order.count({ where: { ...ready, postponedUntil: null, nextFollowUpAt: null, contactAttempts: { some: lines } } }),
+    // The dated orders of the pool that are not NEW: the promise fact is decided here, with only the newest line of each and a filtered count of its due lines.
+    tx.order.findMany({
+      where: {
+        AND: [
+          { OR: [{ ...ready, contactAttempts: { some: {} } }, duePostponed] },
+          { OR: [{ postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }] },
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: RETRY_SCAN_PAGE,
+      select: {
+        confirmationStatus: true,
+        postponedUntil: true,
+        nextFollowUpAt: true,
+        contactAttempts: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+        _count: { select: { contactAttempts: { where: lines } } },
+      },
+    }),
+  ]);
+  let promise = 0;
+  let retry = undatedRetry;
+  for (const row of dated) {
+    if (promiseArrived(row, row.contactAttempts, now)) promise++;
+    else if (row.confirmationStatus === 'POSTPONED' || row._count.contactAttempts > 0) retry++;
+  }
+  const total = dueTotal + readyTotal;
+  return { fresh, promise, retry, rest: Math.max(0, total - fresh - promise - retry) };
+}
+
+/**
  * THE ORDERS SHE CAN SEE AND CANNOT TAKE: held for a colleague who worked the customer last.
  *
  * Said apart from the number that promises a pull — «بانتظارك» counts what she may take, and this counts what is in the
@@ -1430,7 +1546,7 @@ export function duePostponedWhere(scope: QueueScope, now: Date, returns?: Return
     OR: [{ postponedUntil: { lte: leadEnd } }, { postponedUntil: null, nextFollowUpAt: { lte: leadEnd } }],
     // In the mode a date that has not arrived holds the order whichever of the two columns carries it (the later of the two, as the
     // rounds read it): a stale postponement date beside a fresh follow-up date must not make it due.
-    ...(returns ? { AND: [{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: leadEnd } }] }, noRecentNoAnswerWhere(returns)] } : {}),
+    ...(returns ? { AND: [{ OR: [{ nextFollowUpAt: null }, { nextFollowUpAt: { lte: leadEnd } }] }, noAnswerReadyWhere(returns)] } : {}),
   };
 }
 
@@ -1473,12 +1589,94 @@ export async function pickHeldForHer(tx: Tx, scope: QueueScope, userId: string, 
 }
 
 /**
+ * How many ready orders EACH of the pick's two ranking scans reads (the promises, then the retries by due), OLDEST-CREATED first. Far above any real pile (the live pool the owner saw was 422);
+ * a pool past it ranks its oldest-created page and the rest wait their turn — a bound on the pull's one transaction (`PULL_TRANSACTION_OPTIONS`), not a rule — and a FULL page is said once
+ * in the log (`warnScan`, the planner 15/11, ruling 10; ruling 31 adds an early sentence from `RETRY_SCAN_WARN_AT` rows). The upgrade, if ever needed, is `groupBy _max` or a column.
+ */
+export const RETRY_SCAN_PAGE = 2000;
+
+/**
+ * The scan is FILLING (the planner 15/11, ruling 31): from this many rows on, and before the page is full, the log says so once — an early warning, so the operator learns the pool is nearing
+ * `RETRY_SCAN_PAGE` BEFORE a full page starts leaving orders out of the ranking. The global retry ordering is NOT built now (the live pile is 422); it is built when this warning shows up.
+ */
+export const RETRY_SCAN_WARN_AT = 1500;
+
+/**
+ * A scan that came back FULL has probably left orders out of its ranking (the planner 15/11, ruling 10: «console.warn لما الصفحة تمتلي»): said once per scan, with the page size and a fixed sentence, so an
+ * operator reading the log learns the pool outgrew the page BEFORE somebody notices a retry waiting out of turn. A scan that read `RETRY_SCAN_WARN_AT` rows or more but is NOT full says its early
+ * sentence the same way (ruling 31) — one line per scan, never both. Never a name, a phone or an address — nothing of the orders is read into it, only the scan, the page size and the count.
+ */
+function warnScan(scan: 'promise' | 'retry', rows: number, page: number = RETRY_SCAN_PAGE): void {
+  if (rows >= page) console.warn(`[confirmation/pull] ${scan} scan page is full (${page}) — ranking only the ${page} oldest-created; the rest wait their turn (RETRY_SCAN_PAGE)`);
+  else if (rows >= RETRY_SCAN_WARN_AT) console.warn(`[confirmation/pull] ${scan} scan is filling: read ${rows} of a ${page} page — near full; a full page ranks only the ${page} oldest-created (RETRY_SCAN_PAGE)`);
+}
+
+/**
+ * STEP 3, WIDENED (the cadence only; the planner 15/11, rulings 9 and 13): the PROMISE the customer made — of the pullable orders, the one whose customer-asked date came first with nothing logged
+ * on the order since (`promiseArrived`, the fact the desk's tag reads: «الزبون طلب نكلمو هلّق» is on exactly these cards). It is the pull-side face of that fact, so ANY pullable order carries it, not only
+ * POSTPONED: a follow-up, a returned retry the customer asked about, an idle release with a date. Two phases like 4a: the database narrows to the pullable orders (the two predicates the counters
+ * read — `readyToPullWhere` and `duePostponedWhere`, so a held-for-a-colleague order, a decided one, the hand cap's pool and the cadence's own readiness are all inside them) that carry a date, with
+ * the newest line of each; the fact and the rank are made here. Nothing is written, and the claim that follows is the same compare-and-set as ever.
+ */
+export async function pickPromiseArrived(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode
+): Promise<string | null> {
+  const rows = await tx.order.findMany({
+    where: {
+      AND: [
+        { OR: [readyToPullWhere(scope, forUserId, now, returns), duePostponedWhere(scope, now, returns)] },
+        { OR: [{ postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }] },
+      ],
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: RETRY_SCAN_PAGE,
+    // «No line at or after the date» is a question of the NEWEST line alone: one line per order is read, never the whole history.
+    select: { id: true, createdAt: true, postponedUntil: true, nextFollowUpAt: true, contactAttempts: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } } },
+  });
+  warnScan('promise', rows.length);
+  return firstPromiseByDate(rows, now);
+}
+
+/**
+ * STEP 4a (the cadence only; the planner's ruling 2): of the READY orders that carry a due on a «لا يرد» line, the one whose due is the oldest. Two phases — Prisma cannot sort an order
+ * by a max over a relation: the database narrows to the ready orders with a due line (the very `readyToPullWhere` the counters read, plus one `some`), and the rank is made here.
+ * Nothing is written, and the claim that follows is the same compare-and-set as ever.
+ */
+export async function pickMostOverdueRetry(
+  tx: Tx,
+  scope: QueueScope,
+  now: Date,
+  forUserId: string | undefined,
+  returns: ReturnsMode
+): Promise<string | null> {
+  const since = returns.cadence?.since;
+  if (!since) return null;
+  const lines = cadenceDueLineWhere(since);
+  const rows = await tx.order.findMany({
+    where: { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: RETRY_SCAN_PAGE,
+    select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
+  });
+  warnScan('retry', rows.length);
+  return firstRetryByDue(rows, since);
+}
+
+/**
  * The next order to work on, in this order (the owner, 7/11: «الأولوية دائما للطلبات الجديدة لما يسحبو الطلبات»):
  *
  *   1. what is held for her (a returning customer's order, a twin of the one she pulled) — still first;
  *   2. a NEW order — one nobody has rung yet — the oldest first. Not behind any switch: with «نظام الجولات» on or off alike;
- *   3. a postponed order due within the lead days, the nearest date first;
- *   4. the oldest of the rest — the ones that were rung already.
+ *   3. a postponed order due within the lead days, the nearest date first. With the cadence on (`returns.cadence`) this step is the PROMISE (the planner 15/11,
+ *      ruling 13, `pickPromiseArrived`): any pullable order — of any status — whose customer-asked date arrived with nothing logged since, the promise
+ *      whose date came first first (ties: the older order), and an order that is both a promise and a ready retry is a promise. The postponed orders that
+ *      group leaves (a line was logged after their date) keep today's step 3 right after it;
+ *   4. the oldest of the rest — the ones that were rung already. With the cadence on (`returns.cadence`): first the RETRY with the oldest
+ *      due (4a, `pickMostOverdueRetry` — ties: the older order), then the oldest of the rest (4b, today's query).
  *
  * Every step draws from the two predicates the counter uses (`duePostponedWhere` and `readyToPullWhere`), so the number
  * `waitingCount` shows is exactly the pile this picks from — the steps only decide the ORDER inside it.
@@ -1510,6 +1708,14 @@ export async function pickNextCandidate(
   });
   if (neverRung) return neverRung.id;
 
+  // THE CUSTOMER'S PROMISE, ANY STATUS (the planner 15/11, ruling 13) — with the cadence on, a pullable order whose customer-asked date has arrived with nothing logged since goes before every retry,
+  // whatever its status (POSTPONED, FOLLOW_UP_REQUIRED, a returned retry the customer asked about…): the pull-side face of the tag on the desk (`promiseArrived`). One read, only under the plan —
+  // the legacy mode and OFF never reach it, so their four queries are the old ones. The POSTPONED orders it leaves (a line was logged after their date: they are retries now) are still step 3's, below.
+  if (returns?.cadence) {
+    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    if (promised) return promised;
+  }
+
   // The same two predicates the counter uses — kept as separate queries only
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
@@ -1519,6 +1725,13 @@ export async function pickNextCandidate(
     select: { id: true },
   });
   if (duePostponed) return duePostponed.id;
+
+  // THE RETRIES BY THEIR DUE (the planner's ruling 2) — with the cadence on, a ready retry is ranked by the instant its last counted press made it due, not by its age. A new order and a
+  // promise still come before it; an order with no due on a line (legacy returns, an idle release) falls through to the oldest-first query below, exactly as before.
+  if (returns?.cadence) {
+    const retry = await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
+    if (retry) return retry;
+  }
 
   const oldest = await tx.order.findFirst({
     where: returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now),

@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { logAudit } from '@/lib/audit';
 import { apiErrorResponse } from '@/lib/api-error';
 import { countryUpdateSchema, firstIssue } from '@/lib/geo-schemas';
+import { effectiveWorkHours, workHoursError } from '@/lib/work-hours';
 
 /** PATCH /api/geo/countries/:id (geo.manage). No DELETE — deactivate instead. */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,6 +19,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const before = await db.country.findFirst({ where: { id, companyId } });
     if (!before) return NextResponse.json({ error: 'البلد غير موجود' }, { status: 404 });
+
+    // No night shift. Judged only when the request touches the hours, and then
+    // against the stored value for the half it did not send — so a save of the
+    // name or the weekend never trips on an old night-shift row.
+    const hours = effectiveWorkHours(parsed.data, before);
+    if (hours.touches) {
+      const hoursError = workHoursError(hours.start, hours.end);
+      if (hoursError) return NextResponse.json({ error: hoursError }, { status: 400 });
+    }
 
     // The currency and its decimals may be corrected until the country has
     // taken an order. After that every order, fee and statement is written

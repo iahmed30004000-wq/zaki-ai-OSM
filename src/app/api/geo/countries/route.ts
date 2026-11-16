@@ -6,6 +6,7 @@ import { geoReach } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { apiErrorResponse } from '@/lib/api-error';
 import { countryCreateSchema, firstIssue } from '@/lib/geo-schemas';
+import { workHoursError } from '@/lib/work-hours';
 
 /**
  *   GET  /api/geo/countries  (geo.view)   every country of the company, with stores
@@ -54,6 +55,10 @@ export async function POST(req: Request) {
 
     const parsed = countryCreateSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: firstIssue(parsed.error) }, { status: 400 });
+
+    // No night shift: the day starts before it ends (the defaults, 09:00-17:00, pass).
+    const hoursError = workHoursError(parsed.data.workHoursStart, parsed.data.workHoursEnd);
+    if (hoursError) return NextResponse.json({ error: hoursError }, { status: 400 });
 
     const clash = await db.country.findFirst({ where: { companyId, code: parsed.data.code }, select: { id: true } });
     if (clash) return NextResponse.json({ error: 'هذا البلد مضاف مسبقًا' }, { status: 409 });

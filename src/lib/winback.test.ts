@@ -12,6 +12,7 @@ import {
   WINBACK_COOLING_DAYS,
   WINBACK_MAX_DISCOUNT_SHARE,
   WINBACK_REASONS,
+  WINBACK_RIDERS,
   winbackVerdict,
   type WinbackSource,
 } from './winback';
@@ -57,7 +58,8 @@ describe('every rejection reason is decided, one way or the other', () => {
    */
   it('and none falls through unnamed', () => {
     for (const r of REJECTION_REASONS) {
-      const winnable = (WINBACK_REASONS as readonly string[]).includes(r);
+      // A code that RIDES on a winnable one (the plan's five-attempt close) is winnable through its host.
+      const winnable = (WINBACK_REASONS as readonly string[]).includes(r) || (WINBACK_REASONS as readonly string[]).includes(WINBACK_RIDERS[r]);
       if (winnable) {
         expect(NOT_WINBACK_AR[r], `${r} على القائمتين معاً`).toBeUndefined();
       } else {

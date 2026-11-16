@@ -1,4 +1,4 @@
-import { REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
+import { NO_ANSWER_CLOSE, REJECTION_REASONS, REJECTION_REASON_AR } from './confirmation-workflow';
 import {
   DELIVERY_FAILURE_REASONS,
   DELIVERY_FAILURE_REASON_LABELS,
@@ -80,6 +80,8 @@ const BEFORE_FAULT: Record<string, Fault> = {
   // Three calls, no answer. Nothing about the customer is known to be
   // wrong — we simply never got them on the line.
   NO_ANSWER_3_ATTEMPTS: 'OUR_REACH',
+  // Five counted «لا يرد» over two days («جدول المحاولات»): the same defect, a longer chase.
+  NO_ANSWER_5_ATTEMPTS: 'OUR_REACH',
   FAKE_ORDER: 'OUTSIDE',
   OUT_OF_SERVICE_AREA: 'OUTSIDE',
   OTHER: 'UNKNOWN',
@@ -310,6 +312,68 @@ export function summariseLoss(rows: readonly LossRow[]): LossReport {
       shareOfAfterMoney: after.money ? round2((money / after.money) * 100) : 0,
     },
   };
+}
+
+/**
+ * ONE ROW FOR «CLOSED BECAUSE NOBODY ANSWERED», TWO CODES UNDER IT (the planner 15/11, answer 8) — A DISPLAY, NEVER THE DATA.
+ *
+ * The close is stored under two codes: `NO_ANSWER_3_ATTEMPTS` (the older rule) and `NO_ANSWER_5_ATTEMPTS` («جدول المحاولات»). They stay two in the database, in every payload and in
+ * every report (`summariseLoss` above is untouched and still returns one line per code). What a person reading REASONS wants is one «أُغلق بلا رد» — so the screen asks THIS for the
+ * rows it draws: the merged row (the sum, the same fault and share arithmetic) with the two codes' own lines kept as its `detail`, indented under it.
+ *
+ * WITH THE KEY OFF (`opts.cadenceOn` left out or anything but a plain true — every older caller) it merges only when BOTH codes hold orders. A company that has only ever used one —
+ * which is every company with the plan off, where the new code never occurs — gets its lines back untouched, object for object: the very row it always read, with no detail and no
+ * new label. And with both codes present it merges exactly as before: the key off changes nothing here.
+ *
+ * WITH THE KEY ON (the planner 15/11 22:30, ruling 27) the merged row stands EVEN WHEN ONLY ONE of the two codes holds orders: «أُغلق بلا رد» and one detail line (that code's own line),
+ * so a company that turned the plan on reads one name for this loss whichever of the two rules closed its orders. Neither code at all: nothing to merge, in either world.
+ */
+export const NO_ANSWER_MERGED_KEY = '__NO_ANSWER_CLOSED__';
+export const NO_ANSWER_MERGED_AR = 'أُغلق بلا رد';
+const NO_ANSWER_LOSS_CODES: readonly string[] = [NO_ANSWER_CLOSE.three.reason, NO_ANSWER_CLOSE.five.reason];
+
+/** The key-on words of the two detail lines: the rule, not a count of attempts (ruling 40). */
+const NO_ANSWER_DETAIL_AR: Readonly<Record<string, string>> = {
+  [NO_ANSWER_CLOSE.three.reason]: 'بالقاعدة القديمة',
+  [NO_ANSWER_CLOSE.five.reason]: 'بجدول المحاولات',
+};
+
+/** A line as the screen draws it: a plain line, or the merged row with the lines it stands for. */
+export type LossDisplayLine = LossLine & { detail?: LossLine[] };
+
+export function lossDisplayLines(half: Pick<LossHalf, 'count' | 'lines'>, opts: { cadenceOn?: boolean } = {}): LossDisplayLine[] {
+  // The older code first (the order of `NO_ANSWER_LOSS_CODES`); a code with no orders is no data and is not a detail line.
+  const detail = NO_ANSWER_LOSS_CODES
+    .map((code) => half.lines.find((l) => l.field === 'rejectionReason' && l.reason === code && l.count > 0))
+    .filter((l): l is LossLine => !!l);
+  // Off: both codes or nothing (today). On: one is enough — but never none.
+  if (detail.length < (opts.cadenceOn === true ? 1 : NO_ANSWER_LOSS_CODES.length)) return half.lines;
+
+  // THE KEY ON (the planner 16/11, ruling 40): the detail lines carry NO number («ثلاث» / «خمس») — they say which rule closed the order. Off: the lines keep their stored words, byte for byte.
+  const shown = opts.cadenceOn === true ? detail.map((l) => ({ ...l, label: NO_ANSWER_DETAIL_AR[l.reason ?? ''] ?? l.label })) : detail;
+  const count = detail.reduce((s, l) => s + l.count, 0);
+  const merged: LossDisplayLine = {
+    field: 'rejectionReason',
+    reason: NO_ANSWER_MERGED_KEY,
+    label: NO_ANSWER_MERGED_AR,
+    // Both are our reach; if a future edit ever splits them, the merged row says what the first present line says rather than invent a third answer.
+    fault: detail[0].fault,
+    known: true,
+    count,
+    money: round2(detail.reduce((s, l) => s + l.money, 0)),
+    share: half.count ? round2((count / half.count) * 100) : 0,
+    detail: shown,
+  };
+  // Where the report ranks it by what it costs: the merged row stands wherever its SUM puts it (a tie keeps the place of its first line), the rest keep their order.
+  const lines: LossDisplayLine[] = [];
+  for (const l of half.lines) {
+    if (detail.includes(l)) {
+      if (!lines.includes(merged)) lines.push(merged);
+    } else {
+      lines.push(l);
+    }
+  }
+  return lines.sort((a, b) => b.money - a.money || b.count - a.count);
 }
 
 function emptyHalf(stage: LossStage): LossHalf {

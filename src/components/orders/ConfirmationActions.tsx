@@ -6,7 +6,7 @@
  * All authorization/workflow validation is backend-enforced.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DismissButton } from '@/components/ui/DismissButton';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -18,6 +18,8 @@ import { CONFIRMATION_STATUS_AR, PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { arDateShort, arDateTime } from '@/lib/format';
+import { CALL_OPENED_EVENT } from '@/lib/contact-line';
+import { CALL_PROOF_WORDS, secondsLeft, type CallProofState } from '@/lib/call-proof-words';
 import { RiCalendarScheduleLine, RiCheckLine, RiCloseCircleLine, RiPhoneLine, RiPhoneLockLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
 
 // The list and its words live with the rule, in `confirmation-workflow`. A
@@ -57,6 +59,24 @@ const METHOD_LABELS: Record<string, { ar: string; en: string }> = {
   OTHER: { ar: 'أخرى', en: 'Other' },
 };
 
+/** How often a panel stuck on NO_OPENED asks again — a press may have been made on another device. */
+const PROOF_POLL_MS = 12_000;
+
+/** What the server said about her «لا يرد» on this order, with the moment (on this phone's clock) it said it. Null = the switch is off. */
+interface ProofView extends CallProofState {
+  serverNow: number;
+  fetchedAt: number;
+}
+
+/** The refusal's own words when the body carries none (the server always sends `errorAr`; this is the net under it). */
+const PROOF_REFUSAL_FALLBACK: Record<string, string> = {
+  CALL_NOT_STARTED: CALL_PROOF_WORDS.refusedNotStarted,
+  CALL_NOT_LOGGED: CALL_PROOF_WORDS.notLogged,
+};
+
+/** Step 1 (her line) passed but the status door could not pair it with the call: the call IS on record, and the press is used up. */
+const STATUS_AFTER_LINE = 'تسجّلت محاولة الاتصال، بس حالة الطلب ما تغيّرت (مرّ وقت بين الخطوتين). اضغط «اتصال» وجرّب من جديد.';
+
 interface ConfirmationActionsProps {
   order: any;
   ar: boolean;
@@ -81,29 +101,107 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   // The door held the yes back for a confirmed twin: the orders it named, and the note she had typed (it goes with the second try).
   const [twin, setTwin] = useState<{ twins: ConfirmedTwinView[]; note: string } | null>(null);
 
-  const loadAttempts = async () => {
+  // «إثبات المكالمات»: what the server says her «لا يرد» waits for. Null while the switch is off (and until the first answer).
+  const [proof, setProof] = useState<ProofView | null>(null);
+  // The clock is STATE (a render never reads it); the one-second ticker below moves it while a countdown is on screen.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  /** Has an answer said whether the switch is on? (`undefined` = not yet.) While off, no focus/poll/event asks anything extra. */
+  const proofKnown = useRef<boolean | undefined>(undefined);
+  /** The newest request wins: a slow answer that left before a press must not paint over the one that left after it. */
+  const loadSeq = useRef(0);
+
+  /** `quiet`: a refetch the screen makes by itself (poll, focus, a press) — it must not grey the buttons while it runs. */
+  const loadAttempts = async (quiet = false) => {
     if (!order?.id) return;
-    setLoadingAttempts(true);
+    const seq = ++loadSeq.current;
+    if (!quiet) setLoadingAttempts(true);
     try {
       const res = await apiFetch(`/api/orders/${order.id}/contact-attempts`);
       if (res.ok) {
         const data = await res.json();
-        setAttempts(data.attempts || []);
-        setSummary(data.summary || null);
+        if (seq === loadSeq.current) {
+          setAttempts(data.attempts || []);
+          setSummary(data.summary || null);
+          const cp = data.callProof;
+          if (cp && cp.on === true) {
+            proofKnown.current = true;
+            setProof({ state: cp.state, unlocksAtMs: cp.unlocksAtMs ?? null, serverNow: Number(cp.serverNow), fetchedAt: Date.now() });
+          } else {
+            proofKnown.current = false;
+            setProof(null);
+          }
+        }
       }
-      } catch (e) {
+    } catch (e) {
       console.error(e);
     } finally {
-      setLoadingAttempts(false);
+      if (!quiet) setLoadingAttempts(false);
     }
   };
 
   useEffect(() => {
     setFeedback(null);
     setTwin(null);
+    setProof(null);
+    proofKnown.current = undefined;
     loadAttempts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id]);
+
+  // The press may land after this window drew (the strip beside it, another tab) or be made on another device: ask again on the
+  // press, on coming back to the window, and — while the panel still says «press اتصال first» — every twelve seconds.
+  useEffect(() => {
+    if (!order?.id) return;
+    const orderId = order.id;
+    const visible = () => document.visibilityState !== 'hidden';
+    const refresh = () => {
+      if (proofKnown.current !== false && visible()) void loadAttempts(true);
+    };
+    const onOpened = (e: Event) => {
+      if ((e as CustomEvent<{ orderId?: string }>).detail?.orderId === orderId && proofKnown.current !== false) void loadAttempts(true);
+    };
+    window.addEventListener(CALL_OPENED_EVENT, onOpened);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener(CALL_OPENED_EVENT, onOpened);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id]);
+
+  const proofState = proof?.state;
+  useEffect(() => {
+    if (proofState !== 'NO_OPENED') return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'hidden') void loadAttempts(true);
+    }, PROOF_POLL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proofState, order?.id]);
+
+  /** Whole seconds until «لا يرد» opens, from the server's clock (its `serverNow` plus what has passed here since) — null unless WAIT. */
+  const waitLeft =
+    proof && proof.state === 'WAIT' && proof.unlocksAtMs !== null ? secondsLeft(proof.unlocksAtMs, proof.serverNow + Math.max(0, nowMs - proof.fetchedAt)) : null;
+  const waiting = waitLeft !== null && waitLeft > 0;
+  // One-second ticker, only while there is a number to tick; it makes no request.
+  useEffect(() => {
+    if (!waiting) return;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [waiting]);
+  const proofLocked = !!proof && (proof.state === 'NO_OPENED' || waiting);
+  const proofReason = !proof ? null : proof.state === 'NO_OPENED' ? CALL_PROOF_WORDS.noOpened : waiting ? CALL_PROOF_WORDS.wait(waitLeft as number) : null;
+
+  /** The door said «wait n seconds»: lock again for exactly that long (the clock here is the only one this needs). */
+  const adoptWait = (seconds: unknown) => {
+    const n = Number(seconds);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const now = Date.now();
+    setProof({ state: 'WAIT', unlocksAtMs: now + n * 1000, serverNow: now, fetchedAt: now });
+  };
 
   /** Core submit: record attempt (always) + workflow transition (when provided) */
   const submitAction = async (payload: {
@@ -128,7 +226,10 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
       });
       if (!attRes.ok) {
         const d = await attRes.json().catch(() => ({}));
-        setFeedback({ type: 'error', text: d.errorAr || d.error || (ar ? 'فشل تسجيل المحاولة' : 'Failed to record attempt') });
+        // A proof refusal (409): nothing was written. The server's Arabic is said; «wait n» re-locks the button; «no press» asks again.
+        if (d.code === 'CALL_TOO_SOON') adoptWait(d.waitSeconds);
+        else if (d.code === 'CALL_NOT_STARTED' || d.code === 'CALL_NOT_LOGGED') void loadAttempts(true);
+        setFeedback({ type: 'error', text: d.errorAr || PROOF_REFUSAL_FALLBACK[d.code] || d.error || (ar ? 'فشل تسجيل المحاولة' : 'Failed to record attempt') });
         return false;
       }
 
@@ -162,6 +263,14 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
           }
           // The contact attempt WAS recorded but the transition failed —
           // warn clearly and keep the modal open with the form values intact
+          if (confData.code === 'CALL_TOO_SOON') adoptWait(confData.waitSeconds);
+          // CALL_NOT_LOGGED / CALL_NOT_STARTED at THIS door: step 1 DID write her line (it passed), so the call is on record — but the status
+          // door could not pair it (a long pause between the two steps, or another outcome landed first), and the press is used up. Say exactly that.
+          if (confData.code === 'CALL_NOT_LOGGED' || confData.code === 'CALL_NOT_STARTED') {
+            setFeedback({ type: 'error', text: STATUS_AFTER_LINE });
+            void loadAttempts(true);
+            return false;
+          }
           const errText = confData.errorAr || confData.error || (ar ? 'رفض الإجراء' : 'Action rejected');
           setFeedback({
             type: 'error',
@@ -264,7 +373,8 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   const noAnswerButton = (
     <button
       onClick={() => submitAction({ action: 'contact_result', result: 'NO_ANSWER' })}
-      disabled={busy}
+      disabled={busy || proofLocked}
+      {...(proofLocked ? { 'aria-describedby': 'call-proof-reason' } : {})}
       className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)] transition-colors cursor-pointer disabled:opacity-50`}
     >
       <RiPhoneLockLine className="w-4 h-4" />{ar ? 'لا يرد' : 'No Answer'}
@@ -309,7 +419,8 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
   const wrongNumberButton = (
     <button
       onClick={() => submitAction({ action: 'contact_result', result: 'WRONG_NUMBER' })}
-      disabled={busy}
+      // «رقم غلط» also puts the order on «لا يرد» at the status door, which wants a press of hers before it (no waiting): locked, and explained below, until there is one.
+      disabled={busy || proof?.state === 'NO_OPENED'}
       className={`${spread}min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50`}
     >
       <RiPhoneLockLine className="w-4 h-4" />{ar ? 'رقم خاطئ' : 'Wrong Number'}
@@ -381,6 +492,12 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
               {rejectButton}
               {wrongNumberButton}
             </>
+          )}
+          {/* «إثبات المكالمات»: why «لا يرد» is shut, in words (a phone has no tooltip). Drawn only with the switch on and the button locked. */}
+          {proofLocked && proofReason && (
+            <p id="call-proof-reason" className="w-full text-xs text-[var(--sys-warning)]">
+              {proofReason}
+            </p>
           )}
         </div>
       )}

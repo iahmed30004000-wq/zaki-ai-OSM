@@ -21,7 +21,7 @@ describe('needsContactFirst — the reason a reject carries', () => {
 
   it.each([
     'PRICE_TOO_HIGH', 'CUSTOMER_CHANGED_MIND', 'CUSTOMER_DOES_NOT_WANT_PRODUCT', 'FOUND_CHEAPER_ELSEWHERE',
-    'FAKE_ORDER', 'OTHER', 'MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS', 'NOT_A_REASON', '',
+    'FAKE_ORDER', 'OTHER', 'MODERATOR_DATA_ERROR', 'NO_ANSWER_3_ATTEMPTS', 'NO_ANSWER_5_ATTEMPTS', 'NOT_A_REASON', '',
   ])('reject for %s stays bound', (rejectionReason) => {
     expect(needsContactFirst({ ...held, action: 'reject', rejectionReason })).toBe(true);
   });
