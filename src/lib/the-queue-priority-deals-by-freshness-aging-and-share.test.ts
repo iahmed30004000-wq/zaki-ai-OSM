@@ -203,6 +203,7 @@ beforeEach(() => {
  * ═════════════════════════════════════════════════════════════════
  */
 import { priorityPlanFor } from './confirmation-queue';
+import { wantsBacklog } from './queue-priority';
 import type { PriorityPlan } from './confirmation-queue';
 
 const plan = (over: Partial<PriorityPlan> = {}): PriorityPlan => ({ mode: 'NORMAL', backlogTurn: false, ...over });
@@ -355,3 +356,28 @@ describe('the pull records the lane it dealt, only under the key', () => {
   });
 });
 
+
+describe('the planner\'s starvation gate (the spec, quality gates §6)', () => {
+  it('300 new orders and 100 due backlog items: one agent\'s 30 pulls include at least 10 backlog items, and a backlog item 2 h past due beats a 20-minute-old new order', async () => {
+    for (let i = 0; i < 300; i++) order({ createdAt: minutesAgo(20 + (i % 100)) }); // none is fresh (all older than 15 minutes)
+    for (let i = 0; i < 100; i++) retry(-(10 + i), { createdAt: hoursAgo(30 + (i % 20)) }); // due 10 to 109 minutes ago: due, none of them aged
+    const aged = retry(-(3 * 60), { createdAt: hoursAgo(50) }); // 3 hours past its due
+
+    // the aged one first, though a 20-minute-old new order waits (and the lanes say it is the NEW turn)
+    expect(await pickV2(plan({ backlogTurn: false }))).toBe(aged.id);
+    byId(aged.id).claimedById = 'taken';
+
+    const lanes: ('NEW' | 'BACKLOG')[] = []; // newest first, as `recentPullLanes` gives them
+    let backlog = 0;
+    for (let i = 0; i < 30; i++) {
+      const id = await pickV2(plan({ backlogTurn: wantsBacklog(0.37, lanes) }));
+      expect(id).not.toBeNull();
+      const lane = byId(id!).contactAttempts.length > 0 ? 'BACKLOG' : 'NEW';
+      if (lane === 'BACKLOG') backlog += 1;
+      lanes.unshift(lane);
+      byId(id!).claimedById = 'taken';
+    }
+    expect(backlog).toBeGreaterThanOrEqual(10);
+    expect(backlog).toBeLessThanOrEqual(13);
+  });
+});

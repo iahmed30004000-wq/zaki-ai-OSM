@@ -37,7 +37,7 @@ export const QUEUE_PRIORITY = {
   staleStockThreshold: 50,
   staleStockDivisor: 5,
   /** How many of an agent's latest pulls the ratio is balanced over. */
-  recentPulls: 12,
+  recentPulls: 30,
 } as const;
 
 export type PullLane = 'NEW' | 'BACKLOG';

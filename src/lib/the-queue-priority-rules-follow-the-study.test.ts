@@ -69,7 +69,7 @@ describe('the ratio is kept by the agent\'s own latest pulls', () => {
     for (const share of [0.25, 0.37, 0.5]) {
       const lanes = deal(share, 30);
       const backlog = lanes.filter((l) => l === 'BACKLOG').length;
-      expect(Math.abs(backlog - 30 * share), `share ${share}`).toBeLessThanOrEqual(3);
+      expect(Math.abs(backlog - 30 * share), `share ${share}`).toBeLessThanOrEqual(1);
     }
   });
 
