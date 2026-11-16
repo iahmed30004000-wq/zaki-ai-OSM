@@ -381,6 +381,9 @@ const ALLOWED: Record<string, string[]> = {
   // The repeat-order notice in the same window, over the same envelope as shape-risk: requireContext + assertOrderReadable,
   // then one read of this company's history for this order. It answers with order NUMBERS only (no ids, names or phones).
   'src/app/api/orders/[id]/duplicate-suspect/route.ts': ['GET'],
+  // The intake-filter notice (step C1), same envelope: requireContext + assertOrderReadable, then two flag rows of this order. It answers with the
+  // first order's NUMBER and a yes/no only (no ids, names or phones), and writes nothing.
+  'src/app/api/orders/[id]/intake-flags/route.ts': ['GET'],
   'src/app/api/confirmation/issues/route.ts': ['POST'],
   'src/app/api/customers/[id]/history/route.ts': ['GET'],
   'src/app/api/ai/confirmation/route.ts': ['POST'],
