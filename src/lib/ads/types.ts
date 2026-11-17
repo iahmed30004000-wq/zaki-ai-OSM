@@ -86,6 +86,18 @@ export function adTime(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** What one ad spent on one day — the daily grain the media buyer reads (`ads/daily.ts`). `date` is the day in the account's own timezone. */
+export interface DailyAdSpendRow {
+  date: string;
+  adId: string;
+  adsetId: string | null;
+  campaignId: string | null;
+  spend: number;
+  currency: string;
+  impressions: number | null;
+  linkClicks: number | null;
+}
+
 export interface SpendRow {
   campaignId: string;
   campaignName: string;
@@ -143,6 +155,11 @@ export interface AdsAdapter {
   listCampaigns(creds: AdCredentials, accountId: string): Promise<RemoteCampaign[]>;
   /** What each campaign spent between two `YYYY-MM-DD` dates. */
   fetchSpend(creds: AdCredentials, accountId: string, since: string, until: string): Promise<SpendRow[]>;
+  /**
+   * What each AD spent on each day between two `YYYY-MM-DD` dates — optional: only a platform that reports per ad per day implements it
+   * (Meta). The sync skips the rest.
+   */
+  fetchDailyAdSpend?(creds: AdCredentials, accountId: string, since: string, until: string): Promise<DailyAdSpendRow[]>;
   /** The platform's error, turned into something a seller can act on. */
   explainError(e: unknown): string;
 }

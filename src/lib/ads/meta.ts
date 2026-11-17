@@ -1,4 +1,4 @@
-import { adTime, type AdsAdapter } from './types';
+import { adTime, type AdsAdapter, type DailyAdSpendRow } from './types';
 /**
  * READING SPEND OUT OF META ADS.
  *
@@ -236,6 +236,67 @@ export async function fetchSpend(
   }));
 }
 
+/**
+ * WHAT EACH AD SPENT ON EACH DAY — `level=ad&time_increment=1`, every page of it.
+ *
+ * One request per page of 500 rows, followed by Meta's own `after` cursor and stopped at `MAX_PAGES`: 31 days of 145 campaigns' ads is a
+ * few thousand rows, and a runaway account must not turn one nightly pull into an unbounded loop. A row without an ad id is dropped (an
+ * account-level line is not an ad), and `inline_link_clicks` is the link clicks the media buyer's cost per click means — not `clicks`, which counts
+ * every tap on the ad.
+ */
+const DAILY_PAGE = 500;
+const MAX_PAGES = 40;
+
+export async function fetchDailyAdSpend(
+  token: string,
+  accountId: string,
+  since: string,
+  until: string
+): Promise<DailyAdSpendRow[]> {
+  const id = normalizeAccountId(accountId);
+  if (!id) throw new MetaError('رقم الحساب الإعلاني غير صالح');
+
+  type Row = {
+    date_start?: string;
+    ad_id?: string;
+    adset_id?: string;
+    campaign_id?: string;
+    spend?: string;
+    impressions?: string;
+    inline_link_clicks?: string;
+    account_currency?: string;
+  };
+  const out: DailyAdSpendRow[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await call<{ data: Row[]; paging?: { cursors?: { after?: string }; next?: string } }>(`${id}/insights`, token, {
+      level: 'ad',
+      time_increment: '1',
+      fields: 'ad_id,adset_id,campaign_id,spend,impressions,inline_link_clicks,account_currency',
+      time_range: JSON.stringify({ since, until }),
+      limit: String(DAILY_PAGE),
+      ...(after ? { after } : {}),
+    });
+    for (const r of data.data ?? []) {
+      if (!r.ad_id || !r.date_start) continue;
+      const n = (v: string | undefined) => (v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Math.trunc(Number(v)));
+      out.push({
+        date: r.date_start,
+        adId: r.ad_id,
+        adsetId: r.adset_id ?? null,
+        campaignId: r.campaign_id ?? null,
+        spend: Number(r.spend ?? 0) || 0,
+        currency: (r.account_currency ?? '').toUpperCase(),
+        impressions: n(r.impressions),
+        linkClicks: n(r.inline_link_clicks),
+      });
+    }
+    after = data.paging?.next ? data.paging.cursors?.after : undefined;
+    if (!after) break;
+  }
+  return out;
+}
+
 /** `YYYY-MM-DD`, which is the only date shape Meta's time_range accepts. */
 export function metaDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -307,5 +368,6 @@ export const metaAdapter: AdsAdapter = {
   listAccounts: (creds) => listAccounts(creds.token),
   listCampaigns: (creds, accountId) => listCampaigns(creds.token, accountId),
   fetchSpend: (creds, accountId, since, until) => fetchSpend(creds.token, accountId, since, until),
+  fetchDailyAdSpend: (creds, accountId, since, until) => fetchDailyAdSpend(creds.token, accountId, since, until),
   explainError: explainMetaError,
 };

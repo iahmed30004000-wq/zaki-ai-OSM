@@ -100,6 +100,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'landingPageBrowserView', label: 'زيارات صفحات الهبوط (عدّ المتصفح)', how: 'blocks' },
   { model: 'campaign', label: 'الحملات', how: 'blocks' },
   { model: 'adAccount', label: 'الحسابات الإعلانية', how: 'blocks' },
+  // What each ad spent each day (the media buyer's doors, PR-A): a record of what the platform said, no foreign key — never deleted with a store.
+  { model: 'adSpendDay', label: 'الإنفاق الإعلاني اليومي', how: 'blocks' },
   // The team leader's end-of-day reports (step H2): a record, never deleted — a store that has them is not empty.
   { model: 'confirmationEodReport', label: 'تقارير نهاية اليوم', how: 'blocks' },
   // The leads the pages system sent (step E1): a record of people who left their details — never deleted with a store.

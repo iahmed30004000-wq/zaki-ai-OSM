@@ -97,6 +97,11 @@ function orderRow(over: Record<string, unknown> = {}) {
     source: 'Landing Page',
     externalChannel: null,
     adId: '120211000000000001',
+    metaCampaignId: null,
+    refCode: null,
+    externalLandingPageId: null,
+    adName: null,
+    landingUrl: null,
     landingPageId: 'lp1',
     product: { sku: 'TRF01' },
     channel: { kind: 'LANDING_PAGE' },
@@ -228,10 +233,19 @@ describe('not one byte about the customer', () => {
     const keys = Object.keys(ATTRIBUTION_SELECT);
     for (const forbidden of [
       'customer', 'customerId', 'deliveryAddress', 'internalNotes', 'customerNotes', 'notes',
-      'ctwaClidEnc', 'psidEnc', 'conversationRef', 'refCode',
+      'ctwaClidEnc', 'psidEnc', 'conversationRef',
+      // The landing door's sealed cookies and the visitor's browser (`landing-attribution.ts`): they leave only through the conversions sender.
+      'fbcEnc', 'fbpEnc', 'clientUserAgent', 'lpPurchaseEventId',
     ]) {
       expect(keys, forbidden).not.toContain(forbidden);
     }
+  });
+
+  it('refCode is read ONLY as the ad set of a landing-door order (the owner’s call, 17/11) — never handed out as a code', () => {
+    // It was forbidden here while it could only be a code a customer quoted. The landing door keeps utm_term in it, and the owner ruled that the feed
+    // reads it for THAT door's orders (`attributionItem`: `adset_id`, numbers only); `the-ad-spend-door.test.ts` holds that nothing else does.
+    expect(Object.keys(ATTRIBUTION_SELECT)).toContain('refCode');
+    expect(Object.keys(ATTRIBUTION_SELECT)).toContain('externalLandingPageId');
   });
 
   it('and even a row that carried one does not pass it on', async () => {
@@ -339,14 +353,22 @@ describe('each key reads what it was given and nothing else', () => {
     expect(h.db.product.findMany).not.toHaveBeenCalled();
   });
 
-  it('the media buyer’s key is read-only: three scopes, none that writes or looks up a number', () => {
-    expect([...MEDIABUYER_SCOPES].sort()).toEqual(['orders.attribution.read', 'products.costs.read', 'products.read']);
+  it('the media buyer’s key reads and messages: five scopes, none that writes an order or looks up a number', () => {
+    expect([...MEDIABUYER_SCOPES].sort()).toEqual([
+      'ads.spend.read',
+      'notify.send',
+      'orders.attribution.read',
+      'products.costs.read',
+      'products.read',
+    ]);
     for (const s of ['orders.create', 'orders.note', 'customers.lookup', 'orders.read']) {
       expect(MEDIABUYER_SCOPES).not.toContain(s);
     }
     // And the replies system did not gain the new two.
     expect(REPLIES_SCOPES).not.toContain('orders.attribution.read');
     expect(REPLIES_SCOPES).not.toContain('products.costs.read');
+    expect(REPLIES_SCOPES).not.toContain('ads.spend.read');
+    expect(REPLIES_SCOPES).not.toContain('notify.send');
     for (const s of MEDIABUYER_SCOPES) expect(V1_SCOPES).toContain(s);
     expect(V1_SYSTEMS.map((s) => s.key)).toEqual(['replies', 'mediabuyer', 'landing']);
   });

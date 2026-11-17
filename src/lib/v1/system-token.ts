@@ -41,6 +41,10 @@ export const V1_SCOPES = [
   // because a third system needed them.
   'orders.attribution.read',
   'products.costs.read',
+  // The media buyer's two more (17/11, PR-A of its doors): the daily spend per ad, and the right to ask the OMS's Telegram bot to say
+  // something to the owner. Separate scopes for the same reason as above — a key made before them keeps exactly what it had.
+  'ads.spend.read',
+  'notify.send',
 ] as const;
 
 export type V1Scope = (typeof V1_SCOPES)[number];
@@ -62,12 +66,21 @@ export const REPLIES_SCOPES: V1Scope[] = [
  * What the media buyer is given, and nothing else — READ ONLY.
  *
  * It decides where ad money goes, so it needs which ad each order came from
- * and what happened to it (`orders.attribution.read`), and what a unit costs and
- * how long the shelf lasts (`products.read` + `products.costs.read`). It never
+ * and what happened to it (`orders.attribution.read`), what a unit costs and
+ * how long the shelf lasts (`products.read` + `products.costs.read`), and what each ad
+ * spent each day (`ads.spend.read`). `notify.send` lets it ask the OMS's bot to message the
+ * owner — a message, never a change to an order, a note or a lookup. It never
  * writes here: no order, no note, no lookup of a customer's number — the
  * owner's rule is that ads are edited THERE and orders live HERE.
  */
-export const MEDIABUYER_SCOPES: V1Scope[] = ['products.read', 'products.costs.read', 'orders.attribution.read'];
+export const MEDIABUYER_SCOPES: V1Scope[] = [
+  'products.read',
+  'products.costs.read',
+  'orders.attribution.read',
+  // What a NEW key of this system starts with. A key already minted keeps its own stored list and gains nothing.
+  'ads.spend.read',
+  'notify.send',
+];
 
 /** The standalone landing system: reads the catalogue and places orders, and nothing about a customer or a cost. */
 export const LANDING_SCOPES: V1Scope[] = ['products.read', 'orders.create'];
@@ -102,6 +115,8 @@ export const V1_SCOPE_AR: Record<V1Scope, string> = {
   'orders.note': 'إضافة ملاحظة على طلب',
   'orders.attribution.read': 'قراءة مصدر الطلبات وحالتها (بلا بيانات زبون)',
   'products.costs.read': 'قراءة تكلفة المنتج ومدة المخزون',
+  'ads.spend.read': 'قراءة الإنفاق الإعلاني اليومي لكل إعلان',
+  'notify.send': 'إرسال رسالة تيليجرام عبر بوت النظام (بلا بيانات زبون)',
 };
 
 /** The default life of a token: «90 يوم» in the contract's own table. */

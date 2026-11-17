@@ -191,7 +191,7 @@ describe('ruling 30 — the kit runs in CI on a PostgreSQL container, as a perma
     const { job } = loadWorkflow();
     const calls = job.steps.flatMap((s) => [...runOf(s).matchAll(/node (scripts\/verify-on-postgres\/([\w-]+\.mjs))([^\n]*)/g)].map((m) => ({ file: m[2], rest: m[3] })));
     for (const c of calls) expect(existsSync(join(KIT, c.file)), `the workflow calls ${c.file}, which does not exist`).toBe(true);
-    expect(calls.map((c) => c.file)).toEqual(['start-db.mjs', 'migrate.mjs', 'seed.mjs', 'pull-order.mjs', 'intake-filter.mjs', 'queue-priority.mjs', 'scorecard.mjs', 'team-leader-role.mjs', 'eod-report.mjs', 'winback-daily.mjs', 'leads-intake.mjs', 'queue-health.mjs', 'stop-db.mjs']);
+    expect(calls.map((c) => c.file)).toEqual(['start-db.mjs', 'migrate.mjs', 'seed.mjs', 'pull-order.mjs', 'intake-filter.mjs', 'queue-priority.mjs', 'scorecard.mjs', 'team-leader-role.mjs', 'eod-report.mjs', 'winback-daily.mjs', 'leads-intake.mjs', 'queue-health.mjs', 'landing-ad-tags.mjs', 'stop-db.mjs']);
     expect(calls.find((c) => c.file === 'intake-filter.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'queue-priority.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'scorecard.mjs')?.rest).toMatch(/--assert/);
@@ -200,6 +200,7 @@ describe('ruling 30 — the kit runs in CI on a PostgreSQL container, as a perma
     expect(calls.find((c) => c.file === 'winback-daily.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'leads-intake.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'queue-health.mjs')?.rest).toMatch(/--assert/);
+    expect(calls.find((c) => c.file === 'landing-ad-tags.mjs')?.rest).toMatch(/--assert/);
     expect(calls.find((c) => c.file === 'pull-order.mjs')?.rest).toMatch(/--assert/);
     for (const left of ['screenshots.mjs', 'check-app.mjs', 'run-app.mjs', 'scale-retries.mjs']) expect(calls.map((c) => c.file)).not.toContain(left);
   });

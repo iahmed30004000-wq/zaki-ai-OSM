@@ -25,6 +25,7 @@ import { checkoutRules, parseStoreTheme } from '../store-theme';
 import { POST_ORDER_REFUSAL_AR, postOrderGate, postOrderOfferSettings, type PostOrderRefusal } from '../post-order-offer';
 import { unitCostsOf } from '../product-fixed-cost';
 import { V1_CODE, V1Fault } from './door';
+import { stampAdTags } from './ad-tags';
 import { attributionColumns, readLandingAttribution } from './landing-attribution';
 
 /**
@@ -387,6 +388,8 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
   // After the commit, and unable to fail what is already saved.
   await markLandingChannel(companyId, String(result.body.orderNumber));
   await recordLandingAttribution(companyId, String(result.body.orderNumber), order);
+  // The ad this order came from, for the media buyer — once, after the commit, never able to fail the order (`ad-tags.ts`).
+  await stampAdTags(companyId, String(result.body.orderNumber), order.attribution);
   if (stoodDown.length > 0) {
     await cartsRecoveredBy(companyId, stoodDown, String(result.body.orderNumber)).catch((e) =>
       console.error('landing door: could not mark the cart recovered (non-fatal):', (e as Error)?.name || 'unknown')

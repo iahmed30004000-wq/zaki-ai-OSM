@@ -88,6 +88,8 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     // The sixth (2026-10-26) is `orders/attribution`, read-only, for the
     // media buyer — `the-media-buyers-door.test.ts` holds what it answers.
     expect(ROUTES).toEqual([
+      // The seventh (17/11, PR-A of the media buyer's doors) is `ad-spend`: the daily spend per ad, read-only, scope `ads.spend.read` — `the-ad-spend-door.test.ts`.
+      'src/app/api/v1/ad-spend/route.ts',
       'src/app/api/v1/customers/lookup/route.ts',
       // The standalone landing system's seven — `the-landing-door.test.ts` — its confirmation chat's six
       // (contract §8, `the-landing-chat.test.ts`), and its abandoned carts' two (contract §9,
@@ -124,8 +126,11 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     // · orders.read · orders.note — ولا شي غيرها.» — still exactly those five
     // on the replies key (`REPLIES_SCOPES`); the two added on 2026-10-26 are
     // the media buyer's and grant no write.
+    // Two more on 17/11 (PR-A): `ads.spend.read` and `notify.send`, the media buyer's — neither is on the replies key.
     expect([...V1_SCOPES].sort()).toEqual([
+      'ads.spend.read',
       'customers.lookup',
+      'notify.send',
       'orders.attribution.read',
       'orders.create',
       'orders.note',

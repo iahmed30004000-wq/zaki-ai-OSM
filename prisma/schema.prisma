@@ -995,6 +995,13 @@ model Order {
   /// The calling system's own handle for the conversation this came out of,
   /// so a reply can be traced back to the order without storing the chat.
   conversationRef           String?
+  /// WHAT THE MEDIA BUYER'S LINK ADDS to what `landing-attribution.ts` already keeps (17/11): the ad's name (`ad_name={{ad.name}}`), the utm source and medium, and the link
+  /// the visitor opened (without its query). Written once, after the order exists, by `stampAdTags` — never by order creation. The ids (ad, ad set, campaign) are NOT here:
+  /// they are `adId` · `refCode` · `metaCampaignId`, written by the landing door, and the media buyer's feed hands them out only when they are numbers.
+  adName                    String?
+  utmSource                 String?
+  utmMedium                 String?
+  landingUrl                String?
   landingPageId             String?
   /// ── WHICH AD A STANDALONE LANDING-PAGE ORDER CAME FROM (contract oms-lp.v1 §4) ──
   ///
@@ -4251,4 +4258,33 @@ model Lead {
   @@index([companyId, storeId, status, receivedAt])
   @@index([companyId, phoneKey])
   @@map("leads")
+}
+
+/// WHAT ONE AD SPENT ON ONE DAY — the daily grain the media buyer reads at `GET /api/v1/ad-spend` (PR-A of the media-buyer doors).
+///
+/// Written only by the spend pull (`ads/daily.ts`, from the `pull-ad-spend` job): one row per (company, day, ad), replaced when the
+/// platform restates a recent day. `Campaign.spend` stays the campaign total the screens read — this table is a second, finer view
+/// of the same Meta numbers, and nothing else in the system reads it. `date` is the day in the AD ACCOUNT's own timezone, as Meta
+/// reports it (the day the seller sees in Ads Manager). Plain columns, no relations: a record of what the platform said.
+model AdSpendDay {
+  id          String   @id @default(uuid())
+  companyId   String
+  storeId     String
+  adAccountId String
+  date        DateTime @db.Date
+  adId        String
+  adsetId     String?
+  campaignId  String?
+  /// Three decimals like every other money column; the door shows two.
+  spend       Decimal  @db.Decimal(14, 3)
+  currency    String
+  impressions Int?
+  linkClicks  Int?
+  pulledAt    DateTime @default(now())
+
+  @@unique([companyId, date, adId])
+  @@index([companyId, date, adId])
+  @@index([companyId, date, adsetId])
+  @@index([companyId, date, campaignId])
+  @@map("ad_spend_days")
 }

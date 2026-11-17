@@ -84,7 +84,7 @@
   · `cancelled`) معرّفة بـ`src/lib/apps/events.ts`، وتسجيل التطبيقات بـ`registry.ts`
   و`contract.ts`، والتسليم بمهمة `deliver-app-events` بتوقيع HMAC.
 - العقد المنسوخ حرفياً: `contracts/oms-app-events.v1/` (ما بيتعدّل هون، شوف
-  `contracts/README.md`). عقد الميديا باير: `contracts/oms-mediabuyer.v1/`.
+  `contracts/README.md`). عقد الميديا باير: `contracts/oms-mediabuyer.v1/`. الإنفاق اليومي لكل إعلان: `ads/daily.ts` (مهمة 06:00) ← جدول `ad_spend_days` ← `GET /api/v1/ad-spend`؛ وسوم الإعلان على طلبات الصفحات: `v1/ad-tags.ts` (شوف `docs/mediabuyer/pr-a-changelog.md`).
 - يثبّتها: `src/lib/apps/events.test.ts` و`src/lib/apps/events-sites.test.ts`.
 
 ## ٦. الصلاحيات

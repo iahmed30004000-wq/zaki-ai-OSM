@@ -11,16 +11,21 @@ across unchanged.
 | `attribution-page.example.json` | a golden page |
 | `products-page.schema.json` | `GET /api/v1/products?fields=…` — the optional fields the media buyer asks for |
 | `products-page.example.json` | a golden catalogue |
+| `ad-spend-page.schema.json` | `GET /api/v1/ad-spend` — one page `{items, next_cursor, as_of}`: spend per day per ad (or adset / campaign by `level`) |
+| `ad-spend-page.example.json` | a golden page |
 
 ## The rules
 
-- **Read only.** Both endpoints are `GET`; the key's scopes are
-  `orders.attribution.read`, `products.read`, `products.costs.read`, and
-  nothing on the path writes (`src/lib/v1/the-media-buyer-cannot-write.test.ts`).
+- **Read only.** All three endpoints are `GET`; the key's scopes are
+  `orders.attribution.read`, `products.read`, `products.costs.read`, `ads.spend.read`, and
+  nothing on the path writes (`src/lib/v1/the-media-buyer-cannot-write.test.ts`). The fifth scope,
+  `notify.send`, belongs to the message door of the next PR — it is a message, never a write to an order.
 - **No customer.** No name, phone, address — not in any field, not under any
   name. `capi_ref` is null or an opaque `enc:` reference, never a readable phone.
 - **Bounded.** `updated_since` required and at most 31 days back, `limit` ≤ 200,
   cursor paging, 30 calls a minute on the media buyer's key.
+  `ad-spend`: `date_from` and `date_to` required, at most 31 days apart, `limit` ≤ 500, `as_of` = the last pull from Meta
+  (the OMS never calls Meta when the media buyer asks).
 - **Stopping the key stops it.** A revoked or expired key is refused on the
   next request (401 `TOKEN_INVALID`).
 - **v1 grows, never changes.** Adding an optional field is v1 (update the
@@ -28,6 +33,6 @@ across unchanged.
 
 ## What enforces it
 
-OMS: `src/lib/v1/the-media-buyers-door.test.ts` (golden files and live
+OMS: `src/lib/v1/the-ad-spend-door.test.ts` · `src/lib/v1/the-media-buyers-door.test.ts` (golden files and live
 handler answers validate, «the frozen contract») · `the-media-buyer-cannot-write.test.ts`.
 Media buyer: `tests/oms-contract.test.ts`.

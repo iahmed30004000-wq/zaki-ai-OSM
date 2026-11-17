@@ -17,6 +17,8 @@ const { syncAdSpend, activeStores } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/ads/sync', () => ({ syncAdSpend: (...a: unknown[]) => syncAdSpend(...a) }));
+// The per-ad, per-day grain (`ads/daily.ts`) has its own tests; here it is a pull that finds nothing, so these stay about the retries.
+vi.mock('@/lib/ads/daily', () => ({ syncDailyAdSpend: async () => ({ rows: 0, errors: [] }) }));
 vi.mock('@/lib/jobs/definitions/shared', () => ({ activeStores: () => activeStores() }));
 
 import { pullAdSpend } from './definitions/pull-ad-spend';

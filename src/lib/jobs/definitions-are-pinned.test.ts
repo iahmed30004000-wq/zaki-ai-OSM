@@ -45,6 +45,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['queue-health', 300, undefined],
   // Appended 17/11: «السلات المهجورة» → «الطلبات» — the carts with a name and a phone that waited become orders (20 a run, behind the company's switch). Not 60 (the heartbeat's).
   ['convert-waiting-carts', 300, undefined],
+  // Appended 17/11: «سحب الإنفاق بعد منتصف الليل» (media-buyer doors, PR-A) — the 06:00 pull again at 00:10 Asia/Amman, so yesterday is whole for the media buyer's 00:35 round.
+  ['pull-ad-spend-night', 86_400, '00:10'],
 ];
 
 describe('the jobs table', () => {

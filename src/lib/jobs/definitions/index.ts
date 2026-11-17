@@ -13,6 +13,7 @@ import { deliverConversions } from './deliver-conversions';
 import { proposePenaltiesJob } from './propose-penalties';
 import { escalateChangeRequests } from './escalate-change-requests';
 import { pullAdSpend } from './pull-ad-spend';
+import { pullAdSpendNight } from './pull-ad-spend-night';
 import { reserveReturning } from './reserve-returning-customers';
 import { pruneAbandonedCarts } from './prune-abandoned-carts';
 import { intakeFilter } from './intake-filter';
@@ -20,6 +21,7 @@ import { queueHealthJob } from './queue-health';
 import { convertWaitingCartsJob } from './convert-waiting-carts';
 
 export {
+  pullAdSpendNight,
   convertWaitingCartsJob,
   queueHealthJob,
   intakeFilter,
@@ -81,6 +83,8 @@ export const JOBS: JobDefinition[] = [
   queueHealthJob,
   // «السلات المهجورة» → «الطلبات» (the owner, 17/11): the carts with a name and a phone that waited become orders, twenty a run, behind the company's switch.
   convertWaitingCartsJob,
+  // «سحب الإنفاق بعد منتصف الليل» (the owner, 17/11): the 06:00 pull again at 00:10 Asia/Amman, so yesterday is whole before the media buyer's 00:35 night round.
+  pullAdSpendNight,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {

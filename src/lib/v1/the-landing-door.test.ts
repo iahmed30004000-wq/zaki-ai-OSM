@@ -373,3 +373,71 @@ describe('the offer after the order replaces the offer', () => {
     expect(h.db.orderItem.update).not.toHaveBeenCalled();
   });
 });
+
+describe('what the media buyer’s link adds to a page’s order (name, utm source and medium, the page)', () => {
+  const TAGS = {
+    method: 'url_tags',
+    ad_name: 'CR00147_TRF01_hook2',
+    utm_source: 'fb',
+    utm_medium: 'Facebook_Mobile_Feed',
+    utm_campaign: '120210000000000009',
+    utm_term: '120210000000000005',
+    utm_content: '120211000000000001',
+    landing_url: 'https://pages.zakiai.io/p/kamaa-eye-water?fbclid=IwAR0example&utm_source=fb',
+  };
+  /** The one update that stamps the four: the only `updateMany` whose guard names the ad's name. */
+  const stamps = () => h.db.order.updateMany.mock.calls.filter(([a]) => a?.where && 'adName' in a.where);
+
+  it('stamps them on the order AFTER it exists, once, and only while it carries none of the four', async () => {
+    const res = await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    expect(res.status).toBe(201);
+    expect(stamps()).toHaveLength(1);
+    const [{ where, data }] = stamps()[0];
+    expect(where).toEqual({ companyId: 'c1', orderNumber: 'JO-2026-0007', adName: null, utmSource: null, utmMedium: null, landingUrl: null });
+    // The link is a page, not a tracked link: its query (where the click id rides) is cut off.
+    expect(data).toEqual({ adName: 'CR00147_TRF01_hook2', utmSource: 'fb', utmMedium: 'Facebook_Mobile_Feed', landingUrl: 'https://pages.zakiai.io/p/kamaa-eye-water' });
+  });
+
+  it('the ids are written once, by the door’s own attribution — this stamp carries none of them', async () => {
+    await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    const [{ data }] = stamps()[0];
+    expect(Object.keys(data).sort()).toEqual(['adName', 'landingUrl', 'utmMedium', 'utmSource']);
+    // and the door’s own update (adId · metaCampaignId · refCode) ran as well, on the same order
+    const own = h.db.order.updateMany.mock.calls.find(([a]) => a?.data && 'metaCampaignId' in a.data);
+    expect(own?.[0].data).toMatchObject({ adId: '120211000000000001', metaCampaignId: '120210000000000009', refCode: '120210000000000005' });
+  });
+
+  it('does not touch order creation: the engine is handed no tag, whatever the page sent', async () => {
+    await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    const [surface, raw] = h.createPublicOrder.mock.calls[0];
+    expect(JSON.stringify([surface, raw])).not.toMatch(/120211000000000001|CR00147|fbclid|Facebook_Mobile/);
+  });
+
+  it('a tag that does not fit is dropped and the order still goes through', async () => {
+    const res = await postOrder(orderReq({ ...ORDER, attribution: { ...TAGS, ad_name: 'x'.repeat(121), utm_source: 'f'.repeat(41), landing_url: 'javascript:alert(1)' } }));
+    expect(res.status).toBe(201);
+    const [{ data }] = stamps()[0];
+    expect(data).toEqual({ adName: null, utmSource: null, utmMedium: 'Facebook_Mobile_Feed', landingUrl: null });
+  });
+
+  it('an order with no tag, or only garbage, writes nothing extra — exactly as before', async () => {
+    expect((await postOrder(orderReq(ORDER))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+    expect((await postOrder(orderReq({ ...ORDER, attribution: { ad_name: 7 } }, { 'idempotency-key': 'k2' }))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+    expect((await postOrder(orderReq({ ...ORDER, attribution: 'oops' }, { 'idempotency-key': 'k3' }))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+  });
+
+  it('a failure while stamping never fails an order that is already saved', async () => {
+    h.db.order.updateMany.mockImplementation(async (a: { where: Record<string, unknown> }) => {
+      if ('adName' in a.where) throw new Error('db down');
+      return { count: 1 };
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const res = await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    expect(res.status).toBe(201);
+    expect((await res.json()).orderNumber).toBe('JO-2026-0007');
+    log.mockRestore();
+  });
+});

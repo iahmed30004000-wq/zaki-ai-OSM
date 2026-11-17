@@ -26,6 +26,10 @@ const NEEDS: Record<V1Scope, readonly string[]> = {
   'orders.attribution.read': ['orders.view'],
   // The cost of goods is money: the product key, the finance key and the cost key (PR-10: whoever mints it must see it).
   'products.costs.read': ['products.view', 'finance.view', 'costs.view'],
+  // Ad spend is money the campaigns screen shows: whoever mints the key must see it there.
+  'ads.spend.read': ['campaigns.view'],
+  // The key speaks through the company's Telegram bot: its minter must be allowed to handle that bot.
+  'notify.send': ['telegram.manage'],
 };
 
 /** The first scope this person may not mint, with the key it lacks — or null. */

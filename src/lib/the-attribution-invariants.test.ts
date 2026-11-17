@@ -226,8 +226,12 @@ describe('4 · one event is counted once', () => {
 describe('the ad evidence an order can carry, and what is still not built', () => {
   const schema = () => repoFile('prisma/schema.prisma');
 
-  it('there is no adset id anywhere', () => {
-    expect(schema()).not.toMatch(/adsetId|adset_id/i);
+  it('there is no adset id on an order (the ad set lives in refCode at the landing door)', () => {
+    // The daily spend table (`ad_spend_days`, PR-A of the media buyer's doors) holds Meta's ad set id because spend is reported per ad set — that is a record of what the
+    // platform said, not ad evidence on an order. The order itself still carries no ad set column.
+    const m = schema().slice(schema().indexOf('model Order {'));
+    const order = m.slice(0, m.indexOf('\n}'));
+    expect(order).not.toMatch(/adsetId|adset_id/i);
   });
 
   it('and the reported fields exist on the order, as nullable columns', () => {
