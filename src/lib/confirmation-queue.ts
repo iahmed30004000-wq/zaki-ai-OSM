@@ -32,7 +32,8 @@ import {
 import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 import { queuePrioritySwitch } from './queue-priority-switch';
-import { freshSince, isAged, queueModeAt, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { modesInMinutes, readQueueModes } from './queue-modes-settings';
+import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -956,7 +957,16 @@ export async function readReturnsMode(
   // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
   const since = await cadenceSince(client, companyId);
   if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), RETURNS_MODE.idleBusinessMinutes, since);
+  return returnsMode(args.now, workClock(args.calendar()), (await returnsLimits(client, companyId, args.now.getTime())).idleBusinessMinutes, since);
+}
+
+/**
+ * THE MODE'S TWO NUMBERS FOR THIS COMPANY (step D2, planner Q48): the hand limit and the idle release are `RETURNS_MODE`'s 5 and 30 — or, with the queue-priority key on,
+ * `QUEUE_PRIORITY_LIMITS`' 3 and 20. ONE function every reader asks, so no screen can say a figure the release does not use. The switch is a cached read and OFF on any
+ * failure, so a failed read is today's numbers.
+ */
+export async function returnsLimits(client: Tx, companyId: string, nowMs: number = Date.now()): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+  return (await queuePrioritySwitch(client, companyId, nowMs)).enabled ? QUEUE_PRIORITY_LIMITS : RETURNS_MODE;
 }
 
 /**
@@ -1694,7 +1704,8 @@ export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: str
   try {
     if (!(await queuePrioritySwitch(client, scope.companyId, now.getTime())).enabled) return null;
     const local = zonedParts(now, cal.timezone);
-    const mode = queueModeAt(local.hour * 60 + local.minute);
+    // The owner's hours for the two modes (step D2); the study's where none are saved.
+    const mode = queueModeAt(local.hour * 60 + local.minute, modesInMinutes(await readQueueModes(client, scope.companyId, now.getTime())));
     if (mode !== 'NORMAL') return { mode, backlogTurn: false };
     const [reading, recent] = await Promise.all([readBacklogShare(client, scope, now, OPEN_CONFIRMATION), recentPullLanes(client, userId)]);
     return { mode, backlogTurn: wantsBacklog(reading.result.share, recent) };
@@ -1874,7 +1885,7 @@ export async function pullNextOrder(
   // everything below is today's, line for line.
   const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds });
   // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
-  const hand = returns ? RETURNS_MODE.handLimit : undefined;
+  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
   const priority = await priorityPlanFor(db, scope, user.id, cal, now);
   return db.$transaction(async (tx) => {

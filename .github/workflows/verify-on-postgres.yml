@@ -31,7 +31,8 @@
 #   winback-daily --assert: the daily winback list's real reads and the scorecard's
 #              winback credit (step F1), in an isolated store, rolled back.
 #   leads-intake --assert: the pages system's lead intake on real tables (step E1):
-#              the 24-hour flag, idempotence, the unique key, in a rolled-back transaction.
+#              the 24-hour flag, idempotence, the unique key, and (step E2) the lead lane's read and dismissal, in a rolled-back transaction.
+#   queue-health --assert: the queue-health board's counts on real tables (step D2): the backlog, due now, entered/closed today, the waits, in a rolled-back transaction.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -142,6 +143,11 @@ jobs:
       # when the order is older, another product or refused), in an isolated store. Everything it writes is rolled back. Exit 3 = a case differs.
       - name: Leads intake (asserted)
         run: node scripts/verify-on-postgres/leads-intake.mjs --assert
+
+      # The queue-health board (step D2): the backlog, what is due now and the oldest wait, what entered and what closed today, the new orders waiting and the last pull, in an isolated store.
+      # Everything it writes is rolled back. Exit 3 = a case differs.
+      - name: Queue health (asserted)
+        run: node scripts/verify-on-postgres/queue-health.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

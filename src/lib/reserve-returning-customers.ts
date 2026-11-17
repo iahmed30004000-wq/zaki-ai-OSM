@@ -1,7 +1,7 @@
 import { db } from './db';
 import { resolveAudience } from './notification-audience';
 import { agentForReturningCustomer, reservationCutoff, type PriorOrder } from './order-reservation';
-import { RETURNS_MODE, capRoom, ownedCounts, returnsModeOn } from './confirmation-queue';
+import { capRoom, ownedCounts, returnsLimits, returnsModeOn } from './confirmation-queue';
 
 /**
  * HOLD A RETURNING CUSTOMER'S NEW ORDER FOR THE AGENT WHO WORKED HIM LAST.
@@ -97,7 +97,7 @@ export async function reserveReturningCustomers(
     const agent = agentForReturningCustomer(priors.get(candidate.customerId) ?? [], eligible);
     if (!agent) continue;
     if (!room.has(agent)) {
-      if (limit === null) limit = (await returnsModeOn(db, scope.companyId)) ? RETURNS_MODE.handLimit : undefined;
+      if (limit === null) limit = (await returnsModeOn(db, scope.companyId)) ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
       room.set(agent, capRoom(await ownedCounts(db, scope, agent, now), limit));
     }
     if ((room.get(agent) ?? 0) <= 0) continue;

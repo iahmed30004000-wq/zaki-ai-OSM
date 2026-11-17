@@ -24,6 +24,8 @@ import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { CADENCE_LIMIT } from '@/lib/no-answer-cadence';
+import { POSTPONE_MAX_TIMES } from '@/lib/queue-priority';
+import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
 import {
   TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
 } from '@/lib/confirmed-twin';
@@ -303,6 +305,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Postpone details the confirmation screen shows back to the agent:
         // when the customer asked for, and how often they have asked.
         if (target === 'POSTPONED') {
+          // Step D2 (spec: «Postponed max 2»): with «أولوية الطابور» on, an order already postponed twice is not postponed a third time — the customer's answer is a decision, not another date.
+          if ((await queuePrioritySwitch(db, companyId)).enabled) {
+            const seen = await db.order.findFirst({ where: { id, companyId }, select: { postponeCount: true } });
+            if ((seen?.postponeCount ?? 0) >= POSTPONE_MAX_TIMES) {
+              return NextResponse.json({ error: `هالطلب انأجّل ${POSTPONE_MAX_TIMES} مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.`, code: 'POSTPONE_LIMIT' }, { status: 409 });
+            }
+          }
           updateData.postponedUntil = d;
           updateData.postponeCount = { increment: 1 };
           if (typeof preferredTime === 'string' && preferredTime.trim()) {

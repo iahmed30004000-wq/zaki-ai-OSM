@@ -9,6 +9,7 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadFailed } from '@/components/ui/LoadFailed';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
+import { QueueHealthBoard } from '@/components/screens/QueueHealthBoard';
 import { CONFIRMATION_STATUS_AR, type ConfirmationStatus } from '@/lib/confirmation-workflow';
 
 /**
@@ -44,6 +45,8 @@ export function ConfirmationQueueScreen() {
     <div className="max-w-3xl mx-auto space-y-4">
       <ScreenTitle />
       <PullPanel queue={queue} onPulled={() => router.push('/confirmation/mine')} />
+
+      {data.orders && <QueueHealthBoard />}
 
       {data.orders && (
         <section className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">

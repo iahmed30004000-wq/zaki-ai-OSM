@@ -16,6 +16,7 @@ import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
 import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
+import { QueueModesCard } from '@/components/settings/QueueModesCard';
 import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -167,6 +168,7 @@ export function SystemSettingsScreen() {
       <AgentCommissionCard />
       <WinbackV2Card />
       <LeadsV2Card />
+      <QueueModesCard />
 
       {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
       <PartnersCard />

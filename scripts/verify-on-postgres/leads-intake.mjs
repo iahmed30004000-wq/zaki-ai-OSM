@@ -8,6 +8,8 @@
  *   3. The cases: a lead is kept once (the company and store come from the product) · the same lead sent again is `created: false` and one row · a number that ordered the same product 5 h ago FLAGS it (the
  *      lead is kept) — also when the order sits under the other spelling of the number (the dial code written bare) · an order 30 h old, another product, or a refused one does not flag ·
  *      an unknown product is refused and keeps nothing · the unique key of the table refuses a second row for the same external id · no order and no customer is created by taking a lead.
+ *      Step E2, the lane (same store, same rows): the lane holds the NEW leads of the store with the product's live offer attached and the 24-hour flag · a dismissed lead leaves it and a second
+ *      dismissal is refused · a lead of another store is neither read nor dismissed through this store.
  *   4. Exit code 0 when it ran to the end (and, with `--assert`, every case matched), 2 when a database/Prisma error stopped it, 3 when `--assert` found a mismatch.
  *
  *   node scripts/verify-on-postgres/leads-intake.mjs [--assert]
@@ -27,6 +29,7 @@ for (const k of ['DIRECT_URL', 'SHADOW_DATABASE_URL']) delete process.env[k];
 if (process.env.NODE_ENV === 'production') delete process.env.NODE_ENV;
 
 const { takeLead } = await import('../../src/lib/leads/lead-intake.ts');
+const { readLeadLane, dismissLead } = await import('../../src/lib/leads/lead-lane.ts');
 const probe = new PrismaClient({ datasourceUrl: url, log: [{ emit: 'stdout', level: 'error' }] });
 class Rollback extends Error {}
 
@@ -113,6 +116,19 @@ try {
         }
         await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT lead_second');
         check('الجدول: المفتاح الفريد (شركة، معرّف الصفحات) بيرفض الصف التاني', refused);
+
+        // step E2 — the lane, on real tables
+        const offer = await tx.offer.create({ data: { companyId: company.id, productId: product.id, name: 'عرض الليدز', quantity: 1, sellingPrice: 20 } });
+        const scope = { companyId: company.id, storeId: store.id };
+        const lane = await readLeadLane(tx, scope, country.minorUnit, now);
+        const ids = lane.map((l) => l.id);
+        const rowIds = (await tx.lead.findMany({ where: { storeId: store.id, status: 'NEW' }, select: { id: true } })).map((r) => r.id);
+        check('الطابور: بيحمل ليدز المتجر الجديدة كلها (A..F) ولا شي غيرها', lane.length === 6 && rowIds.every((id) => ids.includes(id)), `${lane.length}`);
+        check('الطابور: عرض المنتج الفعّال مرفق بكل ليد (وهو العرض الوحيد)', lane.every((l) => l.offers.length === 1 && l.offers[0].id === offer.id), JSON.stringify(lane.map((l) => l.offers.length)));
+        check('الطابور: تعليم الـ24 ساعة على الليدين المعلَّمين (B وC) بس', lane.filter((l) => l.recentOrder).length === 2, String(lane.filter((l) => l.recentOrder).length));
+        const target = lane[0];
+        check('إزالة ليد: بتنجح مرة وتطلعو من الطابور', (await dismissLead(tx, scope, target.id)) === true && !(await readLeadLane(tx, scope, country.minorUnit, now)).some((l) => l.id === target.id));
+        check('إزالة ثانية لنفس الليد مرفوضة، ومن متجر تاني مرفوضة', (await dismissLead(tx, scope, target.id)) === false && (await dismissLead(tx, { companyId: company.id, storeId: 'other-store' }, lane[1].id)) === false);
 
         // taking a lead creates no order and no customer
         check('أخذ الليدز ما أنشأ ولا طلب (غير اللي حطّيناها للفحص) ولا زبون', (await tx.order.count({ where: { storeId: store.id } })) === ordersBefore + 5 && (await tx.customer.count({ where: { storeId: store.id } })) === customersBefore + 5);

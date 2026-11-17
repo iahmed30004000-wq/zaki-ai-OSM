@@ -9,6 +9,7 @@ import { userCan } from '@/lib/can';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { WinbackScreen } from '@/components/screens/WinbackScreen';
 import { WinbackDaily } from '@/components/screens/WinbackDaily';
+import { LeadsLane } from '@/components/screens/LeadsLane';
 
 /**
  * /confirmation/follow-up — «المتابعة»: THE ORDERS TO CALL AGAIN LATER, IN TWO KINDS.
@@ -50,6 +51,8 @@ export function ConfirmationFollowUpScreen() {
   return (
     <div className="max-w-5xl space-y-4">
       <ScreenTitle />
+      {/* the pages system's leads (step E2): its own door, drawn only when the owner turned «ليدز الصفحات» on and there is a lead waiting */}
+      <LeadsLane />
       <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />
       {tab === 'postponed' ? (
         <ConfirmationPostponedScreen embedded />

@@ -40,9 +40,18 @@ export const QUEUE_PRIORITY = {
   recentPulls: 30,
 } as const;
 
+/**
+ * STEP D2 — the returns mode's two numbers with the queue-priority key ON: an agent holds at most 3 (was 5), and an order nothing was logged on goes back after 20 working
+ * minutes (was 30). The study: 718 pulls were returned untouched in one week, 404 of them at the 17:00 shift change. Where the key is off, `RETURNS_MODE` (5 and 30) is asked as ever.
+ */
+export const QUEUE_PRIORITY_LIMITS = { handLimit: 3, idleBusinessMinutes: 20 } as const;
+
+/** A postponed order may be postponed at most this many times (the spec: «Postponed max 2»). With the key on, the third postpone is refused. */
+export const POSTPONE_MAX_TIMES = 2;
+
 export type PullLane = 'NEW' | 'BACKLOG';
 
-/** The time-of-day modes, as local minutes since midnight, `to` exclusive (24:00 = 1440). Settings can override them in a later step; the defaults are the study's. */
+/** The time-of-day modes, as local minutes since midnight, `to` exclusive (24:00 = 1440). The owner edits them (`queue-modes-settings.ts`, step D2); these are the defaults — the study's. */
 export const QUEUE_MODES = {
   nightFirst: { from: 9 * 60, to: 11 * 60 },
   peakNewFirst: { from: 21 * 60, to: 24 * 60 },
@@ -51,9 +60,9 @@ export const QUEUE_MODES = {
 export type QueueMode = 'NIGHT_FIRST' | 'PEAK_NEW_FIRST' | 'NORMAL';
 
 /** The mode at a local time of day (minutes since 00:00). Both named modes are «new first, oldest first»: they suspend the share and the aging. */
-export function queueModeAt(localMinutes: number): QueueMode {
-  if (localMinutes >= QUEUE_MODES.nightFirst.from && localMinutes < QUEUE_MODES.nightFirst.to) return 'NIGHT_FIRST';
-  if (localMinutes >= QUEUE_MODES.peakNewFirst.from && localMinutes < QUEUE_MODES.peakNewFirst.to) return 'PEAK_NEW_FIRST';
+export function queueModeAt(localMinutes: number, modes: { nightFirst: { from: number; to: number }; peakNewFirst: { from: number; to: number } } = QUEUE_MODES): QueueMode {
+  if (localMinutes >= modes.nightFirst.from && localMinutes < modes.nightFirst.to) return 'NIGHT_FIRST';
+  if (localMinutes >= modes.peakNewFirst.from && localMinutes < modes.peakNewFirst.to) return 'PEAK_NEW_FIRST';
   return 'NORMAL';
 }
 
