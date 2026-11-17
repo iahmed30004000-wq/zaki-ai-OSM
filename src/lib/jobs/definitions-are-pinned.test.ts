@@ -43,6 +43,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['intake-filter', 120, undefined],
   // Appended 17/11: «صحة الطابور» (Confirmation Center v2, step D2) — alerts the supervisors and the company admin; behind the queue-priority key. Not 60 (the heartbeat's).
   ['queue-health', 300, undefined],
+  // Appended 17/11: «السلات المهجورة» → «الطلبات» — the carts with a name and a phone that waited become orders (20 a run, behind the company's switch). Not 60 (the heartbeat's).
+  ['convert-waiting-carts', 300, undefined],
 ];
 
 describe('the jobs table', () => {

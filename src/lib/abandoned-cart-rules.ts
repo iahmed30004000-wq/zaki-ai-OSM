@@ -43,8 +43,8 @@ export const CART_STATUS_AR: Record<CartStatus, { label: string; tone: 'neutral'
 /**
  * THE STATUSES A PERSON PICKS BY HAND.
  *
- * CONVERTED is written only by «حوّل لطلب», after the ordinary order door has made the order; RECOVERED only by Zaki
- * pages, when the customer ordered by himself. Neither is a choice in a menu: a cart marked «صارت طلب» with no order
+ * CONVERTED is written only by «حوّل لطلب», after the ordinary order door has made the order, or by the automatic order
+ * (`abandoned-cart-orders.ts`); RECOVERED only by Zaki pages, or by the landing door, when the customer ordered by himself. Neither is a choice in a menu: a cart marked «صارت طلب» with no order
  * behind it is a number on a report that nobody can open.
  */
 export const HAND_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK', 'NOT_INTERESTED', 'INVALID'];
@@ -74,6 +74,67 @@ export function retentionDaysOf(raw: unknown): number {
   if (!Number.isInteger(n)) return DEFAULT_RETENTION_DAYS;
   return Math.min(MAX_RETENTION_DAYS, Math.max(MIN_RETENTION_DAYS, n));
 }
+
+/**
+ * ═══ A CART WITH A NAME AND A PHONE BECOMES AN ORDER BY ITSELF (the owner, 17/11) ═══
+ *
+ * «بدي السلات المهجورة تتحول لطلب مباشرة وتنبعت للطابور». A cart that carries a name (two letters at least) and a
+ * valid phone becomes an ordinary NEW order in the confirmation queue, through the same engine the landing orders use
+ * (`abandoned-cart-orders.ts`). A phone-only cart stays a cart. The switch is the company's
+ * (`abandonedCarts.autoConvert`, ON unless somebody turned it off).
+ */
+
+/** The switch as stored: ON unless it was turned off in so many words. */
+export function autoConvertOf(raw: unknown): boolean {
+  return raw !== false;
+}
+
+/** A name, by the order door's own measure (`full_name` is two letters at least). */
+export const AUTO_ORDER_MIN_NAME = 2;
+
+/**
+ * The statuses a cart may become an order from by itself: still open, and not closed by a person as «غير مهتم» or
+ * «رقم غير صالح» — that is the team's word, and an order would overrule it.
+ */
+export const AUTO_ORDER_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK'];
+
+/** Whether this cart is one the owner asked to become an order: a product of this company and a name. */
+export function cartQualifiesForOrder(cart: { status: string; customerName: string | null; productId: string | null; orderId: string | null }): boolean {
+  return (
+    (AUTO_ORDER_STATUSES as string[]).includes(cart.status) &&
+    !cart.orderId &&
+    !!cart.productId &&
+    (cart.customerName ?? '').trim().length >= AUTO_ORDER_MIN_NAME
+  );
+}
+
+/**
+ * THE ORDER'S SOURCE, as the order screens print it («قناة الطلب: سلة مهجورة»). Not «Landing Page»: the visitor never
+ * pressed «اطلب», so the pixel must not be told a form was sent (`salesPageOf` sends only the selling pages' orders).
+ */
+export const CART_ORDER_SOURCE = 'سلة مهجورة';
+
+/** How far back the job reaches for carts that waited (sent before the release, or while the switch was off). */
+export const AUTO_ORDER_BACKLOG_DAYS = 7;
+
+/** The cart's own history lines for its automatic order. CONVERTED is the ordinary one, with `auto: true`. */
+export const CART_AUTO_ACTION = {
+  /** It qualified and did not become an order — the reason in the line's note. */
+  SKIPPED: 'AUTO_ORDER_SKIPPED',
+  /** Its automatic order was ended because the customer then ordered by himself. */
+  STOOD_DOWN: 'AUTO_ORDER_CANCELLED',
+} as const;
+
+/** Why a qualifying cart stayed a cart, in the words its history shows. */
+export const AUTO_ORDER_SKIP_AR = {
+  HAS_ORDER: 'نفس الرقم عنده طلب لنفس المنتج هالأسبوع — ما انعمل طلب تاني.',
+  BLOCKED: 'الرقم محظور — ما انعمل طلب.',
+  UNAVAILABLE: 'المنتج أو المتجر موقوف — ما انعمل طلب.',
+  REFUSED: 'باب الطلبات ما قبلها',
+} as const;
+
+/** The reason the automatic order is ended with when the customer then orders by himself. */
+export const CUSTOMER_ORDERED_HIMSELF_AR = 'الزبون طلب بنفسه';
 
 /** The date filter's three windows, in days back from now. */
 export const CART_RANGES = { today: 0, '7d': 7, '30d': 30 } as const;

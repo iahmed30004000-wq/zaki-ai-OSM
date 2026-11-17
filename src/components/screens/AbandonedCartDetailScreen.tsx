@@ -11,7 +11,7 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { apiJson } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { arDateTime } from '@/lib/format';
-import { CART_STATUS_AR, isCartStatus } from '@/lib/abandoned-cart-rules';
+import { CART_AUTO_ACTION, CART_STATUS_AR, isCartStatus } from '@/lib/abandoned-cart-rules';
 import {
   CartContact,
   CartStatusChip,
@@ -71,7 +71,11 @@ function activityText(a: Activity, people: Map<string, string>): string {
     case 'RECOVERED':
       return a.toStatus === 'CONVERTED'
         ? `الزبون طلب من الصفحة كمان${meta.orderNumber ? ` (${String(meta.orderNumber)})` : ''} — والسلة ضلّت «صارت طلب»`
-        : `الزبون طلب لحاله${meta.orderNumber ? ` — ${String(meta.orderNumber)}` : ''}`;
+        : `الزبون طلب لحاله${meta.orderNumber ? ` — ${String(meta.orderNumber)}` : ''}${meta.replaced ? ` (بدل الطلب التلقائي ${String(meta.replaced)})` : ''}`;
+    case CART_AUTO_ACTION.SKIPPED:
+      return `ما صارت طلب تلقائيًا — ${a.note ?? ''}`;
+    case CART_AUTO_ACTION.STOOD_DOWN:
+      return `الطلب التلقائي${meta.orderNumber ? ` ${String(meta.orderNumber)}` : ''} انلغى — ${a.note ?? ''}`;
     case 'STATUS_CHANGED':
       return `الحالة: ${statusWord(a.fromStatus)} ← ${statusWord(a.toStatus)}`;
     case 'NO_ANSWER':
@@ -83,7 +87,7 @@ function activityText(a: Activity, people: Map<string, string>): string {
     case 'ASSIGNED':
       return meta.to ? `انسندت لـ ${people.get(String(meta.to)) ?? 'موظف'}` : 'انشال الإسناد';
     case 'CONVERTED':
-      return `انحوّلت لطلب${meta.orderNumber ? ` ${String(meta.orderNumber)}` : ''}`;
+      return `${meta.auto ? 'صارت طلب تلقائيًا (فيها اسم ورقم)' : 'انحوّلت لطلب'}${meta.orderNumber ? ` ${String(meta.orderNumber)}` : ''}`;
     default:
       return a.action;
   }

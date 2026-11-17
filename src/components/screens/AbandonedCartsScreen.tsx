@@ -90,6 +90,7 @@ function AbandonedCartsList() {
   const [productId, setProductId] = useState('');
   const [assignee, setAssignee] = useState('');
   const [retention, setRetention] = useState<number | null>(null);
+  const [autoConvert, setAutoConvert] = useState<boolean | null>(null);
 
   const list = usePagedList<CartRow, Extra>({
     url: '/api/abandoned-carts',
@@ -104,9 +105,15 @@ function AbandonedCartsList() {
   });
 
   useEffect(() => {
-    apiJson<{ retentionDays: number }>('/api/abandoned-carts/settings').then(
-      (s) => setRetention(s.retentionDays),
-      () => setRetention(null)
+    apiJson<{ retentionDays: number; autoConvert: boolean }>('/api/abandoned-carts/settings').then(
+      (s) => {
+        setRetention(s.retentionDays);
+        setAutoConvert(s.autoConvert);
+      },
+      () => {
+        setRetention(null);
+        setAutoConvert(null);
+      }
     );
   }, []);
 
@@ -236,6 +243,10 @@ function AbandonedCartsList() {
         </p>
       )}
 
+      {autoConvert !== null && (
+        <AutoConvertSwitch on={autoConvert} mayEdit={may.settings} onSaved={(on) => { setAutoConvert(on); void list.reload(); }} />
+      )}
+
       <Tabs tabs={TABS.map((t) => ({ ...t, count: extra?.facts?.[t.key] }))} value={tab} onChange={setTab} />
 
       <ListToolbar
@@ -272,6 +283,46 @@ function AbandonedCartsList() {
       )}
 
       {conversion.modal}
+    </div>
+  );
+}
+
+/**
+ * «حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا» (the owner, 17/11) — the company's switch, ON by default. Everybody who
+ * sees the carts reads which way it is; whoever may edit the system's settings flips it.
+ */
+function AutoConvertSwitch({ on, mayEdit, onSaved }: { on: boolean; mayEdit: boolean; onSaved: (on: boolean) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<string | null>(null);
+  const flip = async (next: boolean) => {
+    setBusy(true);
+    setSaid(null);
+    try {
+      const r = await apiJson<{ autoConvert: boolean }>('/api/abandoned-carts/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoConvert: next }),
+      });
+      onSaved(r.autoConvert);
+      setSaid('انحفظت');
+    } catch (e) {
+      setSaid(e instanceof Error ? e.message : 'ما انحفظت');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="text-xs text-[var(--sys-muted-foreground)] space-y-1">
+      <label className="inline-flex items-center gap-2">
+        <input type="checkbox" checked={on} disabled={!mayEdit || busy} onChange={(e) => void flip(e.target.checked)} />
+        <span className="font-semibold text-[var(--sys-heading)]">حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا</span>
+        {said && <span>{said}</span>}
+      </label>
+      <p>
+        {on
+          ? 'السلة اللي فيها اسم ورقم بتصير طلب جديد بطابور التأكيد، بدون عنوان — أكّد العنوان والمحافظة مع الزبون. السلة اللي فيها رقم بس بتضل هون.'
+          : 'موقوف: كل السلات بتضل هون لحتى حدا يحوّلها باليد.'}
+      </p>
     </div>
   );
 }

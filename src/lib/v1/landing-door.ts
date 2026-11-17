@@ -17,7 +17,9 @@ import {
   type SellingSurface,
 } from '../public-order';
 import { ADDON_TOKEN_MINUTES, LANDING_PAGE_SOURCE, verifyAddonToken } from '../landing-pages';
-import { ORDER_VALIDATION_ERROR_BODY } from '../landing-order-schema';
+import { ORDER_VALIDATION_ERROR_BODY, buildPublicOrderSchema } from '../landing-order-schema';
+import { CART_ORDER_SOURCE } from '../abandoned-cart-rules';
+import { cartsRecoveredBy, replaceableCartOrders, standDownCartOrders, type CartOrder } from '../cart-order-stand-down';
 import { resolveCampaign } from '../campaigns-server';
 import { checkoutRules, parseStoreTheme } from '../store-theme';
 import { POST_ORDER_REFUSAL_AR, postOrderGate, postOrderOfferSettings, type PostOrderRefusal } from '../post-order-offer';
@@ -321,6 +323,36 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
   if (!productRow) return UNAVAILABLE;
   const { store } = productRow;
 
+  const raw = {
+    full_name: order.full_name,
+    phone: order.phone,
+    alt_phone: order.alt_phone ?? '',
+    address: order.address,
+    city: order.city ?? '',
+    notes: order.notes ?? '',
+    offerId: order.offerId,
+    website: '',
+  };
+
+  /*
+   * THE CUSTOMER'S OWN ORDER WINS OVER THE ONE HIS CART BECAME (the owner, 17/11; `cart-order-stand-down.ts`). An
+   * automatic order for this phone and this product that nobody has confirmed is ended first — only when this order
+   * passes the door's own form, so a typo the visitor is about to fix does not cost the queue its order — and the engine
+   * then takes this one as any other. Never in the way: a failure here is logged and the order goes on.
+   */
+  let stoodDown: CartOrder[] = [];
+  try {
+    const replaced = await replaceableCartOrders(companyId, {
+      storeId: store.id,
+      countryCode: store.country.code,
+      phone: order.phone,
+      productId: productRow.id,
+    });
+    if (replaced.length > 0 && (await passesTheForm(store, raw))) stoodDown = await standDownCartOrders(companyId, replaced);
+  } catch (e) {
+    console.error('landing door: could not stand down a cart order (non-fatal):', (e as Error)?.name || 'unknown');
+  }
+
   const surface: SellingSurface = {
     companyId,
     store: { id: store.id, countryId: store.countryId, country: store.country },
@@ -340,20 +372,16 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
     },
   };
 
-  const result = await createPublicOrder(surface, {
-    full_name: order.full_name,
-    phone: order.phone,
-    alt_phone: order.alt_phone ?? '',
-    address: order.address,
-    city: order.city ?? '',
-    notes: order.notes ?? '',
-    offerId: order.offerId,
-    website: '',
-  });
+  const result = await createPublicOrder(surface, raw);
   if (!result.ok) return result;
 
   // After the commit, and unable to fail what is already saved.
   await markLandingChannel(companyId, String(result.body.orderNumber));
+  if (stoodDown.length > 0) {
+    await cartsRecoveredBy(companyId, stoodDown, String(result.body.orderNumber)).catch((e) =>
+      console.error('landing door: could not mark the cart recovered (non-fatal):', (e as Error)?.name || 'unknown')
+    );
+  }
   const upgrade = await upgradeOffered(companyId, productRow.id, store.country.minorUnit, String(result.body.orderNumber));
   const figures = await deliveryQuote({ companyId, productRow, offerId: order.offerId, city: order.city ?? '' }).catch(() => null);
   const delivery =
@@ -368,6 +396,87 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
       : {};
   // Replaces the after-order bundle `createPublicOrder` looked up: at this door the upsell is a swap, or nothing.
   return { ok: true, body: { ...result.body, ...delivery, ...upgrade } };
+}
+
+/** Whether this body passes the door's own form, read the way `createPublicOrder` reads it — nothing written. */
+async function passesTheForm(store: { countryId: string; country: { code: string } }, raw: Record<string, unknown>): Promise<boolean> {
+  const regions = await db.region.findMany({ where: { countryId: store.countryId, isActive: true }, select: { name: true } });
+  return buildPublicOrderSchema({ countryCode: store.country.code, regions: regions.map((r) => r.name), cityOptional: true }).safeParse(raw)
+    .success;
+}
+
+/** What an abandoned cart hands the order engine: what the visitor typed, and nothing the team decided. */
+export interface CartForOrder {
+  id: string;
+  productId: string;
+  customerName: string;
+  /** The number in the national form the country's rule reads (`cartPhoneShown`). */
+  phone: string;
+  /** The governorate the cart's city matched, or '' — never a city the country does not have. */
+  city: string;
+  /** The city as the visitor wrote it, when it matched no governorate: kept on the order's note for the call. */
+  typedCity: string | null;
+}
+
+/**
+ * AN ABANDONED CART BECOMES AN ORDER BY ITSELF (the owner, 17/11) — through the SAME engine the landing orders use.
+ *
+ * `createPublicOrder` with this file's surface, exactly as `takeLandingOrder` names one, so the order gets the same
+ * validation against the country, the same blacklist, the same pricing, the same customer find-or-create, history, event
+ * and notice. What differs, and why:
+ *
+ *   · the product at its DEFAULT offer — the live bundle marked default, else the first live one, which is what «حوّل
+ *     لطلب» opens with (`adoptedOffer`); the product's base price when it has none;
+ *   · the address may be blank (`addressOptional` — set here ONLY, a guard pins it) and so may the city
+ *     (`cityOptional`): the visitor never reached «اطلب». The order's history tells the team to ask for both
+ *     (`FROM_ABANDONED_CART_ACTION`, written in the order's own transaction via `abandonedCartId`);
+ *   · its own one-order-per-phone slot, `cart:<id>`, so it never stands in the way of the order the customer may still
+ *     place on the page (`cart-order-stand-down.ts`);
+ *   · no «إلزامي» fields of the shop's form (`checkout: null`): nobody filled the form, and the call asks;
+ *   · its source is «سلة مهجورة» (`CART_ORDER_SOURCE`) and its channel the landing pages', like every order from there.
+ *
+ * Status NEW, in the confirmation queue like any new order. The caller is `abandoned-cart-orders.ts`, which decides
+ * WHICH carts and makes sure one cart makes one order.
+ */
+export async function takeCartOrder(companyId: string, cart: CartForOrder): Promise<IntakeResult> {
+  const productRow = await sellableProduct(companyId, cart.productId);
+  if (!productRow) return UNAVAILABLE;
+  const { store } = productRow;
+  const offers = await activeOffersFor(db, companyId, productRow.id, store.country.minorUnit);
+  const offer = offers.find((o) => o.isDefault) ?? offers[0] ?? null;
+
+  const surface: SellingSurface = {
+    companyId,
+    store: { id: store.id, countryId: store.countryId, country: store.country },
+    checkout: null,
+    campaignId: null,
+    products: [{ id: productRow.id, name: productRow.name, image: productRow.image, basePrice: productRow.basePrice }],
+    landingPage: null,
+    source: CART_ORDER_SOURCE,
+    dedupeScope: `cart:${cart.id}`,
+    deviceClass: null,
+    cityOptional: true,
+    addressOptional: true,
+    abandonedCartId: cart.id,
+    notice: {
+      title: 'طلب جديد من سلة مهجورة',
+      message: (n) => `طلب جديد #${n} من سلة مهجورة — ${productRow.name}. الزبون ما كمّل الطلب: أكّد معه العنوان والمحافظة.`,
+    },
+  };
+
+  const result = await createPublicOrder(surface, {
+    full_name: cart.customerName.trim().slice(0, 80),
+    phone: cart.phone,
+    alt_phone: '',
+    address: '',
+    city: cart.city,
+    notes: cart.typedCity ? `المدينة كما كتبها الزائر: ${cart.typedCity}`.slice(0, 500) : '',
+    offerId: offer?.id ?? '',
+    website: '',
+  });
+  if (!result.ok) return result;
+  await markLandingChannel(companyId, String(result.body.orderNumber));
+  return result;
 }
 
 /**
