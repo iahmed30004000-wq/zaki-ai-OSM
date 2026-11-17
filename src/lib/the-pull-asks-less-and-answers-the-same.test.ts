@@ -3,7 +3,7 @@ import { workClock } from './no-answer-rounds';
 import { returnsMode } from './no-answer-returns';
 import { RETURNS_MODE, pickNextCandidate } from './confirmation-queue';
 import { readBacklogShare } from './queue-priority-share';
-import { PULL_SWEEP_GAP_MS, sweepIntakeForPull } from './intake-filter';
+import { sweepIntake, sweepIntakeForPull } from './intake-filter';
 import { intakeFilterSwitch } from './intake-filter-switch';
 
 // The switch is what every sweep reads first: counting its calls counts the sweeps that ran. It answers «off», so a sweep that runs is one read and writes nothing.
@@ -17,9 +17,10 @@ vi.mock('./intake-filter-switch', () => ({ intakeFilterSwitch: vi.fn(async () =>
  *   1. the two ranking scans (promises, retries by due — up to 2,000 orders each): when the v2 pick answers «nothing for me» the old order after it used to run both a second time;
  *      now one `pickNextCandidate` reads each scan at most once and the old order reads back what the v2 pick already read — the same order, the same answers;
  *   2. the half-hour share of the backlog: pulls that arrive while the first read is still running share that read (one `distinct` + two counts, not one set per agent);
- *   3. the intake sweep before «اسحب التالي»: not more than once in `PULL_SWEEP_GAP_MS` per store, and a sweep that is running is shared.
+ *   3. the intake sweep before «اسحب التالي»: looks at each new order once (the store's sweep for the pull remembers the orders it has looked at) — never later than the press that
+ *      could deal the order, so the flag is still written BEFORE the order is dealt.
  *
- * Edge cases. A store's throttle is its own; a failed sweep never throws into the pull; the old pull (no priority plan) and the two time-of-day modes still read each scan once;
+ * Edge cases. A new order is looked at by the very next press (no time gap); the memory is bounded; a failed sweep never throws into the pull; the old pull (no priority plan) and the two time-of-day modes still read each scan once;
  * a retry found by the v2 pick but not dealt by it is still dealt by the old order — from the memo.
  * Blockers: no money, no order creation, no migration, no change of the pick order, the page size or any predicate.
  * ═════════════════════════════════════════════════════════════════
@@ -123,39 +124,74 @@ describe('the share is read once while it is being read', () => {
   });
 });
 
-describe('the intake sweep before a pull', () => {
+describe('the intake sweep before a pull looks at each new order once', () => {
   const ran = () => (intakeFilterSwitch as unknown as ReturnType<typeof vi.fn>).mock.calls.length;
-  const store = (n: string) => ({ companyId: `sweep-co-${n}`, storeId: `sweep-st-${n}`, countryCode: 'SY' });
+  const sw = intakeFilterSwitch as unknown as ReturnType<typeof vi.fn>;
+  const SCOPE = { companyId: 'c1', storeId: 's1', countryCode: 'SY' };
+  const ON = { enabled: true, enabledAt: new Date(NOW.getTime() - 3_600_000) };
 
-  it('the first press of a store runs the sweep, and answers a number', async () => {
-    const before = ran();
-    await expect(sweepIntakeForPull(store('a'), 1_000)).resolves.toBe(0);
-    expect(ran()).toBe(before + 1);
+  /** A new order whose number is not the shape of a Syrian one — so a look at it writes exactly one flag. */
+  const order = (id: string) => ({
+    id,
+    createdAt: new Date(NOW.getTime() - 60_000),
+    customerId: 'cu-' + id,
+    productId: 'p1',
+    items: [],
+    customer: { phone: '123', rawPhone: '123' },
+    activities: [],
+  });
+  /** The store's unclaimed new orders, as the database would answer them right now. */
+  const world = (ids: string[]) => ({
+    order: { findMany: vi.fn(async () => ids.map(order)), findFirst: vi.fn(async () => null) },
+    customer: { findMany: vi.fn(async () => []) },
+    orderActivity: { create: vi.fn(async () => ({})) },
   });
 
-  it('inside the gap a second press does not run it again; at the gap it does', async () => {
-    await sweepIntakeForPull(store('b'), 10_000);
-    const after = ran();
-    await expect(sweepIntakeForPull(store('b'), 10_000 + PULL_SWEEP_GAP_MS - 1)).resolves.toBe(0);
-    expect(ran()).toBe(after);
-    await sweepIntakeForPull(store('b'), 10_000 + PULL_SWEEP_GAP_MS + 1);
-    expect(ran()).toBe(after + 1);
+  it('with no memory (the job in the worker) every sweep looks at the same order again — untouched', async () => {
+    sw.mockResolvedValue(ON);
+    const w = world(['a']);
+    await sweepIntake(SCOPE, NOW, w as never);
+    await sweepIntake(SCOPE, NOW, w as never);
+    expect(w.orderActivity.create).toHaveBeenCalledTimes(2);
   });
 
-  it('while one runs, a second press shares it — the very same promise, one sweep', async () => {
-    const before = ran();
-    const first = sweepIntakeForPull(store('c'), 20_000);
-    const second = sweepIntakeForPull(store('c'), 20_001);
-    expect(second).toBe(first);
-    await first;
-    expect(ran()).toBe(before + 1);
+  it('with the memory the second sweep skips an order it has looked at, and the next press looks at one that has just arrived', async () => {
+    sw.mockResolvedValue(ON);
+    const seen = new Set<string>();
+    const w = world(['a']);
+    expect(await sweepIntake(SCOPE, NOW, w as never, seen)).toBe(1);
+    expect(await sweepIntake(SCOPE, NOW, w as never, seen)).toBe(0);
+    expect(w.orderActivity.create).toHaveBeenCalledTimes(1);
+    // an order arrives between two presses: the very next press flags it — no waiting, before it can be dealt
+    const w2 = world(['a', 'b']);
+    expect(await sweepIntake(SCOPE, NOW, w2 as never, seen)).toBe(1);
+    expect(w2.orderActivity.create).toHaveBeenCalledTimes(1);
+    expect((w2.orderActivity.create.mock.calls as unknown as { data: { orderId: string } }[][])[0][0].data.orderId).toBe('b');
   });
 
-  it('the gap is half a minute, and another store has its own', async () => {
-    expect(PULL_SWEEP_GAP_MS).toBe(30_000);
+  it('an order is remembered when its look begins: two presses at once do not flag it twice', async () => {
+    sw.mockResolvedValue(ON);
+    const seen = new Set<string>();
+    const w = world(['a']);
+    const [x, y] = await Promise.all([sweepIntake(SCOPE, NOW, w as never, seen), sweepIntake(SCOPE, NOW, w as never, seen)]);
+    expect(x + y).toBe(1);
+    expect(w.orderActivity.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('the memory is bounded: past 5,000 orders it forgets and looks once more', async () => {
+    sw.mockResolvedValue(ON);
+    const seen = new Set<string>(Array.from({ length: 5_001 }, (_, i) => 'old-' + i));
+    seen.add('a');
+    const w = world(['a']);
+    expect(await sweepIntake(SCOPE, NOW, w as never, seen)).toBe(1);
+    expect(seen.size).toBe(1);
+  });
+
+  it('the pull’s sweep asks the switch on every press — there is no time gap — and a store that is off writes nothing', async () => {
+    sw.mockResolvedValue({ enabled: false, enabledAt: null });
     const before = ran();
-    await sweepIntakeForPull(store('d'), 30_000);
-    await sweepIntakeForPull(store('e'), 30_001);
+    await expect(sweepIntakeForPull({ companyId: 'sweep-co-1', storeId: 'sweep-st-1', countryCode: 'SY' })).resolves.toBe(0);
+    await expect(sweepIntakeForPull({ companyId: 'sweep-co-1', storeId: 'sweep-st-1', countryCode: 'SY' })).resolves.toBe(0);
     expect(ran()).toBe(before + 2);
   });
 });

@@ -66,31 +66,31 @@ export interface IntakeScope {
 }
 
 /**
- * THE PULL'S SWEEP, NOT MORE THAN ONCE IN HALF A MINUTE PER STORE (perf, 17/11).
+ * THE PULL'S SWEEP LOOKS AT EACH NEW ORDER ONCE (perf, 17/11).
  *
- * «اسحب التالي» swept before every pick — up to 200 orders with their history and two questions for each one without a flag, in sequence, from every agent's press, besides the job
- * that does the same every two minutes. An order that is no repeat never gets a flag, so it was asked about again on every press for a day. The promise stays — a flag is written
- * before the order is dealt — within half a minute instead of within a press: a sweep that ran in the last `PULL_SWEEP_GAP_MS` is not run again, and one that is running is shared
- * (the second press waits for it and takes its count). The job's own sweep is untouched, and so is `sweepIntake`.
+ * «اسحب التالي» sweeps before the pick, so a flag is written BEFORE the order is dealt — the promise of this filter, and it stays. What it did on top was look at the SAME orders again
+ * on every press: up to 200 orders with their history and two questions for each one without a flag, and an order that is no repeat never gets a flag, so it was asked about again and
+ * again for a day. Here the store's sweep for the pull remembers the orders it has already looked at (in this process) and goes straight to the ones it has not: a new order is looked
+ * at by the very next press, never later than the press that could deal it. An order is remembered when its look BEGINS, so two presses at once do not write its flag twice. The job's
+ * own sweep (every two minutes, in the worker) remembers nothing and is untouched, and so is `sweepIntake` for any caller that gives it no memory.
  */
-export const PULL_SWEEP_GAP_MS = 30_000;
-const pullSweeps = new Map<string, { at: number; running: Promise<number> | null }>();
+const PULL_SEEN_CAP = 5_000;
+const pullSeen = new Map<string, Set<string>>();
 
-export function sweepIntakeForPull(scope: IntakeScope, nowMs: number = Date.now()): Promise<number> {
+export function sweepIntakeForPull(scope: IntakeScope): Promise<number> {
   const key = `${scope.companyId}:${scope.storeId}`;
-  const last = pullSweeps.get(key);
-  if (last?.running) return last.running;
-  if (last && nowMs - last.at < PULL_SWEEP_GAP_MS) return Promise.resolve(0);
-  // The gap is counted from when the sweep STARTED, on the same clock the caller gave — a sweep that takes a few seconds does not push the next one further out.
-  const running = sweepIntake(scope).finally(() => pullSweeps.set(key, { at: nowMs, running: null }));
-  pullSweeps.set(key, { at: nowMs, running });
-  return running;
+  let seen = pullSeen.get(key);
+  if (!seen) {
+    seen = new Set<string>();
+    pullSeen.set(key, seen);
+  }
+  return sweepIntake(scope, new Date(), db, seen);
 }
 
 /**
  * One pass for one store. Returns how many flags it wrote. Never throws: the callers are a job and a pull, and a flag that could not be written must stop neither.
  */
-export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), client: Tx = db): Promise<number> {
+export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), client: Tx = db, seen?: Set<string>): Promise<number> {
   try {
     const sw = await intakeFilterSwitch(client, scope.companyId, now.getTime());
     if (!sw.enabled || !sw.enabledAt) return 0;
@@ -122,7 +122,13 @@ export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), cl
     });
 
     let written = 0;
+    // The pull's memory is bounded: a day's orders of one store are far under the cap, and a cleared memory only means one more look.
+    if (seen && seen.size > PULL_SEEN_CAP) seen.clear();
     for (const order of candidates) {
+      if (seen) {
+        if (seen.has(order.id)) continue;
+        seen.add(order.id);
+      }
       const done = new Set(order.activities.map((a) => a.action));
 
       if (!done.has(INTAKE_SUSPECT_ACTION) && !isValidPhoneFor(scope.countryCode, order.customer.rawPhone ?? '')) {

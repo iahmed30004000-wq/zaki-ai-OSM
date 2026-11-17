@@ -1715,12 +1715,6 @@ export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: str
 }
 
 /**
- * THE v2 PICK, ordinary mode only (the two named modes are the plain base order, which the code after it already is): the customer's promise · a FRESH new order (under
- * `QUEUE_PRIORITY.freshMinutes`) · a retry that has waited past `agingHours` · then the agent's lane — the backlog's turn takes the retry with the oldest due, then a postponed
- * order due, and falls back to a new order when none is due; every other turn takes the oldest new order. Null = «nothing for me»: the old order below decides.
- * Reads only the predicates the counters read, so the pile it draws from is the pile `waitingCount` shows.
- */
-/**
  * WHAT ONE PICK HAS ALREADY READ (perf, 17/11). The v2 pick and the old order after it ask the same two ranking scans — the promises and the retries by due, each up to
  * `RETRY_SCAN_PAGE` (2,000) orders — over the same rows, in the same transaction, at the same `now`, with nothing written between them. When the v2 pick answers «nothing for me»
  * (a night with no new order, a turn that is not the backlog's), the old order asked both a second time: four scans for one pull. The v2 pick leaves what it read here and the old
@@ -1731,6 +1725,12 @@ interface ScanMemo {
   retry?: { id: string; due: number } | null;
 }
 
+/**
+ * THE v2 PICK, ordinary mode only (the two named modes are the plain base order, which the code after it already is): the customer's promise · a FRESH new order (under
+ * `QUEUE_PRIORITY.freshMinutes`) · a retry that has waited past `agingHours` · then the agent's lane — the backlog's turn takes the retry with the oldest due, then a postponed
+ * order due, and falls back to a new order when none is due; every other turn takes the oldest new order. Null = «nothing for me»: the old order below decides.
+ * Reads only the predicates the counters read, so the pile it draws from is the pile `waitingCount` shows.
+ */
 async function pickByPriority(
   tx: Tx,
   scope: QueueScope,
