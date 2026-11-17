@@ -120,7 +120,7 @@ vi.mock('@/lib/db', () => {
     (!w.OR || w.OR.some((x: Row) => (x.productId ? o.productId === x.productId : productOf(o).includes(x.items.some.productId)))) &&
     (!w.activities ||
       s.orderActivities.some(
-        (a) => a.orderId === o.id && a.action === w.activities.some.action && String(a.metadata).includes(w.activities.some.metadata.contains)
+        (a) => a.orderId === o.id && a.action === w.activities.some.action && a.metadata === w.activities.some.metadata
       ));
   const orderView = (o: Row) => ({ ...o, abandonedCarts: s.carts.filter((c) => c.orderId === o.id).map((c) => ({ id: c.id })) });
 
@@ -338,6 +338,26 @@ describe('a cart with a name and a phone becomes ONE order in the queue', () => 
 
     const named = await upsertLandingCart('c1', cart({ customerName: 'سارة' }));
     expect(named.body.status).toBe('CONVERTED');
+    expect(autoOrders()).toHaveLength(1);
+  });
+
+  it('the engine throws AFTER the order was saved ⇒ that order is the cart’s, tied — never a second one', async () => {
+    h.spies.emitAppEvent.mockRejectedValueOnce(new Error('apps down'));
+    const r = await upsertLandingCart('c1', cart());
+    expect(r.body.status).toBe('CONVERTED');
+    expect(autoOrders()).toHaveLength(1);
+    expect(cartRow()).toMatchObject({ status: 'CONVERTED', orderId: autoOrders()[0].id });
+    expect(await convertWaitingCarts(new Date())).toEqual({ converted: 0, skipped: 0, tried: 0 });
+    expect(autoOrders()).toHaveLength(1);
+  });
+
+  it('the engine throws BEFORE anything was saved ⇒ the door still answers, the claim goes back, and the job makes it later', async () => {
+    h.spies.isBlocked.mockRejectedValueOnce(new Error('db hiccup'));
+    const r = await upsertLandingCart('c1', cart());
+    expect(r).toEqual({ status: 201, body: { id: cartRow().id, status: 'NEW' } });
+    expect(s.orders).toHaveLength(0);
+    expect(cartRow().autoOrderAt).toBeNull();
+    expect(await convertWaitingCarts(new Date())).toEqual({ converted: 1, skipped: 0, tried: 1 });
     expect(autoOrders()).toHaveLength(1);
   });
 

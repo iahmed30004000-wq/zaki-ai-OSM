@@ -151,13 +151,16 @@ async function tryCart(companyId: string, cartId: string, now: Date, switchOn?: 
   }
 }
 
-/** The order the engine made for this cart, found by the line it wrote in the order's own transaction. */
+/**
+ * The order the engine made for this cart, found by the line it wrote in the order's own transaction — matched whole
+ * (`public-order.ts` writes exactly `{ cartId }`), never as a search.
+ */
 async function orderMadeFor(companyId: string, cartId: string): Promise<{ id: string; orderNumber: string } | null> {
   return db.order.findFirst({
     where: {
       companyId,
       source: CART_ORDER_SOURCE,
-      activities: { some: { action: FROM_ABANDONED_CART_ACTION, metadata: { contains: cartId } } },
+      activities: { some: { action: FROM_ABANDONED_CART_ACTION, metadata: JSON.stringify({ cartId }) } },
     },
     select: { id: true, orderNumber: true },
   });
