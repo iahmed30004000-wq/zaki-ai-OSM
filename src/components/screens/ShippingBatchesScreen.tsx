@@ -272,6 +272,31 @@ export function ShippingBatchesScreen() {
   }
 
   /**
+   * An open batch that holds no order is taken away on the person's word (the owner, 17/11: BATCH-2026-0020). A trolley empties when
+   * its last parcel leaves it, and nothing removed the shell. The server removes it only if it is still «قيد التجميع» and still holds
+   * no order — a parcel that arrived meanwhile keeps it, and the answer says so.
+   */
+  async function removeEmpty(batch: Batch) {
+    const go = await confirm({
+      title: `نحذف ${batch.batchNumber}؟`,
+      body: 'الدفعة فاضية — ما فيها ولا طلب. بتنحذف، وأول شحنة جاية لنفس الشركة بتفتح دفعة جديدة.',
+      confirmLabel: 'احذف الدفعة',
+      tone: 'danger',
+    });
+    if (!go) return;
+    setBusy(batch.id);
+    try {
+      await apiJson(`/api/shipping-batches/${batch.id}`, { method: 'DELETE' });
+      toast.done(`انحذفت ${batch.batchNumber}`);
+      await load();
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر حذف الدفعة');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
    * Hand this batch's orders to the courier and take back their barcodes.
    *
    * Reported per order, because twenty orders where three fail is seventeen
@@ -790,12 +815,34 @@ export function ShippingBatchesScreen() {
                   </span>
                 )
               ) : null;
+            /* AN OPEN BATCH THAT HOLDS NO ORDER (a trolley empties when its last parcel leaves it): every press on it is greyed, so the
+               card says so in words and offers to take it away; the handover press, which can never answer an empty trolley, is not drawn. */
+            const emptyOpen = b.status === 'READY' && b._count.orders === 0;
+            const emptyNote = emptyOpen ? (
+              <div
+                role="status"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]"
+              >
+                <p className="min-w-0 flex-1">
+                  الدفعة فاضية — بتتعبّى بأول شحنة{b.provider ? ` لـ${b.provider.name}` : ''}. وإذا ما بدك إياها، احذفها.
+                </p>
+                {mayMove && (
+                  <button
+                    onClick={() => void removeEmpty(b)}
+                    disabled={busy === b.id}
+                    className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)] disabled:opacity-50"
+                  >
+                    احذف الدفعة
+                  </button>
+                )}
+              </div>
+            ) : null;
             const shipBtn =
-              b.status === 'READY' ? (
+              b.status === 'READY' && !emptyOpen ? (
                 <button
                   onClick={() => (phone ? void confirmShip(b) : setStatus(b, 'SHIPPED'))}
-                  disabled={busy === b.id || b._count.orders === 0}
-                  title={b._count.orders === 0 ? 'الدفعة فاضية — ما في طرد يتسلّم للشركة' : 'بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة'}
+                  disabled={busy === b.id}
+                  title="بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة"
                   className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium inline-flex items-center gap-1.5 disabled:opacity-50${wide}`}
                 >
                   <RiSendPlaneLine className="icon-mirror w-4 h-4" />
@@ -990,6 +1037,8 @@ export function ShippingBatchesScreen() {
                 {b.status === 'READY' && b.courierCityGap && (
                   <p className="text-xs font-bold text-[var(--sys-warning)]">{courierCityGapLine(b.courierCityGap)}</p>
                 )}
+
+                {emptyNote}
 
                 {phone ? (
                   /*
