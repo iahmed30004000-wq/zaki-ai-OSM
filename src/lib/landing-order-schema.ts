@@ -38,10 +38,24 @@ export interface OrderLocale {
    * every other door, which keeps asking for the city exactly as it did.
    */
   cityOptional?: boolean;
+  /**
+   * A BLANK ADDRESS IS AN ANSWER — for the order an abandoned cart becomes by itself, and nowhere else (the owner, 17/11).
+   *
+   * A cart is a visitor who typed a name and a phone and never pressed «اطلب», so there is no address to send. The
+   * order is taken without one and its history tells the team to ask for it on the confirmation call. An address that
+   * IS written keeps every rule it had. Set only by `takeCartOrder` (`v1/landing-door.ts`); a guard pins that.
+   */
+  addressOptional?: boolean;
 }
 
 /** The history row an order with no city carries. The timeline names it in Arabic (`order-timeline.ts`). */
 export const ARRIVED_WITHOUT_REGION_ACTION = 'ARRIVED_WITHOUT_REGION';
+
+/**
+ * The history row of an order an abandoned cart became by itself (the owner, 17/11): the customer never finished the
+ * form, so the address and the governorate are asked on the call. The timeline names it in Arabic (`order-timeline.ts`).
+ */
+export const FROM_ABANDONED_CART_ACTION = 'FROM_ABANDONED_CART';
 
 /** Matches a submitted city against the country's regions, ignoring case and spacing. */
 export function isKnownRegion(regions: string[], value: string): boolean {
@@ -62,6 +76,12 @@ export function buildPublicOrderSchema(locale: OrderLocale) {
       'يرجى اختيار المدينة من القائمة.'
     );
 
+  const address = z
+    .string({ message: 'يرجى إدخال العنوان.' })
+    .trim()
+    .min(5, 'يرجى إدخال العنوان بشكل أوضح.')
+    .max(200, 'العنوان طويل جدًا.');
+
   return z.object({
     full_name: z
       .string({ message: 'يرجى إدخال الاسم الكامل.' })
@@ -74,11 +94,19 @@ export function buildPublicOrderSchema(locale: OrderLocale) {
       .min(6, 'يرجى إدخال رقم هاتف صحيح.')
       .max(25, 'رقم الهاتف طويل جدًا.')
       .refine((p) => isValidPhoneFor(locale.countryCode, p), phoneErrorFor(locale.countryCode)),
-    address: z
-      .string({ message: 'يرجى إدخال العنوان.' })
-      .trim()
-      .min(5, 'يرجى إدخال العنوان بشكل أوضح.')
-      .max(200, 'العنوان طويل جدًا.'),
+    // Blank (missing, null, or only spaces) is '' when the door allows it (`addressOptional`); anything written keeps the rule.
+    address: locale.addressOptional
+      ? z.preprocess(
+          (v) => (v === undefined || v === null ? '' : typeof v === 'string' ? v.trim() : v),
+          z.string({ message: 'يرجى إدخال العنوان.' }).superRefine((v, ctx) => {
+            if (v === '') return;
+            const checked = address.safeParse(v);
+            if (!checked.success) {
+              ctx.addIssue({ code: 'custom', message: checked.error.issues[0]?.message ?? 'يرجى إدخال العنوان.' });
+            }
+          })
+        )
+      : address,
     // Blank (missing, null, or only spaces) is '' when the door allows it; anything written goes through `city` whole.
     city: locale.cityOptional
       ? z.preprocess(

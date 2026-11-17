@@ -19,6 +19,7 @@ import { flagRecentTwins } from './recent-twin-order';
 import { queueConversions } from './conversions/emit';
 import {
   ARRIVED_WITHOUT_REGION_ACTION,
+  FROM_ABANDONED_CART_ACTION,
   buildPublicOrderSchema,
   mapZodFieldErrors,
   ORDER_VALIDATION_ERROR_BODY,
@@ -278,6 +279,17 @@ export interface SellingSurface {
    * and keeps refusing a blank city.
    */
   cityOptional?: boolean;
+  /**
+   * THE ADDRESS MAY BE LEFT BLANK — set by the abandoned-cart order ONLY (`takeCartOrder` in `v1/landing-door.ts`; the
+   * owner, 17/11). A cart has a name and a phone and no address, because the visitor never reached «اطلب». An address
+   * that is written keeps every rule. Every other door leaves this out and keeps refusing a blank address.
+   */
+  addressOptional?: boolean;
+  /**
+   * THE CART THIS ORDER CAME OUT OF, when an abandoned cart became an order by itself. The order's history then says so
+   * (`FROM_ABANDONED_CART_ACTION`), inside the order's own transaction. Absent at every visitor's door.
+   */
+  abandonedCartId?: string;
 }
 
 export type IntakeResult =
@@ -337,6 +349,7 @@ async function takeOrder(
     countryCode: store.country.code,
     regions: regions.map((r) => r.name),
     cityOptional: surface.cityOptional === true,
+    addressOptional: surface.addressOptional === true,
   }).safeParse(raw);
   if (!parsed.success) {
     // Safe Arabic field errors only — no Zod internals leak to the visitor.
@@ -655,7 +668,8 @@ async function takeOrder(
             // WHERE THIS PARCEL GOES, as the visitor typed it. The customer row keeps one address (the first they
             // ever gave), and a returning customer who types a new street used to have the waybill printed with the
             // old one. The order keeps its own; readers take it before the customer's.
-            deliveryAddress: v.address,
+            // Blank only for an abandoned cart's order (`addressOptional`): nothing, never an empty string.
+            deliveryAddress: v.address || null,
           },
         });
 
@@ -732,6 +746,23 @@ async function takeOrder(
           userId: null,
           action: ARRIVED_WITHOUT_REGION_ACTION,
           metadata: JSON.stringify({ source: surface.source }),
+        },
+      });
+    }
+
+    /*
+     * FROM AN ABANDONED CART, SAID ON THE ORDER ITSELF (the owner, 17/11). The customer typed a name and a phone and
+     * never pressed «اطلب»: whoever calls must confirm the address and the governorate with him. The cart's id is the
+     * key that makes a second automatic order for the same cart findable (`abandoned-cart-orders.ts`).
+     */
+    if (surface.abandonedCartId) {
+      await tx.orderActivity.create({
+        data: {
+          companyId,
+          orderId: created.id,
+          userId: null,
+          action: FROM_ABANDONED_CART_ACTION,
+          metadata: JSON.stringify({ cartId: surface.abandonedCartId }),
         },
       });
     }

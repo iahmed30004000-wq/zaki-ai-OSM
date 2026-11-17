@@ -23,6 +23,9 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => h.logAudit(...a) }));
+// A cart with a name now becomes an order by itself (the owner, 17/11). That step is held by
+// `a-cart-with-a-name-becomes-an-order.test.ts`; here it makes nothing, so this file keeps holding the cart door alone.
+vi.mock('@/lib/abandoned-cart-orders', () => ({ autoOrderForCart: async () => ({ kind: 'NONE' }) }));
 
 vi.mock('@/lib/db', () => {
   const s = h.state;

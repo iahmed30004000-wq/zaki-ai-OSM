@@ -87,6 +87,9 @@ describe('who may write the cancelled end state', () => {
       'app/api/orders/[id]/contact-attempts/route.ts',
       'app/api/orders/[id]/route.ts',
       'app/api/orders/[id]/shipping/route.ts',
+      // An abandoned cart's automatic order, ended when the customer then orders by himself (the owner, 17/11): the desk's
+      // «رفض» as a duplicate, «الزبون طلب بنفسه», through the helper.
+      'lib/cart-order-stand-down.ts',
       // The landing confirmation chat's «cancel» (contract oms-lp.v1 §8): the agent's «رفض», through the helper.
       'lib/v1/landing-chat.ts',
     ]);
