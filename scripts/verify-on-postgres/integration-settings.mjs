@@ -53,15 +53,15 @@ try {
   for (const n of NAMES) delete process.env[n];
   forgetIntegrationSettings();
 
-  const TOKEN = 'EAAGscratchtoken987654321';
+  const TOKEN = 'test-token-fixture-987654321';
   const saved = await saveSetting('WHATSAPP_ACCESS_TOKEN', TOKEN, null);
   check('الحفظ نجح وبيرجّع آخر 4 بس', saved.ok === true && saved.hint === '4321', JSON.stringify(saved));
   const raw = await probe.$queryRawUnsafe(`SELECT "valueEncrypted", "hint" FROM integration_secrets WHERE "key" = 'WHATSAPP_ACCESS_TOKEN'`);
-  check('القيمة مشفّرة بالعمود نفسو: العمود ما فيه القيمة، وآخر 4 بس بالواضح', raw.length === 1 && !String(raw[0].valueEncrypted).includes(TOKEN) && !String(raw[0].valueEncrypted).includes('scratchtoken') && raw[0].hint === '4321');
+  check('القيمة مشفّرة بالعمود نفسو: العمود ما فيه القيمة، وآخر 4 بس بالواضح', raw.length === 1 && !String(raw[0].valueEncrypted).includes(TOKEN) && !String(raw[0].valueEncrypted).includes('token-fixture') && raw[0].hint === '4321');
   check('وبتنقرا مرة تانية متل ما انحفظت', (await getSetting('WHATSAPP_ACCESS_TOKEN')) === TOKEN);
 
   // a second save replaces the first; the unique key refuses a second raw row
-  await saveSetting('WHATSAPP_ACCESS_TOKEN', 'EAAGsecondtoken00001111', null);
+  await saveSetting('WHATSAPP_ACCESS_TOKEN', 'test-second-token-00001111', null);
   const rows = await probe.integrationSecret.count({ where: { key: 'WHATSAPP_ACCESS_TOKEN' } });
   check('حفظة تانية بتبدّل الأولى: صف واحد', rows === 1, `${rows} rows`);
   let refused = false;
@@ -73,26 +73,26 @@ try {
   check('القيد الفريد بالجدول: بيرفض صف تاني لنفس الاسم', refused);
 
   // the site wins over the environment, and clearing lets the environment answer
-  process.env.TELEGRAM_BOT_TOKEN = 'env-bot-token-123456';
-  check('بدون حفظ بالموقع: البيئة بتجاوب (متل ما كانت)', (await getSetting('TELEGRAM_BOT_TOKEN')) === 'env-bot-token-123456');
-  await saveSetting('TELEGRAM_BOT_TOKEN', 'site-bot-token-654321', null);
-  check('المحفوظ بالموقع بيغلب البيئة', (await getSetting('TELEGRAM_BOT_TOKEN')) === 'site-bot-token-654321');
-  check('المسح بيرجّع البيئة تجاوب', (await clearSetting('TELEGRAM_BOT_TOKEN')) === true && (await getSetting('TELEGRAM_BOT_TOKEN')) === 'env-bot-token-123456');
+  process.env.TELEGRAM_BOT_TOKEN = 'test-env-bot-token-123456';
+  check('بدون حفظ بالموقع: البيئة بتجاوب (متل ما كانت)', (await getSetting('TELEGRAM_BOT_TOKEN')) === 'test-env-bot-token-123456');
+  await saveSetting('TELEGRAM_BOT_TOKEN', 'test-site-bot-token-654321', null);
+  check('المحفوظ بالموقع بيغلب البيئة', (await getSetting('TELEGRAM_BOT_TOKEN')) === 'test-site-bot-token-654321');
+  check('المسح بيرجّع البيئة تجاوب', (await clearSetting('TELEGRAM_BOT_TOKEN')) === true && (await getSetting('TELEGRAM_BOT_TOKEN')) === 'test-env-bot-token-123456');
   delete process.env.TELEGRAM_BOT_TOKEN;
 
   // the screen's view carries no value
   const status = await settingsStatus();
   const text = JSON.stringify(status);
-  check('الحالة بتذكر العشرة وما فيها ولا قيمة', status.length === 10 && !text.includes('EAAGsecondtoken') && !text.includes('valueEncrypted'), String(status.length));
+  check('الحالة بتذكر العشرة وما فيها ولا قيمة', status.length === 10 && !text.includes('test-second-token') && !text.includes('valueEncrypted'), String(status.length));
   check('وبتقول المصدر وآخر 4', status.find((s) => s.key === 'WHATSAPP_ACCESS_TOKEN')?.source === 'site' && status.find((s) => s.key === 'WHATSAPP_ACCESS_TOKEN')?.hint === '1111' && status.find((s) => s.key === 'WHATSAPP_VERIFY_TOKEN')?.source === 'none');
 
   // webhooks verified with what the site holds, environment empty
-  await saveSetting('WHATSAPP_APP_SECRET', 'scratch-app-secret-0001', null);
-  await saveSetting('TELEGRAM_WEBHOOK_SECRET', 'scratch-hook-secret-0001', null);
+  await saveSetting('WHATSAPP_APP_SECRET', 'test-app-secret-0001', null);
+  await saveSetting('TELEGRAM_WEBHOOK_SECRET', 'test-hook-secret-0001', null);
   const body = '{"object":"whatsapp_business_account"}';
-  const sig = 'sha256=' + createHmac('sha256', 'scratch-app-secret-0001').update(body, 'utf8').digest('hex');
+  const sig = 'sha256=' + createHmac('sha256', 'test-app-secret-0001').update(body, 'utf8').digest('hex');
   check('توقيع ميتا بيتحقق بالسرّ المحفوظ بالجدول، والتالف لأ', (await verifyMetaSignature(body, sig)) === true && (await verifyMetaSignature(body + ' ', sig)) === false);
-  check('سرّ تيليجرام بيتحقق بالمحفوظ بالجدول، والغلط لأ', (await verifyTelegramSecret('scratch-hook-secret-0001')) === true && (await verifyTelegramSecret('scratch-hook-secret-0002')) === false);
+  check('سرّ تيليجرام بيتحقق بالمحفوظ بالجدول، والغلط لأ', (await verifyTelegramSecret('test-hook-secret-0001')) === true && (await verifyTelegramSecret('test-hook-secret-0002')) === false);
 
   // refusals write nothing
   const before = await probe.integrationSecret.count({ where: { key: { in: NAMES } } });
