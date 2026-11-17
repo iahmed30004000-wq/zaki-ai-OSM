@@ -32,7 +32,7 @@ describe('the card', () => {
   it('says it changes an estimate and nothing in the commission rules, the accrual or the payout; Arabic, Western digits', async () => {
     const { container } = await loaded();
     const text = container.textContent ?? '';
-    expect(text).toContain('هاد تقدير بس');
+    expect(text).toContain('هاد تقدير للسكور، العمولة الحقيقية فوق');
     expect(text).toContain('ما بيغيّر قواعد العمولة ولا المحسوب ولا المصروف');
     expect(text).not.toMatch(/[٠-٩]/);
   });
