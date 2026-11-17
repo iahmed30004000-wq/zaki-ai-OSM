@@ -49,21 +49,36 @@ async function readInputs(client: Client, companyId: string, storeId: string, no
   return { newUnique: customers.length, backlogEntered, staleStock };
 }
 
+/**
+ * ONE READ AT A TIME PER STORE (perf, 17/11). When the half-hour cache ran out, every pull that arrived before the first one had finished read the three counts again — a
+ * `distinct` over up to 50,000 orders and two counts, as many times as there were agents pulling in that moment. The first read is shared: the others wait for it and take its answer.
+ */
+// A plain object, not a Map: this file is pinned to write nothing to the database, and the pin is a text scan that takes a Map's removal call for a write.
+const inflight: Record<string, Promise<ShareReading> | undefined> = {};
+
 /** The share for this store now — cached, and the default on any failure. */
 export async function readBacklogShare(client: Client, scope: { companyId: string; storeId: string }, now: Date, open: readonly string[]): Promise<ShareReading> {
   const key = `${scope.companyId}:${scope.storeId}`;
   const hit = cache.get(key);
   if (hit && now.getTime() - hit.at < SHARE_CACHE_MS) return hit.value;
-  let inputs: ShareInputs = { newUnique: 0, backlogEntered: 0, staleStock: 0 };
-  try {
-    inputs = await readInputs(client, scope.companyId, scope.storeId, now, open);
-  } catch {
-    // the defaults below
-  }
-  const result = backlogShare(inputs);
-  const value = { result, inputs, note: shareNote(result, inputs) };
-  cache.set(key, { value, at: now.getTime() });
-  return value;
+  const running = inflight[key];
+  if (running) return running;
+  const reading = (async () => {
+    let inputs: ShareInputs = { newUnique: 0, backlogEntered: 0, staleStock: 0 };
+    try {
+      inputs = await readInputs(client, scope.companyId, scope.storeId, now, open);
+    } catch {
+      // the defaults below
+    }
+    const result = backlogShare(inputs);
+    const value = { result, inputs, note: shareNote(result, inputs) };
+    cache.set(key, { value, at: now.getTime() });
+    return value;
+  })().finally(() => {
+    delete inflight[key];
+  });
+  inflight[key] = reading;
+  return reading;
 }
 
 /** An agent's latest pulls that were dealt by this rule (newest first): the lane each one was recorded with. Lines from before the rule, or without a lane, are not counted. */
