@@ -56,25 +56,11 @@ export async function syncDailyAdSpend(scope: { companyId: string; storeId: stri
       const until = adDate(now);
 
       const got = await adapter.fetchDailyAdSpend(readCredentials(account.tokenEncrypted), account.accountId, since, until);
-      const data = got
+      const usable = got
         .filter((r) => /^[A-Z]{3}$/.test(r.currency) && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && Number.isFinite(r.spend))
         // One row per (day, ad): Meta does not repeat one, but the unique key would turn a repeat into a failed sync.
-        .filter((r, i, all) => all.findIndex((x) => x.date === r.date && x.adId === r.adId) === i)
-        .map((r) => ({
-          companyId: scope.companyId,
-          storeId: account.storeId,
-          adAccountId: account.id,
-          date: new Date(`${r.date}T00:00:00.000Z`),
-          adId: r.adId,
-          adsetId: r.adsetId,
-          campaignId: r.campaignId,
-          spend: Number(r.spend.toFixed(3)),
-          currency: r.currency,
-          impressions: r.impressions,
-          linkClicks: r.linkClicks,
-          pulledAt: now,
-        }));
-      if (data.length === 0) continue;
+        .filter((r, i, all) => all.findIndex((x) => x.date === r.date && x.adId === r.adId) === i);
+      if (usable.length === 0) continue;
 
       await db.$transaction([
         db.adSpendDay.deleteMany({
@@ -84,9 +70,26 @@ export async function syncDailyAdSpend(scope: { companyId: string; storeId: stri
             date: { gte: new Date(`${since}T00:00:00.000Z`), lte: new Date(`${until}T00:00:00.000Z`) },
           },
         }),
-        db.adSpendDay.createMany({ data, skipDuplicates: true }),
+        // The rows are built INSIDE the call on purpose: the company and the store are written here, in plain sight (the guards that read writers look at this text).
+        db.adSpendDay.createMany({
+          data: usable.map((r) => ({
+            companyId: scope.companyId,
+            storeId: account.storeId,
+            adAccountId: account.id,
+            date: new Date(`${r.date}T00:00:00.000Z`),
+            adId: r.adId,
+            adsetId: r.adsetId,
+            campaignId: r.campaignId,
+            spend: Number(r.spend.toFixed(3)),
+            currency: r.currency,
+            impressions: r.impressions,
+            linkClicks: r.linkClicks,
+            pulledAt: now,
+          })),
+          skipDuplicates: true,
+        }),
       ]);
-      rows += data.length;
+      rows += usable.length;
     } catch (e) {
       errors.push(`${label}: ${adapter.explainError(e)}`);
     }
