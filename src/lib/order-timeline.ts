@@ -185,6 +185,9 @@ const ACTIVITY_AR: Record<string, string> = {
   LANDING_CHAT_ADDRESS_CHANGED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون غيّر العنوان',
   LANDING_CHAT_OFFER_CHANGED: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون غيّر العرض',
   LANDING_CHAT_FOLLOW_UP: 'مساعد الطلبات الآلي (صفحة الهبوط): الزبون طلب اتصالًا أو موظفًا',
+  // The replies system's chat edits and cancels an order it took (`v1/order-amend.ts`): the difference is in the line, in words.
+  EDITED_FROM_CHAT: 'تعديل من المحادثة (نظام الردود): الزبون عدّل طلبه',
+  CANCELLED_FROM_CHAT: 'إلغاء من المحادثة (نظام الردود): الزبون تراجع عن الطلب',
   ORDER_UPDATED: 'تعديل بيانات الطلب',
   // What the customer added on the thank-you screen: the same words the order dialog and the confirmation card use.
   UPSELL_ADDED: POST_ORDER_ADDITION_AR,
@@ -258,6 +261,8 @@ const METADATA_AR: Record<string, string> = {
   feeBefore: 'الأجرة قبل', feeAfter: 'الأجرة بعد', feeReason: 'السبب',
   // An approved edit of the lines that could not move the estimated cost, because it was not known.
   costNote: 'التكلفة المقدَّرة',
+  // «تعديل من المحادثة»: the difference in words, and the reason the system gave (`v1/order-amend.ts`).
+  diff: 'التعديل', amendReason: 'سبب التعديل',
   // The addition after the order: what was added, how many, for how much, from which offer.
   product: 'المنتج', quantity: 'الكمية', total: 'المجموع', offerName: 'العرض', landingPage: 'الصفحة',
   // The confirmed orders she was told about when she confirmed past «الزبون عنده طلب مؤكَّد بنفس المنتج» (a list of numbers).

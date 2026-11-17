@@ -92,6 +92,8 @@ describe('who may write the cancelled end state', () => {
       'lib/cart-order-stand-down.ts',
       // The landing confirmation chat's «cancel» (contract oms-lp.v1 §8): the agent's «رفض», through the helper.
       'lib/v1/landing-chat.ts',
+      // The replies system's chat «cancel» at `/api/v1/orders/{id}/cancel` (18/11): the same «رفض — غيّر رأيه», through the helper.
+      'lib/v1/order-amend.ts',
     ]);
   });
 });

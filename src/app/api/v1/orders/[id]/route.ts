@@ -2,11 +2,12 @@ import { db } from '@/lib/db';
 import { requireSystemToken } from '@/lib/v1/system-token';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import { isoWithOffset } from '@/lib/v1/shape';
+import { orderEditable } from '@/lib/order-editable';
 
 /**
  * GET /api/v1/orders/{id} — «where has this got to?»
  *
- * Four fields and no more: the number, the two statuses that move, and when
+ * Five fields and no more: the number, the two statuses that move, whether it can still be amended, and when
  * they last moved. The calling system is following up a conversation, not
  * running a dashboard — and a status read is the one call a replies system
  * makes most often, so it stays one row and one query.
@@ -38,6 +39,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         orderNumber: true,
         confirmationStatus: true,
         shippingStatus: true,
+        shippingBatchId: true,
+        trackingNumber: true,
+        labelPrintedAt: true,
         updatedAt: true,
         store: { select: { country: { select: { timezone: true } } } },
       },
@@ -51,6 +55,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       order_number: order.orderNumber,
       status: order.confirmationStatus,
       shipping_status: order.shippingStatus,
+      // Whether the replies system may still amend or cancel it — the one answer the landing chat asks too (`order-editable.ts`), so
+      // the customer is told the truth without an attempt. A state, not a permission: whose order it is, is the write's own question.
+      editable: orderEditable(order),
       // With the offset, in the zone the order happened in — «ISO 8601
       // بإزاحة المنطقة». A bare `Z` reads three hours early to anybody in
       // Amman putting two logs side by side.
