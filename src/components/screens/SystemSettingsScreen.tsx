@@ -13,7 +13,6 @@ import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCa
 import { CallProofCard } from '@/components/settings/CallProofCard';
 import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
 import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
-import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
 import { QueueModesCard } from '@/components/settings/QueueModesCard';
@@ -165,7 +164,6 @@ export function SystemSettingsScreen() {
       <CallProofCard />
       <IntakeFilterCard />
       <QueuePriorityCard />
-      <AgentCommissionCard />
       <WinbackV2Card />
       <LeadsV2Card />
       <QueueModesCard />

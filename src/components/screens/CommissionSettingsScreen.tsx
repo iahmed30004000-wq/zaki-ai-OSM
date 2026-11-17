@@ -7,6 +7,7 @@ import { ASSIGNABLE_ROLES, ROLE_LABELS } from '@/types/auth';
 import { PeriodProgress } from '@/components/screens/commission/PeriodProgress';
 import { FairnessPanel, type FairnessData } from '@/components/screens/commission/FairnessPanel';
 import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import {
   COMMISSION_METRICS, COMMISSION_TYPES, METRIC_LABEL_AR, PERIOD_LABEL_AR, TYPE_LABEL_AR,
   isTarget, targetGoal, tiersProblem,
@@ -377,6 +378,10 @@ export function CommissionSettingsScreen() {
           />
         )}
       </div>
+
+      {/* «حاسبة عمولة الموظفات (تقدير)» — moved here from «إعدادات النظام» (the owner, 17/11): everything about commission in one place. It is an ESTIMATE for the
+          performance score; the real commission is the rules and the entries above. The card says so itself, and draws nothing for who cannot read the settings. */}
+      <AgentCommissionCard />
 
       {paying && (
         <PayoutDialog
