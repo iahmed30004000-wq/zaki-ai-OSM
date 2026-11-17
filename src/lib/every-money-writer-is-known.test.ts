@@ -100,6 +100,8 @@ const WRITERS = [
    * disagree. It is on this list so that the day somebody «simplifies» it
    * by trusting the caller's figure, the guard says so.
    */
+  // The replies system's amend (18/11): the same pricing — `priceLines` and `computeCod`, the catalogue's figures, never the caller's, never a discount or a fee.
+  'src/lib/v1/order-amend.ts',
   'src/lib/v1/order-intake.ts',
   'src/app/api/ops/shipments/route.ts',
   /*

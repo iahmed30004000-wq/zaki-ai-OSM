@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pager } from '@/components/ui/Pager';
-import { DateRange, type Range } from '@/components/ui/DateRange';
+import { DateRange, todayRange, type Range } from '@/components/ui/DateRange';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { useMayOpen } from '@/hooks/useMayOpen';
@@ -53,14 +53,13 @@ const read = (body: unknown): PagedRead<Row, Facts> => {
   return { rows: b.logs, pagination: b.pagination, extra: b.facts };
 };
 
-const NO_RANGE: Range = { from: '', to: '' };
-
 export function AuditScreen() {
   const mayOpen = useMayOpen();
   const [search, setSearch] = useState('');
   const [user, setUser] = useState('all');
   const [entity, setEntity] = useState('all');
-  const [range, setRange] = useState<Range>(NO_RANGE);
+  // Opens on TODAY (the owner, 17/11): the whole log from the first day was the slow way in. «كل المدة» is one press on the cross.
+  const [range, setRange] = useState<Range>(todayRange);
 
   const list = usePagedList<Row, Facts>({
     url: '/api/audit-logs',
@@ -68,13 +67,15 @@ export function AuditScreen() {
     read,
   });
 
-  const spanChosen = Boolean(range.from || range.to);
+  // Today is where it opens, so it is not a «choice»: only a span other than today counts as one.
+  const today = todayRange();
+  const spanChosen = !(range.from === today.from && range.to === today.to);
   const activeCount = [user, entity].filter((v) => v !== 'all').length + (search.trim() ? 1 : 0) + (spanChosen ? 1 : 0);
   const reset = () => {
     setSearch('');
     setUser('all');
     setEntity('all');
-    setRange(NO_RANGE);
+    setRange(todayRange());
   };
 
   const facts = list.extra;
@@ -187,11 +188,11 @@ export function AuditScreen() {
               ]}
               empty={
                 activeCount > 0 ? (
-                  <EmptyState title="لا أحداث بهذه الاختيارات" why="جرّب كلمة أقصر أو مدة أوسع، أو اضغط «إعادة تعيين» لترى السجلّ كلّه." />
+                  <EmptyState title="لا أحداث بهذه الاختيارات" why="جرّب كلمة أقصر أو مدة أوسع، أو اضغط «إعادة تعيين» للرجوع لليوم." />
                 ) : (
                   <EmptyState
-                    title="لا أحداث في السجلّ بعد"
-                    why="السجلّ يكتب نفسه: كلُّ تعديلٍ على طلبٍ أو مالٍ أو صلاحية يترك أثراً هنا. فراغُه يعني أنّ لا شيء تغيّر منذ بدء التسجيل."
+                    title="لا أحداث اليوم"
+                    why="السجلّ يكتب نفسه: كلُّ تعديلٍ على طلبٍ أو مالٍ أو صلاحية يترك أثراً هنا. لم يتغيّر شيء اليوم — اختر مدة أوسع من خانة التاريخ لترى ما قبله."
                   />
                 )
               }

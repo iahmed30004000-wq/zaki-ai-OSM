@@ -172,12 +172,15 @@ describe('an order from another company', () => {
 });
 
 describe('a status read', () => {
-  it('says the number, the two statuses that move, and when — and nothing else', async () => {
+  it('says the number, the two statuses that move, whether it is still amendable, and when — and nothing else', async () => {
     h.db.order.findFirst.mockResolvedValue({
       id: 'o1',
       orderNumber: 'SY-2026-0148',
       confirmationStatus: 'CONFIRMED',
       shippingStatus: 'SHIPPED',
+      shippingBatchId: 'b1',
+      trackingNumber: 'T1',
+      labelPrintedAt: null,
       updatedAt: new Date('2026-10-09T17:14:00.000Z'),
       store: { country: { timezone: 'Asia/Damascus' } },
     });
@@ -186,6 +189,7 @@ describe('a status read', () => {
     });
     const answer = await res.json();
     expect(Object.keys(answer).sort()).toEqual([
+      'editable',
       'order_id',
       'order_number',
       'shipping_status',

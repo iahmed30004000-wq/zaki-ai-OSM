@@ -14,6 +14,7 @@ import { routeLabel } from '@/lib/route-registry';
 // its own with `format(..., 'MMM d, yyyy')`, printing «Sep 29, 2026» down an
 // Arabic column in an Arabic table.
 import { arDate } from '@/lib/format';
+import { DateRange, todayRange, type Range } from '@/components/ui/DateRange';
 import { apiJson } from '@/lib/api-client';
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -215,6 +216,8 @@ export function FinanceProfitScreen() {
   // Per-product profit, from the endpoint that had no screen.
   const [profitability, setProfitability] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
+  // Opens on TODAY (the owner, 17/11). The figures below are of this span only; clearing it brings back «since the beginning».
+  const [range, setRange] = useState<Range>(todayRange);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
 
   // Expense Form State
@@ -237,7 +240,8 @@ export function FinanceProfitScreen() {
         .then((r) => (r.ok ? r.json() : { products: [] }))
         .then((d) => setProfitability(d.products ?? d ?? []))
         .catch(() => setProfitability([]));
-      const res = await fetch('/api/finance');
+      const span = range.from && range.to ? `?from=${range.from}&to=${range.to}` : '';
+      const res = await fetch(`/api/finance${span}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -250,7 +254,7 @@ export function FinanceProfitScreen() {
   };
 
   // A screen left open stays true: it reads again when the person comes back to it (and on first open).
-  useLiveRefresh(loadFinance);
+  useLiveRefresh(loadFinance, { key: `${range.from}|${range.to}` });
 
   /** The wallet the money leaves, and what the server said if it refused. */
   const [walletId, setWalletId] = useState('');
@@ -352,6 +356,15 @@ export function FinanceProfitScreen() {
           </Button></>
             }
           />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-56">
+            <DateRange value={range} onChange={setRange} label="منذ البداية" />
+          </div>
+          <p className="text-xs text-[var(--sys-muted)]">
+            {range.from && range.to ? 'الأرقام للمدة المختارة: الموصَّل فيها، ومصاريفها.' : 'الأرقام منذ البداية — كل الموصَّل وكل المصاريف.'}
+          </p>
+        </div>
 
         {/* Real Profit KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

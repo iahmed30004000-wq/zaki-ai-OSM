@@ -302,6 +302,8 @@ describe('4 — every door that announces a new order or a decision names the or
         // The landing confirmation chat's confirm and cancel (contract oms-lp.v1 §8): the agent's two notices.
         'lib/v1/landing-chat.ts',
         'lib/v1/landing-chat.ts',
+        // The replies system's chat cancel (`/api/v1/orders/{id}/cancel`): the same «رفض», announced to the same people.
+        'lib/v1/order-amend.ts',
         'app/api/orders/[id]/route.ts',
         'app/api/orders/[id]/route.ts',
         'app/api/orders/ai-intake/route.ts',
