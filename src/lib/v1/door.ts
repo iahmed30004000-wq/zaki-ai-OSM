@@ -53,6 +53,10 @@ export const V1_CODE = {
   ITEMS_SPAN_STORES: 'ITEMS_SPAN_STORES',
   /** The phone is not a valid number for the store's country. */
   INVALID_PHONE: 'INVALID_PHONE',
+  /** The order is confirmed, ended or on a shipment: no machine edits or cancels it any more (`order-editable.ts`). */
+  NOT_EDITABLE: 'NOT_EDITABLE',
+  /** The phone an amend asked for already belongs to another customer of the store. */
+  DUPLICATE_PHONE: 'DUPLICATE_PHONE',
   /** The order, or whatever was asked for, is not this company's. */
   NOT_FOUND: 'NOT_FOUND',
   /** Anything this door did not expect. Never carries an internal message. */

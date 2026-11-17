@@ -9,6 +9,7 @@ import { needsRegionFirst } from '../confirmation-queue';
 import { TwinConfirmedRefusal, guardConfirmAgainstTwins } from '../confirmed-twin';
 import { reserveOrderLines } from '../reservation';
 import { endOrder, type EndOutcome } from '../order-cancel';
+import { ENDED, onShipment, orderEditable } from '../order-editable';
 import { emitAppEvent } from '../apps/events';
 import { queueConversions } from '../conversions/emit';
 import { logAudit } from '../audit';
@@ -117,24 +118,7 @@ const CHAT_SELECT = {
 } as const;
 type ChatRow = Prisma.OrderGetPayload<{ select: typeof CHAT_SELECT }>;
 
-const ENDED: readonly string[] = ['REJECTED', 'CANCELLED'];
-const DECIDED: readonly string[] = ['CONFIRMED', ...ENDED];
-
-/** On a trolley, labelled, barcoded or past «not ready»: the parcel's life has begun, and the chat no longer edits it. */
-function onShipment(o: { shippingStatus: string; shippingBatchId: string | null; trackingNumber: string | null; labelPrintedAt: Date | null }) {
-  return !!o.shippingBatchId || !!o.trackingNumber || !!o.labelPrintedAt || o.shippingStatus !== 'NOT_READY';
-}
-
-/** «editable»: not confirmed, not rejected, not cancelled, and not on a shipment. */
-export function chatEditable(o: {
-  confirmationStatus: string;
-  shippingStatus: string;
-  shippingBatchId: string | null;
-  trackingNumber: string | null;
-  labelPrintedAt: Date | null;
-}): boolean {
-  return !DECIDED.includes(o.confirmationStatus) && !onShipment(o);
-}
+// «editable», «on a shipment» and «ended» are `order-editable.ts`'s — the replies system's door asks the very same question.
 
 /** Placed at the landing door: the landing source, and no landing-page row of this product (that page lives elsewhere). */
 function fromTheLandingDoor(o: { source: string; landingPageId: string | null }) {
@@ -169,7 +153,7 @@ async function viewOf(companyId: string, o: ChatRow) {
     orderNumber: o.orderNumber,
     createdAt: o.createdAt.toISOString(),
     confirmationStatus: o.confirmationStatus,
-    editable: chatEditable(o),
+    editable: orderEditable(o),
     storeName: o.store?.name ?? figures.storeName,
     currency: o.currency,
     minorUnit: figures.minorUnit,
@@ -215,7 +199,7 @@ async function freshView(companyId: string, orderId: string) {
  * the Telegram door does for its status log — the company's active administrator is written there, and the assistant's
  * name heads the line's note. Never a client-supplied identity.
  */
-async function bookkeepingActor(companyId: string): Promise<{ id: string; role: string }> {
+export async function bookkeepingActor(companyId: string): Promise<{ id: string; role: string }> {
   const admin =
     (await db.user.findFirst({ where: { companyId, role: 'COMPANY_ADMIN', status: 'ACTIVE' }, select: { id: true, role: true } })) ??
     (await db.user.findFirst({ where: { companyId, role: 'SUPER_ADMIN', status: 'ACTIVE' }, select: { id: true, role: true } }));
@@ -227,7 +211,7 @@ async function bookkeepingActor(companyId: string): Promise<{ id: string; role: 
 const said = (words: string) => `${CHAT_ACTOR_AR}: ${words}`.slice(0, 2000);
 
 /** The contact attempt the agent's screen records before every decision — here, by the chat. */
-async function recordAttempt(
+export async function recordAttempt(
   tx: Prisma.TransactionClient,
   a: { companyId: string; orderId: string; actor: { id: string; role: string }; result: 'CONFIRMED' | 'REJECTED' | 'CALLBACK_REQUESTED'; note: string; nextFollowUpAt?: Date | null }
 ) {
@@ -259,7 +243,7 @@ function chatLine(tx: Prisma.TransactionClient, companyId: string, orderId: stri
 }
 
 /** A pending follow-up is resolved by a decision, as at the agent's door — by nobody on the staff. */
-function resolvesFollowUp(o: { nextFollowUpAt: Date | null; followUpStatus: string | null }, now: Date) {
+export function resolvesFollowUp(o: { nextFollowUpAt: Date | null; followUpStatus: string | null }, now: Date) {
   return o.nextFollowUpAt && (!o.followUpStatus || o.followUpStatus === 'SCHEDULED')
     ? { followUpStatus: 'COMPLETED', followUpResolvedAt: now, followUpResolvedById: null }
     : {};
@@ -508,7 +492,7 @@ export async function changeAddressFromChat(
   const found = await orderOfToken(companyId, orderNumber, input.token, now);
   if (!found.ok) return found;
   const o = found.order;
-  if (!chatEditable(o)) return NOT_EDITABLE();
+  if (!orderEditable(o)) return NOT_EDITABLE();
 
   // A city the courier's fee table knows, by the matcher every intake door uses — or the same refusal the quote gives.
   const countryId = o.countryId ?? o.store?.countryId ?? null;
@@ -563,7 +547,7 @@ export async function changeOfferFromChat(
   const found = await orderOfToken(companyId, orderNumber, input.token, now);
   if (!found.ok) return found;
   const o = found.order;
-  if (!chatEditable(o)) return NOT_EDITABLE();
+  if (!orderEditable(o)) return NOT_EDITABLE();
 
   // The offer it already has: nothing to write.
   if (o.offerId === input.offerId) {
@@ -577,7 +561,7 @@ export async function changeOfferFromChat(
     o.id,
     input.offerId,
     {
-      blocked: async (row) => (chatEditable(row) && lineUntouched(row) ? null : 'NOT_EDITABLE'),
+      blocked: async (row) => (orderEditable(row) && lineUntouched(row) ? null : 'NOT_EDITABLE'),
       pick: (offers, _current, offerId) => offers.find((f) => f.id === offerId) ?? null,
       action: CHAT_ACTION.OFFER,
       by: CHAT_ACTOR_AR,

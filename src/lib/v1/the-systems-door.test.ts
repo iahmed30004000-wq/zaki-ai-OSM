@@ -109,6 +109,9 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
       'src/app/api/v1/landing/products/[id]/route.ts',
       'src/app/api/v1/landing/products/route.ts',
       'src/app/api/v1/landing/quote/route.ts',
+      // The replies system's two (18/11): amend and cancel an order it created — `the-companion-doors.test.ts`.
+      'src/app/api/v1/orders/[id]/amend/route.ts',
+      'src/app/api/v1/orders/[id]/cancel/route.ts',
       'src/app/api/v1/orders/[id]/notes/route.ts',
       'src/app/api/v1/orders/[id]/route.ts',
       'src/app/api/v1/orders/attribution/route.ts',
@@ -121,17 +124,20 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
     expect(handlers().length).toBeGreaterThanOrEqual(5);
   });
 
-  it('and the five replies scopes, plus the media buyer’s two read-only ones, and not an eighth', () => {
+  it('and the replies scopes (five, and the two of 18/11), plus the media buyer’s read-only ones, and not one more', () => {
     // «صلاحيات توكن الردود: products.read · customers.lookup · orders.create
     // · orders.read · orders.note — ولا شي غيرها.» — still exactly those five
     // on the replies key (`REPLIES_SCOPES`); the two added on 2026-10-26 are
     // the media buyer's and grant no write.
     // Two more on 17/11 (PR-A): `ads.spend.read` and `notify.send`, the media buyer's — neither is on the replies key.
+    // And 18/11: `orders.amend` and `orders.cancel`, the replies key's — edit and end an order the system created itself.
     expect([...V1_SCOPES].sort()).toEqual([
       'ads.spend.read',
       'customers.lookup',
       'notify.send',
+      'orders.amend',
       'orders.attribution.read',
+      'orders.cancel',
       'orders.create',
       'orders.note',
       'orders.read',
