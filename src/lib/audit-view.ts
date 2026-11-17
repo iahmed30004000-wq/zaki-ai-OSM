@@ -73,6 +73,8 @@ const ACTION_AR: Record<string, string> = {
   QUEUE_PRIORITY_SWITCHED: 'تشغيل أو إيقاف «أولوية الطابور»',
   EOD_REPORT_SUBMITTED: 'إرسال تقرير نهاية اليوم',
   QUEUE_MODES_CHANGED: 'تعديل ساعات وضعَي الطابور',
+  INTEGRATION_SETTING_SAVED: 'حفظ إعداد ربط (واتساب أو تيليجرام)',
+  INTEGRATION_SETTING_CLEARED: 'مسح إعداد ربط محفوظ بالموقع',
   LEAD_CONVERTED: 'تحويل ليد لطلب',
   LEAD_DISMISSED: 'إزالة ليد من القايمة',
   LEADS_V2_SWITCHED: 'تشغيل أو إيقاف «ليدز الصفحات»',

@@ -14,12 +14,12 @@ export async function GET() {
     await requirePermission('whatsapp.view');
     const { companyId } = await requireCompanyTenant();
     const conn = await getActiveConnection(companyId);
-    const status = effectiveStatus(conn);
+    const status = await effectiveStatus(conn);
     return NextResponse.json({
-      connection: serializeConnection(conn),
+      connection: await serializeConnection(conn),
       status,
-      envConfigured: envConfigured(),
-      webhookConfigured: webhookConfigured(),
+      envConfigured: await envConfigured(),
+      webhookConfigured: await webhookConfigured(),
     });
   } catch (error) {
     return apiErrorResponse(error);

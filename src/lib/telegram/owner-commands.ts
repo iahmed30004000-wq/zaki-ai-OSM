@@ -52,7 +52,7 @@ export async function handleOwnerCommand(update: unknown, now: Date = new Date()
   if (!msg || typeof msg !== 'object') return { handled: false };
   const chat = msg.chat as { id?: unknown; type?: unknown } | undefined;
   if (!chat || chat.type !== 'private') return { handled: false };
-  const owner = ownerChatId();
+  const owner = await ownerChatId();
   if (!owner || String(chat.id) !== owner) return { handled: false };
   const text = typeof msg.text === 'string' ? msg.text : '';
   const m = STOP_COMMAND.exec(text);

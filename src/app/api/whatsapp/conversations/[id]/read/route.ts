@@ -28,8 +28,8 @@ export async function POST(
 
     // Best-effort Meta read receipt (never fails the request)
     try {
-      const token = getAccessToken();
-      const phoneNumberId = getPhoneNumberId();
+      const token = await getAccessToken();
+      const phoneNumberId = await getPhoneNumberId();
       const lastInbound = await db.whatsAppMessage.findFirst({
         where: { conversationId: id, direction: 'INBOUND' },
         orderBy: { createdAt: 'desc' },

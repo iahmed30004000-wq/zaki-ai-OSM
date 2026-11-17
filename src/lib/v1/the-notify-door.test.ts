@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
   db: {
     systemToken: { findUnique: vi.fn(), update: vi.fn() },
     idempotencyRecord: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
+    integrationSecret: { findUnique: vi.fn().mockResolvedValue(null) },
   },
   rateLimit: vi.fn(),
   sendMessage: vi.fn(),
@@ -124,7 +125,7 @@ describe('the audience', () => {
   it('a person reaches their chat by the short key', async () => {
     await postNotify(post({ ...OK, target: { person: 'sara' } }));
     expect(h.sendMessage).toHaveBeenCalledWith('444', OK.text, undefined, undefined);
-    expect(peopleChats().get('ahmad')).toBe('-100555');
+    expect((await peopleChats()).get('ahmad')).toBe('-100555');
   });
 
   it('a chat and a topic of a forum group are passed through', async () => {
@@ -148,8 +149,8 @@ describe('the audience', () => {
   it('a chat id that is not a chat id is refused by the schema, and an unparsable pair in the people list is skipped, never guessed', async () => {
     expect((await postNotify(post({ ...OK, target: { chat_id: 'not-a-chat' } }))).status).toBe(422);
     process.env.TELEGRAM_PEOPLE_CHATS = 'Sara:1, ok:abc, fine:77,, :9';
-    expect([...peopleChats().entries()]).toEqual([['fine', '77']]);
-    expect(resolveTelegramTarget({ person: 'Sara' })).toBeNull();
+    expect([...(await peopleChats()).entries()]).toEqual([['fine', '77']]);
+    expect(await resolveTelegramTarget({ person: 'Sara' })).toBeNull();
   });
 
   it('the link goes on a line of its own after the text', async () => {

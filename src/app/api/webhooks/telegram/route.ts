@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   }
 
   // Secret verification FIRST (before reading/parsing the body)
-  if (!verifyTelegramSecret(req.headers.get('x-telegram-bot-api-secret-token'))) {
+  if (!await verifyTelegramSecret(req.headers.get('x-telegram-bot-api-secret-token'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

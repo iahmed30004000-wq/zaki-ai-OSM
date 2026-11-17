@@ -59,7 +59,7 @@ afterEach(() => vi.unstubAllEnvs());
 // ─────────────────────────────────────────────────────
 
 describe('deciding whether a failure count is worth shouting about', () => {
-  it('says nothing below the threshold', () => {
+  it('says nothing below the threshold', async () => {
     // A courier API that times out once and works on the retry is not an
     // incident. Alerting on it is how the channel becomes noise, and a
     // noisy channel is a muted channel.
@@ -68,12 +68,12 @@ describe('deciding whether a failure count is worth shouting about', () => {
     }
   });
 
-  it('shouts exactly once at the threshold', () => {
+  it('shouts exactly once at the threshold', async () => {
     expect(shouldAlertOnFailure(ALERT_AFTER_FAILURES)).toBe(true);
     expect(shouldAlertOnFailure(ALERT_AFTER_FAILURES + 1)).toBe(false);
   });
 
-  it('does not shout on every failure after the threshold', () => {
+  it('does not shout on every failure after the threshold', async () => {
     // THE FAILURE THIS PREVENTS: a 60-second job that is broken stays
     // broken. One message per cycle is 1,440 a day; the owner mutes the
     // chat, and the next alert — a different job, a real emergency —
@@ -166,7 +166,7 @@ describe('the guards', () => {
     // open a conversation. A silent no-op here would be the same fault as
     // the console.log this replaces, one layer deeper.
     vi.stubEnv('TELEGRAM_ALERT_CHAT_ID', '');
-    expect(alertChatId()).toBeNull();
+    expect(await alertChatId()).toBeNull();
 
     const res = await alertAboutJob({ jobName: 'j', kind: 'failing', failures: 3 }, NOW);
     expect(res).toEqual({ sent: false, reason: 'NOT_CONFIGURED' });

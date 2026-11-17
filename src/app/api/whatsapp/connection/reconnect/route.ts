@@ -23,10 +23,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `محاولات كثيرة. أعد المحاولة بعد ${rl.retryAfterSec} ثانية` }, { status: 429 });
     }
 
-    const token = getAccessToken();
-    const wabaId = getWabaId();
-    const phoneNumberId = getPhoneNumberId();
-    if (!envConfigured() || !token || !wabaId || !phoneNumberId) {
+    const token = await getAccessToken();
+    const wabaId = await getWabaId();
+    const phoneNumberId = await getPhoneNumberId();
+    if (!await envConfigured() || !token || !wabaId || !phoneNumberId) {
       return NextResponse.json({ error: 'الاتصال غير مكتمل — أكمل متغيرات البيئة أولًا' }, { status: 400 });
     }
 
@@ -69,7 +69,7 @@ export async function POST(req: Request) {
         });
 
     logAudit({ companyId, userId: user.id, action: 'whatsapp.connection.reconnect', entity: 'WhatsAppConnection', entityId: conn.id, newData: { result: 'CONNECTED' } }).catch(() => {});
-    return NextResponse.json({ ok: true, connection: serializeConnection(conn) });
+    return NextResponse.json({ ok: true, connection: await serializeConnection(conn) });
   } catch (error) {
     return apiErrorResponse(error);
   }

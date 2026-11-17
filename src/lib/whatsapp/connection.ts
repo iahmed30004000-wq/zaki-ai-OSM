@@ -28,16 +28,16 @@ export async function getActiveConnection(companyId: string): Promise<WhatsAppCo
   return conn as WhatsAppConnectionRow | null;
 }
 
-/** Effective connection status shown in the UI. */
-export function effectiveStatus(conn: WhatsAppConnectionRow | null): 'CONNECTED' | 'NEEDS_SETUP' {
+/** Effective connection status shown in the UI. Async: «configured» is asked of the site's saved settings first, then the environment (`integration-settings.ts`). */
+export async function effectiveStatus(conn: WhatsAppConnectionRow | null): Promise<'CONNECTED' | 'NEEDS_SETUP'> {
   if (!conn) return 'NEEDS_SETUP';
-  if (conn.status === 'CONNECTED' && envConfigured()) return 'CONNECTED';
+  if (conn.status === 'CONNECTED' && (await envConfigured())) return 'CONNECTED';
   if (conn.status === 'CONNECTED') return 'NEEDS_SETUP';
   return 'NEEDS_SETUP';
 }
 
 /** Safe serialization — never includes accessTokenEncrypted or env token. */
-export function serializeConnection(conn: WhatsAppConnectionRow | null) {
+export async function serializeConnection(conn: WhatsAppConnectionRow | null) {
   if (!conn) return null;
   return {
     id: conn.id,
@@ -45,7 +45,7 @@ export function serializeConnection(conn: WhatsAppConnectionRow | null) {
     phoneNumberId: conn.phoneNumberId,
     phoneNumber: conn.phoneNumber,
     displayName: conn.displayName,
-    status: effectiveStatus(conn),
+    status: await effectiveStatus(conn),
     dbStatus: conn.status,
     lastWebhookAt: conn.lastWebhookAt,
     lastMessageAt: conn.lastMessageAt,

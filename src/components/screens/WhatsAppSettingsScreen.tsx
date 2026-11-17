@@ -170,7 +170,7 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
         {/* Environment checklist */}
         <Card>
           <CardContent className="p-5 space-y-2">
-            <p className="text-sm font-bold text-[var(--sys-heading)] mb-1">متغيرات البيئة المطلوبة (ملف .env على الخادم)</p>
+            <p className="text-sm font-bold text-[var(--sys-heading)] mb-1">القيم المطلوبة (بتدخلها من البطاقة تحت «القيم المطلوبة»، أو بمتغيرات البيئة كاحتياط)</p>
             {[
               ['WHATSAPP_ACCESS_TOKEN', 'رمز الوصول الدائم من Meta'],
               ['WHATSAPP_BUSINESS_ACCOUNT_ID', 'معرف حساب WhatsApp Business'],
@@ -187,8 +187,7 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
             <div className="mt-3 p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)] flex gap-2">
               <RiErrorWarningLine className="w-4 h-4 shrink-0 text-[var(--sys-primary)]" />
               <span>
-                لا تُدخل أي بيانات سرية هنا في الواجهة — كل البيانات من متغيرات بيئة الخادم فقط، ولا يتم عرض Access Token مطلقًا.
-                بعد إضافة البيانات: أعد تشغيل الخادم، اضغط [إعادة الاتصال]، ثم سجّل رابط الويبهوك في تطبيق Meta:
+                القيم بتنحفظ مشفّرة من بطاقة «القيم المطلوبة» تحت، ولا بتنعرض بعد الحفظ (بس آخر 4 خانات). بعد إدخالها: اضغط [إعادة الاتصال]، ثم سجّل رابط الويبهوك في تطبيق Meta:
                 <code className="mx-1 px-1.5 py-0.5 rounded-lg bg-[var(--sys-surface-strong)]" dir="ltr">/api/webhooks/whatsapp</code>
               </span>
             </div>

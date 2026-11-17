@@ -107,7 +107,7 @@ export async function sendNotification(companyId: string, raw: unknown, path: st
     throw fault(422, V1_CODE.CONTAINS_CUSTOMER_DATA, 'The text looks like a phone number or an address and was not sent');
   }
 
-  const target = resolveTelegramTarget(input.target);
+  const target = await resolveTelegramTarget(input.target);
   if (!target) throw fault(404, V1_CODE.TARGET_UNKNOWN, 'This system does not know that target');
 
   // The key lives in its own space, and a key older than a day is free again.

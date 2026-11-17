@@ -18,7 +18,7 @@ export async function POST() {
     const { user, companyId } = await requireCompanyTenant();
     await requirePermission('telegram.connect');
 
-    if (!botConfigured() || !webhookSecretConfigured()) {
+    if (!await botConfigured() || !await webhookSecretConfigured()) {
       return NextResponse.json(
         { error: 'إعدادات تيليجرام غير مكتملة (TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET)' },
         { status: 409 }
@@ -32,7 +32,7 @@ export async function POST() {
       );
     }
 
-    const result = await setWebhook(`${appUrl}${WEBHOOK_PATH}`, getWebhookSecret()!);
+    const result = await setWebhook(`${appUrl}${WEBHOOK_PATH}`, (await getWebhookSecret())!);
     if (!result.ok) {
       return NextResponse.json({ error: 'فشل تسجيل الويبهوك لدى تيليجرام' }, { status: 502 });
     }

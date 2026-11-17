@@ -17,7 +17,7 @@ export interface TelegramApiResult<T = any> {
 }
 
 async function call<T = any>(method: string, payload?: Record<string, unknown>): Promise<TelegramApiResult<T>> {
-  const token = getBotToken();
+  const token = await getBotToken();
   if (!token) return { ok: false, errorCode: 'NO_TOKEN' };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);

@@ -155,7 +155,7 @@ export async function companySendsFor(client: Client, companyId: string, dialCod
   try {
     const setting = await afterNoAnswer(client, companyId);
     if (routeFor(setting, dialCode) !== 'COMPANY' || !setting.templateName) return false;
-    return effectiveStatus(await getActiveConnection(companyId)) === 'CONNECTED';
+    return (await effectiveStatus(await getActiveConnection(companyId))) === 'CONNECTED';
   } catch {
     return false;
   }
