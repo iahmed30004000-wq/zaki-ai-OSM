@@ -160,6 +160,53 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
+/**
+ * DELETE /api/shipping-batches/[id] — take away a batch that holds NO order (the owner, 17/11: BATCH-2026-0020, «قيد التجميع», 0 طلب).
+ *
+ * A trolley empties when its last parcel leaves it — a cancel, a postponement, a move to another courier — and nothing asked whether
+ * the batch was now empty, nor could anything remove it: the statuses only go forward and an empty batch cannot be handed over. It
+ * stayed on the screen with every button greyed and no word on why. It is still the courier's OPEN batch (the next «إنشاء شحنة» for
+ * that courier fills it), so leaving it is harmless; this is for who does not want it.
+ *
+ * ONE CONDITION, IN ONE STATEMENT: the row goes only if it is still READY and still holds no order — the same shape as the forward-only
+ * step of the PATCH. A parcel that arrived between the screen and the press finds the condition false and the batch stays. Nothing else
+ * is touched (orders never point at a batch they left), and nothing with an order on it, handed over or closed, can be removed here.
+ */
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const { user, companyId, storeId } = await requireContext();
+    // The same key as every other press on a batch's status.
+    if (!can(user, 'orders.change_status')) {
+      return NextResponse.json({ error: 'هذا الإجراء ليس من صلاحيّاتك. راجع مدير النظام إن كان من شغلك.', errorAr: 'هذا الإجراء ليس من صلاحيّاتك. راجع مدير النظام إن كان من شغلك.' }, { status: 403 });
+    }
+
+    const removed = await db.shippingBatch.deleteMany({ where: { id, companyId, storeId, status: 'READY', orders: { none: {} } } });
+    if (removed.count === 0) {
+      const batch = await db.shippingBatch.findFirst({
+        where: { id, companyId, storeId },
+        select: { status: true, _count: { select: { orders: true } } },
+      });
+      if (!batch) return NextResponse.json({ error: 'الدفعة غير موجودة. أعد تحميل القائمة.', errorAr: 'الدفعة غير موجودة. أعد تحميل القائمة.' }, { status: 404 });
+      if (batch._count.orders > 0) {
+        return NextResponse.json({ error: 'الدفعة فيها طلبات — ما بتنحذف.', errorAr: 'الدفعة فيها طلبات — ما بتنحذف.', code: 'BATCH_NOT_EMPTY' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'الدفعة مش «قيد التجميع» — ما بتنحذف.', errorAr: 'الدفعة مش «قيد التجميع» — ما بتنحذف.', code: 'BATCH_NOT_OPEN' }, { status: 409 });
+    }
+
+    await logAudit({
+      companyId, userId: user.id, action: 'SHIPPING_BATCH_DELETED_EMPTY',
+      entity: 'ShippingBatch', entityId: id,
+      previousData: { status: 'READY', orders: 0 },
+      newData: { by: user.name },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;

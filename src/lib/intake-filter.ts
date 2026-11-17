@@ -66,9 +66,31 @@ export interface IntakeScope {
 }
 
 /**
+ * THE PULL'S SWEEP LOOKS AT EACH NEW ORDER ONCE (perf, 17/11).
+ *
+ * «اسحب التالي» sweeps before the pick, so a flag is written BEFORE the order is dealt — the promise of this filter, and it stays. What it did on top was look at the SAME orders again
+ * on every press: up to 200 orders with their history and two questions for each one without a flag, and an order that is no repeat never gets a flag, so it was asked about again and
+ * again for a day. Here the store's sweep for the pull remembers the orders it has already looked at (in this process) and goes straight to the ones it has not: a new order is looked
+ * at by the very next press, never later than the press that could deal it. An order is remembered when its look BEGINS, so two presses at once do not write its flag twice. The job's
+ * own sweep (every two minutes, in the worker) remembers nothing and is untouched, and so is `sweepIntake` for any caller that gives it no memory.
+ */
+const PULL_SEEN_CAP = 5_000;
+const pullSeen = new Map<string, Set<string>>();
+
+export function sweepIntakeForPull(scope: IntakeScope): Promise<number> {
+  const key = `${scope.companyId}:${scope.storeId}`;
+  let seen = pullSeen.get(key);
+  if (!seen) {
+    seen = new Set<string>();
+    pullSeen.set(key, seen);
+  }
+  return sweepIntake(scope, new Date(), db, seen);
+}
+
+/**
  * One pass for one store. Returns how many flags it wrote. Never throws: the callers are a job and a pull, and a flag that could not be written must stop neither.
  */
-export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), client: Tx = db): Promise<number> {
+export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), client: Tx = db, seen?: Set<string>): Promise<number> {
   try {
     const sw = await intakeFilterSwitch(client, scope.companyId, now.getTime());
     if (!sw.enabled || !sw.enabledAt) return 0;
@@ -100,7 +122,13 @@ export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), cl
     });
 
     let written = 0;
+    // The pull's memory is bounded: a day's orders of one store are far under the cap, and a cleared memory only means one more look.
+    if (seen && seen.size > PULL_SEEN_CAP) seen.clear();
     for (const order of candidates) {
+      if (seen) {
+        if (seen.has(order.id)) continue;
+        seen.add(order.id);
+      }
       const done = new Set(order.activities.map((a) => a.action));
 
       if (!done.has(INTAKE_SUSPECT_ACTION) && !isValidPhoneFor(scope.countryCode, order.customer.rawPhone ?? '')) {
