@@ -31,6 +31,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 
 const PERIODS = [
   { key: 'today', ar: 'اليوم' },
+  { key: 'yesterday', ar: 'أمس' },
   { key: '7d', ar: '7 أيام' },
   { key: '30d', ar: '30 يوم' },
   { key: 'month', ar: 'هذا الشهر' },
@@ -65,7 +66,7 @@ export function DashboardScreen() {
   const canInsights = userCan(currentUser, 'insights.view');
   const maySeeColleagues = TEAM_PERMISSIONS.some((p) => userCan(currentUser, p));
 
-  const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'month' | 'all'>('all');
+  const [period, setPeriod] = useState<'today' | 'yesterday' | '7d' | '30d' | 'month' | 'all'>('today');
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
@@ -195,6 +196,7 @@ export function DashboardScreen() {
    */
   const priorLabel =
     period === 'today' ? 'أمس'
+    : period === 'yesterday' ? 'اليوم اللي قبله'
     : period === '7d' ? 'الأسبوع السابق'
     : period === '30d' ? 'الثلاثين السابقة'
     : period === 'month' ? 'الشهر الماضي'

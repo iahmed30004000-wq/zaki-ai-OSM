@@ -21,6 +21,12 @@ export interface Range {
 }
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
+
+/** THE DAY OF TODAY, as a range — what the figures screens open on (the owner, 17/11: the default is today; a screen that opens on all of history is the slow one). */
+export function todayRange(): Range {
+  const today = iso(new Date());
+  return { from: today, to: today };
+}
 const DAY_INITIALS = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
 
 export function DateRange({
@@ -52,9 +58,12 @@ export function DateRange({
     };
   }, [open]);
 
-  function preset(days: number | 'month') {
+  function preset(days: number | 'month' | 'yesterday') {
     const today = new Date();
-    if (days === 'month') {
+    if (days === 'yesterday') {
+      const y = iso(subDays(today, 1));
+      onChange({ from: y, to: y });
+    } else if (days === 'month') {
       onChange({ from: iso(startOfMonth(today)), to: iso(today) });
     } else {
       onChange({ from: iso(subDays(today, days - 1)), to: iso(today) });
@@ -130,6 +139,7 @@ export function DateRange({
           <div className="flex flex-wrap gap-1.5">
             {[
               { label: 'اليوم', run: () => preset(1) },
+              { label: 'أمس', run: () => preset('yesterday') },
               { label: 'آخر 7 أيام', run: () => preset(7) },
               { label: 'آخر 30 يوم', run: () => preset(30) },
               { label: 'هذا الشهر', run: () => preset('month') },
