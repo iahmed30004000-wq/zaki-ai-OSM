@@ -66,6 +66,28 @@ export interface IntakeScope {
 }
 
 /**
+ * THE PULL'S SWEEP, NOT MORE THAN ONCE IN HALF A MINUTE PER STORE (perf, 17/11).
+ *
+ * «اسحب التالي» swept before every pick — up to 200 orders with their history and two questions for each one without a flag, in sequence, from every agent's press, besides the job
+ * that does the same every two minutes. An order that is no repeat never gets a flag, so it was asked about again on every press for a day. The promise stays — a flag is written
+ * before the order is dealt — within half a minute instead of within a press: a sweep that ran in the last `PULL_SWEEP_GAP_MS` is not run again, and one that is running is shared
+ * (the second press waits for it and takes its count). The job's own sweep is untouched, and so is `sweepIntake`.
+ */
+export const PULL_SWEEP_GAP_MS = 30_000;
+const pullSweeps = new Map<string, { at: number; running: Promise<number> | null }>();
+
+export function sweepIntakeForPull(scope: IntakeScope, nowMs: number = Date.now()): Promise<number> {
+  const key = `${scope.companyId}:${scope.storeId}`;
+  const last = pullSweeps.get(key);
+  if (last?.running) return last.running;
+  if (last && nowMs - last.at < PULL_SWEEP_GAP_MS) return Promise.resolve(0);
+  // The gap is counted from when the sweep STARTED, on the same clock the caller gave — a sweep that takes a few seconds does not push the next one further out.
+  const running = sweepIntake(scope).finally(() => pullSweeps.set(key, { at: nowMs, running: null }));
+  pullSweeps.set(key, { at: nowMs, running });
+  return running;
+}
+
+/**
  * One pass for one store. Returns how many flags it wrote. Never throws: the callers are a job and a pull, and a flag that could not be written must stop neither.
  */
 export async function sweepIntake(scope: IntakeScope, now: Date = new Date(), client: Tx = db): Promise<number> {

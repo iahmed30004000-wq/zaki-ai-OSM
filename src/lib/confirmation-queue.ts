@@ -1720,13 +1720,25 @@ export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: str
  * order due, and falls back to a new order when none is due; every other turn takes the oldest new order. Null = «nothing for me»: the old order below decides.
  * Reads only the predicates the counters read, so the pile it draws from is the pile `waitingCount` shows.
  */
+/**
+ * WHAT ONE PICK HAS ALREADY READ (perf, 17/11). The v2 pick and the old order after it ask the same two ranking scans — the promises and the retries by due, each up to
+ * `RETRY_SCAN_PAGE` (2,000) orders — over the same rows, in the same transaction, at the same `now`, with nothing written between them. When the v2 pick answers «nothing for me»
+ * (a night with no new order, a turn that is not the backlog's), the old order asked both a second time: four scans for one pull. The v2 pick leaves what it read here and the old
+ * order reads it back. Undefined = not asked yet (the old order asks, as it always did); null = asked, and there was none.
+ */
+interface ScanMemo {
+  promise?: string | null;
+  retry?: { id: string; due: number } | null;
+}
+
 async function pickByPriority(
   tx: Tx,
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
   returns: ReturnsMode | undefined,
-  plan: PriorityPlan
+  plan: PriorityPlan,
+  memo: ScanMemo = {}
 ): Promise<string | null> {
   if (plan.mode !== 'NORMAL') return null;
   const neverRung = { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } };
@@ -1735,12 +1747,14 @@ async function pickByPriority(
 
   if (returns?.cadence) {
     const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    memo.promise = promised;
     if (promised) return promised;
   }
   const fresh = await oldestNew({ createdAt: { gt: freshSince(now) } });
   if (fresh) return fresh;
 
   const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
+  if (returns?.cadence) memo.retry = retry;
   if (retry && isAged(retry.due, now)) return retry.id;
 
   if (plan.backlogTurn) {
@@ -1791,8 +1805,9 @@ export async function pickNextCandidate(
 
   // QUEUE PRIORITY v2 (step D1) — only with the owner's key on (`opts.priority` is null otherwise, and then none of this runs). It answers an order or nothing; nothing falls
   // through to the order below, which is also what the two time-of-day modes are.
+  const memo: ScanMemo = {};
   if (opts.priority) {
-    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority);
+    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority, memo);
     if (dealt) return dealt;
   }
 
@@ -1808,7 +1823,7 @@ export async function pickNextCandidate(
   // whatever its status (POSTPONED, FOLLOW_UP_REQUIRED, a returned retry the customer asked about…): the pull-side face of the tag on the desk (`promiseArrived`). One read, only under the plan —
   // the legacy mode and OFF never reach it, so their four queries are the old ones. The POSTPONED orders it leaves (a line was logged after their date: they are retries now) are still step 3's, below.
   if (returns?.cadence) {
-    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    const promised = memo.promise !== undefined ? memo.promise : await pickPromiseArrived(tx, scope, now, forUserId, returns);
     if (promised) return promised;
   }
 
@@ -1825,7 +1840,7 @@ export async function pickNextCandidate(
   // THE RETRIES BY THEIR DUE (the planner's ruling 2) — with the cadence on, a ready retry is ranked by the instant its last counted press made it due, not by its age. A new order and a
   // promise still come before it; an order with no due on a line (legacy returns, an idle release) falls through to the oldest-first query below, exactly as before.
   if (returns?.cadence) {
-    const retry = await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
+    const retry = memo.retry !== undefined ? memo.retry?.id ?? null : await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
     if (retry) return retry;
   }
 
