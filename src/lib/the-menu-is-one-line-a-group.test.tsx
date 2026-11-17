@@ -371,22 +371,57 @@ describe('the pills above a screen', () => {
     expect(within(nav).getByText('الإشكالات').textContent).toContain('7');
   });
 
-  it('and the strip opens on the pill you are standing on — the fourth of five must not be out of sight on a phone', () => {
-    const scrolled = vi.fn();
-    const real = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrolled;
+  // The strip is moved by `scrollBy` on ITS OWN list, never by `scrollIntoView` (that one moves the page too — the owner's «الأرباح» screen, 17/11).
+  // jsdom has no layout, so the geometry is handed in: a strip 100px wide holding 400px of pills, the lit pill sitting 250px past its left edge.
+  const withLayout = (overflow: boolean, body: (calls: { scrollBy: ReturnType<typeof vi.fn>; scrollIntoView: ReturnType<typeof vi.fn> }) => void) => {
+    const scrollBy = vi.fn();
+    const scrollIntoView = vi.fn();
+    const proto = Element.prototype as unknown as Record<string, unknown>;
+    const saved = { scrollBy: proto.scrollBy, scrollIntoView: proto.scrollIntoView, rect: proto.getBoundingClientRect };
+    const widths = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+    const clients = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+    proto.scrollBy = scrollBy;
+    proto.scrollIntoView = scrollIntoView;
+    proto.getBoundingClientRect = function (this: HTMLElement) {
+      const lit = this.getAttribute('aria-current') === 'page';
+      return (lit ? { left: 250, width: 60, right: 310, top: 0, bottom: 0, height: 0, x: 250, y: 0 } : { left: 0, width: 100, right: 100, top: 0, bottom: 0, height: 0, x: 0, y: 0 }) as DOMRect;
+    };
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: () => (overflow ? 400 : 100) });
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 100 });
     try {
+      body({ scrollBy, scrollIntoView });
+    } finally {
+      proto.scrollBy = saved.scrollBy;
+      proto.scrollIntoView = saved.scrollIntoView;
+      proto.getBoundingClientRect = saved.rect;
+      if (widths) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', widths); else delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollWidth;
+      if (clients) Object.defineProperty(HTMLElement.prototype, 'clientWidth', clients); else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+    }
+  };
+
+  it('and the strip opens on the pill you are standing on — moved alone, by the distance between the two centres, never with the page', () => {
+    withLayout(true, ({ scrollBy, scrollIntoView }) => {
       here.path = '/ops/tracking';
       render(<HubTabs groups={NAV} />);
-      expect(scrolled).toHaveBeenCalledTimes(1);
-      expect(scrolled).toHaveBeenCalledWith({ block: 'nearest', inline: 'center' });
-      // …on the lit pill, not on whichever came first.
-      const target = scrolled.mock.contexts[0] as HTMLElement;
-      expect(target.getAttribute('aria-current')).toBe('page');
-      expect(target.textContent).toContain('متابعة الشحن');
-    } finally {
-      Element.prototype.scrollIntoView = real;
-    }
+      expect(scrollBy).toHaveBeenCalledTimes(1);
+      // pill centre 250 + 60/2 = 280, strip centre 0 + 100/2 = 50: 230px.
+      expect(scrollBy).toHaveBeenCalledWith({ left: 230 });
+      // …on the strip's own list, not on whichever element came first.
+      const target = scrollBy.mock.contexts[0] as HTMLElement;
+      expect(target.tagName).toBe('UL');
+      expect(target.querySelector('[aria-current="page"]')?.textContent).toContain('متابعة الشحن');
+      // `scrollIntoView` slid the whole document sideways when the page was a hair wider than the screen: nothing may call it.
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  it('and a strip that fits is not scrolled at all — the pills do not jump when there is nowhere to go', () => {
+    withLayout(false, ({ scrollBy, scrollIntoView }) => {
+      here.path = '/ops/tracking';
+      render(<HubTabs groups={NAV} />);
+      expect(scrollBy).not.toHaveBeenCalled();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
   });
 
   it('and «التالي» wraps under the pills when it does not fit beside them, instead of squeezing them', () => {
