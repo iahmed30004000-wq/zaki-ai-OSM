@@ -161,6 +161,11 @@ export const ATTRIBUTION_SELECT = {
   source: true,
   externalChannel: true,
   adId: true,
+  // The tags a Pages order arrived with (`ad-tags.ts`) — ids, a name and a link, nothing about the customer.
+  adsetId: true,
+  adCampaignId: true,
+  adName: true,
+  landingUrl: true,
   landingPageId: true,
   product: { select: { sku: true } },
   channel: { select: { kind: true } },
@@ -196,14 +201,11 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
     // kind, then the free-text source the order was raised with.
     channel: (o.externalChannel ?? o.channel?.kind ?? o.source).trim().toLowerCase(),
     ad_id: o.adId,
-    /*
-     * Not stored on an order today. The ad set and the ad's name arrive only
-     * once landing pages capture them from the link — the media buyer's
-     * P0.1, which changes order creation and waits for the owner's OK.
-     */
-    adset_id: null,
-    campaign_id: o.campaign?.externalId ?? null,
-    ad_name: null,
+    // The ad set and the ad's name come from the tags a Pages order arrived with (`ad-tags.ts`); null on every order that carried none.
+    adset_id: o.adsetId,
+    // Our own campaign's platform id first (it is the id the owner linked), then the one the visitor's link carried.
+    campaign_id: o.campaign?.externalId ?? o.adCampaignId,
+    ad_name: o.adName,
     landing_page: o.landingPage
       ? publicAddress(origin, {
           kind: 'lp',
@@ -211,7 +213,8 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
           domain: o.landingPage.domain,
           domainVerifiedAt: o.landingPage.domainVerifiedAt,
         }).url
-      : null,
+      : // A page of the pages system has no row here: the link its visitor opened is the page.
+        o.landingUrl,
     status,
     created_at: at(o.createdAt),
     confirmed_at: at(o.confirmedAt ?? firstLog('confirmed')),

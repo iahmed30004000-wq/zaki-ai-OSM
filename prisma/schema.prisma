@@ -994,6 +994,24 @@ model Order {
   /// The calling system's own handle for the conversation this came out of,
   /// so a reply can be traced back to the order without storing the chat.
   conversationRef           String?
+  /// THE AD TAGS A PAGES-SYSTEM ORDER ARRIVED WITH (the media buyer, 17/11): the ad set, the platform's id of the campaign, the ad's
+  /// name, the utm pair and the link it opened. Written once, after the order exists, by `stampAdTags` — never by order creation.
+  /// Read back only by `/api/v1/orders/attribution`; no customer detail in any of them.
+  adsetId                   String?
+  adCampaignId              String?
+  adName                    String?
+  utmSource                 String?
+  utmMedium                 String?
+  /// The three the ads' links carry as macros (`utm_campaign={{campaign.id}}`, `utm_term={{adset.id}}`, `utm_content={{ad.id}}`), kept AS TEXT — an unresolved macro or a name stays
+  /// readable here, and only a value that is all digits also becomes `adCampaignId` / `adsetId` / `adId`.
+  utmCampaign               String?
+  utmTerm                   String?
+  utmContent                String?
+  landingUrl                String?
+  /// Meta's click id and browser ids, ENCRYPTED at rest like `ctwaClidEnc` — and, like it, read by no endpoint.
+  fbclidEnc                 String?
+  fbcEnc                    String?
+  fbpEnc                    String?
   landingPageId             String?
   freeQuantity              Int       @default(0) // gift units from a landing-page offer (additive)
   internalNotes             String?
@@ -4229,4 +4247,33 @@ model Lead {
   @@index([companyId, storeId, status, receivedAt])
   @@index([companyId, phoneKey])
   @@map("leads")
+}
+
+/// WHAT ONE AD SPENT ON ONE DAY — the daily grain the media buyer reads at `GET /api/v1/ad-spend` (PR-A of the media-buyer doors).
+///
+/// Written only by the spend pull (`ads/daily.ts`, from the `pull-ad-spend` job): one row per (company, day, ad), replaced when the
+/// platform restates a recent day. `Campaign.spend` stays the campaign total the screens read — this table is a second, finer view
+/// of the same Meta numbers, and nothing else in the system reads it. `date` is the day in the AD ACCOUNT's own timezone, as Meta
+/// reports it (the day the seller sees in Ads Manager). Plain columns, no relations: a record of what the platform said.
+model AdSpendDay {
+  id          String   @id @default(uuid())
+  companyId   String
+  storeId     String
+  adAccountId String
+  date        DateTime @db.Date
+  adId        String
+  adsetId     String?
+  campaignId  String?
+  /// Three decimals like every other money column; the door shows two.
+  spend       Decimal  @db.Decimal(14, 3)
+  currency    String
+  impressions Int?
+  linkClicks  Int?
+  pulledAt    DateTime @default(now())
+
+  @@unique([companyId, date, adId])
+  @@index([companyId, date, adId])
+  @@index([companyId, date, adsetId])
+  @@index([companyId, date, campaignId])
+  @@map("ad_spend_days")
 }

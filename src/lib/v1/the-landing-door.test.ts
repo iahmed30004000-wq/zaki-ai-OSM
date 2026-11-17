@@ -373,3 +373,101 @@ describe('the offer after the order replaces the offer', () => {
     expect(h.db.orderItem.update).not.toHaveBeenCalled();
   });
 });
+
+describe('the ad tags the page’s order arrived with (the media buyer’s contract)', () => {
+  const TAGS = {
+    method: 'url_tags',
+    ad_id: '120211000000000001',
+    adset_id: '120210000000000005',
+    campaign_id: '120210000000000009',
+    ad_name: 'CR00147_TRF01_hook2',
+    utm_source: 'fb',
+    utm_medium: 'Facebook_Mobile_Feed',
+    landing_url: 'https://pages.zakiai.io/p/kamaa-eye-water?fbclid=IwAR0example&utm_source=fb',
+  };
+  /** The one update that stamps the tags: it is the only `updateMany` whose guard names the ad set. */
+  const stamps = () => h.db.order.updateMany.mock.calls.filter(([a]) => a?.where && 'adsetId' in a.where);
+
+  it('stamps them on the order AFTER it exists, once, and only while it has none', async () => {
+    const res = await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    expect(res.status).toBe(201);
+    expect(stamps()).toHaveLength(1);
+    const [{ where, data }] = stamps()[0];
+    expect(where).toEqual({ companyId: 'c1', orderNumber: 'JO-2026-0007', adId: null, adsetId: null });
+    expect(data).toMatchObject({
+      adId: '120211000000000001',
+      adsetId: '120210000000000005',
+      adCampaignId: '120210000000000009',
+      adName: 'CR00147_TRF01_hook2',
+      utmSource: 'fb',
+      utmMedium: 'Facebook_Mobile_Feed',
+      adSourceType: 'url_tags',
+    });
+    // The link is a page, not a tracked link: its query (where the click id rides) is cut off.
+    expect(data.landingUrl).toBe('https://pages.zakiai.io/p/kamaa-eye-water');
+  });
+
+  it('the ads’ links: utm_campaign / utm_term / utm_content set the campaign, the ad set and the ad, and are kept as text', async () => {
+    const res = await postOrder(
+      orderReq({ ...ORDER, attribution: { utm_source: 'fb', utm_campaign: '120210000000000009', utm_term: '120210000000000005', utm_content: '120211000000000001', ad_name: 'CR00147' } })
+    );
+    expect(res.status).toBe(201);
+    const [{ data }] = stamps()[0];
+    expect(data).toMatchObject({
+      adCampaignId: '120210000000000009',
+      adsetId: '120210000000000005',
+      adId: '120211000000000001',
+      adName: 'CR00147',
+      utmSource: 'fb',
+      utmCampaign: '120210000000000009',
+      utmTerm: '120210000000000005',
+      utmContent: '120211000000000001',
+    });
+  });
+
+  it('a utm that is not a number is still saved as text, the id stays empty, and the order goes through', async () => {
+    const res = await postOrder(orderReq({ ...ORDER, attribution: { utm_source: 'fb', utm_campaign: '{{campaign.id}}', utm_term: 'broad', utm_content: '{{ad.id}}' } }));
+    expect(res.status).toBe(201);
+    const [{ data }] = stamps()[0];
+    expect(data).toMatchObject({ utmCampaign: '{{campaign.id}}', utmTerm: 'broad', utmContent: '{{ad.id}}', adCampaignId: null, adsetId: null, adId: null });
+  });
+
+  it('does not touch order creation: the engine is handed no tag, whatever the page sent', async () => {
+    await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    const [surface, raw] = h.createPublicOrder.mock.calls[0];
+    expect(JSON.stringify([surface, raw])).not.toMatch(/120211000000000001|CR00147|adset|fbclid/);
+  });
+
+  it('a tag that does not fit is dropped and the order still goes through', async () => {
+    const res = await postOrder(
+      orderReq({ ...ORDER, attribution: { ...TAGS, ad_id: 'not-digits', adset_id: '12', ad_name: 'x'.repeat(121), utm_source: 'f'.repeat(41), landing_url: 'javascript:alert(1)' } })
+    );
+    expect(res.status).toBe(201);
+    const [{ data }] = stamps()[0];
+    expect(data.adId).toBeNull();
+    expect(data.adsetId).toBeNull();
+    expect(data.adName).toBeNull();
+    expect(data.utmSource).toBeNull();
+    expect(data.landingUrl).toBeNull();
+    expect(data.adCampaignId).toBe('120210000000000009');
+  });
+
+  it('an order with no tag, or only garbage, writes nothing extra — exactly as before', async () => {
+    expect((await postOrder(orderReq(ORDER))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+    expect((await postOrder(orderReq({ ...ORDER, attribution: { ad_id: 'zz' } }, { 'idempotency-key': 'k2' }))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+    expect((await postOrder(orderReq({ ...ORDER, attribution: 'oops' }, { 'idempotency-key': 'k3' }))).status).toBe(201);
+    expect(stamps()).toHaveLength(0);
+  });
+
+  it('a failure while stamping never fails an order that is already saved', async () => {
+    h.db.order.updateMany.mockImplementation(async (a: { where: Record<string, unknown> }) => {
+      if ('adsetId' in a.where) throw new Error('db down');
+      return { count: 1 };
+    });
+    const res = await postOrder(orderReq({ ...ORDER, attribution: TAGS }));
+    expect(res.status).toBe(201);
+    expect((await res.json()).orderNumber).toBe('JO-2026-0007');
+  });
+});

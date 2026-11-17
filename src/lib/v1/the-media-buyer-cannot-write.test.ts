@@ -31,7 +31,12 @@ import { stripComments } from '../guard-source';
 const ROOT = process.cwd();
 const rel = (p: string) => relative(ROOT, p).split(sep).join('/');
 
-const ENTRY_ROUTES = ['src/app/api/v1/orders/attribution/route.ts', 'src/app/api/v1/products/route.ts'];
+const ENTRY_ROUTES = [
+  'src/app/api/v1/orders/attribution/route.ts',
+  'src/app/api/v1/products/route.ts',
+  // The daily spend read (PR-A): a SELECT over `ad_spend_days` — the pull that FILLS the table is the job's, not this door's.
+  'src/app/api/v1/ad-spend/route.ts',
+];
 
 /** The named exception — see the header. */
 const ALLOWED = new Set(['src/lib/v1/system-token.ts#requireSystemToken']);

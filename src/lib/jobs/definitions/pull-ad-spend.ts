@@ -1,5 +1,6 @@
 import type { JobDefinition, JobResult } from '../runner';
 import { syncAdSpend, type SpendSyncResult } from '../../ads/sync';
+import { syncDailyAdSpend } from '../../ads/daily';
 import { activeStores } from './shared';
 
 /**
@@ -43,49 +44,62 @@ const errorsOf = (result: SpendSyncResult) =>
  * campaign whose spend did not change is not written — so asking a store again
  * costs calls, never wrong numbers.
  */
+export async function pullSpend(): Promise<JobResult> {
+  const started = Date.now();
+  let updated = 0;
+  let passes = 1;
+  // The per-ad, per-day grain the media buyer reads (`ads/daily.ts`). Its own line in the report: it can never make the campaign sync look failed.
+  let dailyRows = 0;
+  const dailyErrors: string[] = [];
+
+  // What each store still owes after its latest pass; absent = it came through.
+  const failing = new Map<string, { store: Store; errors: string[] }>();
+
+  const ask = async (store: Store) => {
+    const result = await syncAdSpend({ companyId: store.companyId, storeId: store.id });
+    updated += result.updated;
+    try {
+      const daily = await syncDailyAdSpend({ companyId: store.companyId, storeId: store.id });
+      dailyRows += daily.rows;
+      dailyErrors.push(...daily.errors);
+    } catch (e) {
+      dailyErrors.push(`${store.id}: ${(e as Error)?.name || 'error'}`);
+    }
+    // One account's expired token must not hide behind a green run.
+    const errors = errorsOf(result);
+    if (errors.length) failing.set(store.id, { store, errors });
+    else failing.delete(store.id);
+  };
+
+  for (const store of await activeStores()) await ask(store);
+
+  for (const wait of RETRY_WAITS_MS) {
+    if (failing.size === 0) break;
+    if (Date.now() - started + wait > RETRY_BUDGET_MS) break;
+    await sleep(wait);
+    passes++;
+    for (const { store } of [...failing.values()]) await ask(store);
+  }
+
+  const errors = [...failing.values()].flatMap((f) => f.errors);
+  const tried = passes > 1 ? ` · بعد ${passes} محاولات` : '';
+  const daily = dailyRows || dailyErrors.length ? ` · يومي لكل إعلان: ${dailyRows} سطر${dailyErrors.length ? ` و${dailyErrors.length} خطأ` : ''}` : '';
+
+  return {
+    processed: updated,
+    detail: errors.length
+      ? `حُدِّثت ${updated} حملة · ${errors.length} حساب بخطأ${tried}: ${errors.slice(0, 2).join(' · ')}${daily}`
+      : updated
+        ? `حُدِّثت ${updated} حملة${passes > 1 ? ` (بعد ${passes} محاولات)` : ''}${daily}`
+        : `لا تغيير في الإنفاق${daily}`,
+  };
+}
+
 export const pullAdSpend: JobDefinition = {
   name: 'pull-ad-spend',
   everySeconds: 86_400,
   // Early, so the morning's first look at profit is a true one.
   at: '06:00',
   description: 'سحب الإنفاق الإعلاني من المنصات المربوطة',
-  async run(): Promise<JobResult> {
-    const started = Date.now();
-    let updated = 0;
-    let passes = 1;
-
-    // What each store still owes after its latest pass; absent = it came through.
-    const failing = new Map<string, { store: Store; errors: string[] }>();
-
-    const ask = async (store: Store) => {
-      const result = await syncAdSpend({ companyId: store.companyId, storeId: store.id });
-      updated += result.updated;
-      // One account's expired token must not hide behind a green run.
-      const errors = errorsOf(result);
-      if (errors.length) failing.set(store.id, { store, errors });
-      else failing.delete(store.id);
-    };
-
-    for (const store of await activeStores()) await ask(store);
-
-    for (const wait of RETRY_WAITS_MS) {
-      if (failing.size === 0) break;
-      if (Date.now() - started + wait > RETRY_BUDGET_MS) break;
-      await sleep(wait);
-      passes++;
-      for (const { store } of [...failing.values()]) await ask(store);
-    }
-
-    const errors = [...failing.values()].flatMap((f) => f.errors);
-    const tried = passes > 1 ? ` · بعد ${passes} محاولات` : '';
-
-    return {
-      processed: updated,
-      detail: errors.length
-        ? `حُدِّثت ${updated} حملة · ${errors.length} حساب بخطأ${tried}: ${errors.slice(0, 2).join(' · ')}`
-        : updated
-          ? `حُدِّثت ${updated} حملة${passes > 1 ? ` (بعد ${passes} محاولات)` : ''}`
-          : 'لا تغيير في الإنفاق',
-    };
-  },
+  run: pullSpend,
 };

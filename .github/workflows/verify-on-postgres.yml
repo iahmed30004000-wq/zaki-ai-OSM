@@ -33,6 +33,8 @@
 #   leads-intake --assert: the pages system's lead intake on real tables (step E1):
 #              the 24-hour flag, idempotence, the unique key, and (step E2) the lead lane's read and dismissal, in a rolled-back transaction.
 #   queue-health --assert: the queue-health board's counts on real tables (step D2): the backlog, due now, entered/closed today, the waits, in a rolled-back transaction.
+#   landing-ad-tags --assert: the ad tags a Pages order arrives with, through the REAL landing door onto the real `orders` table (media-buyer doors, PR-A): an order with tags, one with none and one with a damaged tag
+#              all go through; everything it writes is deleted at the end.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -148,6 +150,11 @@ jobs:
       # Everything it writes is rolled back. Exit 3 = a case differs.
       - name: Queue health (asserted)
         run: node scripts/verify-on-postgres/queue-health.mjs --assert
+
+      # The ad tags of a Pages order (media-buyer doors, PR-A), through the real landing door onto the real `orders` table: with the ads' links, with none, with a damaged one — the order goes through in all three.
+      # It cannot be a rolled-back transaction (the door opens its own), so it writes in an isolated store and deletes everything at the end. Exit 3 = a case differs.
+      - name: Landing ad tags (asserted)
+        run: node scripts/verify-on-postgres/landing-ad-tags.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

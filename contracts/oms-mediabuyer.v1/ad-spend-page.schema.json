@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "zaki/oms-mediabuyer.v1/ad-spend-page",
+  "title": "GET /api/v1/ad-spend — صفحة واحدة (v1)",
+  "description": "الـ OMS ← الميديا باير، قراءة بس. صلاحية ads.spend.read. الاستعلام: date_from و date_to (YYYY-MM-DD، إلزاميان، الفرق ≤ 31 يوم) · level = ad | adset | campaign (الافتراضي ad) · cursor · limit (≤ 500). صف لكل يوم لكل إعلان؛ وفي level=adset أو campaign يكون ad_id معرّف مستوى الصف نفسه. بيانات الإنفاق من سحب 06:00 اليومي من ميتا، و as_of وقت آخر سحب. ولا اسم ولا هاتف ولا عنوان زبون بأي حقل. إضافة حقل اختياري = v1؛ حذف أو تغيير اسم أو نوع = v2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items", "next_cursor", "as_of"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "ad_id", "adset_id", "campaign_id", "spend", "currency", "impressions", "link_clicks"],
+        "properties": {
+          "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "ad_id": { "type": "string", "pattern": "^\\d{6,25}$" },
+          "adset_id": { "anyOf": [{ "type": "string", "pattern": "^\\d{6,25}$" }, { "type": "null" }] },
+          "campaign_id": { "anyOf": [{ "type": "string", "pattern": "^\\d{6,25}$" }, { "type": "null" }] },
+          "spend": { "type": "string", "pattern": "^\\d+(\\.\\d{1,2})?$" },
+          "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+          "impressions": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+          "link_clicks": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] }
+        }
+      }
+    },
+    "next_cursor": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+    "as_of": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" }
+  }
+}

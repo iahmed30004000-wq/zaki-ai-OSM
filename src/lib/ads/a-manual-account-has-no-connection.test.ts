@@ -237,7 +237,7 @@ describe('who may decrypt an ad account’s token', () => {
     .map((f) => f.slice(root.length + 1).replace(/\\/g, '/'))
     .sort();
 
-  it('— exactly the three that exist, and the definition', () => {
+  it('— exactly the four that exist, and the definition', () => {
     /*
      * A closed list, like «nothing-unused-ships». A fourth caller is not
      * forbidden — it is a decision: what does it do with a MANUAL account,
@@ -245,6 +245,8 @@ describe('who may decrypt an ad account’s token', () => {
      */
     expect(callers).toEqual([
       'src/app/api/settings/ad-accounts/[id]/route.ts',
+      // The per-ad, per-day spend pull (PR-A of the media buyer's doors): carries WITH_A_PLATFORM and skips an account with no token.
+      'src/lib/ads/daily.ts',
       'src/lib/ads/import.ts',
       'src/lib/ads/index.ts',
       'src/lib/ads/sync.ts',
@@ -252,7 +254,7 @@ describe('who may decrypt an ad account’s token', () => {
   });
 
   it('and each caller says what it does with a manual account', () => {
-    for (const f of ['src/lib/ads/sync.ts', 'src/lib/ads/import.ts']) {
+    for (const f of ['src/lib/ads/sync.ts', 'src/lib/ads/import.ts', 'src/lib/ads/daily.ts']) {
       expect(stripComments(read(f)), f).toContain('...WITH_A_PLATFORM');
     }
     const route = stripComments(read('src/app/api/settings/ad-accounts/[id]/route.ts'));
