@@ -4,6 +4,7 @@ import { db } from '../db';
 import { matchRegion } from '../regions';
 import { logAudit } from '../audit';
 import { cartPhoneKey } from '../abandoned-cart-rules';
+import { autoOrderForCart } from '../abandoned-cart-orders';
 import { V1_CODE, V1Fault } from './door';
 
 /**
@@ -21,7 +22,10 @@ import { V1_CODE, V1Fault } from './door';
  *   · Refuse a cart for its product. `productId` is linked when it is this company's, and otherwise left empty while
  *     `productName` keeps what the page called it.
  *   · Read a company from the request. It is the key's (`requireSystemToken`), as at every door here.
- *   · Write an order, a customer or a figure. A cart becomes an order only through the ordinary order door, by a person.
+ *   · Write an order, a customer or a figure ITSELF. A cart becomes an order through an order door only: the ordinary
+ *     one, by a person («حوّل لطلب»), or — when it carries a name and a phone and the company's switch is on — the
+ *     landing orders' own engine, by itself, on this very send (the owner, 17/11; `abandoned-cart-orders.ts`). The
+ *     answer then says CONVERTED. Whatever happens there, this door still answers `{ id, status }`.
  *
  * ── TWO KINDS OF «NO» ──
  *
@@ -137,7 +141,8 @@ const CART_ANSWER = { id: true, status: true } as const;
 
 /**
  * CREATE OR UPDATE ONE CART. `201` when it is new, `200` when it was already here — and the answer is the cart's REAL
- * status, which stays CONTACTED (or whatever the team set) through any number of updates.
+ * status, which stays CONTACTED (or whatever the team set) through any number of updates. CONVERTED when this send made
+ * it an order by itself (a name and a phone, the company's switch on — `abandoned-cart-orders.ts`), or when it already was.
  */
 export async function upsertLandingCart(
   companyId: string,
@@ -175,30 +180,38 @@ export async function upsertLandingCart(
     return { status: 200 as const, body: { id: row.id, status: row.status } };
   };
 
-  const known = await db.abandonedCart.findUnique({
-    where: { companyId_externalId: { companyId, externalId: input.externalId } },
-    select: { id: true },
-  });
-  if (known) return update();
-
-  try {
-    const row = await db.abandonedCart.create({
-      data: {
-        companyId,
-        externalId: input.externalId,
-        source: 'LANDING_PAGE',
-        status: 'NEW',
-        ...data,
-        activities: { create: { companyId, action: 'RECEIVED', toStatus: 'NEW' } },
-      },
-      select: CART_ANSWER,
+  const upsert = async (): Promise<{ status: 200 | 201; body: { id: string; status: string } }> => {
+    const known = await db.abandonedCart.findUnique({
+      where: { companyId_externalId: { companyId, externalId: input.externalId } },
+      select: { id: true },
     });
-    return { status: 201, body: { id: row.id, status: row.status } };
-  } catch (e) {
-    // Two sends of one lead under two keys, in the same second: the unique index let one create, and the other updates.
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return update();
-    throw e;
-  }
+    if (known) return update();
+
+    try {
+      const row = await db.abandonedCart.create({
+        data: {
+          companyId,
+          externalId: input.externalId,
+          source: 'LANDING_PAGE',
+          status: 'NEW',
+          ...data,
+          activities: { create: { companyId, action: 'RECEIVED', toStatus: 'NEW' } },
+        },
+        select: CART_ANSWER,
+      });
+      return { status: 201, body: { id: row.id, status: row.status } };
+    } catch (e) {
+      // Two sends of one lead under two keys, in the same second: the unique index let one create, and the other updates.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return update();
+      throw e;
+    }
+  };
+
+  const answer = await upsert();
+  // A name and a phone: the cart becomes an order by itself (`abandoned-cart-orders.ts`) — or stays a cart, with the
+  // reason on its history. Never fails this door, and a cart already tried is never tried twice.
+  const made = await autoOrderForCart(companyId, answer.body.id, { now });
+  return made.kind === 'CONVERTED' ? { status: answer.status, body: { id: answer.body.id, status: 'CONVERTED' } } : answer;
 }
 
 /**

@@ -921,7 +921,7 @@
   },
   "src/components/screens/AbandonedCartsScreen.tsx": {
     "buttons": 3,
-    "inputs": 1,
+    "inputs": 2,
     "columns": 12,
     "cards": 0,
     "modals": 0,

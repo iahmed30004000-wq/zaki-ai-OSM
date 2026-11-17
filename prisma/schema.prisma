@@ -4151,6 +4151,9 @@ model AbandonedCart {
   nextFollowUpAt  DateTime?
   /// Calls that went unanswered — «ما رد» adds one.
   attempts        Int       @default(0)
+  /// When this cart was taken to become an order BY ITSELF (the owner, 17/11; `abandoned-cart-orders.ts`). Written once,
+  /// by a conditional update that only one caller can win, so a cart makes one automatic order at most. Null: never tried.
+  autoOrderAt     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -4177,7 +4180,8 @@ model AbandonedCartActivity {
   companyId  String
   cartId     String
   userId     String?
-  /// RECEIVED · UPDATED · RECOVERED · STATUS_CHANGED · NO_ANSWER · NOTE · FOLLOW_UP · ASSIGNED · CONVERTED
+  /// RECEIVED · UPDATED · RECOVERED · STATUS_CHANGED · NO_ANSWER · NOTE · FOLLOW_UP · ASSIGNED · CONVERTED ·
+  /// AUTO_ORDER_SKIPPED · AUTO_ORDER_CANCELLED
   action     String
   fromStatus String?
   toStatus   String?

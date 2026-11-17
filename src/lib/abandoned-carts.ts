@@ -8,6 +8,7 @@ import { typed } from './text-search';
 import {
   HAND_STATUSES,
   HAS_ORDER_DAYS,
+  autoConvertOf,
   isClosedCart,
   retentionDaysOf,
   type CartStatus,
@@ -156,15 +157,29 @@ export async function ordersBehindCarts(
   return out;
 }
 
-/** The company's retention setting, in days (`abandonedCarts.retentionDays`), clamped, or the default. */
-export async function cartRetentionDays(companyId: string): Promise<number> {
+/** The company's `abandonedCarts` settings block, or nothing when there is none or it cannot be read. */
+async function cartSettings(companyId: string): Promise<Record<string, unknown>> {
   const row = await db.company.findUnique({ where: { id: companyId }, select: { settings: true } });
   try {
     const all = row?.settings ? JSON.parse(row.settings) : {};
-    return retentionDaysOf(all?.abandonedCarts?.retentionDays);
+    const block = all?.abandonedCarts;
+    return block && typeof block === 'object' ? (block as Record<string, unknown>) : {};
   } catch {
-    return retentionDaysOf(undefined);
+    return {};
   }
+}
+
+/** The company's retention setting, in days (`abandonedCarts.retentionDays`), clamped, or the default. */
+export async function cartRetentionDays(companyId: string): Promise<number> {
+  return retentionDaysOf((await cartSettings(companyId)).retentionDays);
+}
+
+/**
+ * «حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا» (`abandonedCarts.autoConvert`): ON unless the company turned it off
+ * (the owner, 17/11). Read by the landing door's cart upsert and by the job that converts the carts that waited.
+ */
+export async function cartAutoConvert(companyId: string): Promise<boolean> {
+  return autoConvertOf((await cartSettings(companyId)).autoConvert);
 }
 
 // ─── The presses ───

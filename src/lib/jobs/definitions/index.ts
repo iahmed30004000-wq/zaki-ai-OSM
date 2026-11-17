@@ -17,8 +17,10 @@ import { reserveReturning } from './reserve-returning-customers';
 import { pruneAbandonedCarts } from './prune-abandoned-carts';
 import { intakeFilter } from './intake-filter';
 import { queueHealthJob } from './queue-health';
+import { convertWaitingCartsJob } from './convert-waiting-carts';
 
 export {
+  convertWaitingCartsJob,
   queueHealthJob,
   intakeFilter,
   pruneAbandonedCarts,
@@ -77,6 +79,8 @@ export const JOBS: JobDefinition[] = [
   intakeFilter,
   // «صحة الطابور» (Confirmation Center v2, step D2): alerts the supervisors and the company admin. Behind the queue-priority key; writes notifications only.
   queueHealthJob,
+  // «السلات المهجورة» → «الطلبات» (the owner, 17/11): the carts with a name and a phone that waited become orders, twenty a run, behind the company's switch.
+  convertWaitingCartsJob,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {
