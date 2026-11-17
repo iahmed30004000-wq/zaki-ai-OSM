@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
-import { profitToDate } from '@/lib/profit-to-date';
+import { profitToDate, profitWindow } from '@/lib/profit-to-date';
 import { expensesOf } from '@/lib/expense-scope';
 import { cancelExpense } from '@/lib/expense-void';
 import { ExpenseRefused } from '@/lib/wallets';
@@ -84,7 +84,10 @@ export async function GET(req: Request) {
      * never counted), its delivered orders, their cost, shipping and commissions, and the `summary` below — moved there
      * unchanged, so that «صافي الربح» on this screen and the partners' shares of it are one number made in one place.
      */
-    const { expenses, liveExpenses, deliveredOrders, summary } = await profitToDate({ companyId, storeId });
+    // An optional span of days of the store (?from=YYYY-MM-DD&to=YYYY-MM-DD). Without it, or with a bad one, the figures are since the beginning — what every caller got before.
+    const url = new URL(req.url);
+    const window = profitWindow(url.searchParams.get('from'), url.searchParams.get('to'), country.timezone);
+    const { expenses, liveExpenses, deliveredOrders, summary } = await profitToDate({ companyId, storeId }, window);
 
     /**
      * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───

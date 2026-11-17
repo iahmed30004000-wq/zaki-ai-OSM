@@ -44,6 +44,7 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 }));
 // A button that moves the window, so the test can change `dateQuery` the way a person does.
 vi.mock('@/components/ui/DateRange', () => ({
+  todayRange: () => ({ from: '2026-10-07', to: '2026-10-07' }),
   DateRange: ({ onChange }: { onChange: (r: { from: string; to: string }) => void }) => (
     <button onClick={() => onChange({ from: '2026-10-01', to: '2026-10-07' })}>غيّر المدة</button>
   ),

@@ -63,6 +63,7 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   { file: 'src/lib/public-order.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the storefront and the sales page' },
   { file: 'src/lib/v1/order-intake.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the systems door' },
   { file: 'src/lib/v1/landing-door.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the landing system replacing the offer of an untouched order' },
+  { file: 'src/lib/v1/order-amend.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'the replies system re-pricing the lines of an order it created' },
   // The writer of a migrated order is `order-migration.ts`; this route hands it the question (its `unitCost` dependency).
   { file: 'src/app/api/orders/import/migrate/route.ts', asks: /unitCostsOf\(\s*tx\b/, names: ['unitCostsOf'], what: 'the migration of old orders (the dependency it hands the writer)', writes: false },
   { file: 'src/app/api/orders/[id]/route.ts', asks: /unitCostsOf\(\s*db\b[\s\S]*fixedCostsOf\(\s*db\b/, names: ['unitCostsOf', 'fixedCostsOf'], what: 'the lines edit — the units that go on' },
@@ -94,6 +95,7 @@ describe('each door that writes an order’s cost asks the owner’s figure — 
       'src/lib/public-order.ts',
       'src/lib/telegram/order-creation.ts',
       'src/lib/v1/landing-door.ts',
+      'src/lib/v1/order-amend.ts',
       'src/lib/v1/order-intake.ts',
     ].sort());
   });

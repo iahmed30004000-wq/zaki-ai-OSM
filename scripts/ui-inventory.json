@@ -1182,7 +1182,7 @@
   "src/components/screens/DashboardScreen.tsx": {
     "buttons": 3,
     "inputs": 0,
-    "columns": 5,
+    "columns": 6,
     "cards": 4,
     "modals": 0,
     "icons": 6,

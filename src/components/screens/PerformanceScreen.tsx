@@ -5,7 +5,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
 import { apiFetch, apiJson, saidBy } from '@/lib/api-client';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DateRange } from '@/components/ui/DateRange';
+import { DateRange, todayRange } from '@/components/ui/DateRange';
 import { TeamPerformanceTable } from '@/components/performance/TeamPerformanceTable';
 import { AttributionTable, type AttributionRow } from '@/components/performance/AttributionTable';
 import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTab';
@@ -26,16 +26,6 @@ import { BackToDashboardLink } from '@/components/dashboard/DetailsLinks';
 import { ChannelScoresSection } from '@/components/growth/ChannelScores';
 import type { CourierScore } from '@/lib/couriers/score';
 import { rowCostStated, type Trust } from '@/lib/cod-vitals';
-
-/** The last thirty days, which is what "how are we doing" nearly always means. */
-function lastThirtyDays() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 29);
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return { from: iso(from), to: iso(to) };
-}
 
 type Tab = 'team' | 'landing' | 'scores' | 'noanswer' | 'eod';
 
@@ -120,7 +110,8 @@ export function PerformanceScreen() {
   // period strip here and no filter at all on the people below it, so the
   // product table and the team table were answering about different spans
   // of time on the same page.
-  const [range, setRange] = useState(lastThirtyDays);
+  // Opens on TODAY (the owner, 17/11): thirty days of everything was the slow way in. أمس, 7 أيام, 30 يوم and a custom span are one press away.
+  const [range, setRange] = useState(todayRange);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */

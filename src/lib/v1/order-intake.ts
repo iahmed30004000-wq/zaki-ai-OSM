@@ -75,7 +75,7 @@ import type { SystemCaller } from './system-token';
  * writes it. This refuses anything that is not written like a decimal, and
  * the conversion happens once, below, on a value already proved to be one.
  */
-const decimalString = z
+export const decimalString = z
   .string()
   .trim()
   .regex(/^\d{1,9}(?:\.\d{1,3})?$/, 'an amount is a decimal string like "15.00"');
@@ -171,7 +171,7 @@ export interface V1OrderResult {
 }
 
 /** One line, priced by this system's catalogue and by nothing the caller sent. */
-interface PricedLine {
+export interface PricedLine {
   productId: string;
   productName: string;
   productImage: string | null;
@@ -204,7 +204,7 @@ interface PricedLine {
  * make, and inventing one here would quietly undercut the seller's own
  * advertised prices.
  */
-async function priceLines(
+export async function priceLines(
   companyId: string,
   minorUnit: number,
   products: Map<string, { id: string; name: string; image: string | null; basePrice: number }>,
@@ -242,7 +242,7 @@ async function priceLines(
  * `public-order.ts`: without the de-duplication a caller could split one
  * bundle across two lines and claim its reduction twice.
  */
-function offersDiscount(lines: PricedLine[]): number {
+export function offersDiscount(lines: PricedLine[]): number {
   const seen = new Set<string>();
   let total = 0;
   for (const line of lines) {

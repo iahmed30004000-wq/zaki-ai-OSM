@@ -35,6 +35,9 @@ export const V1_SCOPES = [
   'orders.create',
   'orders.read',
   'orders.note',
+  // The replies system's two (18/11): edit and end an order IT created, while it is still editable. Separate scopes — a key made before them keeps exactly what it had (403 SCOPE_MISSING on these two).
+  'orders.amend',
+  'orders.cancel',
   // The media buyer's two (2026-10-26). Separate scopes, not a widening of
   // `orders.read` and `products.read`: the replies system holds those, and
   // it must not start reading every order's ad trail or the cost of goods
@@ -60,6 +63,9 @@ export const REPLIES_SCOPES: V1Scope[] = [
   'orders.create',
   'orders.read',
   'orders.note',
+  // What a NEW key of this system starts with. A key already minted keeps its own stored list and gains nothing.
+  'orders.amend',
+  'orders.cancel',
 ];
 
 /**
@@ -113,6 +119,8 @@ export const V1_SCOPE_AR: Record<V1Scope, string> = {
   'orders.create': 'إنشاء طلب',
   'orders.read': 'قراءة حالة طلب',
   'orders.note': 'إضافة ملاحظة على طلب',
+  'orders.amend': 'تعديل طلب أنشأه النظام نفسه (قبل التأكيد)',
+  'orders.cancel': 'إلغاء طلب أنشأه النظام نفسه (قبل التأكيد)',
   'orders.attribution.read': 'قراءة مصدر الطلبات وحالتها (بلا بيانات زبون)',
   'products.costs.read': 'قراءة تكلفة المنتج ومدة المخزون',
   'ads.spend.read': 'قراءة الإنفاق الإعلاني اليومي لكل إعلان',

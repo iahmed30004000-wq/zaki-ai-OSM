@@ -856,10 +856,19 @@ describe('«الأرباح»', () => {
 
   it('FIN-18: a product is a card — its name is not cut, and orders / delivered / revenue are labelled lines', async () => {
     await draw();
-    expect(document.querySelectorAll('.truncate')).toHaveLength(0);
     const card = cards().find((c) => c.textContent?.includes(PRODUCT.name))!;
+    // The product CARD is where the name must not be cut (the date control above the figures cuts its own long value, and is not a card).
+    expect(card.querySelectorAll('.truncate')).toHaveLength(0);
     expect(labelsOf(card)).toEqual(['طلبات', 'مسلَّم', 'إيراد']);
     expect(card.textContent).toContain('37%');
+  });
+
+  it('D2: it opens on TODAY — the first read of the figures carries today as its span', async () => {
+    await draw();
+    const urls = (fetch as unknown as { mock: { calls: [string][] } }).mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith('/api/finance?'));
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    expect(urls[0]).toBe(`/api/finance?from=${today}&to=${today}`);
   });
 
   it('FIN-18 DESK: the row of loose fragments, the name cut at one line', async () => {

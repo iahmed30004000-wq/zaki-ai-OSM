@@ -23,6 +23,9 @@ const NEEDS: Record<V1Scope, readonly string[]> = {
   'orders.create': ['orders.create'],
   'orders.read': ['orders.view'],
   'orders.note': ['orders.view'],
+  // Editing and ending an order are what the order screen's own keys allow: whoever mints the key must be allowed to do both there.
+  'orders.amend': ['orders.edit'],
+  'orders.cancel': ['orders.cancel'],
   'orders.attribution.read': ['orders.view'],
   // The cost of goods is money: the product key, the finance key and the cost key (PR-10: whoever mints it must see it).
   'products.costs.read': ['products.view', 'finance.view', 'costs.view'],

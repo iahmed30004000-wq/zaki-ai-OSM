@@ -114,7 +114,8 @@ export function CampaignsScreen() {
   const mayManage = userCan(currentUser, 'campaigns.manage');
   const toast = useToast();
   const [data, setData] = useState<Payload | null>(null);
-  const [period, setPeriod] = useState<string>('month');
+  // Opens on TODAY (the owner, 17/11); the strip beside it still has أمس and the month.
+  const [period, setPeriod] = useState<string>('today');
   // A picked range wins over the period buttons; a period button clears it.
   const [range, setRange] = useState<Range>({ from: '', to: '' });
   const windowQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : `period=${period}`;
