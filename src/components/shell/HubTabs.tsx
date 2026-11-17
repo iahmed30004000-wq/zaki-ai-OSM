@@ -59,10 +59,18 @@ export function HubTabs({ groups }: { groups: NavGroup[] }) {
   const { byRoute } = useNotifications();
   const strip = useRef<HTMLUListElement>(null);
 
-  // `block: 'nearest'` so the PAGE does not move, only the strip; optional
-  // because a test browser without layout has no `scrollIntoView` at all.
+  // THE STRIP SCROLLS, NOT THE PAGE (the owner, 17/11: on «الأرباح», the last of eight pills, the first pill sat cut off at the page's edge).
+  // `scrollIntoView` moves EVERY scrollable ancestor — `block: 'nearest'` only spares the vertical one, and `inline: 'center'` slid the whole
+  // document sideways whenever the page was a hair wider than the screen. So the strip is moved alone, only when it really overflows, by the
+  // distance between the two centres read off the screen (the same sum in RTL, where scrollLeft is negative). `scrollBy` is optional because
+  // a test browser without layout has none.
   useEffect(() => {
-    strip.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'center' });
+    const ul = strip.current;
+    const pill = ul?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!ul || !pill || ul.scrollWidth <= ul.clientWidth) return;
+    const a = pill.getBoundingClientRect();
+    const b = ul.getBoundingClientRect();
+    ul.scrollBy?.({ left: a.left + a.width / 2 - (b.left + b.width / 2) });
   }, [pathname]);
 
   const at = hubAt(groups, pathname);
