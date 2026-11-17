@@ -16,8 +16,10 @@ import { pullAdSpend } from './pull-ad-spend';
 import { reserveReturning } from './reserve-returning-customers';
 import { pruneAbandonedCarts } from './prune-abandoned-carts';
 import { intakeFilter } from './intake-filter';
+import { queueHealthJob } from './queue-health';
 
 export {
+  queueHealthJob,
   intakeFilter,
   pruneAbandonedCarts,
   releaseClaims,
@@ -73,6 +75,8 @@ export const JOBS: JobDefinition[] = [
   pruneAbandonedCarts,
   // «فلتر الاستقبال» (Confirmation Center v2, step C1): a flag on a repeated or oddly-shaped new order. Behind its own company switch.
   intakeFilter,
+  // «صحة الطابور» (Confirmation Center v2, step D2): alerts the supervisors and the company admin. Behind the queue-priority key; writes notifications only.
+  queueHealthJob,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {

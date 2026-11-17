@@ -5,7 +5,7 @@ import { CONFIRMATION_STATUS_AR, NO_ANSWER_RESULTS } from './confirmation-workfl
 import {
   OPEN_CONFIRMATION,
   PULL_TRANSACTION_OPTIONS,
-  RETURNS_MODE,
+  returnsLimits,
   capRefusal,
   capRoom,
   ownedCounts,
@@ -572,7 +572,7 @@ export async function takeOnTheLine(args: {
   const now = args.now ?? new Date();
   // The mode widens what counts as a returned order (see the header) and hands the take its hand limit; the pace is not asked here, ever.
   const returned = args.returned ?? (await returnsModeOn(db, scope.companyId));
-  const hand = returned ? RETURNS_MODE.handLimit : undefined;
+  const hand = returned ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
   return db.$transaction(async (tx) => {
     // Who holds it, and since when, is read here too: a take from a colleague is a take of THAT claim (see below).
     const seen = await tx.order.findFirst({

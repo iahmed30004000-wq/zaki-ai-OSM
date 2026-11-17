@@ -7,6 +7,7 @@ import {
   CLAIM_CAPS,
   OPEN_CONFIRMATION,
   RETURNS_MODE,
+  returnsLimits,
   ownedCounts,
   pullPermission,
   readReturnsMode,
@@ -60,7 +61,9 @@ export async function GET() {
         timezone: country.timezone,
       }),
     });
-    const hand = returns ? RETURNS_MODE.handLimit : undefined;
+    // Step D2: the limits are 5 and 30 — or 3 and 20 with the queue-priority key on (`returnsLimits`); asked only where the mode is on.
+    const limits = returns ? await returnsLimits(db, companyId) : null;
+    const hand = limits ? limits.handLimit : undefined;
     // «جدول المحاولات» on (ruling 24, key only): the counter is said in the plan's four. Off, and the older mode, are the three they always were.
     const planned = returns?.cadence ? (returns as ReturnsMode & { cadence: { since: Date } }) : null;
     const [pool, counts, waitingOnADate, heldForColleagues, openIssues] = await Promise.all([
@@ -116,7 +119,7 @@ export async function GET() {
             waiting: pool.fresh + pool.promise + pool.retry + pool.rest,
             waitingNew: pool.fresh,
             waitingReturned: pool.promise + pool.retry + pool.rest,
-            waitingPlan: planWords(pool, RETURNS_MODE.idleBusinessMinutes),
+            waitingPlan: planWords(pool, (limits ?? RETURNS_MODE).idleBusinessMinutes),
           }
         : {
             waiting: pool.fresh + pool.returned + pool.due,

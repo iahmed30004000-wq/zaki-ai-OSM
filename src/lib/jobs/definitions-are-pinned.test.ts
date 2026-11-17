@@ -41,6 +41,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['prune-abandoned-carts', 86_400, '04:00'],
   // Appended 16/11: «فلتر الاستقبال» (Confirmation Center v2, step C1) — flags a repeat and an oddly-shaped number; not 60 s (the heartbeat watches those).
   ['intake-filter', 120, undefined],
+  // Appended 17/11: «صحة الطابور» (Confirmation Center v2, step D2) — alerts the supervisors and the company admin; behind the queue-priority key. Not 60 (the heartbeat's).
+  ['queue-health', 300, undefined],
 ];
 
 describe('the jobs table', () => {
