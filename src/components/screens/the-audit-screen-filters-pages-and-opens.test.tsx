@@ -28,6 +28,10 @@ vi.mock('@/components/ui/PageHeader', () => ({
 }));
 
 import { AuditScreen } from './AuditScreen';
+import { todayRange } from '@/components/ui/DateRange';
+
+/** It opens on today (the owner, 17/11): the first read already carries today as its span. */
+const TODAY = (() => { const t = todayRange(); return `from=${t.from}&to=${t.to}`; })();
 
 const ORDER_ID = '0f8c1b2a-1111-4222-8333-444455556666';
 const ROW = (over: Record<string, unknown> = {}) => ({
@@ -113,7 +117,7 @@ describe('the questions it asks', () => {
   it('opens with nothing chosen: page 1, 25 rows, no filter in the address', async () => {
     render(<AuditScreen />);
     await screen.findAllByText('تغيير حالة طلب');
-    expect(urls()[0]).toBe('/api/audit-logs?page=1&limit=25');
+    expect(urls()[0]).toBe(`/api/audit-logs?${TODAY}&page=1&limit=25`);
   });
 
   it('a person chosen is asked for, from page one, with the figure beside the name', async () => {
@@ -132,7 +136,7 @@ describe('the questions it asks', () => {
     await act(async () => {
       screen.getByRole('button', { name: /إعادة تعيين/ }).click();
     });
-    await waitFor(() => expect(urls().at(-1)).toBe('/api/audit-logs?page=1&limit=25'));
+    await waitFor(() => expect(urls().at(-1)).toBe(`/api/audit-logs?${TODAY}&page=1&limit=25`));
   });
 
   it('the pager asks for the next page of the same list', async () => {
@@ -154,9 +158,9 @@ describe('when nothing matches', () => {
     expect(await screen.findAllByText('لا أحداث بهذه الاختيارات')).not.toHaveLength(0);
   });
 
-  it('an empty log with no choice is the honest «nothing yet»', async () => {
+  it('an empty today with no choice says there was nothing today, and where to look', async () => {
     api.mockResolvedValue(BODY([], { pagination: { total: 0, page: 1, limit: 25, totalPages: 1 } }));
     render(<AuditScreen />);
-    expect((await screen.findAllByText('لا أحداث في السجلّ بعد')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('لا أحداث اليوم')).length).toBeGreaterThan(0);
   });
 });
