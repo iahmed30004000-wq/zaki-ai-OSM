@@ -46,6 +46,116 @@ export function isAppEvent(v: string): v is AppEvent {
   return (APP_EVENTS as readonly string[]).includes(v);
 }
 
+/**
+ * THE EVENT THAT IS NOT ONE OF THE SIX — «اوقف» from the owner (the media buyer's doors, PR-B, O5).
+ *
+ * `APP_EVENTS` is the replies system's contract (`contracts/oms-app-events.v1`: the schema's enum IS this list, held by `events.test.ts`), so it stays exactly six.
+ * The owner's stop request is a different kind of thing: it is not something that happened to an order, it is a command the owner typed to the bot, and it is
+ * meant for ONE app — the media buyer, registered as an installed app — never for every listener. It travels through the SAME installed-apps machinery
+ * (the app's URL and secret, the delivery log, the retries, the page `/apps/installed`) and nothing new: `emitOwnerStop` writes the same `AppDelivery` row
+ * `emitAppEvent` does. An app hears it only if it registered for it by name; the replies system did not and never gets it.
+ */
+export const OWNER_STOP_EVENT = 'owner.stop_requested' as const;
+
+/** Events an external app may register for beyond the six of the replies contract. */
+export const EXTRA_APP_EVENTS = [OWNER_STOP_EVENT] as const;
+export type ExtraAppEvent = (typeof EXTRA_APP_EVENTS)[number];
+
+export const EXTRA_APP_EVENT_AR: Record<ExtraAppEvent, string> = {
+  'owner.stop_requested': 'طلب إيقاف من المالك («اوقف …» للبوت)',
+};
+
+/** Is this a name an external app may register for — one of the six, or an extra? */
+export function isRegisterableEvent(v: string): v is AppEvent | ExtraAppEvent {
+  return isAppEvent(v) || (EXTRA_APP_EVENTS as readonly string[]).includes(v);
+}
+
+/**
+ * The timestamp header of a delivery, in the unit the RECEIVER reads.
+ *
+ * The six order events keep the milliseconds their published contract says (`X-Zaki-Timestamp` in ms — the replies system reads it that way). The media buyer's
+ * contract (`oms.stop-event`) says «unix seconds, rejected when more than five minutes old», and its verifier (`verifySignature` in its `step-exec.ts`) divides
+ * the clock by 1000 before comparing — a millisecond value would be rejected as 50,000 years old. The signature is over the same string either way
+ * (`<timestamp>.<body>`), so it is the timestamp that is in the receiver's unit.
+ */
+export function deliveryTimestamp(event: string, nowMs: number): string {
+  return event === OWNER_STOP_EVENT ? String(Math.floor(nowMs / 1000)) : String(nowMs);
+}
+
+/** The company whose installed app listens to the stop request — only when it is exactly one (the owner's chat does not name a company). */
+export async function companyListeningToStop(): Promise<string | null> {
+  const installs = await db.appInstall.findMany({
+    where: { enabled: true, app: { status: 'ACTIVE', webhookUrl: { not: null } } },
+    select: { companyId: true, app: { select: { events: true } } },
+  });
+  const companies = new Set<string>();
+  for (const i of installs) {
+    try {
+      const events = JSON.parse(i.app?.events ?? '[]');
+      if (Array.isArray(events) && events.includes(OWNER_STOP_EVENT)) companies.add(i.companyId);
+    } catch {
+      // an unreadable list listens to nothing
+    }
+  }
+  return companies.size === 1 ? [...companies][0] : null;
+}
+
+/**
+ * Queue the owner's stop request for every installed app of this company that registered for it. Never throws; returns how many apps will be told.
+ *
+ * The same text typed twice within two minutes is one request: Telegram re-sends an update it did not hear an answer to, and a stop must not be queued twice for it.
+ */
+export async function emitOwnerStop(
+  companyId: string,
+  data: { query: string; source_chat: 'owner' | 'allowed' }
+): Promise<number> {
+  try {
+    const installs = await db.appInstall.findMany({
+      where: { companyId, enabled: true, app: { status: 'ACTIVE', webhookUrl: { not: null } } },
+      select: { id: true, app: { select: { events: true, webhookUrl: true } } },
+    });
+    const listening = installs.filter((i) => {
+      try {
+        const events = JSON.parse(i.app?.events ?? '[]');
+        return Array.isArray(events) && events.includes(OWNER_STOP_EVENT);
+      } catch {
+        return false;
+      }
+    });
+    if (listening.length === 0) return 0;
+
+    const marker = JSON.stringify(data);
+    const recent = await db.appDelivery.findMany({
+      where: {
+        companyId,
+        event: OWNER_STOP_EVENT,
+        installId: { in: listening.map((i) => i.id) },
+        createdAt: { gte: new Date(Date.now() - 2 * 60_000) },
+      },
+      select: { installId: true, payload: true },
+    });
+    const fresh = listening.filter((i) => !recent.some((r) => r.installId === i.id && r.payload.includes(`"data":${marker}`)));
+    if (fresh.length === 0) return listening.length;
+
+    const body = JSON.stringify({ event: OWNER_STOP_EVENT, at: new Date().toISOString(), data });
+    await db.appDelivery.createMany({
+      data: fresh.map((i) => ({
+        companyId,
+        installId: i.id,
+        event: OWNER_STOP_EVENT,
+        payload: body,
+        url: i.app!.webhookUrl!,
+        status: 'PENDING',
+        nextAttemptAt: new Date(),
+      })),
+    });
+    return listening.length;
+  } catch (e) {
+    console.error('emitOwnerStop failed (non-fatal):', (e as Error)?.name || 'unknown');
+    return 0;
+  }
+}
+
 /** Retry schedule in seconds: quick, then patient, then give up. */
 export const BACKOFF = [30, 120, 600, 3600, 21600];
 export const MAX_ATTEMPTS = BACKOFF.length;
@@ -130,7 +240,7 @@ export async function deliverOne(deliveryId: string): Promise<boolean> {
   if (!delivery) return false;
 
   const attempt = delivery.attempts + 1;
-  const timestamp = String(Date.now());
+  const timestamp = deliveryTimestamp(delivery.event, Date.now());
 
   let secret: string | null = null;
   try {

@@ -67,8 +67,10 @@ export function deleteWebhook() {
 }
 
 /** Outbound message send (reserved for later phases; RBAC-guarded at the route). */
-export function sendMessage(chatId: string | number, text: string, replyToMessageId?: number) {
+export function sendMessage(chatId: string | number, text: string, replyToMessageId?: number, threadId?: number) {
   const payload: Record<string, unknown> = { chat_id: chatId, text: text.slice(0, 4096) };
   if (replyToMessageId) payload.reply_to_message_id = replyToMessageId;
+  // One topic of a forum group.
+  if (threadId) payload.message_thread_id = threadId;
   return call<{ message_id: number }>('sendMessage', payload);
 }

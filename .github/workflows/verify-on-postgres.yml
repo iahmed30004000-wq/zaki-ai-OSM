@@ -35,6 +35,7 @@
 #   queue-health --assert: the queue-health board's counts on real tables (step D2): the backlog, due now, entered/closed today, the waits, in a rolled-back transaction.
 #   landing-ad-tags --assert: the ad tags a Pages order arrives with, through the REAL landing door onto the real `orders` table (media-buyer doors, PR-A): an order with tags, one with none and one with a damaged tag
 #              all go through; everything it writes is deleted at the end.
+#   stock-figures --assert: the media buyer's stock figures (PR-B, O3) on the real `production_batches`, `orders` and `order_items`: units shipped in 7 days, the shelf, the cover; deleted at the end.
 #
 # NOT here, and still by hand: the screenshots and `check-app` (they need a
 # browser and the app running). `scale-retries` asserts nothing, so it is
@@ -155,6 +156,10 @@ jobs:
       # It cannot be a rolled-back transaction (the door opens its own), so it writes in an isolated store and deletes everything at the end. Exit 3 = a case differs.
       - name: Landing ad tags (asserted)
         run: node scripts/verify-on-postgres/landing-ad-tags.mjs --assert
+
+      # The media buyer's stock figures (PR-B, O3): stock_units, daily_sales_7d and the cover, on the real tables, in two isolated stores that are deleted at the end. Exit 3 = a case differs.
+      - name: Stock figures (asserted)
+        run: node scripts/verify-on-postgres/stock-figures.mjs --assert
 
       # Always: a runner is thrown away, but a run that is cancelled or fails
       # halfway should not be the reason nobody checks that the container

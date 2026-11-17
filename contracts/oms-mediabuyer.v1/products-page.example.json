@@ -36,6 +36,8 @@
       ],
       "unit_cost_usd": "3.25",
       "stock_days": 12.5,
+      "stock_units": 240,
+      "daily_sales_7d": "19.20",
       "delivery_fee": null,
       "return_fee": null,
       "cod_fee_pct": null

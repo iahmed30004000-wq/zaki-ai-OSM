@@ -13,6 +13,8 @@ across unchanged.
 | `products-page.example.json` | a golden catalogue |
 | `ad-spend-page.schema.json` | `GET /api/v1/ad-spend` — one page `{items, next_cursor, as_of}`: spend per day per ad (or adset / campaign by `level`) |
 | `ad-spend-page.example.json` | a golden page |
+| `notify-request.schema.json` · `notify-response.schema.json` (+ examples) | `POST /api/v1/notify` — the one Telegram gateway, scope `notify.send` |
+| `stop-event.schema.json` · `stop-event.example.json` | the signed `owner.stop_requested` event the OMS sends the media buyer (through the installed-apps webhooks); `X-Zaki-Timestamp` in SECONDS |
 
 ## The rules
 

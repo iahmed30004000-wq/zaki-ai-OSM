@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "zaki/oms-mediabuyer.v1/notify-response",
+  "title": "POST /api/v1/notify — الجواب (v1)",
+  "description": "ok دايماً true بالنجاح؛ delivered تيليجرام قبل الرسالة؛ duplicate لما نفس المفتاح انبعت قبل (ما انبعتت مرة تانية)؛ message_id رقم الرسالة بتيليجرام. الأخطاء بغلاف الأخطاء العادي: 403 SCOPE_MISSING · 404 TARGET_UNKNOWN · 409 IDEMPOTENCY_CONFLICT · 422 CONTAINS_CUSTOMER_DATA · 429 RATE_LIMITED · 502 TELEGRAM_UNAVAILABLE (الرسالة ما ضاعت: أعد بنفس المفتاح).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ok", "delivered"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "delivered": { "type": "boolean" },
+    "duplicate": { "type": "boolean" },
+    "message_id": { "anyOf": [{ "type": "integer" }, { "type": "null" }] }
+  }
+}
