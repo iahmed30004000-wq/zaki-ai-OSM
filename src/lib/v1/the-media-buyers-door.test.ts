@@ -605,3 +605,72 @@ describe('the frozen contract — contracts/oms-mediabuyer.v1', () => {
     for (const f of PRODUCT_FIELDS) expect(declared, f).toContain(f);
   });
 });
+
+describe('stock figures for the media buyer — stock_units, daily_sales_7d, and stock_days where the screen has none (PR-B, O3)', () => {
+  const product = { id: 'p1', sku: 'TRF01', name: 'ماء الكمأة', nameEn: 'KamaaEye', basePrice: 20, storeId: 's1', store: { country: { currencyCode: 'USD', minorUnit: 2 } } };
+  const FIELDS = '/api/v1/products?fields=code,name,stock_units,daily_sales_7d,stock_days';
+
+  /** The delivery record is empty (the screen has no answer); the shipped read returns the given lines. */
+  function stock(opts: { batches?: number; shippedLines?: { productId: string; quantity: number; freeQuantity: number }[] } = {}) {
+    h.db.product.findMany.mockResolvedValue([product]);
+    h.db.productionBatch.findMany.mockResolvedValue(
+      opts.batches === 0 ? [] : [{ productId: 'p1', quantityRemaining: opts.batches ?? 240, costPerUnit: 3.25, productionDate: new Date('2026-09-01') }]
+    );
+    h.db.order.findFirst.mockResolvedValue(null);
+    h.db.orderItem.findMany.mockImplementation(async (a: { where: { order: Record<string, unknown> } }) =>
+      'shippedAt' in a.where.order ? (opts.shippedLines ?? []) : []
+    );
+  }
+
+  it('the contract’s division: 240 on the shelf, 210 shipped in seven days → 30.00 a day → 8 days', async () => {
+    stock({ shippedLines: [{ productId: 'p1', quantity: 100, freeQuantity: 5 }, { productId: 'p1', quantity: 100, freeQuantity: 5 }] });
+    const [item] = (await (await getProducts(call(FIELDS))).json()).items;
+    expect(item).toMatchObject({ stock_units: 240, daily_sales_7d: '30.00', stock_days: 8 });
+  });
+
+  it('reads only what shipped in the window, for this company and this store', async () => {
+    stock({ shippedLines: [{ productId: 'p1', quantity: 7, freeQuantity: 0 }] });
+    await getProducts(call(FIELDS));
+    const shippedRead = h.db.orderItem.findMany.mock.calls.map(([a]) => a).find((a) => 'shippedAt' in a.where.order);
+    expect(shippedRead.where.order.companyId).toBe('c1');
+    expect(shippedRead.where.order.storeId).toBe('s1');
+    const since = shippedRead.where.order.shippedAt.gte as Date;
+    expect(Math.round((Date.now() - since.getTime()) / 86_400_000)).toBe(7);
+  });
+
+  it('what open orders hold is not for sale: stock_units is the shelf minus the reserved, and never below zero', async () => {
+    stock({ batches: 240, shippedLines: [{ productId: 'p1', quantity: 210, freeQuantity: 0 }] });
+    h.reservedElsewhere.mockResolvedValue(40);
+    expect((await (await getProducts(call(FIELDS))).json()).items[0]).toMatchObject({ stock_units: 200, stock_days: 6.7 });
+    stock({ batches: 10 });
+    h.reservedElsewhere.mockResolvedValue(25);
+    expect((await (await getProducts(call(FIELDS))).json()).items[0].stock_units).toBe(0);
+  });
+
+  it('no stock count held (never a batch) is null — not zero — and so is the cover', async () => {
+    stock({ batches: 0, shippedLines: [{ productId: 'p1', quantity: 70, freeQuantity: 0 }] });
+    expect((await (await getProducts(call(FIELDS))).json()).items[0]).toMatchObject({ stock_units: null, daily_sales_7d: '10.00', stock_days: null });
+  });
+
+  it('nothing shipped: 0.00 a day, and a cover that cannot be divided is null — never infinity', async () => {
+    stock({ shippedLines: [] });
+    expect((await (await getProducts(call(FIELDS))).json()).items[0]).toMatchObject({ stock_units: 240, daily_sales_7d: '0.00', stock_days: null });
+  });
+
+  it('are behind products.costs.read like stock_days: refused, not quietly answered', async () => {
+    h.db.systemToken.findUnique.mockResolvedValue(tokenRow(['products.read']));
+    for (const f of ['stock_units', 'daily_sales_7d']) {
+      const res = await getProducts(call(`/api/v1/products?fields=${f}`));
+      expect(res.status, f).toBe(403);
+    }
+  });
+
+  it('the answer with all the new fields fits the contract', async () => {
+    stock({ shippedLines: [{ productId: 'p1', quantity: 210, freeQuantity: 0 }] });
+    const PROD = JSON.parse(readFileSync(join(process.cwd(), 'contracts', 'oms-mediabuyer.v1', 'products-page.schema.json'), 'utf8'));
+    const body = await (await getProducts(call(`/api/v1/products?fields=code,name,${PRODUCT_FIELDS.join(',')}`))).json();
+    const errs = [...validate(PROD, body), ...validate(PROD.properties.items.items, body.items[0])];
+    expect(errs).toEqual([]);
+    expect(Object.keys(body.items[0])).toEqual(expect.arrayContaining(['stock_units', 'daily_sales_7d', 'stock_days']));
+  });
+});

@@ -29,12 +29,13 @@ import { typed } from '../text-search';
 import { aliasFor, offerAliasFor, pickAliasedOffer, type AliasRow } from './aliases';
 import { loadAliases } from './alias-store';
 import { UPSELL_COUNT_MAX, UPSELL_HOLD_MS, holdUntil, judgePair } from './upsell-pair';
+import { handleOwnerCommand } from './owner-commands';
 
 const RECENT_MESSAGE_WINDOW_MS = 24 * 60 * 60 * 1000; // ignore stale updates
 
 export interface TelegramInboundResult {
   handled: boolean; // false = event type not processed as an order
-  status?: 'PROCESSED' | 'IGNORED' | 'NEEDS_REVIEW' | 'FAILED' | 'DUPLICATE' | 'NO_SOURCE' | 'NON_TEXT';
+  status?: 'PROCESSED' | 'IGNORED' | 'NEEDS_REVIEW' | 'FAILED' | 'DUPLICATE' | 'NO_SOURCE' | 'NON_TEXT' | 'OWNER_STOP' | 'OWNER_STOP_REFUSED';
   reason?: string;
   orderId?: string;
 }
@@ -105,6 +106,10 @@ async function resolveSource(chatId: string, threadId?: number) {
  * Process one Telegram update. Never throws for expected conditions.
  */
 export async function processTelegramUpdate(update: unknown): Promise<TelegramInboundResult> {
+  // The owner's «اوقف …» in his private chat is a command for the media buyer, not an order (`owner-commands.ts`); anything else is untouched.
+  const command = await handleOwnerCommand(update);
+  if (command.handled) return { handled: true, status: command.status };
+
   const norm = normalizeUpdate(update);
   // Unsupported events (private chats, non-text, unsupported types) → ignore
   if (!norm || !norm.text || !norm.text.trim()) {

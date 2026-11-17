@@ -55,6 +55,12 @@ export const V1_CODE = {
   INVALID_PHONE: 'INVALID_PHONE',
   /** The order, or whatever was asked for, is not this company's. */
   NOT_FOUND: 'NOT_FOUND',
+  /** A message for the Telegram gateway names a person or a chat this system does not know, or the bot cannot write to. */
+  TARGET_UNKNOWN: 'TARGET_UNKNOWN',
+  /** The text of a message looks like a phone number or an address: refused, not sent, not echoed. */
+  CONTAINS_CUSTOMER_DATA: 'CONTAINS_CUSTOMER_DATA',
+  /** Telegram did not accept the message. Nothing was lost: retry with the same key. */
+  TELEGRAM_UNAVAILABLE: 'TELEGRAM_UNAVAILABLE',
   /** Anything this door did not expect. Never carries an internal message. */
   INTERNAL: 'INTERNAL',
 } as const;

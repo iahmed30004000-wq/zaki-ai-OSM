@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "zaki/oms-mediabuyer.v1/notify-request",
+  "title": "POST /api/v1/notify — الطلب (v1)",
+  "description": "الميديا باير ← الـ OMS. صلاحية notify.send. الـ OMS هو بوابة تيليجرام الوحيدة: الميديا باير ما عندو توكن بوت، بيطلب إرسال رسالة. target = «owner» أو {person} أو {chat_id, topic_id?}. key مفتاح التكرار: نفس المفتاح بيرسل مرة وحدة 24 ساعة (نفس النص: رد مكرّر، نص تاني: 409). نص فيو رقم هاتف أو عنوان مرفوض 422 CONTAINS_CUSTOMER_DATA ولا بيرجع مكتوب. إضافة حقل اختياري = v1؛ حذف أو تغيير اسم أو نوع = v2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["target", "text", "key"],
+  "properties": {
+    "target": {
+      "anyOf": [
+        { "type": "string", "enum": ["owner"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["person"],
+          "properties": { "person": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,31}$" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chat_id"],
+          "properties": {
+            "chat_id": { "anyOf": [{ "type": "integer" }, { "type": "string", "pattern": "^-?[0-9]{1,20}$" }] },
+            "topic_id": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "key": { "type": "string", "minLength": 8, "maxLength": 120 },
+    "link": { "type": "string", "maxLength": 300 }
+  }
+}

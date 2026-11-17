@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "zaki/oms-mediabuyer.v1/stop-event",
+  "title": "OMS → الميديا باير: owner.stop_requested (v1)",
+  "description": "الـ OMS بيبعت للميديا باير (POST على mediabuyer.zakiai.io/api/inbound/oms) لما المالك يكتب «اوقف …» للبوت. نفس غلاف أحداث التطبيقات {event, at, data}، بترويسات X-Zaki-Event و X-Zaki-Delivery و X-Zaki-Timestamp (ثواني يونكس، مش ميلي ثانية، ومرفوض لو أقدم من 5 دقايق) و X-Zaki-Signature = sha256=<HMAC-SHA256 من «<timestamp>.<raw body>» بسرّ التطبيق>. السرّ بيطلع مرة وحدة من صفحة التطبيقات عند تسجيل الميديا باير كتطبيق. إيقاف بس: أي شي بيصرف مرفوض عند الميديا باير. إضافة حقل اختياري = v1؛ حذف أو تغيير اسم أو نوع = v2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "at", "data"],
+  "properties": {
+    "event": { "type": "string", "enum": ["owner.stop_requested"] },
+    "at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "source_chat": { "type": "string", "enum": ["owner", "allowed"] }
+      }
+    }
+  }
+}

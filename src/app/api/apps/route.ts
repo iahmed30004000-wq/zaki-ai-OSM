@@ -8,7 +8,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { encryptSecret, encryptionAvailable } from '@/lib/secrets';
 import { builtInApps, APP_CATEGORY_AR } from '@/lib/apps/registry';
-import { APP_EVENTS, APP_EVENT_AR, isAppEvent } from '@/lib/apps/events';
+import { APP_EVENTS, APP_EVENT_AR, EXTRA_APP_EVENTS, EXTRA_APP_EVENT_AR, isRegisterableEvent } from '@/lib/apps/events';
 import { zodMessage } from '@/lib/zod-message';
 
 /**
@@ -86,7 +86,11 @@ export async function GET() {
         enabled: installByCode.get(a.code)?.enabled ?? false,
         installCount: a._count.installs,
       })),
-      availableEvents: APP_EVENTS.map((e) => ({ code: e, label: APP_EVENT_AR[e] })),
+      // The six of the replies contract, then the extras an app may register for by name (the owner's stop request).
+      availableEvents: [
+        ...APP_EVENTS.map((e) => ({ code: e, label: APP_EVENT_AR[e] })),
+        ...EXTRA_APP_EVENTS.map((e) => ({ code: e, label: EXTRA_APP_EVENT_AR[e] })),
+      ],
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -140,7 +144,7 @@ export async function POST(req: Request) {
     }
     const input = parsed.data;
 
-    const events = input.events.filter(isAppEvent);
+    const events = input.events.filter(isRegisterableEvent);
     if (events.length === 0) {
       return NextResponse.json({ error: 'أحداث غير معروفة' }, { status: 400 });
     }

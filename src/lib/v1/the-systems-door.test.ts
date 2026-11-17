@@ -109,6 +109,8 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
       'src/app/api/v1/landing/products/[id]/route.ts',
       'src/app/api/v1/landing/products/route.ts',
       'src/app/api/v1/landing/quote/route.ts',
+      // The eighth (17/11, PR-B) is `notify`: one Telegram gateway for every system, scope `notify.send` — `the-notify-door.test.ts`.
+      'src/app/api/v1/notify/route.ts',
       'src/app/api/v1/orders/[id]/notes/route.ts',
       'src/app/api/v1/orders/[id]/route.ts',
       'src/app/api/v1/orders/attribution/route.ts',
@@ -195,11 +197,18 @@ describe('every handler proves the key before it does anything', () => {
   });
 });
 
+/**
+ * THE ONE WRITE WHOSE KEY IS IN THE BODY. The media buyer's contract (`oms.notify`) names the idempotency key as a body field — «the same key sends once (24 hours)» — not the
+ * `Idempotency-Key` header every order door takes. The route therefore does not call the header reader; the SAME mechanism (claim, remember, give back on failure, fingerprint of the
+ * path that arrived) runs inside `src/lib/v1/notify.ts`, which the last test of this block holds to the same four calls, and `the-notify-door.test.ts` runs end to end.
+ */
+const KEY_IN_THE_BODY = new Map([['src/app/api/v1/notify/route.ts', 'src/lib/v1/notify.ts']]);
+
 describe('every write is idempotent, because the caller retries', () => {
   it('and each one claims a key, stores its answer, and gives it back on failure', () => {
     const missing: string[] = [];
     for (const h of handlers()) {
-      if (h.method === 'GET') continue;
+      if (h.method === 'GET' || KEY_IN_THE_BODY.has(h.file)) continue;
       for (const needed of ['idempotencyKeyOf(', 'claimIdempotency(', 'rememberIdempotency(', 'releaseIdempotency(']) {
         if (!h.body.includes(needed)) missing.push(`${h.method} ${h.file} — ينقصه «${needed}»`);
       }
@@ -214,10 +223,23 @@ describe('every write is idempotent, because the caller retries', () => {
      * would make one key's answer replay for the other.
      */
     for (const h of handlers()) {
-      if (h.method === 'GET') continue;
+      if (h.method === 'GET' || KEY_IN_THE_BODY.has(h.file)) continue;
       expect(h.body, `${h.method} ${h.file}`).toMatch(
         /requestFingerprint\(\s*'[A-Z]+'\s*,\s*new URL\(req\.url\)\.pathname\s*,/
       );
+    }
+  });
+
+  it('and the write whose key is in the body keeps the same four calls, and hands the arrived path to its fingerprint', () => {
+    for (const [route, lib] of KEY_IN_THE_BODY) {
+      const routeSrc = read(join(ROOT, route));
+      const libSrc = read(join(ROOT, lib));
+      for (const needed of ['claimIdempotency(', 'rememberIdempotency(', 'releaseIdempotency(', 'requestFingerprint(']) {
+        expect(libSrc, `${lib} — ينقصه «${needed}»`).toContain(needed);
+      }
+      expect(routeSrc, route).toMatch(/sendNotification\(\s*caller\.companyId\s*,\s*payload\s*,\s*new URL\(req\.url\)\.pathname\s*\)/);
+      // a literal path in the lib would drift from the folder the route sits in
+      expect(libSrc, lib).not.toMatch(/requestFingerprint\(\s*'[A-Z]+'\s*,\s*'\//);
     }
   });
 });

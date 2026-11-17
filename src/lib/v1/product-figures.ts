@@ -3,6 +3,7 @@ import { productCosts } from '../product-cost';
 import { reservedElsewhere } from '../reservation';
 import { MAX_WINDOW_DAYS, stockHealth } from '../stock-health';
 import { DAY_MS, deliveredPerProduct, ledgerDepthDays } from '../stock-ledger';
+import { inStore } from '../store-filter';
 import { V1_CODE, V1Fault } from './door';
 import { amountString } from './shape';
 import type { SystemCaller } from './system-token';
@@ -22,6 +23,11 @@ import type { SystemCaller } from './system-token';
  *                  somebody typed into this file would be inventing money.
  *   stock_days     `stockHealth(...).coverDays` — «تكفي كم يوم» exactly as
  *                  the inventory screen prints it, from the same facts.
+ *   (17/11, media-buyer PR-B) stock_units · daily_sales_7d · and stock_days WHEN the inventory screen has no answer:
+ *       stock_units    what can still be promised: on the shelf minus what open orders hold, never below zero; null when the product never had a batch.
+ *       daily_sales_7d units SHIPPED in the last seven days (quantity plus gift units, orders whose shippedAt is in the window) ÷ 7, two decimals.
+ *       stock_days     the screen's own figure first; only when it has none, stock_units ÷ daily_sales_7d (never replacing a figure the screen gives).
+ *
  *   delivery_fee   null. The fee is per COURIER per REGION (`DeliveryFee`),
  *   return_fee     not per product; any one figure would be a choice of
  *                  courier and city nobody made.
@@ -41,6 +47,8 @@ export const PRODUCT_FIELDS = [
   'unit_cost_usd',
   'price_options',
   'stock_days',
+  'stock_units',
+  'daily_sales_7d',
   'delivery_fee',
   'return_fee',
   'cod_fee_pct',
@@ -51,6 +59,8 @@ export type ProductField = (typeof PRODUCT_FIELDS)[number];
 export const COST_FIELDS: ReadonlySet<ProductField> = new Set<ProductField>([
   'unit_cost_usd',
   'stock_days',
+  'stock_units',
+  'daily_sales_7d',
   'delivery_fee',
   'return_fee',
   'cod_fee_pct',
@@ -87,9 +97,28 @@ export interface FigureProduct {
 export interface Figures {
   unit_cost_usd?: string | null;
   stock_days?: number | null;
+  stock_units?: number | null;
+  daily_sales_7d?: string | null;
   delivery_fee?: null;
   return_fee?: null;
   cod_fee_pct?: null;
+}
+
+/** The window of `daily_sales_7d`: units shipped in this many days, divided by it. */
+export const SALES_WINDOW_DAYS = 7;
+
+/**
+ * Units SHIPPED per product since a moment, for one store — the lines of orders whose `shippedAt` is in the window (quantity plus gift units: gift units
+ * leave the same shelf). Read only. An order that shipped and came back still counted when it left: the shelf was emptied.
+ */
+export async function shippedPerProduct(companyId: string, storeId: string, since: Date): Promise<Map<string, number>> {
+  const lines = await db.orderItem.findMany({
+    where: { order: { ...inStore(companyId, storeId), shippedAt: { gte: since } } },
+    select: { productId: true, quantity: true, freeQuantity: true },
+  });
+  const out = new Map<string, number>();
+  for (const l of lines) out.set(l.productId, (out.get(l.productId) ?? 0) + l.quantity + l.freeQuantity);
+  return out;
 }
 
 /** One decimal, the precision the inventory screen states a cover in. */
@@ -116,12 +145,15 @@ export async function productFigures(
     }
   }
 
-  if (wanted.has('stock_days')) {
+  if (wanted.has('stock_days') || wanted.has('stock_units') || wanted.has('daily_sales_7d')) {
     const batches = await db.productionBatch.findMany({
       where: { companyId, productId: { in: ids } },
       select: { productId: true, quantityRemaining: true, productionDate: true },
     });
     const since = new Date(now.getTime() - MAX_WINDOW_DAYS * DAY_MS);
+    const weekAgo = new Date(now.getTime() - SALES_WINDOW_DAYS * DAY_MS);
+    // What shipped in the last seven days, read once per store (only when a figure that needs it was asked for).
+    const shipped = new Map<string, Awaited<ReturnType<typeof shippedPerProduct>>>();
     // The delivery record is the STORE's, read once per store.
     const ledger = new Map<string, { days: number; delivered: Awaited<ReturnType<typeof deliveredPerProduct>> }>();
     for (const storeId of new Set(products.map((p) => p.storeId).filter((s): s is string => !!s))) {
@@ -130,6 +162,7 @@ export async function productFigures(
         deliveredPerProduct(companyId, storeId, since),
       ]);
       ledger.set(storeId, { days, delivered });
+      if (wanted.has('stock_days') || wanted.has('daily_sales_7d')) shipped.set(storeId, await shippedPerProduct(companyId, storeId, weekAgo));
     }
 
     for (const p of products) {
@@ -153,7 +186,20 @@ export async function productFigures(
         },
         MAX_WINDOW_DAYS
       );
-      out.get(p.id)!.stock_days = health.coverDays === null ? null : round1(health.coverDays);
+      const units = mine.length === 0 ? null : Math.max(0, health.available);
+      const perDay = p.storeId && shipped.has(p.storeId) ? (shipped.get(p.storeId)!.get(p.id) ?? 0) / SALES_WINDOW_DAYS : null;
+      const f = out.get(p.id)!;
+      if (wanted.has('stock_units')) f.stock_units = units;
+      if (wanted.has('daily_sales_7d')) f.daily_sales_7d = perDay === null ? null : perDay.toFixed(2);
+      if (wanted.has('stock_days')) {
+        // The inventory screen's own answer first; the contract's division only where that screen has none.
+        f.stock_days =
+          health.coverDays !== null
+            ? round1(health.coverDays)
+            : units !== null && perDay !== null && perDay > 0
+              ? round1(units / perDay)
+              : null;
+      }
     }
   }
 

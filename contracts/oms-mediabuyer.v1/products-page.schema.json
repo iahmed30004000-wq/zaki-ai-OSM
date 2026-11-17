@@ -174,7 +174,31 @@
                 "type": "null"
               }
             ],
-            "description": "fields=stock_days · products.costs.read"
+            "description": "fields=stock_days · products.costs.read · من شاشة المخزون كما هي؛ وإذا ما عندها جواب (عيّنة صغيرة) = stock_units ÷ daily_sales_7d"
+          },
+          "stock_units": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "fields=stock_units · products.costs.read · المتاح لطلب جديد (على الرف ناقص المحجوز، ما بينزل عن صفر)؛ null لما ما في ولا دفعة مخزون"
+          },
+          "daily_sales_7d": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]+\\.[0-9]{2}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "fields=daily_sales_7d · products.costs.read · الوحدات المشحونة آخر 7 أيام ÷ 7 (الأساسي + الهدايا)، منزلتين"
           },
           "delivery_fee": {
             "anyOf": [
