@@ -97,8 +97,9 @@ function orderRow(over: Record<string, unknown> = {}) {
     source: 'Landing Page',
     externalChannel: null,
     adId: '120211000000000001',
-    adsetId: null,
-    adCampaignId: null,
+    metaCampaignId: null,
+    refCode: null,
+    externalLandingPageId: null,
     adName: null,
     landingUrl: null,
     landingPageId: 'lp1',
@@ -232,10 +233,19 @@ describe('not one byte about the customer', () => {
     const keys = Object.keys(ATTRIBUTION_SELECT);
     for (const forbidden of [
       'customer', 'customerId', 'deliveryAddress', 'internalNotes', 'customerNotes', 'notes',
-      'ctwaClidEnc', 'psidEnc', 'conversationRef', 'refCode',
+      'ctwaClidEnc', 'psidEnc', 'conversationRef',
+      // The landing door's sealed cookies and the visitor's browser (`landing-attribution.ts`): they leave only through the conversions sender.
+      'fbcEnc', 'fbpEnc', 'clientUserAgent', 'lpPurchaseEventId',
     ]) {
       expect(keys, forbidden).not.toContain(forbidden);
     }
+  });
+
+  it('refCode is read ONLY as the ad set of a landing-door order (the owner’s call, 17/11) — never handed out as a code', () => {
+    // It was forbidden here while it could only be a code a customer quoted. The landing door keeps utm_term in it, and the owner ruled that the feed
+    // reads it for THAT door's orders (`attributionItem`: `adset_id`, numbers only); `the-ad-spend-door.test.ts` holds that nothing else does.
+    expect(Object.keys(ATTRIBUTION_SELECT)).toContain('refCode');
+    expect(Object.keys(ATTRIBUTION_SELECT)).toContain('externalLandingPageId');
   });
 
   it('and even a row that carried one does not pass it on', async () => {

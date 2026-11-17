@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * «اي قرار بعد الان اتخذو دون الرجوع الي» — decided: the order's country only; the browser's user agent and click ids
  * are NOT captured (that changes order creation and stores addresses — the owner's call).
+ * The owner's call came for standalone landing-page orders (item 1, 17/11): their click cookies and browser are kept
+ * beside the order AFTER creation, and sent — `meta-hears-the-landing-click.test.ts`. This file is unchanged by it.
  */
 
 const { db, sendEvents } = vi.hoisted(() => ({

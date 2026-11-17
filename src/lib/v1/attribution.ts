@@ -161,9 +161,11 @@ export const ATTRIBUTION_SELECT = {
   source: true,
   externalChannel: true,
   adId: true,
-  // The tags a Pages order arrived with (`ad-tags.ts`) — ids, a name and a link, nothing about the customer.
-  adsetId: true,
-  adCampaignId: true,
+  metaCampaignId: true,
+  // The landing door's own columns (`landing-attribution.ts`): `refCode` is the ad SET id there, `externalLandingPageId` says the order came through that door.
+  refCode: true,
+  externalLandingPageId: true,
+  // What the media buyer's link added (`ad-tags.ts`): the ad's name and the link the visitor opened.
   adName: true,
   landingUrl: true,
   landingPageId: true,
@@ -182,6 +184,11 @@ export const ATTRIBUTION_SELECT = {
 
 type Row = Prisma.OrderGetPayload<{ select: typeof ATTRIBUTION_SELECT }>;
 
+/** A platform id: all digits, 6 to 25 of them — the shape the media buyer's contract names; anything else is no id. */
+export function numericId(v: string | null | undefined): string | null {
+  return typeof v === 'string' && /^\d{6,25}$/.test(v.trim()) ? v.trim() : null;
+}
+
 /** One order as the media buyer reads it. Pure: no database, no clock. */
 export function attributionItem(o: Row, origin: string | null | undefined) {
   const zone = o.store?.country?.timezone ?? 'UTC';
@@ -189,6 +196,8 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
   const firstLog = (mark: keyof typeof LOG_MARKS) =>
     o.statusLogs.find((l) => l.newValue !== null && LOG_MARKS[mark].includes(l.newValue))?.createdAt ?? null;
 
+  // An order the standalone landing system placed (its page id is stored on the order; `landingPageId`, the foreign key to OUR pages, stays null there).
+  const fromLanding = o.externalLandingPageId !== null;
   const core = deriveCoreState(o);
   const status = STATUS_OF[core];
   const minorUnit = minorUnitFor(o.currency) ?? o.store?.country?.minorUnit ?? 2;
@@ -200,11 +209,16 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
     // The caller's own word first («whatsapp»), then the company's channel
     // kind, then the free-text source the order was raised with.
     channel: (o.externalChannel ?? o.channel?.kind ?? o.source).trim().toLowerCase(),
-    ad_id: o.adId,
-    // The ad set and the ad's name come from the tags a Pages order arrived with (`ad-tags.ts`); null on every order that carried none.
-    adset_id: o.adsetId,
-    // Our own campaign's platform id first (it is the id the owner linked), then the one the visitor's link carried.
-    campaign_id: o.campaign?.externalId ?? o.adCampaignId,
+    /*
+     * THE IDS ARE THE JOIN BETWEEN AN AD AND AN ORDER — so for an order that came through the landing door they are numbers or nothing
+     * (the owner, 17/11): the ads' links carry `utm_campaign={{campaign.id}}`, `utm_term={{adset.id}}`, `utm_content={{ad.id}}`, and a macro the platform did
+     * not fill in, or a name, is kept as text in the order's own column but is NOT an id the media buyer may join on. Every other door's `adId` is read as it was.
+     */
+    ad_id: fromLanding ? numericId(o.adId) : o.adId,
+    // The ad set: `utm_term`, kept in `refCode` by the landing door. Read for ITS orders only — everywhere else `refCode` is a code a customer quoted.
+    adset_id: fromLanding ? numericId(o.refCode) : null,
+    // The linked campaign's platform id first; else, for a landing-door order, the Meta campaign its link named (a number or nothing).
+    campaign_id: o.campaign?.externalId ?? numericId(o.metaCampaignId),
     ad_name: o.adName,
     landing_page: o.landingPage
       ? publicAddress(origin, {

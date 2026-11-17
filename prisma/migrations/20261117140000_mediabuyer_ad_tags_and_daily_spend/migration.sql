@@ -1,15 +1,15 @@
--- «أبواب الميديا باير — PR-A» (the media buyer's doors, 17/11): the ad tags a Pages order arrives with, and the daily spend per ad.
--- ADDITIVE ONLY: twelve NULLABLE columns on "orders" and one NEW table. Nothing is dropped, renamed, retyped or backfilled.
+-- «أبواب الميديا باير — PR-A» (the media buyer's doors, 17/11): what the media buyer's link adds to a landing order, and the daily spend per ad.
+-- ADDITIVE ONLY: four NULLABLE columns on "orders" and one NEW table. Nothing is dropped, renamed, retyped or backfilled.
 --
---   orders."adsetId" "adCampaignId" "adName" "utmSource" "utmMedium" "landingUrl"     — the ad evidence in clear (ids, names, a link: nothing about a customer)
---   orders."utmCampaign" "utmTerm" "utmContent"                                       — the ads' macros as text (the id columns above take them only when they are all digits)
---   orders."fbclidEnc" "fbcEnc" "fbpEnc"                                              — Meta's click id and browser ids, ENCRYPTED by the application like "ctwaClidEnc"
---   ad_spend_days                                                                     — what one ad spent on one day (the grain `GET /api/v1/ad-spend` reads)
+--   orders."adName" "utmSource" "utmMedium" "landingUrl"   — the ad's name, the utm source and medium, and the link the visitor opened (no query): nothing about a customer.
+--                                                            The ad, ad set and campaign ids already have their columns (migration 20261117130000_landing_ad_attribution:
+--                                                            "adId", "refCode", "metaCampaignId") and the click/browser cookies "fbcEnc" / "fbpEnc" — none is added here.
+--   ad_spend_days                                          — what one ad spent on one day (the grain `GET /api/v1/ad-spend` reads)
 --
 -- A nullable ADD COLUMN without a default is a catalogue-only change in PostgreSQL: no row is rewritten and the code that ran
 -- before never selects the columns. NULL on every order that exists today, which is what the media buyer's frozen contract
--- already says for an order that carried no tag (`adset_id`, `campaign_id`, `ad_name`, `landing_page` are null).
--- The new table starts EMPTY: the 06:00 spend pull fills it (31 days the first time an account is seen, 7 afterwards).
+-- already says for an order that carried no tag (`ad_name` and `landing_page` are null).
+-- The new table starts EMPTY: the 00:10 and 06:00 spend pulls fill it (31 days the first time an account is seen, 7 afterwards).
 --
 -- Hand-written (AGENTS.md: never `migrate dev`, never a reset), idempotent (IF NOT EXISTS). Applied locally with:
 --   npx prisma db execute --file prisma/migrations/20261117140000_mediabuyer_ad_tags_and_daily_spend/migration.sql --schema prisma/schema.prisma
@@ -18,18 +18,10 @@
 -- and in production by `prisma migrate deploy` at the owner's Redeploy (docker-entrypoint.sh runs it BEFORE the new image serves).
 -- Rollback: rollback.sql beside this file.
 ALTER TABLE "orders"
-  ADD COLUMN IF NOT EXISTS "adsetId"      TEXT,
-  ADD COLUMN IF NOT EXISTS "adCampaignId" TEXT,
-  ADD COLUMN IF NOT EXISTS "adName"       TEXT,
-  ADD COLUMN IF NOT EXISTS "utmSource"    TEXT,
-  ADD COLUMN IF NOT EXISTS "utmMedium"    TEXT,
-  ADD COLUMN IF NOT EXISTS "utmCampaign"  TEXT,
-  ADD COLUMN IF NOT EXISTS "utmTerm"      TEXT,
-  ADD COLUMN IF NOT EXISTS "utmContent"   TEXT,
-  ADD COLUMN IF NOT EXISTS "landingUrl"   TEXT,
-  ADD COLUMN IF NOT EXISTS "fbclidEnc"    TEXT,
-  ADD COLUMN IF NOT EXISTS "fbcEnc"       TEXT,
-  ADD COLUMN IF NOT EXISTS "fbpEnc"       TEXT;
+  ADD COLUMN IF NOT EXISTS "adName"     TEXT,
+  ADD COLUMN IF NOT EXISTS "utmSource"  TEXT,
+  ADD COLUMN IF NOT EXISTS "utmMedium"  TEXT,
+  ADD COLUMN IF NOT EXISTS "landingUrl" TEXT;
 
 CREATE TABLE IF NOT EXISTS "ad_spend_days" (
   "id"          TEXT           NOT NULL,

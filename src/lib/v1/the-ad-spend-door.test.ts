@@ -22,7 +22,7 @@ const h = vi.hoisted(() => ({
   db: {
     systemToken: { findUnique: vi.fn(), update: vi.fn() },
     adSpendDay: { findMany: vi.fn(), groupBy: vi.fn(), aggregate: vi.fn() },
-    order: { updateMany: vi.fn() },
+    order: { updateMany: vi.fn(), findMany: vi.fn() },
   },
   rateLimit: vi.fn(),
 }));
@@ -108,7 +108,7 @@ describe('O1 — the two new scopes', () => {
     const old = ['products.read', 'products.costs.read', 'orders.attribution.read'];
     expect(parseScopes(JSON.stringify(old))).toEqual(old);
     h.db.systemToken.findUnique.mockResolvedValue(tokenRow(old));
-    h.db.order = { ...h.db.order, findMany: vi.fn().mockResolvedValue([]) } as typeof h.db.order;
+    h.db.order.findMany.mockResolvedValue([]);
     const spend = await getSpend(call(WINDOW));
     expect(spend.status).toBe(403);
     expect((await spend.json()).error.code).toBe('SCOPE_MISSING');
@@ -330,75 +330,24 @@ describe('O6 — bounded, and the cursor walks every row once', () => {
 
 describe('O2 — readAdTags keeps the tags that fit and drops the rest', () => {
   const GOOD = {
-    method: 'url_tags',
-    ad_id: '120211000000000001',
-    adset_id: '120210000000000005',
-    campaign_id: '120210000000000009',
     ad_name: 'CR00147_TRF01_hook2',
     utm_source: 'fb',
     utm_medium: 'Facebook_Mobile_Feed',
-    fbclid: 'IwAR0example',
-    fbc: 'fb.1.1762200000000.IwAR0example',
-    fbp: 'fb.1.1762200000000.1234567890',
     landing_url: 'https://pages.zakiai.io/p/kamaa-eye-water',
   };
 
-  it('reads every tag of the contract', () => {
+  it('reads the four the landing door does not already keep: the ad’s name, the utm source and medium, the page', () => {
     expect(readAdTags(GOOD)).toEqual({
-      method: 'url_tags',
-      adId: '120211000000000001',
-      adsetId: '120210000000000005',
-      campaignId: '120210000000000009',
       adName: 'CR00147_TRF01_hook2',
       utmSource: 'fb',
       utmMedium: 'Facebook_Mobile_Feed',
-      utmCampaign: null,
-      utmTerm: null,
-      utmContent: null,
       landingUrl: 'https://pages.zakiai.io/p/kamaa-eye-water',
-      fbclid: 'IwAR0example',
-      fbc: 'fb.1.1762200000000.IwAR0example',
-      fbp: 'fb.1.1762200000000.1234567890',
     });
   });
 
-  it('the ads’ own links: utm_campaign, utm_term, utm_content become the campaign, the ad set and the ad — and stay readable as text', () => {
-    const link = { utm_source: 'fb', utm_campaign: '120210000000000009', utm_term: '120210000000000005', utm_content: '120211000000000001', ad_name: 'CR00147_TRF01_hook2' };
-    expect(readAdTags(link)).toMatchObject({
-      campaignId: '120210000000000009',
-      adsetId: '120210000000000005',
-      adId: '120211000000000001',
-      adName: 'CR00147_TRF01_hook2',
-      utmSource: 'fb',
-      utmCampaign: '120210000000000009',
-      utmTerm: '120210000000000005',
-      utmContent: '120211000000000001',
-    });
-  });
-
-  it('a utm value that is not a number is kept as text and its id is left EMPTY — an unfilled macro, a name, a short number', () => {
-    const t = readAdTags({ utm_campaign: 'summer-sale', utm_term: '{{adset.id}}', utm_content: '12345', ad_name: '{{ad.name}}' });
-    expect(t).toMatchObject({ utmCampaign: 'summer-sale', utmTerm: '{{adset.id}}', utmContent: '12345', adName: '{{ad.name}}' });
-    expect(t).toMatchObject({ campaignId: null, adsetId: null, adId: null });
-  });
-
-  it('a valid explicit id wins over the macro; a bad one falls back to the macro’s digits', () => {
-    const both = readAdTags({ ad_id: '999999999', utm_content: '120211000000000001' });
-    expect(both?.adId).toBe('999999999');
-    expect(both?.utmContent).toBe('120211000000000001');
-    expect(readAdTags({ ad_id: 'nope', utm_content: '120211000000000001' })?.adId).toBe('120211000000000001');
-  });
-
-  it('a utm value longer than 120 characters is dropped, not cut', () => {
-    expect(readAdTags({ utm_source: 'fb', utm_campaign: 'c'.repeat(121) })?.utmCampaign).toBeNull();
-    expect(readAdTags({ utm_campaign: 'c'.repeat(120) })?.utmCampaign).toHaveLength(120);
-  });
-
-  it('ids are digits only, 6 to 25 of them', () => {
-    for (const bad of ['12345', '1'.repeat(26), '12a456', ' ', '12 3456', 120211000000000001]) {
-      expect(readAdTags({ ...GOOD, ad_id: bad })?.adId ?? null, String(bad)).toBeNull();
-    }
-    expect(readAdTags({ ...GOOD, ad_id: '123456' })?.adId).toBe('123456');
+  it('the ids are NOT read here — they already have their columns (adId, refCode, metaCampaignId)', () => {
+    const t = readAdTags({ ...GOOD, ad_id: '120211000000000001', utm_content: '120211000000000001', utm_term: '120210000000000005', utm_campaign: '120210000000000009' });
+    expect(Object.keys(t ?? {}).sort()).toEqual(['adName', 'landingUrl', 'utmMedium', 'utmSource']);
   });
 
   it('names and links are bounded, and a link that is not http(s) is dropped', () => {
@@ -408,7 +357,15 @@ describe('O2 — readAdTags keeps the tags that fit and drops the rest', () => {
     expect(readAdTags({ ...GOOD, utm_medium: 'm'.repeat(61) })?.utmMedium).toBeNull();
     expect(readAdTags({ ...GOOD, landing_url: 'javascript:alert(1)' })?.landingUrl).toBeNull();
     expect(readAdTags({ ...GOOD, landing_url: 'ftp://x.test/a' })?.landingUrl).toBeNull();
-    expect(readAdTags({ ...GOOD, landing_url: 'https://pages.zakiai.io/p/a?fbclid=zzz#top' })?.landingUrl).toBe('https://pages.zakiai.io/p/a');
+    expect(readAdTags({ ...GOOD, ad_name: 'bad\u0000name' })?.adName).toBeNull();
+  });
+
+  it('the link is kept WITHOUT its query string or fragment — that is where the click id rides', () => {
+    expect(readAdTags({ landing_url: 'https://pages.zakiai.io/p/a?fbclid=zzz&utm_source=fb#top' })?.landingUrl).toBe('https://pages.zakiai.io/p/a');
+  });
+
+  it('an unfilled macro is a name like any other — the ad’s name is kept as sent', () => {
+    expect(readAdTags({ ad_name: '{{ad.name}}' })?.adName).toBe('{{ad.name}}');
   });
 
   it('nothing usable, or not an object, is no tags at all', () => {
@@ -416,58 +373,87 @@ describe('O2 — readAdTags keeps the tags that fit and drops the rest', () => {
     expect(readAdTags('oops')).toBeNull();
     expect(readAdTags([GOOD])).toBeNull();
     expect(readAdTags({})).toBeNull();
-    expect(readAdTags({ method: 'url_tags', ad_id: 'zz', fbc: 7 })).toBeNull();
+    expect(readAdTags({ ad_name: 7, utm_source: '' })).toBeNull();
   });
 });
 
 describe('O2 — stampAdTags writes once and never throws', () => {
-  const OLD = process.env.APP_ENCRYPTION_KEY;
-  afterEach(() => {
-    if (OLD === undefined) delete process.env.APP_ENCRYPTION_KEY;
-    else process.env.APP_ENCRYPTION_KEY = OLD;
-  });
-
-  it('scopes the update to the company and to an order that carries no tag yet', async () => {
+  it('scopes the update to the company and to an order that carries none of the four yet', async () => {
     h.db.order.updateMany.mockResolvedValue({ count: 1 });
-    expect(await stampAdTags('c1', 'SY-0001', { ad_id: '120211000000000001', adset_id: '120210000000000005' })).toBe(true);
-    expect(h.db.order.updateMany.mock.calls[0][0].where).toEqual({ companyId: 'c1', orderNumber: 'SY-0001', adId: null, adsetId: null });
+    expect(await stampAdTags('c1', 'SY-0001', { ad_name: 'CR00147', utm_source: 'fb' })).toBe(true);
+    const { where, data } = h.db.order.updateMany.mock.calls[0][0];
+    expect(where).toEqual({ companyId: 'c1', orderNumber: 'SY-0001', adName: null, utmSource: null, utmMedium: null, landingUrl: null });
+    expect(data).toEqual({ adName: 'CR00147', utmSource: 'fb', utmMedium: null, landingUrl: null });
   });
 
   it('a second stamp finds nothing to fill and says so', async () => {
     h.db.order.updateMany.mockResolvedValue({ count: 0 });
-    expect(await stampAdTags('c1', 'SY-0001', { ad_id: '120211000000000001' })).toBe(false);
+    expect(await stampAdTags('c1', 'SY-0001', { ad_name: 'CR00147' })).toBe(false);
   });
 
   it('no usable tag: no query at all', async () => {
-    expect(await stampAdTags('c1', 'SY-0001', { ad_id: 'x' })).toBe(false);
+    expect(await stampAdTags('c1', 'SY-0001', { ad_name: 7 })).toBe(false);
     expect(await stampAdTags('c1', 'SY-0001', undefined)).toBe(false);
     expect(h.db.order.updateMany).not.toHaveBeenCalled();
   });
 
-  it('a database failure is swallowed — the order is already saved', async () => {
-    h.db.order.updateMany.mockRejectedValue(new Error('db down'));
-    await expect(stampAdTags('c1', 'SY-0001', { ad_id: '120211000000000001' })).resolves.toBe(false);
-  });
-
-  it('Meta’s click id and browser ids are sealed — never stored in the clear', async () => {
-    process.env.APP_ENCRYPTION_KEY = 'a'.repeat(64);
-    h.db.order.updateMany.mockResolvedValue({ count: 1 });
-    await stampAdTags('c1', 'SY-0001', { ad_id: '120211000000000001', fbclid: 'IwAR0example', fbc: 'fb.1.1762200000000.IwAR0example', fbp: 'fb.1.1762200000000.1234567890' });
-    const { data } = h.db.order.updateMany.mock.calls[0][0];
-    for (const k of ['fbclidEnc', 'fbcEnc', 'fbpEnc']) {
-      expect(typeof data[k]).toBe('string');
-      expect(data[k]).not.toMatch(/IwAR0example|1234567890/);
-    }
-  });
-
-  it('and with no encryption key they are dropped, not written plain', async () => {
-    delete process.env.APP_ENCRYPTION_KEY;
+  it('a database failure is swallowed — the order is already saved — and only its code is logged', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    h.db.order.updateMany.mockResolvedValue({ count: 1 });
-    await stampAdTags('c1', 'SY-0001', { ad_id: '120211000000000001', fbclid: 'IwAR0example' });
-    const { data } = h.db.order.updateMany.mock.calls[0][0];
-    expect(data.fbclidEnc).toBeNull();
-    expect(JSON.stringify(data)).not.toContain('IwAR0example');
+    h.db.order.updateMany.mockRejectedValue(Object.assign(new Error('value "CR00147" too long'), { code: 'P2000' }));
+    await expect(stampAdTags('c1', 'SY-0001', { ad_name: 'CR00147' })).resolves.toBe(false);
+    expect(JSON.stringify(log.mock.calls)).toContain('P2000');
+    expect(JSON.stringify(log.mock.calls)).not.toContain('CR00147');
     log.mockRestore();
+  });
+});
+
+describe('O2 — the feed hands out ids only when they are numbers, and only reads refCode for a landing order', () => {
+  const orderRow = (over: Record<string, unknown> = {}) => ({
+    id: 'o1', orderNumber: 'SY-0001', confirmationStatus: 'CONFIRMED', shippingStatus: 'NOT_READY', claimedById: null, shippedAt: null, labelPrintedAt: null,
+    confirmedAt: new Date('2026-11-17T05:00:00Z'), deliveredAt: null, returnedAt: null, createdAt: new Date('2026-11-17T04:00:00Z'), updatedAt: new Date('2026-11-17T05:00:00Z'),
+    totalAmount: 20, collectedAmount: null, currency: 'USD', rejectionReason: null, source: 'Landing Page', externalChannel: null,
+    adId: '120211000000000001', metaCampaignId: '120210000000000009', refCode: '120210000000000005', externalLandingPageId: 'lp-9', adName: 'CR00147', landingUrl: 'https://pages.zakiai.io/p/a',
+    landingPageId: null, product: { sku: 'TRF01' }, channel: null, campaign: null, landingPage: null,
+    store: { country: { code: 'SY', timezone: 'Asia/Damascus', minorUnit: 2 } }, statusLogs: [], contactAttempts: [],
+    ...over,
+  });
+  const feed = async (row: Record<string, unknown>) => {
+    h.db.order.findMany.mockResolvedValue([row]);
+    const body = await (await getAttribution(call('/api/v1/orders/attribution?updated_since=2026-11-10T00:00:00Z'))).json();
+    return body.items[0];
+  };
+
+  it('a landing order: ad, ad set and campaign from utm_content, utm_term, utm_campaign, plus the name and the page', async () => {
+    expect(await feed(orderRow())).toMatchObject({
+      ad_id: '120211000000000001',
+      adset_id: '120210000000000005',
+      campaign_id: '120210000000000009',
+      ad_name: 'CR00147',
+      landing_page: 'https://pages.zakiai.io/p/a',
+    });
+  });
+
+  it('a macro the platform did not fill in, or a name, is no id — null, while the order keeps the text', async () => {
+    const item = await feed(orderRow({ adId: '{{ad.id}}', refCode: 'broad-audience', metaCampaignId: '{{campaign.id}}' }));
+    expect(item).toMatchObject({ ad_id: null, adset_id: null, campaign_id: null });
+    const short = await feed(orderRow({ adId: '12345', refCode: '99999' }));
+    expect(short).toMatchObject({ ad_id: null, adset_id: null });
+  });
+
+  it('refCode is a code a customer quoted on every other door: only a landing order’s is read as an ad set', async () => {
+    const other = await feed(orderRow({ externalLandingPageId: null, refCode: '120210000000000005', adId: 'CODE-77' }));
+    expect(other.adset_id).toBeNull();
+    // and every other door’s ad id is read exactly as it was, number or not
+    expect(other.ad_id).toBe('CODE-77');
+  });
+
+  it('a linked campaign’s own platform id wins over the one a link named', async () => {
+    const item = await feed(orderRow({ campaign: { externalId: '555555555555' } }));
+    expect(item.campaign_id).toBe('555555555555');
+  });
+
+  it('an order with none of it: every one null, as before', async () => {
+    const item = await feed(orderRow({ adId: null, metaCampaignId: null, refCode: null, externalLandingPageId: null, adName: null, landingUrl: null }));
+    expect(item).toMatchObject({ ad_id: null, adset_id: null, campaign_id: null, ad_name: null, landing_page: null });
   });
 });

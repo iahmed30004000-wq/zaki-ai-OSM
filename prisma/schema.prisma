@@ -971,7 +971,8 @@ model Order {
   /// `OrderChannel`, which is the company's own list of doors. This is the
   /// caller's word for its own transport, kept as it was sent.
   externalChannel           String?
-  /// CODE | CTWA | REF — how the calling system decided which ad this was.
+  /// CODE | CTWA | REF — how the calling system decided which ad this was. «meta» from the landing door: the visit
+  /// came from a Meta ad (an fbclid, or a Meta utm_source).
   adSourceType              String?
   adId                      String?
   /// The click id of a «click to WhatsApp» ad, ENCRYPTED at rest.
@@ -994,25 +995,35 @@ model Order {
   /// The calling system's own handle for the conversation this came out of,
   /// so a reply can be traced back to the order without storing the chat.
   conversationRef           String?
-  /// THE AD TAGS A PAGES-SYSTEM ORDER ARRIVED WITH (the media buyer, 17/11): the ad set, the platform's id of the campaign, the ad's
-  /// name, the utm pair and the link it opened. Written once, after the order exists, by `stampAdTags` — never by order creation.
-  /// Read back only by `/api/v1/orders/attribution`; no customer detail in any of them.
-  adsetId                   String?
-  adCampaignId              String?
+  /// WHAT THE MEDIA BUYER'S LINK ADDS to what `landing-attribution.ts` already keeps (17/11): the ad's name (`ad_name={{ad.name}}`), the utm source and medium, and the link
+  /// the visitor opened (without its query). Written once, after the order exists, by `stampAdTags` — never by order creation. The ids (ad, ad set, campaign) are NOT here:
+  /// they are `adId` · `refCode` · `metaCampaignId`, written by the landing door, and the media buyer's feed hands them out only when they are numbers.
   adName                    String?
   utmSource                 String?
   utmMedium                 String?
-  /// The three the ads' links carry as macros (`utm_campaign={{campaign.id}}`, `utm_term={{adset.id}}`, `utm_content={{ad.id}}`), kept AS TEXT — an unresolved macro or a name stays
-  /// readable here, and only a value that is all digits also becomes `adCampaignId` / `adsetId` / `adId`.
-  utmCampaign               String?
-  utmTerm                   String?
-  utmContent                String?
   landingUrl                String?
-  /// Meta's click id and browser ids, ENCRYPTED at rest like `ctwaClidEnc` — and, like it, read by no endpoint.
-  fbclidEnc                 String?
+  landingPageId             String?
+  /// ── WHICH AD A STANDALONE LANDING-PAGE ORDER CAME FROM (contract oms-lp.v1 §4) ──
+  ///
+  /// Written once, right after creation, by the landing door alone (`v1/landing-attribution.ts`), and null on every
+  /// other order. Reported facts, like the block above: nothing here is read by pricing, stock or the order's state.
+  /// `adId` (utm_content), `refCode` (utm_term — the ad SET id at this door) and `adSourceType` («meta») are the
+  /// existing columns above.
+  ///
+  /// The Meta campaign id (utm_campaign). NOT `campaignId`: that is a foreign key to this system's own campaigns,
+  /// still resolved from the page's short code, and a platform id forced into it would point at no row.
+  metaCampaignId            String?
+  /// The landing system's own id for the page. `landingPageId` is a foreign key to THIS system's pages and stays null.
+  externalLandingPageId     String?
+  /// Meta's click cookie (`_fbc`) and browser cookie (`_fbp`), ENCRYPTED at rest like `ctwaClidEnc`: a click id is
+  /// one person's click on one ad. Opened only by the conversions sender, for Meta's `user_data`; no endpoint returns them.
   fbcEnc                    String?
   fbpEnc                    String?
-  landingPageId             String?
+  /// The visitor's browser, as Meta wants it in `user_data.client_user_agent`. Never shown, never logged.
+  clientUserAgent           String?
+  /// The id of the Purchase event the landing system sent Meta for this order — for reference only. This system's
+  /// own conversions keep their own ids (`conversionEventId`).
+  lpPurchaseEventId         String?
   freeQuantity              Int       @default(0) // gift units from a landing-page offer (additive)
   internalNotes             String?
   customerNotes             String?

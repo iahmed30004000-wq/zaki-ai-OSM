@@ -210,18 +210,28 @@ describe('4 · one event is counted once', () => {
  * beside it, rather than disappearing — which is how this file has handled
  * every other half-built thing.
  *
- * · `adset_id` still does not exist and nothing reports one. «Which ad SET
- *   won» cannot be answered from this system.
+ * · `adset_id` still does not exist as a column. The standalone landing door
+ *   now reports one (utm_term) and the owner had it kept in `refCode`
+ *   (`v1/landing-attribution.ts`), so no adset column was added.
  * · The click id and the chat account are ENCRYPTED columns, and no
  *   endpoint returns either. «Ad tokens reach no model at all» is the
  *   owner's rule; these do not reach a screen either.
+ * · AND THE LANDING DOOR'S REPORTED FACTS (contract oms-lp.v1 §4): the
+ *   Meta campaign id, the landing system's page id, the visitor's browser
+ *   and the landing system's Purchase event id are plain nullable columns
+ *   beside the others; Meta's click and browser cookies are SEALED, under
+ *   the same `…Enc` rule as the click id — so the lists below gained them.
  * ─────────────────────────────────────────────────────────────────────────
  */
 describe('the ad evidence an order can carry, and what is still not built', () => {
   const schema = () => repoFile('prisma/schema.prisma');
 
-  it('there is no adset id anywhere', () => {
-    expect(schema()).not.toMatch(/adsetId|adset_id/i);
+  it('there is no adset id on an order (the ad set lives in refCode at the landing door)', () => {
+    // The daily spend table (`ad_spend_days`, PR-A of the media buyer's doors) holds Meta's ad set id because spend is reported per ad set — that is a record of what the
+    // platform said, not ad evidence on an order. The order itself still carries no ad set column.
+    const m = schema().slice(schema().indexOf('model Order {'));
+    const order = m.slice(0, m.indexOf('\n}'));
+    expect(order).not.toMatch(/adsetId|adset_id/i);
   });
 
   it('and the reported fields exist on the order, as nullable columns', () => {
@@ -236,6 +246,11 @@ describe('the ad evidence an order can carry, and what is still not built', () =
       'pageId',
       'wabaId',
       'conversationRef',
+      // The landing door's (contract oms-lp.v1 §4).
+      'metaCampaignId',
+      'externalLandingPageId',
+      'clientUserAgent',
+      'lpPurchaseEventId',
     ]) {
       // Nullable with no default: the migration writes into no existing row.
       expect(order, column).toMatch(new RegExp(`${column}\\s+(?:String|DateTime)\\?`));
@@ -251,6 +266,11 @@ describe('the ad evidence an order can carry, and what is still not built', () =
     expect(s).toMatch(/psidEnc\s+String\?/);
     expect(s).not.toMatch(/\bctwaClid\s+String/);
     expect(s).not.toMatch(/\bpsid\s+String/);
+    // Meta's click and browser cookies, from the landing door: sealed the same way.
+    expect(s).toMatch(/fbcEnc\s+String\?/);
+    expect(s).toMatch(/fbpEnc\s+String\?/);
+    expect(s).not.toMatch(/\bfbc\s+String/);
+    expect(s).not.toMatch(/\bfbp\s+String/);
   });
 
   it('and they are written through encryptSecret, by the systems door alone', () => {
@@ -258,10 +278,16 @@ describe('the ad evidence an order can carry, and what is still not built', () =
     expect(intake).toMatch(/encryptSecret\(/);
     expect(intake).toMatch(/ctwaClidEnc: sealed\(/);
     expect(intake).toMatch(/psidEnc: sealed\(/);
+    // And the landing door's cookies, through the same function, by the landing door alone.
+    const landing = stripComments(repoFile('src/lib/v1/landing-attribution.ts'));
+    expect(landing).toMatch(/encryptSecret\(/);
+    expect(landing).toMatch(/fbcEnc: sealed\(/);
+    expect(landing).toMatch(/fbpEnc: sealed\(/);
   });
 
   it('and no endpoint hands either of them back', () => {
-    const sealed = /ctwaClid|psidEnc/;
+    // The landing door's sealed cookies too: no route names them (the conversions sender opens them for Meta only).
+    const sealed = /ctwaClid|psidEnc|fbcEnc|fbpEnc/;
     const leaking = routeFiles()
       .filter((rel) => sealed.test(stripComments(repoFile(rel))))
       .filter((rel) => rel !== 'src/lib/v1/order-intake.ts');

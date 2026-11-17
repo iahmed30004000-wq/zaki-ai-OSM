@@ -1,7 +1,8 @@
 /**
- * THE LANDING AD-TAGS HARNESS — asks the repo's REAL `takeLandingOrder` (`src/lib/v1/landing-door.ts`, the door `POST /api/v1/landing/orders` calls) and the REAL `orders` table with the
- * twelve ad-tag columns of migration 20261117140000, on the REAL Prisma client against the scratch PostgreSQL. The unit tests double the database; that the tags land on the real row, that
- * an order without them is untouched and that a damaged tag costs the shop nothing only mean something on real tables.
+ * THE LANDING AD-TAGS HARNESS — asks the repo's REAL `takeLandingOrder` (`src/lib/v1/landing-door.ts`, the door `POST /api/v1/landing/orders` calls), the REAL `orders` table with the columns of
+ * migrations 20261117130000 (the landing door's attribution) and 20261117140000 (the media buyer's four), and the REAL media-buyer read `readAttributionPage`, on the REAL Prisma client against the
+ * scratch PostgreSQL. The unit tests double the database; that the tags land on the real row, that an order without them is untouched, that a damaged tag costs the shop nothing and that the
+ * feed hands out ids only as numbers only mean something on real tables.
  *
  * DEFINITION OF DONE:
  *   1. Runs only against the scratch database (`scratchUrl` + `assertScratchUrl`, DATABASE_URL set before `db.ts` is imported); imports the repo's own TypeScript under tsx.
@@ -9,9 +10,11 @@
  *      product and customers made here, and is DELETED at the end (orders first, then customers, the product, the store) — also when a case failed. The scratch database is disposable
  *      either way; the seeded companies are never touched.
  *   3. The cases, each through the real door: an order WITH the ads' links (utm_source / utm_campaign / utm_term / utm_content as the ads send them, ad_name, the page's link with a query and Meta's
- *      click ids) · an order with NO tags · an order with a DAMAGED tag (macros the platform did not fill, a non-http link, an id that is not digits) — and the order is created, with its number, in all three.
- *      With tags: campaign / ad set / ad ids are the macros' digits, the utm trio is kept as text, the name and the link (without its query) are stored, the three Meta ids are sealed (not readable in the
- *      column). With none: every tag column is NULL. Damaged: the utm text is kept, the ids are NULL. A second stamp on the tagged order changes nothing.
+ *      cookies) · an order with NO tags · an order with a DAMAGED tag (macros the platform did not fill, a non-http link, a cookie that is not Meta's) — and the order is created, with its number, in all three.
+ *      With tags: the door's own columns hold the ad (adId · refCode · metaCampaignId), the media buyer's four hold the name, the utm source and medium and the page without its query, the two cookies are
+ *      sealed (not readable in the column). With none: every one of those columns is NULL. Damaged: the text is kept in the column. THE FEED (`readAttributionPage`, the real select on the real table):
+ *      tagged → ad_id / adset_id / campaign_id are the numbers, ad_name and landing_page are filled; bare → all null; damaged → the three ids are null (a macro is no id) while the order is in the feed.
+ *      A second stamp on the tagged order changes nothing.
  *   4. Exit code 0 when it ran to the end (and, with `--assert`, every case matched), 2 when a database/Prisma error stopped it, 3 when `--assert` found a mismatch.
  *
  *   node scripts/verify-on-postgres/landing-ad-tags.mjs [--assert]
@@ -35,6 +38,7 @@ process.env.APP_ENCRYPTION_KEY = 'ab'.repeat(32);
 const { takeLandingOrder } = await import('../../src/lib/v1/landing-door.ts');
 const { stampAdTags } = await import('../../src/lib/v1/ad-tags.ts');
 const { decryptSecret } = await import('../../src/lib/secrets.ts');
+const { readAttributionPage } = await import('../../src/lib/v1/attribution.ts');
 const probe = new PrismaClient({ datasourceUrl: url, log: [{ emit: 'stdout', level: 'error' }] });
 
 const mismatches = [];
@@ -46,7 +50,7 @@ function check(what, ok, detail = '') {
   }
 }
 
-const TAG_COLUMNS = ['adId', 'adSourceType', 'adsetId', 'adCampaignId', 'adName', 'utmSource', 'utmMedium', 'utmCampaign', 'utmTerm', 'utmContent', 'landingUrl', 'fbclidEnc', 'fbcEnc', 'fbpEnc'];
+const TAG_COLUMNS = ['adId', 'adSourceType', 'refCode', 'metaCampaignId', 'adName', 'utmSource', 'utmMedium', 'landingUrl', 'fbcEnc', 'fbpEnc'];
 const pick = (row) => Object.fromEntries(TAG_COLUMNS.map((c) => [c, row?.[c] ?? null]));
 
 let store = null;
@@ -82,12 +86,12 @@ try {
     attribution: {
       method: 'url_tags',
       utm_source: 'fb',
+      utm_medium: 'Facebook_Mobile_Feed',
       utm_campaign: '120210000000000009',
       utm_term: '120210000000000005',
       utm_content: '120211000000000001',
       ad_name: 'CR00147_TRF01_hook2',
       landing_url: 'https://pages.zakiai.io/p/kamaa-eye-water?fbclid=IwAR0example&utm_source=fb',
-      fbclid: 'IwAR0example',
       fbc: 'fb.1.1762200000000.IwAR0example',
       fbp: 'fb.1.1762200000000.1234567890',
     },
@@ -95,16 +99,21 @@ try {
   check('طلب بوسوم: الباب أنشأ الطلب ورجّع رقمو', tagged.ok === true && !!tagged.body.orderNumber, JSON.stringify(tagged).slice(0, 200));
   const a = pick(await rowOf(tagged));
   check(
-    'الوسوم انكتبت على صف الطلب الحقيقي: حملة/مجموعة/إعلان من أرقام الماكرو، والـutm نص، والاسم، والمصدر',
-    a.adCampaignId === '120210000000000009' && a.adsetId === '120210000000000005' && a.adId === '120211000000000001' && a.utmCampaign === '120210000000000009' && a.utmTerm === '120210000000000005' && a.utmContent === '120211000000000001' && a.utmSource === 'fb' && a.adName === 'CR00147_TRF01_hook2' && a.adSourceType === 'url_tags',
+    'أعمدة الباب نفسو انكتبت: الإعلان (utm_content) والحملة (utm_campaign) والمجموعة (utm_term)',
+    a.adId === '120211000000000001' && a.metaCampaignId === '120210000000000009' && a.refCode === '120210000000000005' && a.adSourceType === 'meta',
+    JSON.stringify(a)
+  );
+  check(
+    'وأعمدة الميديا باير الأربعة: الاسم والمصدر والوسيط والصفحة',
+    a.adName === 'CR00147_TRF01_hook2' && a.utmSource === 'fb' && a.utmMedium === 'Facebook_Mobile_Feed',
     JSON.stringify(a)
   );
   check('رابط الصفحة انخزّن بدون query (فيها الـclick id)', a.landingUrl === 'https://pages.zakiai.io/p/kamaa-eye-water', String(a.landingUrl));
   check(
-    'fbclid وfbc وfbp مشفّرة بالعمود: مش مقروءة، وبتتفك لنفس القيمة',
-    !!a.fbclidEnc && !!a.fbcEnc && !!a.fbpEnc && !/IwAR0example|1234567890/.test(`${a.fbclidEnc}${a.fbcEnc}${a.fbpEnc}`) && decryptSecret(a.fbclidEnc) === 'IwAR0example' && decryptSecret(a.fbpEnc) === 'fb.1.1762200000000.1234567890'
+    'كوكي fbc وfbp مشفّرة بالعمود: مش مقروءة، وبتتفك لنفس القيمة',
+    !!a.fbcEnc && !!a.fbpEnc && !/IwAR0example|1234567890/.test(`${a.fbcEnc}${a.fbpEnc}`) && decryptSecret(a.fbcEnc) === 'fb.1.1762200000000.IwAR0example' && decryptSecret(a.fbpEnc) === 'fb.1.1762200000000.1234567890'
   );
-  const again = await stampAdTags(company.id, String(tagged.body.orderNumber), { ad_id: '999999999', utm_campaign: '888888888' });
+  const again = await stampAdTags(company.id, String(tagged.body.orderNumber), { ad_name: 'OTHER', utm_source: 'other' });
   const a2 = pick(await rowOf(tagged));
   check('وسم تاني على نفس الطلب ما بيغيّر شي (التحديث مشروط: لسا ما انوسم)', again === false && JSON.stringify(a2) === JSON.stringify(a));
 
@@ -118,29 +127,46 @@ try {
   const damaged = await order({
     attribution: {
       method: 'url_tags',
-      ad_id: 'not-digits',
       utm_source: 'fb',
       utm_campaign: '{{campaign.id}}',
       utm_term: 'broad-audience',
       utm_content: '{{ad.id}}',
       ad_name: '{{ad.name}}',
       landing_url: 'javascript:alert(1)',
-      fbc: 7,
+      fbc: 'not-a-meta-cookie',
+      fbp: 7,
     },
   });
   check('طلب بوسم خربان: الباب أنشأ الطلب ورجّع رقمو', damaged.ok === true && !!damaged.body.orderNumber, JSON.stringify(damaged).slice(0, 200));
   const c = pick(await rowOf(damaged));
   check(
-    'وسم خربان: الـutm انحفظ كنص متل ما اجا، والأرقام (الحملة/المجموعة/الإعلان) فاضية',
-    c.utmCampaign === '{{campaign.id}}' && c.utmTerm === 'broad-audience' && c.utmContent === '{{ad.id}}' && c.utmSource === 'fb' && c.adCampaignId === null && c.adsetId === null && c.adId === null,
+    'وسم خربان: النص انحفظ متل ما اجا بأعمدة الباب (الماكرو اللي ما اتعبّى بيضل نص)',
+    c.adId === '{{ad.id}}' && c.metaCampaignId === '{{campaign.id}}' && c.refCode === 'broad-audience' && c.utmSource === 'fb' && c.adName === '{{ad.name}}',
     JSON.stringify(c)
   );
-  check('وسم خربان: الرابط غير http انرمى، والمشفّرات فاضية', c.landingUrl === null && c.fbclidEnc === null && c.fbcEnc === null && c.fbpEnc === null);
+  check('وسم خربان: الرابط غير http انرمى، والكوكي اللي مش بشكل ميتا فاضية', c.landingUrl === null && c.fbcEnc === null && c.fbpEnc === null);
 
   // 4) three orders, three numbers, nothing else disturbed
   const numbers = [tagged, bare, damaged].map((r) => String(r.body.orderNumber));
   const rows = await probe.order.count({ where: { storeId: store.id } });
   check('التلات طلبات موجودين بأرقام مختلفة بالقاعدة', new Set(numbers).size === 3 && rows === 3, `${rows} rows`);
+
+  // 5) THE FEED — the real select on the real table
+  const page = await readAttributionPage({ companyId: company.id, since: new Date(Date.now() - 3_600_000), cursor: null, limit: 200, origin: 'https://oms.test' });
+  const feed = (r) => page.items.find((i) => i.order_id === (rowIds.get(String(r.body.orderNumber)) ?? ''));
+  const rowIds = new Map();
+  for (const r of [tagged, bare, damaged]) rowIds.set(String(r.body.orderNumber), (await rowOf(r))?.id);
+  const fa = feed(tagged);
+  const fb = feed(bare);
+  const fc = feed(damaged);
+  check('الخلاصة: الطلبات التلاتة موجودين فيها', !!fa && !!fb && !!fc);
+  check(
+    'الخلاصة، طلب بوسوم: الإعلان والمجموعة والحملة أرقام، والاسم والصفحة معبّين',
+    fa?.ad_id === '120211000000000001' && fa?.adset_id === '120210000000000005' && fa?.campaign_id === '120210000000000009' && fa?.ad_name === 'CR00147_TRF01_hook2' && fa?.landing_page === 'https://pages.zakiai.io/p/kamaa-eye-water',
+    JSON.stringify(fa)
+  );
+  check('الخلاصة، طلب بلا وسوم: كلهم null', !!fb && fb.ad_id === null && fb.adset_id === null && fb.campaign_id === null && fb.ad_name === null && fb.landing_page === null, JSON.stringify(fb));
+  check('الخلاصة، طلب بوسم خربان: الماكرو ما بيطلع id — الثلاثة null (والطلب بالخلاصة)', !!fc && fc.ad_id === null && fc.adset_id === null && fc.campaign_id === null, JSON.stringify(fc));
 } catch (e) {
   console.error(`\nوقف الفحص بخطأ قاعدة/Prisma: ${e instanceof Error ? e.stack || e.message : e}`);
   exit = 2;
