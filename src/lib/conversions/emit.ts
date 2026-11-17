@@ -153,6 +153,19 @@ export function conversionValue(
 }
 
 /**
+ * A sealed click or browser id, opened for Meta — or nothing. One that cannot be opened (a rotated key, a damaged
+ * value) is left out of the event rather than failing it: the sale still reaches Meta, matched on what remains.
+ */
+function unsealed(blob: string | null | undefined): string | null {
+  if (!blob) return null;
+  try {
+    return decryptSecret(blob);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Send one queued conversion.
  *
  * Returns true only when Meta acknowledged it. Everything else writes down
@@ -179,6 +192,8 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
           // «EG» on every row (the column default, never set by any door), so it is not read.
           country: { select: { code: true } },
           customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true } },
+          // What a standalone landing page reported about the visit (`v1/landing-attribution.ts`); null on any other order.
+          fbcEnc: true, fbpEnc: true, clientUserAgent: true,
         },
       },
     },
@@ -235,6 +250,11 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
     fullName: c.fullName,
     city: c.city,
     externalId: c.id,
+    // The visitor's click, browser cookie and browser, when the landing page sent them: Meta matches a click id to the
+    // very ad that was clicked, which a hashed phone alone cannot do. Absent on every other order, and then omitted.
+    fbc: unsealed(order.fbcEnc),
+    fbp: unsealed(order.fbpEnc),
+    userAgent: order.clientUserAgent,
   });
 
   const custom: Record<string, unknown> = {

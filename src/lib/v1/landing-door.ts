@@ -25,6 +25,7 @@ import { checkoutRules, parseStoreTheme } from '../store-theme';
 import { POST_ORDER_REFUSAL_AR, postOrderGate, postOrderOfferSettings, type PostOrderRefusal } from '../post-order-offer';
 import { unitCostsOf } from '../product-fixed-cost';
 import { V1_CODE, V1Fault } from './door';
+import { attributionColumns, readLandingAttribution } from './landing-attribution';
 
 /**
  * THE STANDALONE LANDING SYSTEM, AT THE SYSTEMS DOOR.
@@ -315,6 +316,14 @@ export const landingOrderSchema = z.object({
   notes: z.string().max(1000).optional().nullable(),
   campaign: z.string().max(40).optional().nullable(),
   deviceClass: z.enum(['mobile', 'tablet', 'desktop']).optional().nullable(),
+  /*
+   * WHICH AD THE VISITOR CAME FROM (contract oms-lp.v1 §4) — all optional, and read as `unknown` ON PURPOSE: an ad's
+   * tracking value is never a reason to refuse a customer's order. `readLandingAttribution` cleans each one and drops
+   * what does not fit; a page that sends none of them is taken exactly as before.
+   */
+  attribution: z.unknown().optional(),
+  event_id: z.unknown().optional(),
+  client_user_agent: z.unknown().optional(),
 });
 export type LandingOrderInput = z.infer<typeof landingOrderSchema>;
 
@@ -377,6 +386,7 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
 
   // After the commit, and unable to fail what is already saved.
   await markLandingChannel(companyId, String(result.body.orderNumber));
+  await recordLandingAttribution(companyId, String(result.body.orderNumber), order);
   if (stoodDown.length > 0) {
     await cartsRecoveredBy(companyId, stoodDown, String(result.body.orderNumber)).catch((e) =>
       console.error('landing door: could not mark the cart recovered (non-fatal):', (e as Error)?.name || 'unknown')
@@ -523,6 +533,25 @@ async function markLandingChannel(companyId: string, orderNumber: string) {
     await db.order.updateMany({ where: { companyId, orderNumber }, data: { channelId: channel.id } });
   } catch (e) {
     console.error('landing door: could not mark the channel (non-fatal):', e);
+  }
+}
+
+/**
+ * THE AD THIS ORDER CAME FROM, written beside it — see `landing-attribution.ts` for the mapping and the rules.
+ *
+ * Here and not in `createPublicOrder`: order creation is not changed («order creation changed» is a fixed blocker),
+ * and like the channel above this is a reported fact written after the commit, unable to fail the order. The row is
+ * the one just created, so nothing that was there is overwritten. A failure logs its error code only: a database
+ * error can quote the values it was given, and none of them belongs in a log.
+ */
+async function recordLandingAttribution(companyId: string, orderNumber: string, order: LandingOrderInput) {
+  try {
+    const data = attributionColumns(readLandingAttribution(order));
+    if (Object.keys(data).length === 0) return;
+    await db.order.updateMany({ where: { companyId, orderNumber }, data });
+  } catch (e) {
+    const code = (e as { code?: unknown })?.code;
+    console.error('landing door: could not record the ad attribution (non-fatal):', typeof code === 'string' ? code : 'error');
   }
 }
 

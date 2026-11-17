@@ -161,6 +161,7 @@ export const ATTRIBUTION_SELECT = {
   source: true,
   externalChannel: true,
   adId: true,
+  metaCampaignId: true,
   landingPageId: true,
   product: { select: { sku: true } },
   channel: { select: { kind: true } },
@@ -197,12 +198,17 @@ export function attributionItem(o: Row, origin: string | null | undefined) {
     channel: (o.externalChannel ?? o.channel?.kind ?? o.source).trim().toLowerCase(),
     ad_id: o.adId,
     /*
-     * Not stored on an order today. The ad set and the ad's name arrive only
-     * once landing pages capture them from the link — the media buyer's
-     * P0.1, which changes order creation and waits for the owner's OK.
+     * Still null. A standalone landing page now reports the ad set (utm_term), and the owner had it stored in
+     * `refCode` — the column a customer's quoted code lives in on every other door, which this feed does not read
+     * (`the-media-buyers-door.test.ts`). Reading it here for landing orders only is the owner's call. The ad's name
+     * is captured nowhere.
      */
     adset_id: null,
-    campaign_id: o.campaign?.externalId ?? null,
+    /*
+     * The platform's campaign id: the linked campaign's, or — for a standalone landing-page order, whose page reports
+     * the Meta campaign it came from (utm_campaign, `landing-attribution.ts`) — that one. The same kind of id either way.
+     */
+    campaign_id: o.campaign?.externalId ?? o.metaCampaignId ?? null,
     ad_name: null,
     landing_page: o.landingPage
       ? publicAddress(origin, {
