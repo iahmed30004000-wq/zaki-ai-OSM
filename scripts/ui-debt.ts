@@ -4,9 +4,10 @@
  * The restructure moves every screen onto one kit, one screen at a time, by hand. What it must never do is move
  * BACKWARDS while it does: a button written raw because the kit one was a click away, a card drawn from the card colour
  * because copying a line is quicker than importing a component. So what is still written by hand is counted, here, per
- * file and per kind, and the number is pinned in `scripts/ui-debt.json`.
+ * file and per kind, and the number is pinned in `scripts/ui-debt.json` — per-file rows ONLY; the totals are added up from
+ * them when printed, never stored (a stored block made every two screen PRs conflict on the same lines).
  *
- *   npx tsx scripts/ui-debt.ts                  # prints the totals against the pinned ceilings
+ *   npx tsx scripts/ui-debt.ts                  # prints the totals (summed from the files) against the pinned ceilings
  *   npx tsx scripts/ui-debt.ts --write          # pins a LOWER number; REFUSES any file that rose
  *   npx tsx scripts/ui-debt.ts --explain <file> # every raw control in the file, its line, and the kit part that replaces it
  *
@@ -45,8 +46,12 @@ export type DebtCounts = Record<DebtKind, number>;
 /** What the registry holds for a file: only the kinds above zero. */
 export type DebtRow = Partial<DebtCounts>;
 
+/**
+ * The registry holds ONLY the per-file rows. 18/11: it used to open with a stored `totals` block; every screen PR changed
+ * those adjacent lines, so any two PRs conflicted on this file. The totals are now COMPUTED (`totalsOf`) wherever they
+ * are printed or tested, and a registry that carries a `totals` key again is refused (`parseRegistry`).
+ */
 export interface Registry {
-  totals: DebtCounts;
   files: Record<string, DebtRow>;
 }
 
@@ -200,9 +205,10 @@ export function inDebtScope(rel: string): boolean {
   return !SELLER_SURFACES.some((s) => p.includes(s));
 }
 
-const sumOf = (files: Record<string, DebtRow>): DebtCounts => {
+/** The registry's totals, added up from its files — never stored, so they can never disagree with them. */
+export const totalsOf = (reg: Registry): DebtCounts => {
   const totals = Object.fromEntries(DEBT_KINDS.map((k) => [k, 0])) as DebtCounts;
-  for (const row of Object.values(files)) for (const k of DEBT_KINDS) totals[k] += row[k] ?? 0;
+  for (const row of Object.values(reg.files)) for (const k of DEBT_KINDS) totals[k] += row[k] ?? 0;
   return totals;
 };
 
@@ -216,16 +222,28 @@ export function measure(): Registry {
     for (const k of DEBT_KINDS) if (counts[k] > 0) row[k] = counts[k];
     if (Object.keys(row).length > 0) files[rel] = row;
   }
-  return { totals: sumOf(files), files };
+  return { files };
+}
+
+/** The registry's text, read. Anything beside `files` (a `totals` block above all) is refused: the file holds per-file rows only. */
+export function parseRegistry(text: string): Registry {
+  const raw = JSON.parse(text) as Record<string, unknown>;
+  const extra = Object.keys(raw).filter((k) => k !== 'files');
+  if (extra.length > 0 || typeof raw.files !== 'object' || raw.files === null) {
+    throw new Error(
+      `سجل الدَّين فيه مفتاح غير «files»: ${extra.join('، ') || '(files ناقص)'} — المجاميع ما بتنحفظ، بتنحسب من الملفات. احذفه وشغّل: npx tsx scripts/ui-debt.ts --write`
+    );
+  }
+  return { files: raw.files as Registry['files'] };
 }
 
 export function readRegistry(path = DEBT_PATH): Registry | null {
-  return existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Registry) : null;
+  return existsSync(path) ? parseRegistry(readFileSync(path, 'utf8')) : null;
 }
 
 /** The registry as it is written to disk — one canonical form, so a generated file is never touched by hand. */
 export function render(reg: Registry): string {
-  return `${JSON.stringify({ totals: reg.totals, files: reg.files }, null, 2)}\n`;
+  return `${JSON.stringify({ files: reg.files }, null, 2)}\n`;
 }
 
 export interface Change {
@@ -303,7 +321,13 @@ export function run(argv: string[], io: Io = realIo): Result {
   }
 
   const now = io.measure();
-  const pinned = io.read();
+  let pinned: Registry | null;
+  try {
+    pinned = io.read();
+  } catch (e) {
+    err.push((e as Error).message);
+    return { code: 1, out, err };
+  }
 
   if (argv.includes('--write')) {
     if (pinned) {
@@ -323,7 +347,9 @@ export function run(argv: string[], io: Io = realIo): Result {
   // After a `--write` the ceiling IS what was just measured; otherwise it is what is pinned.
   const ceilings = argv.includes('--write') ? now : (pinned ?? now);
   out.push(`${Object.keys(now.files).length} ملف فيه دَين`);
-  for (const k of DEBT_KINDS) out.push(`  ${k.padEnd(15)} ${String(now.totals[k]).padStart(5)}   السقف ${String(ceilings.totals[k]).padStart(5)}`);
+  const nowTotals = totalsOf(now);
+  const ceilingTotals = totalsOf(ceilings);
+  for (const k of DEBT_KINDS) out.push(`  ${k.padEnd(15)} ${String(nowTotals[k]).padStart(5)}   السقف ${String(ceilingTotals[k]).padStart(5)}`);
 
   if (!argv.includes('--write')) {
     if (!pinned) {
