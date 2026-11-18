@@ -4,6 +4,8 @@ import React, { useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/Confirm';
 import { RiDeleteBinLine, RiImageAddLine, RiLoader4Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 
 /**
  * THE STORE'S LOGO AND FAVICON — one place to set each, used everywhere.
@@ -107,8 +109,8 @@ export function StoreBrandField({
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold text-[var(--sys-heading)]">{copy.title}</p>
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{copy.hint}</p>
+        <p className="text-note font-semibold text-[var(--sys-heading)]">{copy.title}</p>
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">{copy.hint}</p>
       </div>
       <input
         ref={input}
@@ -122,25 +124,14 @@ export function StoreBrandField({
         }}
       />
       <div className="flex shrink-0 gap-1.5">
-        <button
-          type="button"
-          onClick={() => input.current?.click()}
-          disabled={busy}
-          className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-1.5 text-xs font-semibold text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] disabled:opacity-50"
-        >
+        <Button type="button" variant="secondary" size="sm" onClick={() => input.current?.click()} disabled={busy}>
           {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiImageAddLine className="h-4 w-4" />}
           {value ? 'تغيير' : copy.upload}
-        </button>
+        </Button>
         {value && (
-          <button
-            type="button"
-            onClick={() => void remove()}
-            disabled={busy}
-            title={copy.removeTitle}
-            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
-          >
+          <IconButton type="button" size="sm" label={copy.removeTitle} onClick={() => void remove()} disabled={busy}>
             <RiDeleteBinLine className="h-4 w-4" />
-          </button>
+          </IconButton>
         )}
       </div>
     </div>
