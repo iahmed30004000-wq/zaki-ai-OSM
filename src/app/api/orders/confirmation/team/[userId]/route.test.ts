@@ -74,7 +74,10 @@ describe('the drawer of one person', () => {
     as('e1');
     const res = await one('e1');
     expect(res.status).toBe(200);
-    expect((await res.json()).employee.id).toBe('e1');
+    const body = await res.json();
+    expect(body.employee.id).toBe('e1');
+    // The desk's totals are the desk's: your row minus them would be your colleagues' work on a small desk.
+    expect(body).not.toHaveProperty('team');
   });
 
   it('NEGATIVE: somebody else’s row without team.monitor is a 403, and nothing is read on the way to it', async () => {

@@ -55,8 +55,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ userId: string 
 
     return NextResponse.json({
       employee: withAttendance(row, marks),
-      // The team's own totals for the same days, so the drawer can set one person beside the whole desk without a second request.
-      team: result.totals,
+      // The desk's totals for the same days, so the drawer can set one person beside the whole desk without a second request — for the one who may see the desk (`team.monitor`). On a small desk, your own row taken out of the totals would show your colleagues' combined work, which is theirs.
+      ...(own && !can(user, 'team.monitor') ? {} : { team: result.totals }),
       window: { start: start?.toISOString() ?? null, end: end?.toISOString() ?? null },
     });
   } catch (error) {
