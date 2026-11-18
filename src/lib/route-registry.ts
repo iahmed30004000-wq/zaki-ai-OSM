@@ -160,7 +160,8 @@ export const NAV: NavGroup[] = [
     routes: [
       r('/orders', 'الطلبات', 'ShoppingCart', ['orders.view']),
       // Beside the orders, on the same key: whoever sees the orders sees the carts (contract oms-lp.v1 §9, 15/11).
-      r('/abandoned-carts', 'السلات المهجورة', 'CartAbandoned', ['orders.view']),
+      // 18/11 (R10c): named «زبائن ما كمّلوا» — the carts AND the pages' leads, three tabs of one screen. Label only.
+      r('/abandoned-carts', 'زبائن ما كمّلوا', 'CartAbandoned', ['orders.view']),
       r('/customers', 'العملاء', 'Users', ['customers.view', 'customers.view_basic']),
       // The two inboxes: a conversation that arrives is somebody who wants to order. Their SETUP stays with
       // the rest of the setup (`/settings/links`) — an operation sits with the work, its configuration apart.

@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { HealthChip } from '@/components/ui/HealthChip';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiScales3Line } from '@remixicon/react';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import {
@@ -59,7 +61,7 @@ function AgentRow({ a }: { a: FairAgent & { userName: string } }) {
         {/* The number the old leaderboard ranked on, kept visible on purpose:
             without it the screen throws away the figure people already trust
             and offers nothing they recognise in its place. */}
-        <span className="text-xs text-[var(--sys-muted-foreground)] whitespace-nowrap">
+        <span className="text-note text-[var(--sys-muted-foreground)] whitespace-nowrap">
           <span className="tabular-nums" dir="ltr">
             {a.rawCount}
           </span>{' '}
@@ -83,22 +85,24 @@ function AgentRow({ a }: { a: FairAgent & { userName: string } }) {
       {/* The reason, printed rather than hidden in a tooltip. «تحت نصيبه»
           tells a reader nothing they can act on or argue with; «7 طلباً في 6
           أيام مشتركة، ونصيب الأيام نفسها 12» does both. */}
-      <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{a.why}</p>
+      <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{a.why}</p>
 
       {a.bands.length > 0 && (
         <>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="sm"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            className="min-h-11 md:min-h-0 inline-flex items-center mt-1 text-xs font-medium text-[var(--sys-primary)] hover:underline"
+            className="mt-1"
           >
             {open ? 'أخفِ البنود' : `من أين الدرجة (${a.score} من 100)؟`}
-          </button>
+          </Button>
           {open && (
             <ul className="mt-1.5 space-y-1.5 rounded-lg bg-[var(--sys-surface)] p-2.5">
               {a.bands.map((b) => (
-                <li key={b.key} className="text-xs leading-relaxed">
+                <li key={b.key} className="text-note leading-relaxed">
                   <span className="font-semibold text-[var(--sys-heading)]">{b.ar}</span>{' '}
                   <span className="tabular-nums text-[var(--sys-foreground)]" dir="ltr">
                     {Math.round(b.earned)}/{b.weight}
@@ -133,7 +137,7 @@ function Block({
     <div className="border-t border-[var(--sys-border)]">
       <div className="px-4 pt-3">
         <h3 className="text-sm font-medium text-[var(--sys-heading)]">{title}</h3>
-        <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">{note}</p>
+        <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">{note}</p>
       </div>
 
       <ul className="divide-y divide-[var(--sys-border)]">
@@ -146,7 +150,7 @@ function Block({
           not lying and the owner can band on it with a clear conscience. If
           they disagree, the pair that swapped is named. */}
       {swaps.compared >= 2 && (
-        <p className="px-4 py-2 text-xs leading-relaxed border-t border-[var(--sys-border)] text-[var(--sys-muted-foreground)]">
+        <p className="px-4 py-2 text-note leading-relaxed border-t border-[var(--sys-border)] text-[var(--sys-muted-foreground)]">
           {swaps.swaps.length === 0 ? (
             <>
               ترتيب العدد الخام وترتيب نصيب اليوم متّفقان على {swaps.compared} موظفين — التقويم لم يقلب شيئاً
@@ -179,7 +183,7 @@ export function FairnessPanel({ data }: { data: FairnessData | null }) {
     [...data.confirmed, ...data.sourced].find((a) => a.userId === id)?.userName ?? '—';
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 py-3 border-b border-[var(--sys-border)]">
         <RiScales3Line className="w-4 h-4 text-[var(--sys-primary)]" />
         <h2 className="text-sm font-medium text-[var(--sys-heading)]">عدالة العدد — مقابل نصيب اليوم</h2>
@@ -189,13 +193,13 @@ export function FairnessPanel({ data }: { data: FairnessData | null }) {
           headline and the numbers are what the first screen shows; on a desk it is printed whole. */}
       {phone ? (
         <details className="border-b border-[var(--sys-border)]">
-          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-xs font-medium text-[var(--sys-primary)]">
+          <summary className="flex min-h-11 cursor-pointer items-center px-4 text-note font-medium text-[var(--sys-primary)]">
             لماذا هذه المقارنة؟
           </summary>
-          <p className="px-4 pb-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{explanation}</p>
+          <p className="px-4 pb-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{explanation}</p>
         </details>
       ) : (
-        <p className="px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)] border-b border-[var(--sys-border)]">
+        <p className="px-4 py-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)] border-b border-[var(--sys-border)]">
           {explanation}
         </p>
       )}
@@ -203,7 +207,7 @@ export function FairnessPanel({ data }: { data: FairnessData | null }) {
       {/* THE PRECONDITION HE ASKED FOR, ANSWERED. Rather than silently
           skipping «أي فترة من الشهر» or inventing a payday coefficient, the
           screen states whether the record can carry one yet. */}
-      <p className="px-4 py-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border-b border-[var(--sys-border)]">
+      <p className="px-4 py-2 text-note leading-relaxed text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border-b border-[var(--sys-border)]">
         {data.calendar.why}
       </p>
 
@@ -223,11 +227,11 @@ export function FairnessPanel({ data }: { data: FairnessData | null }) {
         nameOf={nameOf}
       />
 
-      <p className="px-4 py-2 text-xs leading-relaxed text-[var(--sys-muted)] border-t border-[var(--sys-border)]">
+      <p className="px-4 py-2 text-note leading-relaxed text-[var(--sys-muted)] border-t border-[var(--sys-border)]">
         لا تُعطى نسبةٌ لمن عمل أقلّ من {MIN_COMPARABLE_DAYS} أيامٍ مشتركةٍ مع زميل، أو أقلّ من{' '}
         {MIN_COUNTED_ORDERS} طلباتٍ فيها — والأيام التي عمِلها وحده لا تُحتسب، لأنّ نصيب اليوم فيها هو
         رقمُه نفسه فتكون النسبةُ واحداً بالحساب لا بالأداء.
       </p>
-    </div>
+    </Card>
   );
 }

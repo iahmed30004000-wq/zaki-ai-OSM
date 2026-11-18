@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -11,12 +12,13 @@ import { moneyText } from '@/lib/money';
 import { useStoreCurrency } from '@/context/StoreCurrency';
 
 /**
- * «ليدز الصفحات» — THE LEAD LANE, above the follow-up tabs (step E2 of Confirmation Center v2).
+ * «ليدز الصفحات» — THE LEAD LANE (step E2 of Confirmation Center v2). Since R10c (18/11) it is the third tab of «زبائن ما كمّلوا»;
+ * «المتابعة» keeps it above its tabs only for a supervisor who may not open that screen.
  *
  * People who left their name and number on a page and have not ordered yet, oldest first (priority 3). For each: call, pick one of the product's LIVE offers, write the address the customer
  * gave, and «حوّل لطلب» — which makes a NORMAL order through the existing landing door (the price is the offer's; there is no field to type one). Or «ما بحتاج» to take it out of the lane.
  * A lead whose number already ordered the same product in the last 24 hours is marked, never hidden. When the owner's switch is off, or the person has no right to the lane, or on any
- * failure or odd answer, this draws NOTHING.
+ * failure or odd answer, this draws NOTHING — or, where it is a tab of its own («زبائن ما كمّلوا», R10c 18/11), the `empty` it is handed, so a tab is never blank.
  */
 interface Offer {
   id: string;
@@ -46,7 +48,7 @@ function waited(at: string): string {
   return minutes < 2880 ? `${Math.floor(minutes / 60)} ساعة` : `${Math.floor(minutes / 1440)} يوم`;
 }
 
-export function LeadsLane() {
+export function LeadsLane({ empty = null }: { empty?: React.ReactNode } = {}) {
   const toast = useToast();
   const currency = useStoreCurrency();
   const [data, setData] = useState<Answer | null | 'none'>(null);
@@ -66,8 +68,8 @@ export function LeadsLane() {
   // a lane is a queue of people waiting for a call: it loads on mount, every two minutes, and when she comes back to the screen
   useLiveRefresh(load, { everyMs: 120_000 });
 
-  if (data === 'none') return null;
-  if (data && (data.leads ?? []).length === 0) return null;
+  if (data === 'none') return <>{empty}</>;
+  if (data && (data.leads ?? []).length === 0) return <>{empty}</>;
 
   const post = async (key: string, body: Record<string, unknown>, done: string) => {
     setBusy(key);
@@ -82,7 +84,7 @@ export function LeadsLane() {
     }
   };
 
-  const field = 'h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs';
+  const field = 'h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-note';
 
   return (
     <Card>
@@ -108,10 +110,10 @@ export function LeadsLane() {
                 render: (l: Lead) => (
                   <span className="space-y-0.5">
                     <span className="block font-semibold">{l.fullName}</span>
-                    <a className="block text-xs tabular-nums text-[var(--sys-primary)]" href={`tel:${l.phone}`} dir="ltr">
+                    <a className="block text-note tabular-nums text-[var(--sys-primary)]" href={`tel:${l.phone}`} dir="ltr">
                       {l.phone}
                     </a>
-                    {l.recentOrder && <span className="block text-xs text-[var(--sys-destructive)]">طلب نفس المنتج من آخر 24 ساعة</span>}
+                    {l.recentOrder && <span className="block text-note text-[var(--sys-destructive)]">طلب نفس المنتج من آخر 24 ساعة</span>}
                   </span>
                 ),
               },
@@ -132,17 +134,18 @@ export function LeadsLane() {
                       ))}
                     </select>
                     <input aria-label={`العنوان — ${l.fullName}`} className={`${field} w-44`} placeholder="العنوان" value={address[l.id] ?? ''} disabled={busy !== null} onChange={(e) => setAddress({ ...address, [l.id]: e.target.value })} />
-                    <button
+                    {/* «حوّل لطلب» — the same words as the cart's press (R10c); the door and the body are the lane's own */}
+                    <Button
                       type="button"
-                      className="rounded-md bg-[var(--sys-primary)] px-2 text-xs font-bold text-[var(--sys-primary-foreground)] h-11 md:h-8 disabled:opacity-50"
+                      size="sm"
                       disabled={busy !== null || !offer[l.id] || (address[l.id] ?? '').trim().length < 3}
                       onClick={() => void post(`c${l.id}`, { action: 'convert', leadId: l.id, offerId: offer[l.id], address: (address[l.id] ?? '').trim() }, 'انعمل الطلب')}
                     >
                       حوّل لطلب
-                    </button>
-                    <button type="button" className="rounded-md border border-[var(--sys-border-strong)] px-2 text-xs h-11 md:h-8 disabled:opacity-50" disabled={busy !== null} onClick={() => void post(`d${l.id}`, { action: 'dismiss', leadId: l.id }, 'انشال من القايمة')}>
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => void post(`d${l.id}`, { action: 'dismiss', leadId: l.id }, 'انشال من القايمة')}>
                       ما بحتاج
-                    </button>
+                    </Button>
                   </span>
                 ),
               },

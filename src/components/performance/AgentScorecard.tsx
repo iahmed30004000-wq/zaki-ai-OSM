@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { Segmented } from '@/components/ui/Segmented';
 import { apiJson } from '@/lib/api-client';
 import type { Grain, Ratio, ScoreRow } from '@/lib/agent-scorecard';
 
@@ -28,7 +29,7 @@ function Rate({ r }: { r: Ratio }) {
   return (
     <span className="tabular-nums">
       <span className="font-bold">{rateText(r)}</span>
-      {r.base > 0 && <span className="block text-xs text-[var(--sys-muted-foreground)]">{beside(r)}</span>}
+      {r.base > 0 && <span className="block text-note text-[var(--sys-muted-foreground)]">{beside(r)}</span>}
     </span>
   );
 }
@@ -79,7 +80,7 @@ export function AgentScorecard() {
       render: (r: ScoreRow) => (
         <span className="tabular-nums">
           <span className="font-bold">{rateText(r.delivery)}</span>
-          {r.delivery.base > 0 && <span className="block text-xs text-[var(--sys-muted-foreground)]">{`${r.delivery.delivered} مسلَّم و${r.delivery.returned} مرتجع`}</span>}
+          {r.delivery.base > 0 && <span className="block text-note text-[var(--sys-muted-foreground)]">{`${r.delivery.delivered} مسلَّم و${r.delivery.returned} مرتجع`}</span>}
         </span>
       ),
     },
@@ -92,19 +93,13 @@ export function AgentScorecard() {
         title="بطاقة أداء الموظفات"
         subtitle="آخر 7 أيام. كل نسبة جنبها أرقامها، والنسبة بلا أساس شرطة. مرتّبة باليوم ثم بالاسم، مش بالنتيجة."
         action={
-          <div className="flex gap-1" role="group" aria-label="التجميع">
-            {(['day', 'week'] as const).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => setGrain(g)}
-                aria-pressed={grain === g}
-                className={`rounded-md border px-2.5 py-1 text-xs ${grain === g ? 'border-[var(--sys-primary)] font-bold text-[var(--sys-primary)]' : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'}`}
-              >
-                {g === 'day' ? 'يومي' : 'أسبوعي'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            size="sm"
+            aria-label="التجميع"
+            options={(['day', 'week'] as const).map((g) => ({ value: g, label: g === 'day' ? 'يومي' : 'أسبوعي' }))}
+            value={grain}
+            onChange={(g) => setGrain(g as Grain)}
+          />
         }
       />
       <CardContent className="p-0">
@@ -115,7 +110,7 @@ export function AgentScorecard() {
         ) : (
           <>
             <Rows rows={data.rows} keyOf={(r: ScoreRow) => `${r.bucket}|${r.userId}`} empty="لا نشاط للموظفات بهالمدة." columns={columns} />
-            <details className="border-t border-[var(--sys-border)] px-4 py-3 text-xs text-[var(--sys-muted-foreground)]">
+            <details className="border-t border-[var(--sys-border)] px-4 py-3 text-note text-[var(--sys-muted-foreground)]">
               <summary className="cursor-pointer font-bold text-[var(--sys-foreground)]">قاعدة الاحتساب</summary>
               <ul className="mt-2 space-y-1.5">
                 {Object.entries(data.rules).map(([key, text]) => (

@@ -51,6 +51,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const card = () => document.querySelector('li') as HTMLElement;
+/** The kit's quiet look (no fill), built from pieces: Tailwind reads tests too. */
+const QUIET = ['bg', 'transparent'].join('-');
 
 /* ═══════════════════════ المرتجعات ═══════════════════════ */
 
@@ -99,14 +101,17 @@ describe('«المرتجعات»', () => {
     await draw();
     const b = within(card()).getByRole('button', { name: 'استلام' });
     expect(b.className).toContain('w-full');
-    expect(b.className).not.toContain('hover:underline');
+    // 18/11 (R11e): was «not hover:underline» — the desk's word is the kit's quiet button now, so the phone's press is told apart by not being quiet.
+    expect(b.className).not.toContain(QUIET);
   });
 
-  it('DESK: nothing changed — «استلام» is the bare word it was', async () => {
+  it('DESK: «استلام» is the quiet word it was, not the phone’s wide press', async () => {
     phone.value = false;
     await draw();
     const b = within(card()).getByRole('button', { name: 'استلام' });
-    expect(b.className).toContain('hover:underline');
+    // 18/11 (R11e): was «hover:underline» (a hand-drawn link). The same word on the same row, now the kit's quiet button
+    // (variant quiet, size sm) — no fill, no edge; the handler and its argument are held in the-returns-screen-wears-the-kit.test.tsx.
+    expect(b.className).toContain(QUIET);
     expect(b.className).not.toContain('w-full');
   });
 

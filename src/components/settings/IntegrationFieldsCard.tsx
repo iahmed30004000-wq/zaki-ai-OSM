@@ -116,9 +116,9 @@ export function IntegrationFieldsCard({ group }: { group: Group }) {
       <CardContent className="space-y-1">
         {mine.map((i) => (
           <div key={i.key} className="py-2.5 border-b border-[var(--sys-surface-strong)] space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-[var(--sys-heading)]">{i.label}</span>
-              <span className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-note font-semibold text-[var(--sys-heading)]">{i.label}</span>
+              <span className="flex items-center gap-1 text-note text-[var(--sys-muted-foreground)]">
                 {i.source === 'site' ? (
                   <>
                     <RiCheckLine className="w-4 h-4" />
@@ -132,9 +132,9 @@ export function IntegrationFieldsCard({ group }: { group: Group }) {
                 )}
               </span>
             </div>
-            <p className="text-xs text-[var(--sys-muted-foreground)]">{i.help}</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">{i.help}</p>
             {i.unreadable && (
-              <p className="text-xs text-[var(--sys-destructive)]">القيمة المحفوظة ما بتنفتح (مفتاح التشفير اتغيّر) — احفظها من جديد.</p>
+              <p className="text-note text-[var(--sys-destructive)]">القيمة المحفوظة ما بتنفتح (مفتاح التشفير اتغيّر) — احفظها من جديد.</p>
             )}
             <div className="flex items-center gap-2">
               <Input
@@ -146,20 +146,20 @@ export function IntegrationFieldsCard({ group }: { group: Group }) {
                 value={draft[i.key] ?? ''}
                 onChange={(e) => setDraft((d) => ({ ...d, [i.key]: e.target.value }))}
               />
-              <Button size="sm" disabled={busy !== null || !(draft[i.key] ?? '').trim()} onClick={() => save(i.key)}>
+              <Button type="button" size="sm" disabled={busy !== null || !(draft[i.key] ?? '').trim()} onClick={() => { void save(i.key); }}>
                 حفظ
               </Button>
               {i.hint !== null && (
-                <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => clear(i)}>
+                <Button type="button" variant="secondary" size="sm" disabled={busy !== null} onClick={() => { void clear(i); }}>
                   مسح
                 </Button>
               )}
             </div>
           </div>
         ))}
-        <div className="flex items-center justify-between pt-3">
-          <span className="text-xs text-[var(--sys-muted-foreground)]">{verdict ?? 'جرّب بالقيم الحالية'}</span>
-          <Button variant="outline" size="sm" disabled={busy !== null} onClick={test}>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3">
+          <span className="text-note text-[var(--sys-muted-foreground)]">{verdict ?? 'جرّب بالقيم الحالية'}</span>
+          <Button type="button" variant="secondary" size="sm" disabled={busy !== null} onClick={() => { void test(); }}>
             {busy === 'test' ? 'جارٍ التجربة...' : 'جرّب'}
           </Button>
         </div>

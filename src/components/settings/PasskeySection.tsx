@@ -5,6 +5,8 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { createPasskey, passkeySupported } from '@/lib/passkey-browser';
 import { useConfirm } from '@/components/ui/Confirm';
 import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { RiDeleteBinLine, RiFingerprintLine, RiLoader4Line } from '@remixicon/react';
 
 /**
@@ -119,10 +121,10 @@ export function PasskeySection() {
       />
       <CardContent className="space-y-3">
         {supported === false && (
-          <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-sm text-[var(--sys-muted-foreground)]">
+          <Card plain padding="sm" className="text-sm text-[var(--sys-muted-foreground)]">
             هذا الجهاز لا يوفّر بصمةً أو تعرُّفَ وجه — أو الاتصالُ غير آمن (تحتاج HTTPS). رمزُ التطبيق
             يعمل كالمعتاد.
-          </p>
+          </Card>
         )}
 
         {keys && keys.length > 0 && (
@@ -134,23 +136,26 @@ export function PasskeySection() {
                   <span className="block truncate text-sm text-[var(--sys-heading)]">
                     {k.label || 'مفتاح'}
                   </span>
-                  <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="block text-note text-[var(--sys-muted-foreground)]">
                     سُجِّل {new Date(k.createdAt).toISOString().slice(0, 10)}
                     {k.lastUsedAt
                       ? ` · آخر استعمال ${new Date(k.lastUsedAt).toISOString().slice(0, 10)}`
                       : ' · لم يُستعمل بعد'}
                   </span>
                 </span>
-                <button
+                <IconButton
                   type="button"
-                  onClick={() => void remove(k.id, k.label || 'المفتاح')}
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    void remove(k.id, k.label || 'المفتاح');
+                  }}
                   disabled={busy}
-                  title={`احذف ${k.label || 'المفتاح'}`}
-                  aria-label={`احذف ${k.label || 'المفتاح'}`}
-                  className="min-h-11 md:min-h-0 rounded-md p-2 text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
+                  label={`احذف ${k.label || 'المفتاح'}`}
+                  className="text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)]"
                 >
                   <RiDeleteBinLine className="h-4 w-4" />
-                </button>
+                </IconButton>
               </li>
             ))}
           </ul>
@@ -185,38 +190,32 @@ export function PasskeySection() {
               required
               className="bg-[var(--sys-card)]"
             />
-            <button
-              type="submit"
-              disabled={busy || password.length === 0}
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-            >
+            <Button type="submit" disabled={busy || password.length === 0}>
               {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiFingerprintLine className="h-4 w-4" />}
               أكّد وسجّل البصمة
-            </button>
-            <button
+            </Button>
+            {/* `type="button"` written out: the kit sets no default, and inside this form a «رجوع» without it would submit the password. */}
+            <Button
               type="button"
+              variant="quiet"
+              size="sm"
+              className="w-full"
               onClick={() => {
                 setAsking(false);
                 setPassword('');
                 setError(null);
               }}
-              className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]"
             >
               رجوع
-            </button>
+            </Button>
           </form>
         )}
 
         {supported !== false && !asking && (
-          <button
-            type="button"
-            onClick={() => setAsking(true)}
-            disabled={busy}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-          >
+          <Button type="button" onClick={() => setAsking(true)} disabled={busy}>
             <RiFingerprintLine className="h-4 w-4" />
             سجّل بصمةَ هذا الجهاز
-          </button>
+          </Button>
         )}
 
         {/*
@@ -225,7 +224,7 @@ export function PasskeySection() {
           that pressure is exactly how a second factor gets switched off for
           everybody.
         */}
-        <p className="text-xs text-[var(--sys-muted)]">
+        <p className="text-note text-[var(--sys-muted)]">
           رمزُ التطبيق ورموزُ الاسترداد تبقى تعمل دائماً. البصمةُ اختصارٌ لا بديلٌ عنها.
         </p>
       </CardContent>

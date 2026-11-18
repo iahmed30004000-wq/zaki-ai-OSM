@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { AgentScorecard } from './AgentScorecard';
 import { CommissionPreview } from './CommissionPreview';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import type { ScoreResult } from '@/lib/performance-score';
 import { RiLoader4Line } from '@remixicon/react';
 
@@ -40,7 +42,11 @@ interface BoardData {
 
 const PERIOD_AR = { WEEKLY: 'هذا الأسبوع', MONTHLY: 'هذا الشهر' };
 
-function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
+/** The score's own window, said beside it: the owner's week or month, never the board's date box (04 §هـ, «خانة مشتركة»). */
+const SCORE_WINDOW_LINE = (period: 'WEEKLY' | 'MONTHLY') =>
+  `السكور على ${period === 'WEEKLY' ? 'الأسبوع' : 'الشهر'} اللي حدده المالك — ما بيتبع المدة المختارة فوق.`;
+
+function Row({ person, bars, onOpen }: { person: Person; bars: BoardData['bars']; onOpen?: (person: { id: string; name: string }) => void }) {
   const [open, setOpen] = useState(false);
   const s = person.score;
   const unmeasured = s.total === null;
@@ -75,10 +81,27 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
         }
       >
         <td className="px-3 py-2 tabular-nums text-[var(--sys-muted)]">{unmeasured ? '—' : person.rank}</td>
-        <td className="px-3 py-2 font-medium text-[var(--sys-heading)]">{person.name}</td>
+        <td className="px-3 py-2 font-medium text-[var(--sys-heading)]">
+          {/* The SAME drawer as the team table (R14a1): the name opens it; the rest of the row still unfolds the bands. */}
+          {onOpen ? (
+            <Button
+              variant="quiet"
+              size="sm"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen({ id: person.id, name: person.name });
+              }}
+            >
+              {person.name}
+            </Button>
+          ) : (
+            person.name
+          )}
+        </td>
         <td className="px-3 py-2">
           {unmeasured ? (
-            <span className="text-xs text-[var(--sys-muted)]">
+            <span className="text-note text-[var(--sys-muted)]">
               العيّنة {s.sample} — الحد الأدنى {s.minSample}
             </span>
           ) : (
@@ -99,7 +122,7 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
                   ((b.key === 'delivery_rate' && b.value < bars.deliveryRate) ||
                     (b.key === 'issues_rate' && b.value > bars.issuesRate));
                 return (
-                  <li key={b.key} className="flex items-baseline justify-between gap-2 text-xs">
+                  <li key={b.key} className="flex items-baseline justify-between gap-2 text-note">
                     <span className={low ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-muted-foreground)]'}>{b.ar}</span>
                     <span className="tabular-nums text-[var(--sys-foreground)]">
                       {b.points === null ? 'لا يُقاس' : `${b.points} من ${b.weight}`}
@@ -115,7 +138,7 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
   );
 }
 
-export function ScoreBoard() {
+export function ScoreBoard({ onOpen }: { /** A name opens the person's drawer — the team table's (R14a1). */ onOpen?: (person: { id: string; name: string }) => void } = {}) {
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +155,7 @@ export function ScoreBoard() {
   }, [load]);
 
   if (error) {
-    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>;
+    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">{error}</p>;
   }
   if (!data) {
     return (
@@ -144,14 +167,16 @@ export function ScoreBoard() {
 
   return (
     <div className="space-y-3" dir="rtl">
-      <p className="text-xs text-[var(--sys-muted-foreground)]">
+      <p className="text-note text-[var(--sys-muted-foreground)]">
         {PERIOD_AR[data.window.period]} · الأعلى أولاً. لا توجد قائمة معلنة للأسوأ، ولا زرّ يقلب
         الترتيب — السكور أداة قياس، ولوحةُ فشلٍ تجعل الناس تتجنّب المركز الأخير بدل أن ترفع الرقم.
       </p>
+      {/* A FIXED WINDOW SAYS SO BESIDE ITS NUMBERS (R14a1, 18/11): the date box above stays on this tab and this list does not follow it. */}
+      <p className="text-note text-[var(--sys-muted-foreground)]">{SCORE_WINDOW_LINE(data.window.period)}</p>
 
       {data.roles.map((r) => (
-        <section key={r.role} className="overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
-          <h3 className="border-b border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-xs font-bold text-[var(--sys-foreground)]">
+        <Card plain key={r.role} className="overflow-hidden">
+          <h3 className="border-b border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-note font-bold text-[var(--sys-foreground)]">
             {r.ar}
           </h3>
 {/*
@@ -175,7 +200,7 @@ export function ScoreBoard() {
           otherwise costs the comparison it exists to make.
         */}
         <table className="w-full text-sm">
-            <thead className="text-xs text-[var(--sys-muted)]">
+            <thead className="text-note text-[var(--sys-muted)]">
               <tr>
                 <th className="w-10 px-3 py-1.5 text-right font-medium">#</th>
                 <th className="px-3 py-1.5 text-right font-medium">الموظف</th>
@@ -184,11 +209,11 @@ export function ScoreBoard() {
             </thead>
             <tbody className="divide-y divide-[var(--sys-surface-strong)]">
               {r.people.map((p) => (
-                <Row key={p.id} person={p} bars={data.bars} />
+                <Row key={p.id} person={p} bars={data.bars} onOpen={onOpen} />
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       ))}
 
       {/* the per-day agent scorecard (step G1): its own door and its own failure — it draws nothing if it cannot be read */}
@@ -197,9 +222,9 @@ export function ScoreBoard() {
       <CommissionPreview />
 
       {data.roles.length === 0 && (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-sm text-[var(--sys-muted-foreground)]">
+        <Card plain padding="lg" className="text-center text-sm text-[var(--sys-muted-foreground)]">
           لا موظفين في الأدوار التي يقيسها هذا السكور بهذا المتجر.
-        </p>
+        </Card>
       )}
     </div>
   );

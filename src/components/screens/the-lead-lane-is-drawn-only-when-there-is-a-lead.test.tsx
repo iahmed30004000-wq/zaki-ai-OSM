@@ -40,6 +40,23 @@ describe('when there is nothing to draw', () => {
   });
 });
 
+// 18/11 (R10c): as a TAB of «زبائن ما كمّلوا» the lane is handed what to say when it has nothing, so the tab is never blank.
+describe('as a tab of its own', () => {
+  it('draws the `empty` it is handed when off, empty or failed — and the leads, not the sentence, when there are leads', async () => {
+    for (const reply of [{ enabled: false }, { enabled: true, leads: [] }, new Error('403')]) {
+      if (reply instanceof Error) api.mockRejectedValue(reply);
+      else api.mockResolvedValue(reply);
+      const { unmount } = render(<LeadsLane empty={<p>ما في ليدز هلق</p>} />);
+      expect(await screen.findByText('ما في ليدز هلق')).toBeTruthy();
+      unmount();
+    }
+    api.mockResolvedValue({ enabled: true, leads: [lead()] });
+    render(<LeadsLane empty={<p>ما في ليدز هلق</p>} />);
+    await screen.findAllByText('سارة الحلبي');
+    expect(screen.queryByText('ما في ليدز هلق')).toBeNull();
+  });
+});
+
 describe('when there are leads', () => {
   it('lists them with their city, product and wait, marks the 24-hour repeat, and says «ما في عرض متاح» for a product with no live offer', async () => {
     const { container } = render(<LeadsLane />);
@@ -57,7 +74,9 @@ describe('when there are leads', () => {
   it('the convert button is shut until an offer is chosen and an address is written; then ONE request with the offer id and the address, and no price', async () => {
     render(<LeadsLane />);
     await screen.findAllByText('سارة الحلبي');
-    const convert = screen.getAllByText('حوّل لطلب')[0] as HTMLButtonElement;
+    // 18/11 (R10c): the press is the kit's `Button` now, which wraps its words in a span — so the button is the closest one to the
+    // words, not the words' own element. Same button, same rule.
+    const convert = screen.getAllByText('حوّل لطلب')[0].closest('button') as HTMLButtonElement;
     expect(convert.disabled).toBe(true);
     fireEvent.change(screen.getAllByLabelText('العرض — سارة الحلبي')[0], { target: { value: 'o2' } });
     expect(convert.disabled).toBe(true);

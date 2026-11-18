@@ -10,6 +10,7 @@ import {
   actionOfActivity,
   type NotMentionedAction,
 } from '@/lib/not-mentioned';
+import { Button } from '@/components/ui/Button';
 
 /**
  * WHAT TO DO ABOUT A PARCEL WE DELIVERED THAT NO STATEMENT NAMES.
@@ -60,35 +61,36 @@ export function NotMentionedActions({ statementId, matchId, orderId, orderNumber
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       {last && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-success)]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2.5 py-1 text-note font-semibold text-[var(--sys-success)]">
           <RiCheckLine className="h-4 w-4" />
           {NOT_MENTIONED_AR[last]}
         </span>
       )}
       {NOT_MENTIONED_ACTIONS.filter((a) => a !== 'NOT_DELIVERED' || canCorrectStatus).map((a) => (
-        <button
+        <Button
           key={a}
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={busy !== null}
           title={NOT_MENTIONED_MEANING[a]}
           onClick={() => void send(a)}
-          className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
         >
           {busy === a ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiShieldCheckLine className="h-4 w-4" />}
           {NOT_MENTIONED_AR[a]}
-        </button>
+        </Button>
       ))}
       {last === 'NOT_DELIVERED' && canCorrectStatus && (
         <a
           href={`/orders/${orderId}`}
-          className="inline-flex items-center gap-1 text-xs text-[var(--sys-primary)] hover:underline"
+          className="inline-flex items-center gap-1 text-note text-[var(--sys-primary)] hover:underline"
           title={`افتح الطلب ${orderNumber} لتصحيح حالته`}
         >
           <RiExternalLinkLine className="icon-mirror h-4 w-4" />
           افتح الطلب
         </a>
       )}
-      {error && <span className="text-xs text-[var(--sys-destructive)]">{error}</span>}
+      {error && <span className="text-note text-[var(--sys-destructive)]">{error}</span>}
     </span>
   );
 }

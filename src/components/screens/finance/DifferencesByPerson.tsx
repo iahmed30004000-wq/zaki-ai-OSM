@@ -74,7 +74,7 @@ export function DifferencesByPerson({
 
   if (loading) {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+      <p className="flex items-center gap-1.5 text-note text-[var(--sys-muted-foreground)]">
         <RiLoader4Line className="h-4 w-4 animate-spin" />
         يعدّ الفروق…
       </p>
@@ -88,13 +88,13 @@ export function DifferencesByPerson({
 
   return (
     <FoldCard title="الفروق حسب من أكّد الطلب" holds={`${differences} فرقاً · ${open} بانتظار البتّ`} open={kept} onOpenChange={onOpenChange}>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         الفرقُ بين ما يقوله الطلب وما وصل — محسوبٌ على من أكّد الطلب، لأنّ المكالمة هي حيث يُعطى
         الخصم. والنسبةُ من الطلبات التي وصلت كشفاً، لا من كلّ طلباته.
       </p>
       <ul className="space-y-1">
         {data.people.map((p) => (
-          <li key={p.personId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+          <li key={p.personId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-note">
             <span className="font-semibold text-[var(--sys-foreground)]">{p.name ?? p.personId}</span>
             <span className="text-[var(--sys-muted-foreground)]">
               {p.differences} فرقاً · اعتُمد رقم الشركة في {p.accepted} · بانتظار البتّ {p.open}
@@ -120,7 +120,7 @@ export function DifferencesByPerson({
       {data.unattributed.differences > 0 && (
         /* Said out loud: if most differences belong to nobody, the list
            above is a minority and ranking anybody by it would mislead. */
-        <p className="text-xs text-[var(--sys-muted)]">
+        <p className="text-note text-[var(--sys-muted)]">
           و{data.unattributed.differences} فرقاً على طلباتٍ لا اسمَ مؤكِّدٍ عليها — غير محسوبةٍ على
           أحد.
         </p>

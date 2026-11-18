@@ -42,6 +42,8 @@ const TABLE: [string, string, number, string | null][] = [
   ['src/components/screens/BenchScreen.tsx', '/growth/bench', 1, 'src/app/(system)/(shell)/growth/bench/page.tsx'],
   ['src/components/screens/BlacklistScreen.tsx', '/control/blacklist', 1, 'src/app/(system)/(shell)/control/blacklist/page.tsx'],
   ['src/components/screens/ChangeRequestsScreen.tsx', '/control/change-requests', 1, 'src/app/(system)/(shell)/control/change-requests/page.tsx'],
+  // 18/11 (R15d): «قنوات الطلبات» typed its own title; on the frame it reads it from the registry like the rest, so it joins the table.
+  ['src/components/screens/ChannelsScreen.tsx', '/settings/channels', 1, 'src/app/(system)/(shell)/settings/channels/page.tsx'],
   ['src/components/screens/CommissionSettingsScreen.tsx', '/settings/commission', 1, 'src/app/(system)/(shell)/settings/commission/page.tsx'],
   ['src/components/screens/ConfirmationFollowUpScreen.tsx', '/confirmation/follow-up', 1, 'src/app/(system)/(shell)/confirmation/follow-up/page.tsx'],
   ['src/components/screens/ConfirmationIssuesScreen.tsx', '/confirmation/issues', 1, 'src/app/(system)/(shell)/confirmation/issues/page.tsx'],

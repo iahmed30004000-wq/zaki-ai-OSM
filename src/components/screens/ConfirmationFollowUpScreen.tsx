@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { Tabs } from '@/components/ui/Tabs';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { useMayOpen } from '@/hooks/useMayOpen';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { WinbackScreen } from '@/components/screens/WinbackScreen';
 import { WinbackDaily } from '@/components/screens/WinbackDaily';
@@ -41,6 +43,7 @@ export function ConfirmationFollowUpScreen() {
   // The win-back door asks `confirmation.supervise` itself; the tab is drawn only for
   // who can use it, so a person is never offered a list that answers 403.
   const mayWinback = userCan(currentUser, 'confirmation.supervise');
+  const mayOpen = useMayOpen();
   const asked = useSearchParams().get('tab');
   const [tab, setTab] = useState<Tab>(asked === 'winback' && mayWinback ? 'winback' : 'postponed');
 
@@ -51,8 +54,9 @@ export function ConfirmationFollowUpScreen() {
 
   return (
     <PageShell title={routeLabel('/confirmation/follow-up')} width="wide">
-      {/* the pages system's leads (step E2): its own door, drawn only when the owner turned «ليدز الصفحات» on and there is a lead waiting */}
-      <LeadsLane />
+      {/* the pages system's leads (step E2) moved to «زبائن ما كمّلوا» (R10c, 18/11): one line pointing there for who may open it; a
+          supervisor who may not (no `orders.view`) keeps the lane here — its own door, drawn only when there is a lead waiting */}
+      {mayOpen('/abandoned-carts') ? <LeadsMoved /> : <LeadsLane />}
       <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />
       {tab === 'postponed' ? (
         <ConfirmationPostponedScreen embedded />
@@ -64,5 +68,16 @@ export function ConfirmationFollowUpScreen() {
         </>
       )}
     </PageShell>
+  );
+}
+
+/** One line where the lane stood, so whoever looked for the leads here finds where they went. */
+function LeadsMoved() {
+  return (
+    <p className="text-sm">
+      <Link href="/abandoned-carts?tab=leads" className="text-[var(--sys-primary)] hover:underline">
+        ليدز الصفحات صارت بـ«{routeLabel('/abandoned-carts')}»
+      </Link>
+    </p>
   );
 }

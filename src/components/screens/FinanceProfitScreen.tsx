@@ -20,7 +20,7 @@ import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ZERO_SUMMARY, type ProfitSummary } from '@/lib/profit-summary';
 import { RiAddCircleLine, RiArrowRightDownLine, RiArrowUpCircleLine, RiFileList3Line, RiMoneyDollarCircleLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Rows } from '@/components/ui/Rows';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -157,10 +157,10 @@ function SpendByType({
                   {/* A type the label map has never heard of is named as it
                       was stored AND flagged, so a typo cannot hide inside a
                       composition that still adds up to a hundred. */}
-                  {!g.known && <span className="text-xs text-[var(--sys-warning)]">نوع غير معروف</span>}
-                  <span className="text-xs text-[var(--sys-muted)] tabular-nums">{g.rows} مصروف</span>
+                  {!g.known && <span className="text-note text-[var(--sys-warning)]">نوع غير معروف</span>}
+                  <span className="text-note text-[var(--sys-muted)] tabular-nums">{g.rows} مصروف</span>
 
-                  <span className={`rounded-md border px-2 py-0.5 text-xs font-medium ${DIRECTION_AR[g.direction].cls}`} title={g.why}>
+                  <span className={`rounded-md border px-2 py-0.5 text-note font-medium ${DIRECTION_AR[g.direction].cls}`} title={g.why}>
                     {DIRECTION_AR[g.direction].label}
                   </span>
 
@@ -169,10 +169,10 @@ function SpendByType({
                         say what share of revenue office costs ought to be,
                         and a bar invented per type would be nine verdicts
                         dressed as arithmetic. */}
-                    <span className="text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="text-note text-[var(--sys-muted-foreground)]">
                       {g.burden === null ? '—' : `${g.burden}% من الإيراد`}
                     </span>
-                    <span className="text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="text-note text-[var(--sys-muted-foreground)]">
                       {g.shareOfSpend === null ? '—' : `${g.shareOfSpend}% من المصروف`}
                     </span>
                     <span className="text-sm font-bold text-[var(--sys-heading)]">
@@ -183,12 +183,12 @@ function SpendByType({
                   {/* The reason, printed rather than left in a tooltip: a
                       verdict whose figures are hidden is a verdict people
                       argue with instead of acting on. */}
-                  <span className="w-full text-xs text-[var(--sys-muted)]">{g.why}</span>
+                  <span className="w-full text-note text-[var(--sys-muted)]">{g.why}</span>
                 </li>
               ))}
             </ul>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--sys-border)] px-5 py-3 text-xs text-[var(--sys-muted-foreground)]">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--sys-border)] px-5 py-3 text-note text-[var(--sys-muted-foreground)]">
               <span className="tabular-nums">
                 {spend.rows} مصروف · <Money value={spend.totalSpend} currency={currency} /> هذا الشهر
               </span>
@@ -341,31 +341,25 @@ export function FinanceProfitScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={routeLabel('/finance/profit')}
-            description="الربح من الموصَّل فقط — ناقص كلفة البضاعة والشحن والعمولات والمصاريف"
-            actions={
-              <><Button
-            size="sm"
-            onClick={() => setExpenseModalOpen(true)}
-            className="flex items-center space-x-1.5"
-          >
+      <PageShell
+        title={routeLabel('/finance/profit')}
+        description="الربح من الموصَّل فقط — ناقص كلفة البضاعة والشحن والعمولات والمصاريف"
+        actions={
+          <Button size="sm" onClick={() => setExpenseModalOpen(true)}>
             <RiAddCircleLine className="w-4 h-4" />
             <span>سجّل مصروفاً</span>
-          </Button></>
-            }
-          />
-
-        <div className="flex flex-wrap items-center gap-3">
+          </Button>
+        }
+        // The span box (D2) and its one sentence act on every figure of the screen: the frame's toolbar row. Its lines are byte-for-byte the same.
+        toolbar={<>
           <div className="w-56">
             <DateRange value={range} onChange={setRange} label="منذ البداية" />
           </div>
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-note text-[var(--sys-muted)]">
             {range.from && range.to ? 'الأرقام للمدة المختارة: الموصَّل فيها، ومصاريفها.' : 'الأرقام منذ البداية — كل الموصَّل وكل المصاريف.'}
           </p>
-        </div>
-
+        </>}
+      >
         {/* Real Profit KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
@@ -422,7 +416,7 @@ export function FinanceProfitScreen() {
                   ] as const
                 ).map(([label, sign, figure, tone]) => (
                   <div key={label} className="flex items-center justify-between gap-3 bg-[var(--sys-surface)] px-3 py-2 rounded-lg">
-                    <span className="text-xs text-[var(--sys-muted)]">{label}</span>
+                    <span className="text-note text-[var(--sys-muted)]">{label}</span>
                     <span className={`text-sm font-bold ${tone}`} dir="ltr">
                       {sign}
                       <Money value={figure} currency={data?.currency} />
@@ -430,7 +424,7 @@ export function FinanceProfitScreen() {
                   </div>
                 ))}
                 <div className="flex items-center justify-between gap-3 bg-[var(--sys-primary)] px-3 py-2 rounded-lg">
-                  <span className="text-xs font-bold text-[var(--sys-primary-foreground)]/80">الصافي</span>
+                  <span className="text-note font-bold text-[var(--sys-primary-foreground)]/80">الصافي</span>
                   <span className="text-base font-black text-[var(--sys-primary-foreground)]">
                     <Money value={summary.netProfit} currency={data?.currency} />
                   </span>
@@ -439,19 +433,19 @@ export function FinanceProfitScreen() {
             ) : (
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 text-center">
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
-                <span className="text-xs text-[var(--sys-muted)] block">إيراد الموصَّل</span>
+                <span className="text-note text-[var(--sys-muted)] block">إيراد الموصَّل</span>
                 <span className="text-lg font-bold text-[var(--sys-success)] mt-1 block">
                   +<Money value={summary.totalRevenue} currency={data?.currency} />
                 </span>
               </div>
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
-                <span className="text-xs text-[var(--sys-muted)] block">كلفة البضاعة</span>
+                <span className="text-note text-[var(--sys-muted)] block">كلفة البضاعة</span>
                 <span className="text-lg font-bold text-[var(--sys-destructive)] mt-1 block">
                   −<Money value={summary.totalCOGS} currency={data?.currency} />
                 </span>
               </div>
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
-                <span className="text-xs text-[var(--sys-muted)] block">شحن وعمولات</span>
+                <span className="text-note text-[var(--sys-muted)] block">شحن وعمولات</span>
                 <span className="text-lg font-bold text-[var(--sys-destructive)] mt-1 block">
                   {/* Read, not computed. A total assembled in the browser
                       disagrees with the books the moment a rule changes. */}
@@ -459,13 +453,13 @@ export function FinanceProfitScreen() {
                 </span>
               </div>
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
-                <span className="text-xs text-[var(--sys-muted)] block">مصاريف</span>
+                <span className="text-note text-[var(--sys-muted)] block">مصاريف</span>
                 <span className="text-lg font-bold text-[var(--sys-destructive)] mt-1 block">
                   −<Money value={summary.totalOperationalExpenses} currency={data?.currency} />
                 </span>
               </div>
               <div className="bg-[var(--sys-primary)] p-3 rounded-lg">
-                <span className="text-xs text-[var(--sys-primary-foreground)]/80 block font-bold">الصافي</span>
+                <span className="text-note text-[var(--sys-primary-foreground)]/80 block font-bold">الصافي</span>
                 <span className="text-xl font-black text-[var(--sys-primary-foreground)] mt-1 block">
                   <Money value={summary.netProfit} currency={data?.currency} />
                 </span>
@@ -522,7 +516,7 @@ export function FinanceProfitScreen() {
                   { key: 'c5', label: "إجراء",
                     render: (e: any) =>
                       mayCancel && !e.voidedAt ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => { setCancelError(null); setCancelling(e); }}>
+                        <Button type="button" size="sm" variant="secondary" onClick={() => { setCancelError(null); setCancelling(e); }}>
                           إلغاء المصروف
                         </Button>
                       ) : null },
@@ -577,7 +571,7 @@ export function FinanceProfitScreen() {
             ) : (
               <ul className="divide-y divide-[var(--sys-border)]">
                 {profitability.map((p: any) => (
-                  <li key={p.id ?? p.name} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-xs">
+                  <li key={p.id ?? p.name} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-note">
                     <span className="font-semibold text-[var(--sys-heading)] min-w-[150px] truncate">{p.name}</span>
                     <span className="text-[var(--sys-muted-foreground)]">
                       طلبات: <span className="tabular-nums text-[var(--sys-heading)] font-semibold">{p.ordersCount}</span>
@@ -590,7 +584,7 @@ export function FinanceProfitScreen() {
                     </span>
                     <span className="ms-auto tabular-nums font-bold text-[var(--sys-success)]">
                       <Money value={p.netProfit} currency={data?.currency} />
-                      <span className="text-xs text-[var(--sys-muted)] font-normal">
+                      <span className="text-note text-[var(--sys-muted)] font-normal">
                         {' '}صافي · {p.profitMargin ?? 0}%
                       </span>
                     </span>
@@ -600,7 +594,7 @@ export function FinanceProfitScreen() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
 
       {/* Record Expense Modal */}
       <Modal
@@ -642,7 +636,7 @@ export function FinanceProfitScreen() {
           </div>
 
           {EXPENSE_FORM_HINT[category as ExpenseCategory] && (
-            <p className="text-xs text-[var(--sys-muted)]">{EXPENSE_FORM_HINT[category as ExpenseCategory]}</p>
+            <p className="text-note text-[var(--sys-muted)]">{EXPENSE_FORM_HINT[category as ExpenseCategory]}</p>
           )}
 
           {/* WHICH WALLET THE MONEY LEFT.
@@ -666,7 +660,7 @@ export function FinanceProfitScreen() {
           </Select>
 
           {expenseError && (
-            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">
+            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">
               {expenseError}
             </p>
           )}
@@ -688,7 +682,7 @@ export function FinanceProfitScreen() {
           />
 
           <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setExpenseModalOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setExpenseModalOpen(false)}>
               {t.cancel}
             </Button>
             <Button type="submit" loading={modalLoading}>
@@ -715,12 +709,12 @@ export function FinanceProfitScreen() {
             required
           />
           {cancelError && (
-            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">
+            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">
               {cancelError}
             </p>
           )}
           <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setCancelling(null)}>
+            <Button type="button" variant="secondary" onClick={() => setCancelling(null)}>
               {t.cancel}
             </Button>
             <Button type="submit" variant="danger" loading={cancelBusy}>

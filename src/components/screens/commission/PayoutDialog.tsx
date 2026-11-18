@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { RiLoader4Line, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -108,7 +109,7 @@ export function PayoutDialog({
       ) : owed.length === 0 ? (
         <p className="py-8 text-center text-sm text-[var(--sys-muted-foreground)]">
           لا عمولة مستحقة لهذا الموظف.
-          <span className="mt-1 block text-xs text-[var(--sys-muted)]">
+          <span className="mt-1 block text-note text-[var(--sys-muted)]">
             العمولة تصير مستحقة بعد اعتماد كشف التحصيل الذي يغطّيها.
           </span>
         </p>
@@ -116,7 +117,7 @@ export function PayoutDialog({
         <div className="space-y-3">
           {owed.length > 1 && (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">العملة المستحقة</span>
+              <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">العملة المستحقة</span>
               <select
                 value={pick}
                 onChange={(e) => setPick(Number(e.target.value))}
@@ -128,22 +129,22 @@ export function PayoutDialog({
                   </option>
                 ))}
               </select>
-              <span className="mt-1 block text-xs text-[var(--sys-muted)]">
+              <span className="mt-1 block text-note text-[var(--sys-muted)]">
                 كل عملة تُصرف وحدها — سعر واحد لا يخدم عملتين.
               </span>
             </label>
           )}
 
           <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">المستحق</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">المستحق</p>
             <p className="text-lg font-black text-[var(--sys-heading)] tabular-nums" dir="ltr">
               <Money value={row?.amount} currency={row?.currencyCode} />
             </p>
-            <p className="text-xs text-[var(--sys-muted)]">{row?.entries.length} قيد عمولة</p>
+            <p className="text-note text-[var(--sys-muted)]">{row?.entries.length} قيد عمولة</p>
           </div>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">تُصرف من محفظة</span>
+            <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">تُصرف من محفظة</span>
             <select
               value={walletId}
               onChange={(e) => setWalletId(e.target.value)}
@@ -155,13 +156,13 @@ export function PayoutDialog({
               ))}
             </select>
             {wallets.length === 0 && (
-              <span className="mt-1 block text-xs text-[var(--sys-warning)]">لا محفظة مفعّلة — أنشئ واحدة أولاً.</span>
+              <span className="mt-1 block text-note text-[var(--sys-warning)]">لا محفظة مفعّلة — أنشئ واحدة أولاً.</span>
             )}
           </label>
 
           {wallet && !sameCurrency && (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">
+              <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">
                 سعر الصرف — كم {wallet.currencyCode} لكل {row?.currencyCode} واحد
               </span>
               <input
@@ -173,7 +174,7 @@ export function PayoutDialog({
                 className="h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
                 dir="ltr"
               />
-              <span className="mt-1 block text-xs text-[var(--sys-muted)]">
+              <span className="mt-1 block text-note text-[var(--sys-muted)]">
                 يُحفظ كما تكتبه ولا يُعاد حسابه — شهر دُفع يبقى كما هو.
               </span>
             </label>
@@ -181,7 +182,7 @@ export function PayoutDialog({
 
           {wallet && leaving !== null && (
             <div className="rounded-lg border border-[var(--sys-border)] px-3 py-2.5">
-              <p className="flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+              <p className="flex items-center gap-1.5 text-note text-[var(--sys-muted-foreground)]">
                 <RiWallet3Line className="h-4 w-4" /> سيخرج من «{wallet.name}»
               </p>
               <p className="text-lg font-black text-[var(--sys-destructive)]">
@@ -191,14 +192,14 @@ export function PayoutDialog({
                   minorUnit={wallet.country.minorUnit}
                 />
               </p>
-              <p className="text-xs text-[var(--sys-muted)]">
+              <p className="text-note text-[var(--sys-muted)]">
                 ويُسجَّل مصروفاً على المحفظة، وتُقفل قيود العمولة المدفوعة.
               </p>
             </div>
           )}
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">ملاحظة (اختياري)</span>
+            <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">ملاحظة (اختياري)</span>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -211,17 +212,16 @@ export function PayoutDialog({
           {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-4 text-sm">
+            <Button type="button" variant="secondary" onClick={onClose}>
               إلغاء
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={() => void pay()}
               disabled={saving || !wallet || (!sameCurrency && !(numericRate > 0))}
-              className="h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
             >
               {saving ? 'جارٍ الصرف…' : 'صرف'}
-            </button>
+            </Button>
           </div>
         </div>
       )}

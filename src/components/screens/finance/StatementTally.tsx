@@ -82,7 +82,7 @@ export function StatementTally({
       >
         <Rows rows={kinds} columns={COLUMNS} keyOf={(r) => r.key} />
         {returned && returned.notOurs > 0 && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             من {returned.total} سطر قالت الشركة إنو رجع: {returned.notOurs} ما عندنا طلب لها، فبتلاقيها في «في الكشف وليس عندنا»
             {returned.excluded > 0 ? `، و${returned.excluded} مستبعدة` : ''}. قسم «مستبعدة» ما بيشيل إلا الراجع الصفري اللي إله طلب عندنا.
           </p>

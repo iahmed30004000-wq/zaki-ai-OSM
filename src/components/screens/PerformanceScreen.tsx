@@ -13,6 +13,8 @@ import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTa
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
+import { TeamMemberDrawer, type DrawerPerson } from '@/components/performance/TeamMemberDrawer';
+import { readReportRange, searchWithRange, writeReportRange } from '@/lib/report-range';
 import { EodReportForm } from '@/components/performance/EodReportForm';
 import { NoAnswerWatch } from '@/components/performance/NoAnswerWatch';
 import { findRoute, routeLabel } from '@/lib/route-registry';
@@ -27,7 +29,8 @@ import { IntelligenceStrip } from '@/components/growth/IntelligenceStrip';
 import { LossPanel } from '@/components/dashboard/LossPanel';
 import { PersonNameLink, ProductNameLink } from '@/components/dashboard/NameLinks';
 import { Money } from '@/components/ui/Money';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Tabs } from '@/components/ui/Tabs';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Rows } from '@/components/ui/Rows';
 import { healthOf, type Health } from '@/lib/health';
@@ -49,6 +52,9 @@ type Tab = 'team' | 'landing' | 'scores' | 'noanswer' | 'eod';
  * المحاولة» finds it done — and a minute is long enough that it rarely has to.
  */
 const BOARD_WAIT_MS = 60_000;
+
+/** The couriers' door (`/api/orders/shipping/performance`) takes no window: it counts every parcel each company ever held. */
+const COURIERS_WINDOW_LINE = 'كل التاريخ — ما بتتبع المدة المختارة فوق.';
 
 /** One courier as `/api/orders/shipping/performance` answers it. */
 interface CourierRow {
@@ -122,6 +128,31 @@ export function PerformanceScreen() {
   // of time on the same page.
   // Opens on TODAY (the owner, 17/11): thirty days of everything was the slow way in. أمس, 7 أيام, 30 يوم and a custom span are one press away.
   const [range, setRange] = useState(todayRange);
+  /*
+   * THE SHARED RANGE OF THE FOUR REPORT TABS (R14a1, 18/11) — «مدة وحدة بتضل لما أتنقّل بين التقارير».
+   * Read once after mount (the server render and the first client render agree on today): the address, then the one stored key.
+   * Nothing stored («today») leaves the board on its own today. Every change is written back to the key, and an address that
+   * already carried a range is kept in step with it (the address wins over the storage, so a reload would otherwise go back).
+   */
+  useEffect(() => {
+    const { range: shared, source } = readReportRange(window.location.search);
+    if (source !== 'today') setRange(shared);
+  }, []);
+  const pickRange = useCallback((next: { from: string; to: string }) => {
+    setRange(next);
+    const kept = next.from && next.to ? next : null;
+    writeReportRange(kept);
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.has('from') || q.has('to')) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${searchWithRange(window.location.search, kept)}`);
+      }
+    } catch {
+      /* an address that cannot be rewritten still has the stored key */
+    }
+  }, []);
+  /** The person whose drawer is open — from a row of the team table or of «سكور الموظفين». */
+  const [opened, setOpened] = useState<DrawerPerson | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
@@ -132,6 +163,8 @@ export function PerformanceScreen() {
   // "which courier".
   const [team, setTeam] = useState<any[] | null>(null);
   const [totals, setTotals] = useState<any>(null);
+  /** The words the team door sends for each of its figures — the drawer prints them under the same figures. */
+  const [definitions, setDefinitions] = useState<Record<string, string> | null>(null);
   const [couriers, setCouriers] = useState<CourierRow[] | null>(null);
   /**
    * WHETHER «COLLECTED» MAY BE SCORED AT ALL, for the whole shop. Kept
@@ -185,11 +218,12 @@ export function PerformanceScreen() {
     // the attribution endpoint's totals were being put into `totals`, which
     // is the team table's — so each table's footer was summing the other
     // table's rows. Two states, two endpoints, swapped once.
-    apiJson<{ employees: any[]; totals: any }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
+    apiJson<{ employees: any[]; totals: any; definitions?: Record<string, string> }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
         if (mine !== teamSeq.current) return;
         setTeam(d.employees ?? []);
         setTotals(d.totals ?? null);
+        setDefinitions(d.definitions ?? null);
       })
       .catch(() => {
         if (mine !== teamSeq.current) return;
@@ -318,8 +352,7 @@ export function PerformanceScreen() {
   // table as if the shop had sold nothing in this window.
   if (refusal && !analytics) {
     return (
-      <div className="space-y-6">
-        <PageHeader title={routeLabel('/growth/performance')} />
+      <PageShell title={routeLabel('/growth/performance')}>
         <Card>
           <CardContent>
             <EmptyState
@@ -329,15 +362,12 @@ export function PerformanceScreen() {
             />
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={routeLabel('/growth/performance')}
+      <PageShell title={routeLabel('/growth/performance')}
             description="ربح كل منتج، وترتيب المنتجات، وأداء الفريق — للمدة المختارة"
             actions={
               <><div className="flex items-center gap-2 flex-wrap gap-y-2">
@@ -345,7 +375,7 @@ export function PerformanceScreen() {
             {/* Not on «لا رد»: that tab carries its own dates, and two pickers on one screen would answer two windows. */}
             {tab !== 'noanswer' && (
             <div className="w-56">
-              <DateRange value={range} onChange={setRange} label="كل المدة" />
+              <DateRange value={range} onChange={pickRange} label="كل المدة" />
             </div>
             )}
             {/* The «تصدير CSV» that stood here opened /api/reports/export with
@@ -353,11 +383,11 @@ export function PerformanceScreen() {
                 beside it. The orders screen exports what its filters match. */}
           </div></>
             }
-          />
+          >
 
         {(canLanding || canScores) && (
-          <div className="flex gap-6 border-b border-[var(--sys-border)] text-sm" role="tablist">
-            {([
+          <Tabs
+            tabs={([
               ['team', 'المنتجات والفريق والقنوات'],
               ...(canScores ? [['scores', 'سكور الموظفين'] as [Tab, string]] : []),
               // The same people as the team table (`team.monitor`): what each agent holds now, and when customers pick up.
@@ -365,21 +395,10 @@ export function PerformanceScreen() {
               // The team leader's end-of-day report (step H2): the same key as the team table, `team.monitor`.
               ...(canScores ? [['eod', 'تقرير نهاية اليوم'] as [Tab, string]] : []),
               ...(canLanding ? [['landing', 'تحليلات صفحات الهبوط'] as [Tab, string]] : []),
-            ] as [Tab, string][]).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={tab === key}
-                onClick={() => pickTab(key)}
-                className={`-mb-px border-b-2 pb-2.5 font-semibold transition-colors ${
-                  tab === key ? 'border-[var(--sys-primary)] text-[var(--sys-primary)]' : 'border-transparent text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+            ] as [Tab, string][]).map(([key, label]) => ({ key, label }))}
+            value={tab}
+            onChange={(key) => pickTab(key as Tab)}
+          />
         )}
 
         {tab === 'eod' && canScores ? (
@@ -392,7 +411,7 @@ export function PerformanceScreen() {
           // settings — not the date range above. The score is comparable
           // across months only if everybody's is measured over the same
           // span, which a free-hand date picker would quietly break.
-          <ScoreBoard />
+          <ScoreBoard onOpen={setOpened} />
         ) : tab === 'landing' && canLanding ? (
           <LandingAnalyticsTab dateQuery={dateQuery} from={range.from} />
         ) : !analytics ? (
@@ -482,15 +501,15 @@ export function PerformanceScreen() {
           back, against a bar of 8% good and 15% acceptable.
         */}
         {vitals && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--sys-heading)]">
+          <Card plain className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+            <span className="inline-flex items-center gap-1.5 text-note font-bold text-[var(--sys-heading)]">
               <RiAlertLine className="w-4 h-4 text-[var(--sys-warning)]" aria-hidden />
               الإرجاع في هذه المدة
             </span>
             <span className="text-sm font-black tabular-nums text-[var(--sys-heading)]">
               {vitals.door.returnRate === null ? '—' : `${vitals.door.returnRate}%`}
             </span>
-            <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+            <span className="text-note text-[var(--sys-muted-foreground)] tabular-nums">
               {vitals.door.returned} من {vitals.door.decided} طلب بتَّ فيه الباب
             </span>
             <HealthChip
@@ -498,7 +517,7 @@ export function PerformanceScreen() {
               withWhy
               health={healthOf('returnRate', vitals.door.returnRate, vitals.door.decided)}
             />
-          </div>
+          </Card>
         )}
 
         {/* Section 18: Product Profit Analysis Table */}
@@ -527,7 +546,7 @@ export function PerformanceScreen() {
                   { key: 'c0', label: "المنتج", primary: true,
                     render: (prod: any) => (
                   <><span className="font-bold text-[var(--sys-heading)] block">{prod.name}</span>
-                        <span className="font-mono text-xs text-[var(--sys-muted)]">{prod.sku}</span></>
+                        <span className="font-mono text-note text-[var(--sys-muted)]">{prod.sku}</span></>
                 ) },
                   { key: 'c1', label: "الطلبات", primary: true,
                     render: (prod: any) => (prod.totalOrders) },
@@ -608,7 +627,7 @@ export function PerformanceScreen() {
                   { key: 'c11', label: "هامش الربح",
                     render: (prod: any) => (
                   rowCostStated(prod)
-                    ? <span className="font-bold text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] px-2 py-0.5 rounded-lg text-xs">
+                    ? <span className="font-bold text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] px-2 py-0.5 rounded-lg text-note">
                           {prod.profitMargin}%
                         </span>
                     : <span className="text-[var(--sys-muted)]" title="لا كلفة مسجَّلة لهذا المنتج — الهامش سيكون الإيراد نفسه">—</span>
@@ -641,7 +660,7 @@ export function PerformanceScreen() {
                 action={{ label: 'إعادة المحاولة', onClick: loadTeam }}
               />
             ) : (
-              <TeamPerformanceTable rows={team as any} totals={totals} />
+              <TeamPerformanceTable rows={team as any} totals={totals} onOpen={(r) => setOpened({ id: r.id, name: r.name })} />
             )}
           </CardContent>
         </Card>
@@ -698,6 +717,8 @@ export function PerformanceScreen() {
             subtitle="سكور من 100 على ما أنجزه كلُّ مندوب — ومعه الأرقام التي بُني منها"
           />
           <CardContent className="p-0">
+            {/* Its door takes no window — every parcel a courier ever held — said beside its numbers (R14a1, 18/11). */}
+            <p className="px-5 pt-3 text-note text-[var(--sys-muted-foreground)]">{COURIERS_WINDOW_LINE}</p>
             {couriers === null ? (
               <div className="p-4"><SkeletonRows rows={5} /></div>
             ) : couriersFailed ? (
@@ -723,11 +744,11 @@ export function PerformanceScreen() {
                   only which band is out and why.
                 */}
                 {collection?.level === 'WITHHELD' && (
-                  <p className="mx-5 mb-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
+                  <Card plain padding="sm" className="mx-5 mb-2 text-note text-[var(--sys-muted-foreground)]">
                     <span className="font-semibold text-[var(--sys-heading)]">التحصيل خارج السكور: </span>
                     {collection.ar} لذلك يبقى بند «نسبة التحصيل» بلا نقاط حتى تُسوّى أول شحنة — وكل سكور
                     يُحسب من المجموع الظاهر بجانبه، لا من 100.
-                  </p>
+                  </Card>
                 )}
                 <ul className="divide-y divide-[var(--sys-border)]">
                   {ranked.map((c, i) => (
@@ -739,7 +760,7 @@ export function PerformanceScreen() {
                           «worse», and they are not worse — they are
                           unmeasured.
                         */}
-                        <span className="w-5 text-xs font-black tabular-nums text-[var(--sys-muted)]">
+                        <span className="w-5 text-note font-black tabular-nums text-[var(--sys-muted)]">
                           {c.score.total === null ? '—' : i + 1}
                         </span>
                         <span className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--sys-heading)]">
@@ -752,11 +773,11 @@ export function PerformanceScreen() {
                         </span>
 
                         {c.score.total === null ? (
-                          <span className="ms-auto text-xs text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
+                          <span className="ms-auto text-note text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
                         ) : (
                           <span className="ms-auto inline-flex items-baseline gap-1 tabular-nums">
                             <span className="text-lg font-black text-[var(--sys-heading)]">{c.score.total}</span>
-                            <span className="text-xs text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
+                            <span className="text-note text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
                           </span>
                         )}
                       </div>
@@ -769,7 +790,7 @@ export function PerformanceScreen() {
                       {c.score.total !== null && (
                         <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                           {c.score.bands.map((b) => (
-                            <li key={b.key} className="text-xs text-[var(--sys-muted-foreground)]">
+                            <li key={b.key} className="text-note text-[var(--sys-muted-foreground)]">
                               {b.ar}{' '}
                               <span className="tabular-nums text-[var(--sys-foreground)]">
                                 {b.value === null
@@ -788,7 +809,7 @@ export function PerformanceScreen() {
 
                       {/* The plain counts, so the score can be checked against
                           the parcels it was built from. */}
-                      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sys-muted)] tabular-nums">
+                      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-note text-[var(--sys-muted)] tabular-nums">
                         <span>{c.metrics.assigned} مُسند</span>
                         <span className="text-[var(--sys-success)]">{c.metrics.delivered} مسلَّم</span>
                         <span className="text-[var(--sys-destructive)]">{c.metrics.returned} مرتجع</span>
@@ -807,8 +828,9 @@ export function PerformanceScreen() {
         </Card>
         </>
         )}
-      </div>
-    </>
+      {/* ONE drawer for both tables that list people: the same door as the team table, with the table's exact query. */}
+      <TeamMemberDrawer person={opened} query={dateQuery} definitions={definitions} onClose={() => setOpened(null)} />
+      </PageShell>
   );
 }
 
@@ -842,16 +864,16 @@ function Rank({
 }) {
   const tone = warn ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-primary)]';
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg">
-      <span className={`text-xs font-bold ${tone} inline-flex items-center gap-1.5`}>
+    <Card plain padding="md">
+      <span className={`text-note font-bold ${tone} inline-flex items-center gap-1.5`}>
         {icon}
         {label}
       </span>
       <p className="font-bold text-[var(--sys-heading)] text-sm mt-1.5 line-clamp-1" title={name}>
         {name ? <ProductNameLink id={id} name={name} /> : '—'}
       </p>
-      <p className="text-xs text-[var(--sys-muted-foreground)] font-semibold mt-0.5 tabular-nums">{note}</p>
-    </div>
+      <p className="text-note text-[var(--sys-muted-foreground)] font-semibold mt-0.5 tabular-nums">{note}</p>
+    </Card>
   );
 }
 

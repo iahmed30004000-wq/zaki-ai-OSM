@@ -3,7 +3,13 @@
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiAddCircleLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Switch } from '@/components/ui/Switch';
+import { Input, Select } from '@/components/ui/Input';
+import { routeLabel } from '@/lib/route-registry';
 import { useToast } from '@/components/ui/Toast';
 import Link from 'next/link';
 import { useMayOpen } from '@/hooks/useMayOpen';
@@ -45,9 +51,6 @@ interface Channel {
   sortOrder: number;
   orders: number;
 }
-
-const INPUT =
-  'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)]';
 
 export function ChannelsScreen() {
   const toast = useToast();
@@ -141,72 +144,68 @@ export function ChannelsScreen() {
   const total = channels.reduce((sum, c) => sum + c.orders, 0);
 
   return (
-    // Wider than it was: the editor alone fitted in three columns, and the
-    // score section under it does not.
-    <div className="max-w-5xl space-y-4">
-      <PageHeader title="قنوات الطلبات"
-          description="من أين تصل الطلبات — تُختار عند الإدخال وتُحسب عليها الأرقام."
-          actions={
-            <>{!adding && (
-          <button
-            onClick={() => { setAdding(true); setError(null); }}
-            className="px-3 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
-          >
-            <RiAddCircleLine className="w-4 h-4" />
-            قناة جديدة
-          </button>
-        )}</>
-          }
-        />
+    // On the frame (R15d, 18/11): the score section that once sat under the
+    // editor moved to the performance board, so the editor no longer needs
+    // the extra width it was given for it.
+    <PageShell title={routeLabel('/settings/channels')}
+        width="medium"
+        description="من أين تصل الطلبات — تُختار عند الإدخال وتُحسب عليها الأرقام."
+        actions={
+          <>{!adding && (
+        <Button
+          size="sm"
+          onClick={() => { setAdding(true); setError(null); }}
+        >
+          <RiAddCircleLine className="w-4 h-4" />
+          قناة جديدة
+        </Button>
+      )}</>
+        }
+      >
 
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
       )}
 
       {adding && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-3">
+        <Card padding="md" className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">اسم القناة</span>
-              <input
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                autoFocus
-                placeholder="مثال: تيكتوك — صفحة كريم الندبات"
-                className={INPUT}
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المنصة</span>
-              <select value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })} className={INPUT}>
-                {Object.entries(KIND_AR).map(([k, label]) => (
-                  <option key={k} value={k}>{label}</option>
-                ))}
-              </select>
-            </label>
+            <Input
+              label="اسم القناة"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              autoFocus
+              placeholder="مثال: تيكتوك — صفحة كريم الندبات"
+            />
+            <Select label="المنصة" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
+              {Object.entries(KIND_AR).map(([k, label]) => (
+                <option key={k} value={k}>{label}</option>
+              ))}
+            </Select>
           </div>
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-note text-[var(--sys-muted)]">
             عدة قنوات قد تشترك بمنصة واحدة — هكذا تعرف كم جاء من تيكتوك كلها، وكم من كل صفحة فيها.
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={create}
+            <Button
+              size="sm"
+              onClick={() => { void create(); }}
               disabled={busy === 'new'}
-              className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
             >
               {busy === 'new' ? 'جارٍ الإضافة…' : 'أضف القناة'}
-            </button>
-            <button
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => { setAdding(false); setError(null); }}
-              className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)]"
             >
               إلغاء
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
+      <Card plain className="divide-y divide-[var(--sys-border)]">
         {channels.length === 0 && (
           <p className="p-6 text-sm text-[var(--sys-muted-foreground)] text-center">لا قنوات بعد — أضف أول واحدة.</p>
         )}
@@ -215,91 +214,89 @@ export function ChannelsScreen() {
           <div key={c.id} className={`p-3 ${c.isActive ? '' : 'bg-[var(--sys-surface)]'}`}>
             {editing === c.id ? (
               <div className="flex flex-wrap items-end gap-2">
-                <label className="flex-1 min-w-[180px]">
-                  <span className="block text-xs text-[var(--sys-muted-foreground)] mb-1">الاسم</span>
-                  <input
+                <div className="flex-1 min-w-[180px]">
+                  <Input
+                    label="الاسم"
                     value={editDraft.name}
                     onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
                     autoFocus
-                    className={INPUT}
                   />
-                </label>
-                <label className="w-40">
-                  <span className="block text-xs text-[var(--sys-muted-foreground)] mb-1">المنصة</span>
-                  <select
+                </div>
+                <div className="w-40">
+                  <Select
+                    label="المنصة"
                     value={editDraft.kind}
                     onChange={(e) => setEditDraft({ ...editDraft, kind: e.target.value })}
-                    className={INPUT}
                   >
                     {Object.entries(KIND_AR).map(([k, label]) => (
                       <option key={k} value={k}>{label}</option>
                     ))}
-                  </select>
-                </label>
-                <button
-                  onClick={() => patch(c.id, { name: editDraft.name.trim(), kind: editDraft.kind })}
-                  aria-label="احفظ التعديل"
-                  title="احفظ التعديل"
+                  </Select>
+                </div>
+                <IconButton
+                  variant="primary"
+                  label="احفظ التعديل"
+                  onClick={() => { void patch(c.id, { name: editDraft.name.trim(), kind: editDraft.kind }); }}
                   disabled={busy === c.id}
-                  className="h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                 >
                   <RiCheckLine className="w-4 h-4" />
-                </button>
-                <button
+                </IconButton>
+                <IconButton
+                  variant="secondary"
+                  label="ألغِ التعديل"
                   onClick={() => setEditing(null)}
-                  aria-label="ألغِ التعديل"
-                  title="ألغِ التعديل"
-                  className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)]"
                 >
                   <RiCloseLine className="w-4 h-4" />
-                </button>
+                </IconButton>
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`text-xs px-2 py-0.5 rounded-md border ${KIND_TONE[c.kind] ?? KIND_TONE.OTHER}`}>
+                <span className={`text-note px-2 py-0.5 rounded-md border ${KIND_TONE[c.kind] ?? KIND_TONE.OTHER}`}>
                   {KIND_AR[c.kind] ?? c.kind}
                 </span>
                 <span className={`text-sm font-medium ${c.isActive ? 'text-[var(--sys-heading)]' : 'text-[var(--sys-muted)] line-through'}`}>
                   {c.name}
                 </span>
-                <span className="text-xs text-[var(--sys-muted)] tabular-nums">
+                <span className="text-note text-[var(--sys-muted)] tabular-nums">
                   {c.orders} طلب
                   {total > 0 && c.orders > 0 && ` · ${Math.round((c.orders / total) * 100)}%`}
                 </span>
 
                 <div className="ms-auto flex items-center gap-1">
-                  <button
+                  <IconButton
+                    size="sm"
+                    label="تعديل"
                     onClick={() => { setEditing(c.id); setEditDraft({ name: c.name, kind: c.kind }); setError(null); }}
-                    className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1.5 rounded-md text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-surface)]"
-                    aria-label="تعديل" title="تعديل"
                   >
                     <RiPencilLine className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => patch(c.id, { isActive: !c.isActive })}
+                  </IconButton>
+                  {/* On/off is a switch now (R15d). Its name is still the word the old button said — «إيقاف» while on, «تفعيل»
+                      while off — because the delete question tells the reader to press «إيقاف» instead, and that sentence stays. */}
+                  <Switch
+                    checked={c.isActive}
+                    aria-label={c.isActive ? 'إيقاف' : 'تفعيل'}
+                    title={c.isActive ? 'إيقاف' : 'تفعيل'}
+                    onChange={(next) => { void patch(c.id, { isActive: next }); }}
                     disabled={busy === c.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2 py-1 rounded-md border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
-                  >
-                    {c.isActive ? 'إيقاف' : 'تفعيل'}
-                  </button>
+                  />
                   {c.orders === 0 && (
-                    <button
-                      onClick={() => remove(c)}
+                    <IconButton
+                      size="sm"
+                      label="حذف — لا طلبات عليها"
+                      onClick={() => { void remove(c); }}
                       disabled={busy === c.id}
-                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1.5 rounded-md text-[var(--sys-muted)] hover:text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"
-                      aria-label="حذف — لا طلبات عليها" title="حذف — لا طلبات عليها"
                     >
                       <RiDeleteBinLine className="w-4 h-4" />
-                    </button>
+                    </IconButton>
                   )}
                 </div>
               </div>
             )}
           </div>
         ))}
-      </div>
+      </Card>
 
-      <p className="text-xs text-[var(--sys-muted)]">
+      <p className="text-note text-[var(--sys-muted)]">
         القناة التي عليها طلبات لا تُحذف — تُوقَف فتختفي من قوائم الاختيار وتبقى في الإحصاءات.
       </p>
 
@@ -307,7 +304,7 @@ export function ChannelsScreen() {
           performance board, beside the attribution tables it is built from: this
           screen is where channels are NAMED and switched on and off, not read. */}
       <PerformanceLink />
-    </div>
+    </PageShell>
   );
 }
 
@@ -316,7 +313,7 @@ function PerformanceLink() {
   const mayOpen = useMayOpen();
   if (!mayOpen('/growth/performance')) return null;
   return (
-    <p className="text-xs text-[var(--sys-muted-foreground)]">
+    <p className="text-note text-[var(--sys-muted-foreground)]">
       أيّ قناة توصِّل فعلاً؟{' '}
       <Link href="/growth/performance" className="font-semibold text-[var(--sys-primary)] hover:underline">
         سكور القنوات في لوحة الأداء

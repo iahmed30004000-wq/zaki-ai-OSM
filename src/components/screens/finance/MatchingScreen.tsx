@@ -5,7 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { RiGitBranchLine, RiLoader4Line, RiScales3Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -317,21 +319,19 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
 
   if (mayManual && mode === 'manual') {
     return (
-      <div className="max-w-6xl space-y-3">
-        <PageHeader title={routeLabel('/finance/matching')} />
+      <PageShell title={routeLabel('/finance/matching')} width="wide">
         {modeTabs}
         <ManualMatching />
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/finance/matching')} />
+    <PageShell title={routeLabel('/finance/matching')} width="wide">
       {modeTabs}
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end">
+      <Card padding="md" className="flex flex-wrap gap-3 items-end">
         <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الكشف</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الكشف</span>
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
@@ -345,10 +345,12 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             ))}
           </select>
         </label>
-        <button
+        {/* The kit's button, with the screen's own busy flag: the handler is wrapped in `void` so the button runs nothing of its own
+            and the press is the one it was (one request, the screen's spinner, the same `disabled` rule). */}
+        <Button
           disabled={!selected || busy || noReceipt || closed}
           title={whyNot}
-          onClick={async () => {
+          onClick={() => void (async () => {
             setBusy(true);
             try {
               await apiJson(`/api/finance/statements/${selected}/match`, { method: 'POST' });
@@ -358,18 +360,16 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             } finally {
               setBusy(false);
             }
-          }}
-          className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50 ${
-            phone ? 'w-full justify-center' : ''
-          }`}
+          })()}
+          className={phone ? 'w-full' : undefined}
         >
           {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiGitBranchLine className="w-4 h-4" />}
           تشغيل المطابقة
-        </button>
+        </Button>
         {/* The reason it is grey, where a phone can read it: `title` never shows there. A closed statement already has
             its own paragraph under this card. */}
         {phone && !!selected && noReceipt && !closed && (
-          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">{whyNot}</p>
+          <p className="w-full text-note text-[var(--sys-muted-foreground)]">{whyNot}</p>
         )}
         {/* «اعمل زر بحث داخل كل الكشوف» (the owner, 13/11): the other question — not «what is in this statement» but «where did this
             parcel appear», asked of every statement of the store. A press on a line opens that statement here. */}
@@ -380,20 +380,24 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             onOpen={openFromSearch}
           />
         )}
-      </div>
+      </Card>
 
       {closed && (
-        <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
           {STATEMENT_CLOSED_SENTENCE}. مالُه في المحفظة وتُقرأ نتيجتُه هنا فقط: لا بتّ ولا ربط ولا إعادة مطابقة.
           كشف التسوية كشفٌ يدويّ بمرجعه، يبدأ من «يدوي — بلا كشف» ويُجمَّع ويُعتمد في «التحصيل والكشوف».
-        </p>
+          </p>
+        </Card>
       )}
 
       {moneyIn && (
-        <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
           {settling?.moneyIn ??
             'المصاري دخلت المحفظة باعتماد الكشف، والمطابقة لسا مفتوحة: ابتّ بالأسطر هون، وبعدها اضغط «إغلاق المطابقة» من «التحصيل والكشوف» — عندها تتسوّى الطلبات بلا أي حركة جديدة بالمحفظة.'}
-        </p>
+          </p>
+        </Card>
       )}
 
       {!selected ? null : !matches ? (
@@ -493,7 +497,7 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
 
       {/* The money road goes on from here: «الإغلاق». */}
       <NextStepButton />
-    </div>
+    </PageShell>
   );
 }
 
@@ -629,11 +633,11 @@ function Queue({
             <>
               {/* Where no order of ours is tied to the row, this number is THE COMPANY'S: say whose it is. */}
               {fromLine && (
-                <span dir="rtl" className="block text-xs text-[var(--sys-muted)]">
+                <span dir="rtl" className="block text-note text-[var(--sys-muted)]">
                   رقم الطلب عندهم:
                 </span>
               )}
-              <span className="block text-xs text-[var(--sys-muted)]">
+              <span className="block text-note text-[var(--sys-muted)]">
                 {m.statementLine?.merchantRef ?? m.order?.merchantRef}
               </span>
             </>
@@ -906,23 +910,23 @@ function Queue({
   ];
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+    <Card plain className="overflow-hidden">
       <button
         onClick={() => onOpenChange(!isOpen)}
         aria-expanded={isOpen}
         className="w-full flex items-center justify-between px-4 py-3 text-right"
       >
         <span className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-1 rounded-full border ${TONE[tone]}`}>{rows.length}</span>
+          <span className={`text-note px-2 py-1 rounded-full border ${TONE[tone]}`}>{rows.length}</span>
           <span className="text-sm font-medium text-[var(--sys-heading)]">{title}</span>
-          {!locked && unanswered > 0 && <span className="text-xs text-[var(--sys-warning)]">{unanswered} بلا بتّ</span>}
+          {!locked && unanswered > 0 && <span className="text-note text-[var(--sys-warning)]">{unanswered} بلا بتّ</span>}
         </span>
-        <span className="text-xs text-[var(--sys-muted)]">{isOpen ? 'إخفاء' : 'عرض'}</span>
+        <span className="text-note text-[var(--sys-muted)]">{isOpen ? 'إخفاء' : 'عرض'}</span>
       </button>
 
       {isOpen && (
         <div className="border-t border-[var(--sys-border)]">
-          <p className="text-xs text-[var(--sys-muted-foreground)] px-4 py-2 bg-[var(--sys-surface)]">{hint}</p>
+          <p className="text-note text-[var(--sys-muted-foreground)] px-4 py-2 bg-[var(--sys-surface)]">{hint}</p>
           {rows.length === 0 ? (
             <EmptyState title="لا شيء في هذه المجموعة" why={hint} />
           ) : (
@@ -954,23 +958,19 @@ function Queue({
               />
               {drawn.length < shown.length && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--sys-border)] px-4 py-3">
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     معروض {drawn.length} من {shown.length} سطر
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onPaged({ key: viewKey, pages: pages + 1 })}
-                    className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sys-primary)] hover:border-[var(--sys-primary)]"
-                  >
+                  <Button type="button" variant="secondary" size="sm" onClick={() => onPaged({ key: viewKey, pages: pages + 1 })}>
                     اعرض {Math.min(PAGE_ROWS, shown.length - drawn.length)} كمان
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
