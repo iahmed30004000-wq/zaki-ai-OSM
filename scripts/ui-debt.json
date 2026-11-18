@@ -598,10 +598,7 @@
       "textXs": 41
     },
     "src/components/screens/UserDetailScreen.tsx": {
-      "rawButtons": 8,
-      "rawCheckboxes": 2,
-      "rawSurfaces": 3,
-      "textXs": 74
+      "rawButtons": 1
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
       "rawButtons": 1,

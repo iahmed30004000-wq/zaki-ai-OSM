@@ -40,7 +40,7 @@ import { maySetPassword, mayIssueEnrolCode } from '@/lib/two-factor-reset';
 import { PASSWORD_RULES, passwordProblems } from '@/lib/password-rules';
 import { useConfirm } from '@/components/ui/Confirm';
 import { mayResetTwoFactor } from '@/lib/two-factor-reset';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -290,27 +290,36 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
 
   return (
     <>
-      <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div className="flex items-center justify-between gap-3">
+      <div dir={isRtl ? 'rtl' : 'ltr'}>
+      {/*
+        A detail page outside the registry: its name is the person's, read from the answer as before (R16b). The way back sits
+        with the header's actions, the status chip beside the name.
+      */}
+      <PageShell
+        title={user.name}
+        badge={
+          <span className={`text-note font-bold rounded-full border-2 px-3 py-1 ${statusCls[user.status] || ''}`}>
+            {user.status}
+          </span>
+        }
+        actions={
           <Button variant="secondary" size="sm" onClick={() => router.push('/admin/users')}>
             <RiArrowRightLine className="icon-mirror w-4 h-4" />
             {ar ? 'عودة للموظفين' : 'Back to Employees'}
           </Button>
-        </div>
-
-        {/* Identity header */}
+        }
+      >
+        {/* Identity header — the email moved here from the heading's sentence, where its icon was printed as text */}
         <Card>
           <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-lg bg-[var(--sys-destructive-soft)] border-2 border-[var(--sys-destructive-border)] flex items-center justify-center shrink-0">
                 <RiUserLine className="w-6 h-6 text-[var(--sys-destructive)]" />
               </div>
-              <PageHeader title={user.name}
-          description={`<RiMailLine className="w-4 h-4" /> ${user.email}`}
-        />
-              <span className={`text-note font-bold rounded-full border-2 px-3 py-1 ${statusCls[user.status] || ''}`}>
-                {user.status}
-              </span>
+              <p className="min-w-0 text-sm text-[var(--sys-muted-foreground)] flex items-center gap-1.5">
+                <RiMailLine className="w-4 h-4 shrink-0" />
+                <span className="truncate" dir="ltr">{user.email}</span>
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-5 text-sm">
@@ -698,6 +707,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
             </div>
           </CardContent>
         </Card>
+      </PageShell>
       </div>
     </>
   );
