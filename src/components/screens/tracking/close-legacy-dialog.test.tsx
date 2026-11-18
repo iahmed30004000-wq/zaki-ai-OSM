@@ -351,11 +351,14 @@ describe('NO NEW CSS — every class the dialog and the strip button use is one 
     const src = readFileSync(join(root, 'components/screens/TrackingScreen.tsx'), 'utf8');
     const at = src.indexOf('أقفل القديمة بلا باركود…');
     expect(at, 'the strip button moved: update this test').toBeGreaterThan(0);
+    // 18/11 (R11d): the strip's buttons are the kit's `Button` now, so «the very classes» became «the very props»: the
+    // tag before the label opens with the same `type`, `variant` and `size` as «اختر الكل» and the strip's other links.
     const before = src.slice(Math.max(0, at - 260), at);
-    const classes = /className="([^"]+)"/.exec(before)?.[1];
-    expect(classes).toBe('min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline');
+    const tags = [...before.matchAll(/<Button ([^>]*?) onClick=/g)];
+    const props = tags[tags.length - 1]?.[1];
+    expect(props).toBe('type="button" variant="quiet" size="sm"');
     // ...which is the string the other strip buttons carry (not a copy that could drift into something new).
-    const same = src.split(`className="${classes}"`).length - 1;
+    const same = src.split(`<Button ${props} onClick=`).length - 1;
     expect(same).toBeGreaterThanOrEqual(3);
   });
 });

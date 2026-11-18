@@ -526,6 +526,11 @@ describe('«متابعة الشحن»', () => {
     }
   });
 
+  /*
+   * 18/11 (R11d): the three are the kit's `quiet` button on a desk. It carries a `border` of its own — a TRANSPARENT one, so
+   * the row does not jump when a framed button sits beside it — so «no `border` at all» became «no edge that can be
+   * seen». Still no share of the row (`flex-1`): on a desk they are the row actions they were.
+   */
   it('DESK: nothing changed — the three are the plain words they were', async () => {
     phone.value = false;
     serve([parcel('a')]);
@@ -533,7 +538,8 @@ describe('«متابعة الشحن»', () => {
     for (const name of ['استلم جزءاً', 'تحويل', 'ملاحظة']) {
       const b = within(card()).getByRole('button', { name });
       expect(b.className, name).not.toContain('flex-1');
-      expect(b.className, name).not.toContain('border');
+      expect(b.className, name).toContain('border-transparent');
+      expect(b.className, name).not.toContain('border-[var(--sys-border)]');
     }
   });
 

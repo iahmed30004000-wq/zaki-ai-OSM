@@ -674,9 +674,8 @@
       "textXs": 12
     },
     "src/components/screens/TrackingScreen.tsx": {
-      "rawButtons": 27,
-      "rawSurfaces": 3,
-      "textXs": 41
+      "rawButtons": 4,
+      "textXs": 4
     },
     "src/components/screens/UserDetailScreen.tsx": {
       "rawButtons": 8,
@@ -846,11 +845,6 @@
       "rawSurfaces": 1,
       "textXs": 2
     },
-    "src/components/screens/tracking/BulkDeliverReport.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/tracking/CloseLegacyDialog.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,
@@ -866,9 +860,6 @@
       "rawSurfaces": 1,
       "textXs": 4
     },
-    "src/components/screens/tracking/CourierSaidChip.tsx": {
-      "textXs": 2
-    },
     "src/components/screens/tracking/DeliverDialog.tsx": {
       "rawButtons": 3,
       "rawSurfaces": 1,
@@ -879,8 +870,7 @@
       "textXs": 6
     },
     "src/components/screens/tracking/DifferenceMark.tsx": {
-      "rawButtons": 1,
-      "textXs": 1
+      "rawButtons": 1
     },
     "src/components/screens/tracking/TransferDialog.tsx": {
       "rawButtons": 2,

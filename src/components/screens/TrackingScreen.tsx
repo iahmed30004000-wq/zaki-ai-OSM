@@ -20,7 +20,9 @@ import { ClosePickedDialog } from '@/components/screens/tracking/ClosePickedDial
 import { DifferenceMark } from '@/components/screens/tracking/DifferenceMark';
 import { DifferenceDialog } from '@/components/screens/tracking/DifferenceDialog';
 import { apiJson } from '@/lib/api-client';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -651,13 +653,14 @@ export function TrackingScreen() {
   /**
    * The three quieter presses at the foot of a card (a part delivery, a transfer, a note) were bare words of three
    * colours, one of them 28px wide. On a phone they share the row as three equal bordered targets, like the two
-   * answers above them; on a desk they stay the links they were.
+   * answers above them; on a desk they stay the links they were. (R11d, 18/11: the kit's two looks for exactly that —
+   * `secondary`, the bordered target, on a phone; `quiet`, the row action, on a desk.)
    */
-  const quiet = phone ? ' flex-1 justify-center rounded-lg border border-[var(--sys-border)] px-3' : '';
+  const quiet = phone ? 'secondary' : 'quiet';
+  const quietFit = phone ? 'flex-1' : undefined;
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/ops/tracking')} />
+    <PageShell title={routeLabel('/ops/tracking')} width="wide">
 
       {/* Drawn from the first moment, with or without the numbers: the box is how a parcel is found. */}
       <ListToolbar
@@ -681,7 +684,7 @@ export function TrackingScreen() {
       />
 
       {extra && extra.lateCount > 0 && (
-        <p className="flex w-fit items-center gap-1 text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-3 h-10">
+        <p className="flex w-fit items-center gap-1 text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-3 h-10">
           <RiTimerLine className="w-4 h-4" /> {extra.lateCount} شحنة متأخرة
         </p>
       )}
@@ -701,10 +704,12 @@ export function TrackingScreen() {
         // A phone: eight 44px chips wrapped into three rows pushed the first parcel below the fold. One strip that
         // slides sideways (the way every other strip of tabs does) keeps the list in sight; the chips keep their
         // counts, their order and their words. A desk wraps, as it always has.
-        <div className={`bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex ${phone ? 'overflow-x-auto' : 'flex-wrap'} items-center gap-2`}>
+        // The strip is `Card plain`: it slides sideways on a phone, and a theme's corner glyph would slide with the chips.
+        // The chips stay hand-drawn buttons: a filter chip with its count and its tone is not one of the kit's four looks.
+        <Card plain padding="sm" className={`flex ${phone ? 'overflow-x-auto' : 'flex-wrap'} items-center gap-2`}>
           <button
             onClick={() => { setTask('all'); setSelected({}); }}
-            className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border${chipFit} ${
+            className={`min-h-11 md:min-h-0 inline-flex items-center text-note px-2.5 py-1 rounded-full border${chipFit} ${
               openTask === 'all' ? 'bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] border-[var(--sys-heading)]' : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
             }`}
           >
@@ -715,7 +720,7 @@ export function TrackingScreen() {
               key={t.key}
               onClick={() => { setTask(t.key); setSelected({}); }}
               title={chipFacts(t.key).why}
-              className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1 rounded-full border${chipFit} ${
+              className={`min-h-11 md:min-h-0 inline-flex items-center text-note px-2.5 py-1 rounded-full border${chipFit} ${
                 openTask === t.key
                   ? 'bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] border-[var(--sys-heading)]'
                   : TASK_TONE[chipFacts(t.key).tone]
@@ -724,7 +729,7 @@ export function TrackingScreen() {
               {chipFacts(t.key).label} {t.count}
             </button>
           ))}
-        </div>
+        </Card>
       )}
 
       {/* Manual settlement: a مندوب — and any company that sends no file —
@@ -737,66 +742,51 @@ export function TrackingScreen() {
           held none, and a bar saying «nothing to collect» hid fourteen
           delivered parcels. «اعرضها» asks the server for exactly them. */}
       {access.collect && collectOwed > 0 && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
+        <Card padding="sm" className="flex flex-wrap items-center gap-3">
           {/* On a desk this strip is what it always was: the count, the way out and the button, in a row above the
               list. On a phone it keeps only what is asked BEFORE anything is ticked; the rest is in the bar below. */}
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
+          <span className="text-note text-[var(--sys-muted-foreground)]">
             {!phone && chosen.length > 0
               ? `مختار ${chosen.length} طلب · صافي ${netOfChosen}`
               : `${collectOwed} مسلَّم بانتظار التحصيل${openTask !== 'COLLECT' && chosen.length === 0 ? ' —' : ''}`}
           </span>
           {openTask !== 'COLLECT' && chosen.length === 0 && (
-            <button
-              onClick={() => { setTask('COLLECT'); setSelected({}); }}
-              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
-            >
+            <Button type="button" variant="quiet" size="sm" onClick={() => { setTask('COLLECT'); setSelected({}); }}>
               اعرضها
-            </button>
+            </Button>
           )}
           {collectable.length > 0 && (!phone || chosen.length === 0) && (
-            <button
-              onClick={pickAll}
-              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
-            >
+            <Button type="button" variant="quiet" size="sm" onClick={pickAll}>
               اختر الكل
-            </button>
+            </Button>
           )}
           {/* The owner's one-time press for the old orders no statement will ever name (`ops.close_legacy`): the dialog measures first. */}
           {acts.closeLegacy && chosen.length === 0 && (
-            <button
-              onClick={() => setClosingLegacy(true)}
-              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
-            >
+            <Button type="button" variant="quiet" size="sm" onClick={() => setClosingLegacy(true)}>
               أقفل القديمة بلا باركود…
-            </button>
+            </Button>
           )}
           {!phone && chosen.length > 0 && (
             <>
-              <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
+              <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
                 إلغاء الاختيار
-              </button>
+              </Button>
               {/* The owner's second press: the ticked orders, closed as collected with no money moved (`ops.close_legacy`). */}
               {acts.closeLegacy && (
-                <button
-                  onClick={() => setClosingPicked(true)}
-                  className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
-                >
+                <Button type="button" variant="quiet" size="sm" onClick={() => setClosingPicked(true)}>
                   أقفل المحدّد بلا حركة مال…
-                </button>
+                </Button>
               )}
               {mixedCouriers && (
-                <span role="alert" className="text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+                <span role="alert" className="text-note text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
               )}
-              <button
-                onClick={() => setCollecting(true)}
-                disabled={mixedCouriers}
-                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto disabled:opacity-50"
-              >
+              {/* `success`: the kit's green, which this press always wore (the four looks have no green yet — see `Button`). */}
+              <Button type="button" variant="success" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers} className="mr-auto">
                 <RiHandCoinLine className="w-4 h-4" /> استلمت منه
-              </button>
+              </Button>
             </>
           )}
-        </div>
+        </Card>
       )}
 
       {/*
@@ -805,33 +795,30 @@ export function TrackingScreen() {
         choosing of them and the press are the same ones «استلمت منه» uses.
       */}
       {deliverable.length > 0 && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
+        <Card padding="sm" className="flex flex-wrap items-center gap-3">
+          <span className="text-note text-[var(--sys-muted-foreground)]">
             {!phone && toDeliver.length > 0
               ? `مختار ${toDeliver.length} طرد`
               : `الشركة بتقول «تم التوصيل» على ${deliverable.length} طرد بهالصفحة`}
           </span>
+          {/* Stays a hand-drawn link: a sentence this long is two lines on a phone, and the kit's button has a fixed height. */}
           {(!phone || toDeliver.length === 0) && toDeliver.length < deliverable.length && (
-            <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+            <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-note text-[var(--sys-primary)] hover:underline">
               حدّد كل اللي الشركة بتقول عنهم «تم التوصيل» بهالصفحة
             </button>
           )}
           {!phone && toDeliver.length > 0 && (
             <>
-              <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
+              <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
                 إلغاء الاختيار
-              </button>
-              <button
-                onClick={() => void deliverChosen()}
-                disabled={bulking}
-                className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 mr-auto disabled:opacity-50"
-              >
+              </Button>
+              <Button type="button" variant="success" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking} className="mr-auto">
                 {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
                 {`استلم المحدد (${toDeliver.length})`}
-              </button>
+              </Button>
             </>
           )}
-        </div>
+        </Card>
       )}
 
       {/*
@@ -846,58 +833,45 @@ export function TrackingScreen() {
       <BulkBar show={phone && ((access.collect && chosen.length > 0) || toDeliver.length > 0)}>
         {toDeliver.length > 0 ? (
           <>
-            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">{`مختار ${toDeliver.length} طرد`}</span>
+            <span className="me-auto text-note font-semibold text-[var(--sys-primary)]">{`مختار ${toDeliver.length} طرد`}</span>
+            {/* Stays a hand-drawn link, as in the strip above: two lines on a phone, and the kit's button has a fixed height. */}
             {deliverable.length > toDeliver.length && (
-              <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+              <button onClick={pickDelivered} className="min-h-11 md:min-h-0 text-note text-[var(--sys-primary)] hover:underline">
                 حدّد كل اللي الشركة بتقول عنهم «تم التوصيل» بهالصفحة
               </button>
             )}
-            <button onClick={() => setSelected({})} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline">
+            <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
               إلغاء الاختيار
-            </button>
-            <button
-              onClick={() => void deliverChosen()}
-              disabled={bulking}
-              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
+            </Button>
+            <Button type="button" variant="success" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking}>
               {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
               {`استلم المحدد (${toDeliver.length})`}
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+            <span className="me-auto text-note font-semibold text-[var(--sys-primary)]">
               {`مختار ${chosen.length} طلب · صافي ${netOfChosen}`}
             </span>
             {collectable.length > chosen.length && (
-              <button onClick={pickAll} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+              <Button type="button" variant="quiet" size="sm" onClick={pickAll}>
                 اختر الكل
-              </button>
+              </Button>
             )}
-            <button
-              onClick={() => setSelected({})}
-              className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline"
-            >
+            <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
               إلغاء الاختيار
-            </button>
+            </Button>
             {acts.closeLegacy && (
-              <button
-                onClick={() => setClosingPicked(true)}
-                className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline"
-              >
+              <Button type="button" variant="quiet" size="sm" onClick={() => setClosingPicked(true)}>
                 أقفل المحدّد بلا حركة مال…
-              </button>
+              </Button>
             )}
             {mixedCouriers && (
-              <span role="alert" className="w-full text-xs text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
+              <span role="alert" className="w-full text-note text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
             )}
-            <button
-              onClick={() => setCollecting(true)}
-              disabled={mixedCouriers}
-              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
-            >
+            <Button type="button" variant="success" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers}>
               <RiHandCoinLine className="w-4 h-4" /> استلمت منه
-            </button>
+            </Button>
           </>
         )}
       </BulkBar>
@@ -965,11 +939,13 @@ export function TrackingScreen() {
                     {/* What to DO, not what the button writes — the dialog
                         says that when it is pressed. A phone has room for one
                         sentence and it should be the actionable one. */}
-                    <p className="mt-0.5 text-xs leading-relaxed">{URGENCY[o.alert.kind].why}</p>
-                    <button
-                      onClick={() => void acknowledge(o)}
+                    <p className="mt-0.5 text-note leading-relaxed">{URGENCY[o.alert.kind].why}</p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => { void acknowledge(o); }}
                       disabled={acking === o.id}
-                      className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-current px-3 text-sm font-bold disabled:opacity-50"
+                      className="mt-2 w-full font-bold"
                     >
                       {acking === o.id ? (
                         <RiLoader4Line className="h-4 w-4 animate-spin" />
@@ -977,7 +953,7 @@ export function TrackingScreen() {
                         <RiEyeLine className="h-4 w-4" aria-hidden />
                       )}
                       أدركتُ الإجراء
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
@@ -1041,7 +1017,7 @@ export function TrackingScreen() {
                   */}
                   {o.alert && (
                     <span
-                      className={`mt-1 hidden w-fit rounded-md border px-2 py-0.5 text-xs font-semibold md:block ${
+                      className={`mt-1 hidden w-fit rounded-md border px-2 py-0.5 text-note font-semibold md:block ${
                         o.alert.acknowledged
                           ? ALERT_TONE[o.alert.kind].seen
                           : ALERT_TONE[o.alert.kind].live
@@ -1107,7 +1083,7 @@ export function TrackingScreen() {
                 <>
                   {STATUS_LABEL[o.shippingStatus] ?? o.shippingStatus}
                   {o.deliveryFailureReason && (
-                    <span className="block text-xs text-[var(--sys-destructive)]">
+                    <span className="block text-note text-[var(--sys-destructive)]">
                       {o.deliveryFailureReason}
                     </span>
                   )}
@@ -1176,7 +1152,7 @@ export function TrackingScreen() {
               // reads «0» on every card is a line nobody reads twice.
               hideOnPhone: true,
               render: (o) => (
-                <span className="text-xs">
+                <span className="text-note">
                   <span
                     className={`tabular-nums ${(o._count?.deliveryAttempts ?? 0) > 1 ? 'font-semibold text-[var(--sys-destructive)]' : 'text-[var(--sys-muted-foreground)]'}`}
                   >
@@ -1248,15 +1224,17 @@ export function TrackingScreen() {
                 On a phone the card's notice carries this button at the TOP,
                 full width, so this copy is the desk's.
               */}
+              {/*
+                The desk's copy is wrapped: the kit's button is `inline-flex` itself, and a `hidden` beside it on the same
+                element would be decided by the order of the two rules in the sheet, not by this line.
+              */}
               {o.alert && !o.alert.acknowledged && (
-                <button
-                  onClick={() => void acknowledge(o)}
-                  disabled={acking === o.id}
-                  className="hidden min-h-11 items-center gap-1 text-xs font-semibold text-[var(--sys-primary)] hover:underline disabled:opacity-50 md:inline-flex md:min-h-0"
-                >
-                  {acking === o.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiEyeLine className="w-4 h-4" />}
-                  أدركتُ الإجراء
-                </button>
+                <span className="hidden md:inline-flex">
+                  <Button type="button" variant="quiet" size="sm" onClick={() => { void acknowledge(o); }} disabled={acking === o.id} className="font-semibold">
+                    {acking === o.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiEyeLine className="w-4 h-4" />}
+                    أدركتُ الإجراء
+                  </Button>
+                </span>
               )}
               {/*
                 THE TWO ANSWERS THE DOOR ACTUALLY GIVES, AS TWO BUTTONS.
@@ -1283,10 +1261,13 @@ export function TrackingScreen() {
                     bordered target now, 44px on a phone, sharing the row
                     evenly so neither is the small one.
                   */}
-                  <button
-                    onClick={() => void settle(o, 'ALL')}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => { void settle(o, 'ALL'); }}
                     disabled={settling === o.id}
-                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-3 text-xs font-bold text-[var(--sys-success)] disabled:opacity-50 md:min-h-0 md:flex-none md:border-0 md:bg-transparent md:px-0 md:hover:underline"
+                    className="flex-1 font-bold md:flex-none"
                     title="استلم الطلب كاملاً — يُسجَّل ما حدث، والمبلغ يُكتب عند مطابقة كشف الشركة"
                   >
                     {settling === o.id ? (
@@ -1295,23 +1276,29 @@ export function TrackingScreen() {
                       <RiCheckLine className="w-4 h-4" aria-hidden />
                     )}
                     استلم
-                  </button>
-                  <button
-                    onClick={() => void settle(o, 'NONE')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => { void settle(o, 'NONE'); }}
                     disabled={settling === o.id}
-                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-bold text-[var(--sys-destructive)] disabled:opacity-50 md:min-h-0 md:flex-none md:border-0 md:bg-transparent md:px-0 md:hover:underline"
+                    className="flex-1 font-bold md:flex-none"
                     title="رفضه أو أُلغي — لم يستلم شيئاً، ويصير مرتجعاً"
                   >
                     <RiCloseLine className="w-4 h-4" aria-hidden />
                     رفض / ملغى
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={quiet}
+                    size="sm"
                     onClick={() => setDeliverFor(o)}
-                    className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline md:min-h-0${quiet}`}
+                    className={quietFit}
                     title="استلم بعض البنود فقط — أشّر ما أخذه بالضبط"
                   >
                     استلم جزءاً
-                  </button>
+                  </Button>
                 </>
               )}
               {/*
@@ -1332,14 +1319,17 @@ export function TrackingScreen() {
                 undone — the same reason «رفض / ملغى» stopped being a link.
               */}
               {acts.writeOff && o.shippingStatus === 'RETURN_REQUESTED' && (
-                <button
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
                   onClick={() => setWriteOffFor(o)}
-                  className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-bold text-[var(--sys-destructive)] md:min-h-0${phone ? ' w-full' : ''}`}
+                  className={phone ? 'w-full font-bold' : 'font-bold'}
                   title="البضاعة لن تعود — تخرج من المخزون ويُغلق الطلب كخسارة بسبب مكتوب"
                 >
                   <RiAlertLine className="w-4 h-4" aria-hidden />
                   أغلقه كخسارة
-                </button>
+                </Button>
               )}
               {/*
                 «هاد الطلب بالغلط حطيتو تم والشركة بتقول تم ارجاعها لازم يكون في زر تراجع» (the owner, 13/11).
@@ -1349,18 +1339,24 @@ export function TrackingScreen() {
                 (money recorded, a statement, a counted return, a payable commission). The same quiet target as «تحويل» beside it.
               */}
               {acts.undoDelivery && (o.shippingStatus === 'DELIVERED' || o.shippingStatus === 'PARTIALLY_DELIVERED') && (
-                <button
+                <Button
+                  type="button"
+                  variant={quiet}
+                  size="sm"
                   onClick={() => setUndoFor(o)}
-                  className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0${quiet}`}
+                  className={quietFit}
                   title="رجّع الطلب لحالتو قبل التسليم — لما انسجّل تسليمو بالغلط"
                 >
                   تراجع عن التسليم…
-                </button>
+                </Button>
               )}
               {acts.transfer && (
-              <button
+              <Button
+                type="button"
+                variant={quiet}
+                size="sm"
                 onClick={() => setTransferFor(o)}
-                className={`inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0${quiet}`}
+                className={quietFit}
                 title={
                   o.deliveryProvider?.kind === 'AGENT'
                     ? 'استلام من المندوب وتحويلها لجهة أخرى'
@@ -1368,13 +1364,16 @@ export function TrackingScreen() {
                 }
               >
                 تحويل
-              </button>
+              </Button>
               )}
               {/* The third one, and the only one that settles nothing. */}
-              <button
-                onClick={() => void addNote(o)}
+              <Button
+                type="button"
+                variant={quiet}
+                size="sm"
+                onClick={() => { void addNote(o); }}
                 disabled={noting === o.id}
-                className={`inline-flex min-h-11 items-center gap-1 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)] hover:underline disabled:opacity-50 md:min-h-0${quiet}`}
+                className={quietFit}
                 title="اكتب ما حدث — تُضاف كملاحظة داخلية على الطلب ولا تُغيّر حالته"
               >
                 {noting === o.id ? (
@@ -1383,7 +1382,7 @@ export function TrackingScreen() {
                   <RiChat1Line className="w-4 h-4" aria-hidden />
                 )}
                 ملاحظة
-              </button>
+              </Button>
             </>
           )}
         />
@@ -1512,6 +1511,6 @@ export function TrackingScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

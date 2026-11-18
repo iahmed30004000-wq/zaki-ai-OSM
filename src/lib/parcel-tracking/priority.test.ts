@@ -306,9 +306,13 @@ describe('the tracking card on a phone', () => {
     // contains a `>`, so a lazy match ends the tag in the middle of the
     // handler and then reads the next element's classes. This is the same
     // shape `touch-targets.test.ts` had to settle on, for the same reason.
-    const buttons = [...actions.matchAll(/<button\b(?:[^<>{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\/?>/g)];
+    //
+    // 18/11 (R11d): the card's actions are the kit's `Button`, which is 44px on a phone at every size (`h-11` in each of
+    // its size steps — Button.tsx). So a `<Button` is a thumb's target by construction; a hand-drawn `<button` must still
+    // state `min-h-11` itself. The count is of both.
+    const buttons = [...actions.matchAll(/<[bB]utton\b(?:[^<>{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\/?>/g)];
     expect(buttons.length).toBeGreaterThanOrEqual(5);
-    const short = buttons.filter((m) => !/min-h-11/.test(m[0]));
+    const short = buttons.filter((m) => !m[0].startsWith('<Button') && !/min-h-11/.test(m[0]));
     expect(short.map((m) => m[0].slice(0, 60)), 'زرٌّ في الكرت دون 44 بكسل').toEqual([]);
   });
 });

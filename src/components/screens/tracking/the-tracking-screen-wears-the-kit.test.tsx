@@ -31,8 +31,8 @@ const { api, confirm, ask, phone, marker } = vi.hoisted(() => ({
       'data-for': p.order ? p.order.id : (p.orders ?? []).map((o) => o.id).join(','),
     }),
   api: vi.fn(),
-  confirm: vi.fn(async (_o: { title: string; body?: string }) => true),
-  ask: vi.fn(async (_o: unknown): Promise<string | null> => 'المندوب قال بكرة'),
+  confirm: vi.fn<(o: { title: string; body?: string }) => Promise<boolean>>(async () => true),
+  ask: vi.fn<(o: unknown) => Promise<string | null>>(async () => 'المندوب قال بكرة'),
   phone: { value: false },
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
