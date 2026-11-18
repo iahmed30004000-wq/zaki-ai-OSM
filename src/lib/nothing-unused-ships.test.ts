@@ -281,6 +281,14 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * «فيه فرق» dialog renders it from there as well as the matching screen — so it is rendered by another file, and
    * an entry that said «only its own file draws it» was exactly what this test calls stale.
    */
+  /*
+   * `PageShell` (18/11, R2c of the plan of 17/11) — THE ONE FRAME OF A SCREEN, built and tested, rendered by no screen yet. The screens
+   * move onto it one by one from R3 (the header first); this line leaves the list with the first screen that renders it, and the
+   * «has the unwired list gone stale» test below fails the day it does, so the entry cannot outlive its reason.
+   */
+  'src/components/ui/PageShell.tsx:PageShell':
+    'إطار الشاشة الواحد (رأس + شريط أدوات + مرشّحات + محتوى) — مبنيّ ومفحوص، وتنتقل إليه الشاشات واحدة واحدة من R3؛ يغادر القائمة بأول شاشة ترسمه.',
+
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
 };

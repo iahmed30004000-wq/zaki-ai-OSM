@@ -464,7 +464,8 @@ describe('a screen cannot be added to the menu without explaining itself', () =>
       const page = pageFileFor(path);
       expect(page, `${path}: ما لقيت صفحة`).not.toBeNull();
       const source = closure(page!).join('\n');
-      expect(/<PageHeader\b|<ScreenTitle\b/.test(source), `${path}: بلا عنوان — لا مكان للزر`).toBe(true);
+      // 18/11 (R2c): `<PageShell` counts too — it draws the same `PageHeader` (its own test holds that) and the screens move onto it from R3.
+      expect(/<PageHeader\b|<ScreenTitle\b|<PageShell\b/.test(source), `${path}: بلا عنوان — لا مكان للزر`).toBe(true);
     }
   });
 });
