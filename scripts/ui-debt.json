@@ -553,9 +553,7 @@
       "textXs": 5
     },
     "src/components/screens/ManufacturingScreen.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 2,
-      "textXs": 23
+      "textXs": 3
     },
     "src/components/screens/OrdersScreen.tsx": {
       "rawButtons": 3,
