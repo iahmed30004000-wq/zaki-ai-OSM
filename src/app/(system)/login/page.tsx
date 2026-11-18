@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { RiErrorWarningLine, RiFingerprintLine, RiLoader4Line, RiLoginBoxLine, RiTimerLine } from '@remixicon/react';
 import { BrandStage } from '@/components/shell/BrandStage';
 import { SESSION_REPLACED_AR } from '@/lib/auth-errors';
@@ -161,26 +162,22 @@ export default function LoginPage() {
         <Card className="shadow-raised">
           <CardContent className="p-6 space-y-4">
             {wasReplaced && !error && (
-              <div
-                data-testid="replaced-notice"
-                className="p-3 text-xs rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
-              >
-                {SESSION_REPLACED_AR}
-              </div>
+              <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
+                <p data-testid="replaced-notice">{SESSION_REPLACED_AR}</p>
+              </Card>
             )}
 
             {wasIdle && !error && (
-              <div
-                data-testid="idle-notice"
-                className="p-3 text-xs rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
-              >
-                أُغلقت الجلسة تلقائياً لعدم الاستخدام — حمايةً للجهاز إن تُرك مفتوحاً. سجّل الدخول للمتابعة.
-              </div>
+              <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
+                <p data-testid="idle-notice">
+                  أُغلقت الجلسة تلقائياً لعدم الاستخدام — حمايةً للجهاز إن تُرك مفتوحاً. سجّل الدخول للمتابعة.
+                </p>
+              </Card>
             )}
 
             {error && (
               <div
-                className={`p-3 text-xs rounded-lg flex items-start space-x-2 rtl:space-x-reverse ${
+                className={`p-3 text-note rounded-lg flex items-start space-x-2 rtl:space-x-reverse ${
                   pendingFlag
                     ? 'bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)]'
                     : 'bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'
@@ -241,18 +238,12 @@ export default function LoginPage() {
                 className="bg-[var(--sys-card)]"
               />
 
-              <div className="flex items-center justify-between text-xs">
-                {/* Drawn only while a sign-in is short (7 days, 30 with this box). Under the long rule it would do nothing. */}
+              <div className="flex items-center justify-between text-note">
+                {/* Drawn only while a sign-in is short (7 days, 30 with this box). Under the long rule it would do nothing.
+                    18/11 (R17a): the kit's tick box, with its own id. Nothing is posted by a field name here — the box is
+                    state, and `remember` travels in the JSON body below exactly as before. */}
                 {policy.rememberBox ? (
-                  <label className="flex items-center space-x-2 rtl:space-x-reverse text-[var(--sys-foreground)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={remember}
-                      onChange={(e) => setRemember(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded-lg border-[var(--sys-border)] bg-[var(--sys-card)] accent-[var(--sys-primary)]"
-                    />
-                    <span>تذكرني</span>
-                  </label>
+                  <Checkbox id="login-remember" checked={remember} onChange={(on) => setRemember(on)} label="تذكرني" />
                 ) : (
                   // Keeps «نسيت كلمة المرور» at the far end of the row, where it always was.
                   <span />
@@ -288,14 +279,19 @@ export default function LoginPage() {
                 <>
                   <div className="flex items-center gap-3">
                     <span className="h-px flex-1 bg-[var(--sys-border)]" />
-                    <span className="text-xs text-[var(--sys-muted)]">أو</span>
+                    <span className="text-note text-[var(--sys-muted)]">أو</span>
                     <span className="h-px flex-1 bg-[var(--sys-border)]" />
                   </div>
-                  <button
+                  {/* The handler's promise is NOT handed to the kit: `fingerBusy` is this page's own lock, and the
+                      wrapper keeps the press returning nothing so there is one lock, as before. */}
+                  <Button
                     type="button"
-                    onClick={() => void signInWithFinger()}
+                    variant="secondary"
+                    onClick={() => {
+                      void signInWithFinger();
+                    }}
                     disabled={fingerBusy}
-                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-[var(--sys-border)] px-4 py-2.5 text-sm font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)] disabled:opacity-50"
+                    className="w-full"
                   >
                     {fingerBusy ? (
                       <RiLoader4Line className="h-5 w-5 animate-spin" />
@@ -303,8 +299,8 @@ export default function LoginPage() {
                       <RiFingerprintLine className="h-5 w-5" aria-hidden />
                     )}
                     ادخل ببصمتك
-                  </button>
-                  <p className="text-center text-xs text-[var(--sys-muted)]">
+                  </Button>
+                  <p className="text-center text-note text-[var(--sys-muted)]">
                     بعد تسجيل بصمة هذا الجهاز من «الملف الشخصي».
                   </p>
                 </>
@@ -314,7 +310,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-center text-note text-[var(--sys-muted-foreground)]">
           ليس لديك حساب؟{' '}
           <Link href="/register" className="text-[var(--sys-primary)] font-semibold hover:underline">
             أنشئ حساباً جديداً
