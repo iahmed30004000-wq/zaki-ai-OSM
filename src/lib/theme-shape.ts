@@ -105,6 +105,12 @@ export const SHAPES: Record<string, Shape> = {
   day: PLAIN,
   calm: PLAIN,
 
+  /**
+   * «نظيف» (18/11/2026, R1): the product's own corner and a hairline — no mark, no crown, no frieze. A plain card is the
+   * whole point of the palette. Listed so that every palette has its slot; it is `PLAIN` itself, so `shapeCss` writes nothing.
+   */
+  clean: PLAIN,
+
   /** Cut corner, hard edge: a panel stamped out of metal. */
   cyber: {
     radius: '0.125rem',
