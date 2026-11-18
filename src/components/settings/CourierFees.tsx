@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { NOT_A_NUMBER, typedNumber } from '@/lib/typed-box';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiAlertLine, RiLoader4Line, RiMagicLine, RiSaveLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
@@ -272,7 +274,7 @@ export function CourierFees({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           الطلبات المشحونة تحتفظ بالأجرة وقت شحنها؛ التعديل هنا يسري على الشحنات الجديدة فقط.
           {/* The one sentence that makes an empty box mean something. Before
               it, an empty box and a typed zero were the same request. */}
@@ -282,12 +284,9 @@ export function CourierFees({
           </span>
         </p>
         {missing.length > 0 && (
-          <button
-            onClick={() => setBulkOpen(true)}
-            className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-3 text-xs font-medium text-[var(--sys-primary-foreground)] md:h-10"
-          >
+          <Button type="button" onClick={() => setBulkOpen(true)}>
             <RiMagicLine className="h-4 w-4" /> عبّئ الفارغة ({missing.length})
-          </button>
+          </Button>
         )}
       </div>
 
@@ -311,7 +310,7 @@ export function CourierFees({
         </p>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+      <Card plain className="overflow-hidden">
         {/* A table somebody fills in from a courier's price list. Six
             columns of inputs on a phone is one row per screen; as cards
             each governorate is a labelled little form. */}
@@ -423,13 +422,13 @@ export function CourierFees({
                     />
                     {/* Which place the number is — and a warning, never a block, when it is a Region Id. */}
                     {note && (
-                      <p className={note.kind === 'region' ? 'text-xs text-[var(--sys-warning)]' : 'text-xs text-[var(--sys-muted-foreground)]'}>
+                      <p className={note.kind === 'region' ? 'text-note text-[var(--sys-warning)]' : 'text-note text-[var(--sys-muted-foreground)]'}>
                         {note.text}
                       </p>
                     )}
                     {/* Nothing typed, and the list answers: say which city the shipment goes to. */}
                     {byList && (
-                      <p className="text-xs text-[var(--sys-muted-foreground)]">افتراضي من قايمة الشركة: {byList.label}</p>
+                      <p className="text-note text-[var(--sys-muted-foreground)]">افتراضي من قايمة الشركة: {byList.label}</p>
                     )}
                   </div>
                 );
@@ -437,14 +436,16 @@ export function CourierFees({
             },
           ]}
           actions={(r) => (
-            <button
-              onClick={() => save(r.id)}
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              onClick={() => { void save(r.id); }}
               disabled={busy === r.id}
-              className="inline-flex items-center gap-1 text-xs text-[var(--sys-primary)] hover:underline disabled:opacity-50"
             >
               <RiSaveLine className="h-4 w-4" />
               {saved === r.id ? 'تم الحفظ' : feeFor(r.id) ? 'تحديث' : 'إضافة'}
-            </button>
+            </Button>
           )}
           empty={
             <EmptyState
@@ -453,7 +454,7 @@ export function CourierFees({
             />
           }
         />
-      </div>
+      </Card>
 
       {bulkOpen && (
         <BulkFillDialog
@@ -561,16 +562,16 @@ function BulkFillDialog({
         }}
         className="space-y-3"
       >
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
+        <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
           تُكتب على المحافظات التي <b>لا أجرة لها</b> فقط. المحافظات المسعّرة مسبقاً لا تُلمس — تعديلها
           قرار منفصل يحتاج سبباً مكتوباً. تقدر تعدّل أي محافظة بعدها من الجدول.
           <span className="mt-1 block">
             خانة فارغة = <b>لم تُحدَّد</b>، فيأخذ الصفّ الجديد افتراضي النظام. وصفر مكتوب = <b>صفر</b>.
           </span>
-        </p>
+        </Card>
 
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">الأجرة</span>
+          <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">الأجرة</span>
           <input
             type="number" min="0" step="0.001" value={fee} onChange={(e) => setFee(e.target.value)}
             required autoFocus dir="ltr"
@@ -580,7 +581,7 @@ function BulkFillDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <label>
-            <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">حد التأخير (أيام)</span>
+            <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">حد التأخير (أيام)</span>
             <input
               type="number" min="0" max="90" value={days} onChange={(e) => setDays(e.target.value)} dir="ltr"
               placeholder="الافتراضي"
@@ -589,7 +590,7 @@ function BulkFillDialog({
             />
           </label>
           <label>
-            <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">أجرة الإرجاع</span>
+            <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">أجرة الإرجاع</span>
             <input
               type="number" min="0" step="0.001" value={returnFee} onChange={(e) => setReturnFee(e.target.value)} dir="ltr"
               placeholder="الافتراضي"
@@ -599,25 +600,22 @@ function BulkFillDialog({
           </label>
         </div>
 
-        <p className="text-xs text-[var(--sys-muted)]">{regions.map((r) => r.name).join(' · ')}</p>
+        <p className="text-note text-[var(--sys-muted)]">{regions.map((r) => r.name).join(' · ')}</p>
 
         {saving && (
-          <p className="text-xs tabular-nums text-[var(--sys-muted-foreground)]">
+          <p className="text-note tabular-nums text-[var(--sys-muted-foreground)]">
             جارٍ الحفظ… {progress} / {regions.length}
           </p>
         )}
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-11 rounded-lg border border-[var(--sys-border)] px-4 text-sm md:h-10">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit" disabled={saving || !fee}
-            className="h-11 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50 md:h-10"
-          >
+          </Button>
+          <Button type="submit" disabled={saving || !fee}>
             {saving ? 'جارٍ…' : `عبّئ ${regions.length}`}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -645,11 +643,11 @@ function ReasonDialog({
         }}
         className="space-y-3"
       >
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
+        <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
           تغيير أجرة قائمة يُسجَّل في سجل التدقيق باسمك وبالسبب. الشحنات القائمة تحتفظ بأجرتها.
-        </p>
+        </Card>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">السبب (إلزامي)</span>
+          <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">السبب (إلزامي)</span>
           <textarea
             value={reason} onChange={(e) => setReason(e.target.value)}
             required minLength={3} rows={3} autoFocus
@@ -658,12 +656,12 @@ function ReasonDialog({
           />
         </label>
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-11 rounded-lg border border-[var(--sys-border)] px-4 text-sm md:h-10">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button type="submit" className="h-11 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)] md:h-10">
+          </Button>
+          <Button type="submit">
             حفظ التعديل
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

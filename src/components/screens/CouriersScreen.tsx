@@ -8,10 +8,14 @@ import { CourierCredentials } from '@/components/settings/CourierCredentials';
 import { CourierFees } from '@/components/settings/CourierFees';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { COURIER_PLATFORMS } from '@/lib/couriers';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { Modal } from '@/components/ui/Modal';
-import { Tabs } from '@/components/ui/Tabs';
+import { Segmented } from '@/components/ui/Segmented';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Switch } from '@/components/ui/Switch';
 import { RiAddCircleLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiEBike2Line, RiLoader4Line, RiPencilLine, RiTruckLine, RiWallet3Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
@@ -236,27 +240,26 @@ export function CouriersScreen() {
   const opened = rows.find((c) => c.id === openId) ?? null;
 
   return (
-    <div className="max-w-3xl space-y-3">
-      <PageHeader title={routeLabel('/settings/couriers')} />
-
+    <PageShell title={routeLabel('/settings/couriers')} width="narrow">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--sys-muted-foreground)]">
           افتح شركةً لتسعير محافظاتها وضبط حسابها.
         </p>
-        <button onClick={() => setAdding(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium">
+        <Button type="button" onClick={() => setAdding(true)}>
           <RiAddCircleLine className="w-4 h-4" /> شركة شحن أو مندوب
-        </button>
+        </Button>
       </div>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
       {adding && (
-        <form onSubmit={create} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 grid gap-3 md:grid-cols-4">
+        <Card padding="md">
+        <form onSubmit={create} className="grid gap-3 md:grid-cols-4">
           <Field label="الاسم" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
           <Field label="الرمز" value={form.code} onChange={(v) => setForm({ ...form, code: v })} dir="ltr" />
           <Field label="الهاتف" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} dir="ltr" required={false} />
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
             <select
               value={form.kind}
               onChange={(e) => setForm({ ...form, kind: e.target.value as 'COMPANY' | 'AGENT' })}
@@ -265,7 +268,7 @@ export function CouriersScreen() {
               <option value="COMPANY">شركة شحن</option>
               <option value="AGENT">مندوب</option>
             </select>
-            <span className="block text-xs text-[var(--sys-muted)] mt-1">
+            <span className="block text-note text-[var(--sys-muted)] mt-1">
               المندوب فوري وتسويته يدوية، وهو الوحيد الذي يمكن سحب الشحنة منه مباشرة.
             </span>
           </label>
@@ -274,7 +277,7 @@ export function CouriersScreen() {
               platform under a different account. An agent has neither. */}
           {form.kind !== 'AGENT' && (
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">تعمل على منصّة</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">تعمل على منصّة</span>
               <select
                 value={form.adapterCode}
                 onChange={(e) => setForm({ ...form, adapterCode: e.target.value })}
@@ -284,51 +287,54 @@ export function CouriersScreen() {
                   <option key={p.code} value={p.code}>{p.name}</option>
                 ))}
               </select>
-              <span className="block text-xs text-[var(--sys-muted)] mt-1">
+              <span className="block text-note text-[var(--sys-muted)] mt-1">
                 {COURIER_PLATFORMS.find((p) => p.code === form.adapterCode)?.needs}
               </span>
             </label>
           )}
 
           <div className="flex gap-2 items-end">
-            <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm disabled:opacity-60">حفظ</button>
-            <button type="button" onClick={() => setAdding(false)} className="px-4 py-2 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">إلغاء</button>
+            <Button type="submit" disabled={busy}>حفظ</Button>
+            <Button type="button" variant="secondary" onClick={() => setAdding(false)}>إلغاء</Button>
           </div>
         </form>
+        </Card>
       )}
 
       {/* What the server decided, in its words: deactivated and why, or
           really deleted. Guessing on the client would eventually disagree
           with what actually happened. */}
       {note && (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-xs text-[var(--sys-foreground)]">
+        <Card plain className="px-3 py-2 text-note text-[var(--sys-foreground)]">
           {note}
-        </p>
+        </Card>
       )}
 
       {unplaced.length > 0 && (
         <div className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3 space-y-2">
-          <p className="text-xs font-semibold text-[var(--sys-warning)]">
+          <p className="text-note font-semibold text-[var(--sys-warning)]">
             غير مُسنَدة لأي متجر — لا يمكن استعمالها حتى تُسنَد
           </p>
           {unplaced.map((c) => (
             <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs text-[var(--sys-foreground)]">
+              <span className="text-note text-[var(--sys-foreground)]">
                 {c.name} <span dir="ltr" className="text-[var(--sys-muted)]">({c.code})</span>
               </span>
-              <button
-                onClick={() => placeHere(c)}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void placeHere(c); }}
                 disabled={busy}
-                className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-card)] px-3 py-1 text-xs text-[var(--sys-warning)] hover:border-[var(--sys-warning)] disabled:opacity-50"
               >
                 أسنِدها لهذا المتجر
-              </button>
+              </Button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <Card plain className="overflow-hidden">
                 <Rows
           rows={rows.filter((c) => c.storeId)}
           keyOf={(c) => c.id}
@@ -352,7 +358,7 @@ export function CouriersScreen() {
                 ) },
             { key: 'c1', label: "النوع", primary: true,
               render: (c) => (
-                  <><span className={`text-xs px-2 py-0.5 rounded-full border ${
+                  <><span className={`text-note px-2 py-0.5 rounded-full border ${
                     c.kind === 'AGENT'
                       ? 'bg-[var(--sys-primary-soft)] border-[var(--sys-primary-soft)] text-[var(--sys-primary)]'
                       : 'bg-[var(--sys-surface)] border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
@@ -378,20 +384,28 @@ export function CouriersScreen() {
                 const all = totalRegions;
                 const none = priced === 0;
                 const partial = all > 0 && priced > 0 && priced < all;
+                const says = none ? 'بلا أجور — لا تشحن' : `${priced} من ${all} محافظة`;
                 return (
-                  <button
+                  // The chip keeps its three colours on its own span; the kit button around it is the hit area. Its name is the
+                  // tooltip AND the chip's words: a button whose child is a span takes the title alone as its name otherwise.
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    size="sm"
                     onClick={() => open(c, 'fees')}
                     title={`أجور ${c.name}`}
-                    className={`tap-safe inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                    aria-label={`أجور ${c.name} — ${says}`}
+                  >
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-note font-semibold tabular-nums ${
                       none
                         ? 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
                         : partial
                           ? 'border-[var(--sys-warning)]/50 bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]'
                           : 'border-[var(--sys-success)]/50 bg-[var(--sys-success-soft)] text-[var(--sys-success)]'
-                    }`}
-                  >
-                    {none ? 'بلا أجور — لا تشحن' : `${priced} من ${all} محافظة`}
-                  </button>
+                    }`}>
+                      {says}
+                    </span>
+                  </Button>
                 );
               } },
             { key: 'c2', label: "الرمز",
@@ -400,7 +414,7 @@ export function CouriersScreen() {
                   {/* Which platform it runs on, under its own code — the two
                       belong together and neither is the other. */}
                   {c.adapterCode && (
-                    <span dir="ltr" className="mt-0.5 block text-xs text-[var(--sys-muted)]">
+                    <span dir="ltr" className="mt-0.5 block text-note text-[var(--sys-muted)]">
                       {COURIER_PLATFORMS.find((p) => p.code === c.adapterCode)?.name ?? c.adapterCode}
                     </span>
                   )}</>
@@ -429,19 +443,27 @@ export function CouriersScreen() {
                 ) },
             { key: 'c4', label: "الحالة",
               render: (c) => (
-                  <><div className="flex items-center gap-2">
-                    <button onClick={() => toggle(c)} disabled={busy} className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1 rounded-lg border ${c.isActive ? 'border-[var(--sys-border)] text-[var(--sys-success)]' : 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'}`}>
-                      {c.isActive ? 'نشطة' : 'موقوفة'}
-                    </button>
+                  <><div className="flex flex-wrap items-center gap-2">
+                    {/* On/off, so a switch. It sends what the button sent — the opposite of what is stored, through the
+                        same `toggle` — and shows the stored value until the reload brings the new one. No `id`: `Rows`
+                        draws every row twice (table and phone card), so each switch takes its own generated one. */}
+                    <Switch
+                      checked={c.isActive}
+                      onChange={() => toggle(c)}
+                      disabled={busy}
+                      label={c.isActive ? 'نشطة' : 'موقوفة'}
+                    />
                     {/* An agent has no platform account: he is a person with a
                         motorbike, settled by hand. Only a company has a login. */}
                     {c.kind !== 'AGENT' && (
-                      <button
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => open(c, 'account')}
-                        className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-3 py-1 text-xs text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
                       >
                         الحساب والتكامل
-                      </button>
+                      </Button>
                     )}
                   </div></>
                 ) },
@@ -459,45 +481,49 @@ export function CouriersScreen() {
                   <div className="flex items-center justify-end gap-1">
                     {editing === c.id ? (
                       <>
-                        <button
-                          onClick={() => saveEdit(c.id)}
+                        <IconButton
+                          type="button"
+                          size="sm"
+                          label="احفظ"
+                          onClick={() => { void saveEdit(c.id); }}
                           disabled={busy || !edit.name.trim()}
-                          aria-label="احفظ" title="احفظ"
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)] disabled:opacity-40"
                         >
                           <RiCheckLine className="h-4 w-4" />
-                        </button>
-                        <button
+                        </IconButton>
+                        <IconButton
+                          type="button"
+                          size="sm"
+                          label="ألغِ"
                           onClick={() => setEditing(null)}
-                          aria-label="ألغِ" title="ألغِ"
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]"
                         >
                           <RiCloseLine className="h-4 w-4" />
-                        </button>
+                        </IconButton>
                       </>
                     ) : (
                       <>
-                        <button
+                        <IconButton
+                          type="button"
+                          size="sm"
+                          label="عدّل"
                           onClick={() => startEdit(c)}
-                          aria-label="عدّل" title="عدّل"
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
                         >
                           <RiPencilLine className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => remove(c)}
+                        </IconButton>
+                        <IconButton
+                          type="button"
+                          size="sm"
+                          label="احذف"
+                          onClick={() => { void remove(c); }}
                           disabled={busy}
-                          aria-label="احذف" title="احذف"
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)] disabled:opacity-40"
                         >
                           <RiDeleteBinLine className="h-4 w-4" />
-                        </button>
+                        </IconButton>
                       </>
                     )}
                   </div></>
           )}
         />
-      </div>
+      </Card>
 
       {/*
         THE COURIER, BESIDE THE LIST IT WAS FOUND IN.
@@ -537,32 +563,35 @@ export function CouriersScreen() {
               figure is not repeated here — one owner, one place — only the door.
             */}
             {opened.kind === 'AGENT' && (
-              <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-2">
-                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <Card plain padding="sm" className="space-y-2">
+                <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                   هذه الصفحة تضبط من هو المندوب وكم أجرته. ما بيده الآن — بضاعة لم تُغلق، ومال
                   مؤكَّد حصّله ولم يسلّمه — يُحسب من طلباته لحظةَ فتح شاشة العهدة، ولا يُخزَّن هنا.
                 </p>
                 <a
                   href="/finance/agents"
-                  className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-primary)] px-3 py-1.5 text-xs font-medium text-[var(--sys-primary)]"
+                  className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-primary)] px-3 py-1.5 text-note font-medium text-[var(--sys-primary)]"
                 >
                   <RiWallet3Line className="w-4 h-4" aria-hidden />
                   افتح عهدة المندوبين
                 </a>
-              </div>
+              </Card>
             )}
 
+            {/* Two choices of one variable (`tab`), so the kit's pair: the same state, read and set the same way as
+                the tab strip it replaces (18/11, R15c). */}
             {opened.kind !== 'AGENT' && (
-              <Tabs
-                tabs={[
+              <Segmented
+                aria-label={opened.name}
+                options={[
                   {
-                    key: 'fees',
+                    value: 'fees',
                     label: 'الأجور',
                     // The regions still unpriced: the number that decides
                     // whether this courier can ship at all.
                     count: Math.max(0, totalRegions - (opened.pricedRegions ?? 0)) || undefined,
                   },
-                  { key: 'account', label: 'الحساب والتكامل' },
+                  { value: 'account', label: 'الحساب والتكامل' },
                 ]}
                 value={tab}
                 onChange={(k) => setTab(k as 'fees' | 'account')}
@@ -577,7 +606,7 @@ export function CouriersScreen() {
           </div>
         </Modal>
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -596,7 +625,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
