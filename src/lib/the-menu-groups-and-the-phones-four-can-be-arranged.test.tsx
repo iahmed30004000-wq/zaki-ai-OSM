@@ -200,12 +200,13 @@ describe('the card keeps what it had, and says what each part arranges', () => {
 });
 
 describe('the groups — by the arrows', () => {
+  // 18/11 (R6): the first group is «اليوم» (`today`) now, not `main` — the same moves, on the group that stands first.
   it('— «انزل» moves a group one place down, and «ارفع» brings it back', async () => {
     mountCard();
     await screen.findAllByRole('listitem');
-    await click(`انزل مجموعة ${labelOfGroup('main')}`);
+    await click(`انزل مجموعة ${labelOfGroup('today')}`);
     expect(groupOrder()).toEqual(reorderGroups(REGISTRY_KEYS, 0, 1));
-    await click(`ارفع مجموعة ${labelOfGroup('main')}`);
+    await click(`ارفع مجموعة ${labelOfGroup('today')}`);
     expect(groupOrder()).toEqual(REGISTRY_KEYS);
   });
 
@@ -218,7 +219,9 @@ describe('the groups — by the arrows', () => {
     expect((screen.getByLabelText(`انزل مجموعة ${labelOfGroup(last)}`) as HTMLButtonElement).disabled).toBe(true);
     for (const key of REGISTRY_KEYS.slice(1)) expect((screen.getByLabelText(`ارفع مجموعة ${labelOfGroup(key)}`) as HTMLButtonElement).disabled, key).toBe(false);
     // a hub of tabs, a hub of cards and a loose group each move
-    for (const key of ['ops', 'settings', 'storefront']) {
+    // 18/11 (R6): the hub of cards is «الإدارة» (`admin`; `settings` went), and it stands last — so the loose group moves first
+    // (past it), and then it can go down too.
+    for (const key of ['ops', 'storefront', 'admin']) {
       const before = groupOrder();
       const at = before.indexOf(key);
       await click(`انزل مجموعة ${labelOfGroup(key)}`);
@@ -238,7 +241,7 @@ describe('the groups — by the arrows', () => {
   it('and a save sends the new group order, and the flat order of the screens follows it', async () => {
     mountCard();
     await screen.findAllByRole('listitem');
-    await click(`انزل مجموعة ${labelOfGroup('main')}`);
+    await click(`انزل مجموعة ${labelOfGroup('today')}`); // 18/11 (R6): the first group is `today` (was `main`)
     const { url, body } = await save();
     expect(url).toBe('/api/nav/arrangement');
     expect(body.groups).toEqual(reorderGroups(REGISTRY_KEYS, 0, 1));
@@ -347,8 +350,9 @@ describe('the groups — by the hand', () => {
     return screen.getByLabelText(`اسحب مجموعة ${labelOfGroup(key)} لتغيير ترتيبها`);
   }
 
+  // 18/11 (R6): the grip is the FIRST group's, `today` now (was `main`).
   it('— a pointer drag from a group’s grip puts the group where it was dropped, and says so in Arabic', async () => {
-    const handle = await grip('main');
+    const handle = await grip('today');
     const [a, , c] = REGISTRY_KEYS.map(labelOfGroup);
     await act(async () => {
       fireEvent.pointerDown(handle, { ...ev, clientX: 20, clientY: 20 });
@@ -369,7 +373,7 @@ describe('the groups — by the hand', () => {
   });
 
   it('and the keyboard does the same: Space to pick up, ↓ to move, Space to put down — the same order the arrow gives', async () => {
-    const handle = await grip('main');
+    const handle = await grip('today'); // 18/11 (R6): the first group (was `main`)
     const [a, b] = REGISTRY_KEYS.map(labelOfGroup);
     await act(async () => {
       fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
@@ -449,7 +453,9 @@ describe('the groups — by the hand', () => {
 
   it('and a drag of a LINE moves the line inside its group and not a group — the two contexts do not meet', async () => {
     await grip('main');
-    const [first, second] = NAV[0].routes;
+    // 18/11 (R6): was NAV[0] — the first group is «اليوم», one screen; the lines of `main` are the second group's.
+    const main = NAV.find((g) => g.key === 'main')!;
+    const [first, second] = main.routes;
     const before = linesOf('main');
     const handle = screen.getByLabelText(`اسحب ${first.label} لتغيير ترتيبه`);
     await act(async () => {
@@ -464,7 +470,7 @@ describe('the groups — by the hand', () => {
     await act(async () => {
       fireEvent.keyDown(document, { code: 'Space', key: ' ' });
     });
-    const paths = NAV[0].routes.map((r) => r.path);
+    const paths = main.routes.map((r) => r.path);
     const moved = reorderWithinGroup(paths, paths, 0, 1);
     await until(() => expect(linesOf('main'), 'السطر ما تحرّك').toEqual(moved.map((p) => findRoute(p)!.label)));
     expect(linesOf('main')).not.toEqual(before);
@@ -531,7 +537,8 @@ describe('the phone’s four — what the rows show', () => {
     mountCard({ paths: AGENT_PATHS });
     await screen.findAllByRole('listitem');
     const values = slotValues();
-    const menu = AGENT_PATHS;
+    // 18/11 (R6): the profile is no drawer line any more (`offMenu`): she may open it, and it is no slot.
+    const menu = AGENT_PATHS.filter((p) => p !== '/admin/profile');
     slotSelects().forEach((s, i) => {
       const offered = optionsOf(s);
       for (const other of values.filter((_, j) => j !== i)) expect(offered, `الخانة ${i + 1} بتعرض ${other} وهي بخانة ثانية`).not.toContain(other);
@@ -547,7 +554,7 @@ describe('the phone’s four — what the rows show', () => {
     await screen.findAllByRole('listitem');
     const groups = Array.from(slotSelects()[0].querySelectorAll('optgroup')).map((g) => g.getAttribute('label'));
     // «الشحن» holds the preparation and the tracking: both are taken by the rows, but the first row still offers its own
-    expect(groups).toEqual(expect.arrayContaining(['مركز التأكيد']));
+    expect(groups).toEqual(expect.arrayContaining(['التأكيد'])); // 18/11 (R6): was «مركز التأكيد»
     expect(groups.every((g) => !!g && !/[A-Za-z]/.test(g))).toBe(true);
     expect(new Set(groups).size, 'عنوان مكرّر').toBe(groups.length);
   });
@@ -560,8 +567,10 @@ describe('the phone’s four — what the rows show', () => {
     expect(everything.has('/growth/performance'), 'اللوحة مطويّة تحت لوحة التحكم').toBe(false);
     expect(everything.has('/dashboard')).toBe(true);
     expect(everything.has('/orders')).toBe(true);
-    // …all the others: the registry less exactly those two, as the four rows can reach them between them
-    const menu = ALL_PATHS.filter((p) => p !== '/assistant' && p !== '/growth/performance');
+    // …all the others: the registry less exactly those, as the four rows can reach them between them
+    // 18/11 (R6): and less the profile — off the menu for everybody (its door is the header and the phone sheet).
+    expect(everything.has('/admin/profile'), 'الملف الشخصي مش سطر بالقائمة').toBe(false);
+    const menu = ALL_PATHS.filter((p) => p !== '/assistant' && p !== '/growth/performance' && p !== '/admin/profile');
     expect([...everything].sort()).toEqual([...menu].sort());
   });
 
@@ -572,20 +581,22 @@ describe('the phone’s four — what the rows show', () => {
   });
 
   it('and fewer reachable screens than slots: as many rows as there are screens, each with only its own', async () => {
-    mountCard({ paths: ['/orders', '/admin/profile'] });
+    // 18/11 (R6): was ['/orders', '/admin/profile'] — the profile is no line; two screens that are.
+    mountCard({ paths: ['/orders', '/customers'] });
     await screen.findAllByRole('listitem');
     expect(slotSelects()).toHaveLength(2);
-    expect(slotValues().sort()).toEqual(['/admin/profile', '/orders']);
+    expect(slotValues().sort()).toEqual(['/customers', '/orders']);
     for (const s of slotSelects()) expect(optionsOf(s)).toHaveLength(1);
     expect((screen.getByLabelText('انزل الخانة الثانية') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('and ONE reachable screen is still a bar of one — the section is drawn, with nowhere for its arrows to go', async () => {
-    mountCard({ paths: ['/admin/profile'] });
+    // 18/11 (R6): was ['/admin/profile'] — the profile is no line; one screen that is.
+    mountCard({ paths: ['/orders'] });
     await screen.findAllByRole('listitem');
     expect(slotSelects()).toHaveLength(1);
-    expect(slotValues()).toEqual(['/admin/profile']);
+    expect(slotValues()).toEqual(['/orders']);
     expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('انزل الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole('heading', { level: 3, name: 'خانات الهاتف الأربعة — اللي بتظهر تحت الشاشة' })).toBeTruthy();

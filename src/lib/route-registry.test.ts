@@ -16,7 +16,13 @@ function userWith(keys: string[], role = 'MODERATOR') {
 }
 
 describe('navigation contract', () => {
-  it('has the eleven groups in contract order', () => {
+  it('has the nine groups in contract order', () => {
+    // 18/11 (R6, the owner: «القائمة من 16 سطر لـ9»): ELEVEN → NINE, and the old names below are history.
+    // Was: الرئيسية · مركز التأكيد · الشحن · المخزون · المال · الرقابة · النمو والذكاء · المحادثات · واجهة المتجر · الإعدادات · الإدارة.
+    // Now each line is one kind of work: «اليوم» (the dashboard, new key `today`), «الطلبات» (key `main`: the orders, the carts,
+    // the customers and the two inboxes — «المحادثات» folded in), «التأكيد», «الشحن», «المخزون والمنتجات» (the products joined),
+    // «المال» (+ «العمولات»), «التقارير» (was «النمو والذكاء»), «واجهة المتجر», «الإدارة» (the settings, «الرقابة» and the staff:
+    // three lines became one). Only group membership, keys, labels and order changed — no path, permission or title.
     // «واجهة المتجر» is the store section: how the shop looks and what it
     // says, as against /settings, which is how the system runs.
     //
@@ -30,9 +36,13 @@ describe('navigation contract', () => {
     // not draw eleven headings, though — it draws fifteen lines, because a
     // group is one line (`NavGroup.hub`); see `the-menu-is-one-line-a-group`.
     expect(NAV.map((g) => g.label)).toEqual([
-      'الرئيسية', 'مركز التأكيد', 'الشحن', 'المخزون', 'المال',
-      'الرقابة', 'النمو والذكاء', 'المحادثات', 'واجهة المتجر', 'الإعدادات', 'الإدارة',
+      'اليوم', 'الطلبات', 'التأكيد', 'الشحن', 'المخزون والمنتجات', 'المال', 'التقارير', 'واجهة المتجر', 'الإدارة',
     ]);
+    expect(NAV.map((g) => g.key)).toEqual([
+      'today', 'main', 'confirmation', 'ops', 'inventory', 'finance', 'growth', 'storefront', 'admin',
+    ]);
+    // The keys that went: a saved arrangement naming them simply loses those entries (`knownGroups`, nav-arrangement.ts).
+    for (const gone of ['control', 'chats', 'settings']) expect(NAV.some((g) => g.key === gone), gone).toBe(false);
   });
 
   it('lists 55 unique routes', () => {
@@ -123,15 +133,17 @@ describe('navigation contract', () => {
     expect(findRoute('/confirmation/queue')).toBeDefined();
   });
 
-  it('apps appear once — in the settings they configure', () => {
+  it('apps appear once — in «الإدارة», beside the settings they configure', () => {
     // «Once» is the half of the old rule that mattered: two screens that
     // used to be a group of their own, with a heading you opened to find
     // two links. They are in settings now and nowhere else.
+    // 18/11 (R6): the settings group is «الإدارة» (key `admin`; the key `settings` went) — the home was ['settings'], now ['admin'].
+    // «Once» is unchanged: the two screens, one group, one card (`apps` on the door).
     const appRoutes = ALL_ROUTES.filter((route) => route.path.startsWith('/apps/'));
     expect(appRoutes).toHaveLength(2);
     expect(NAV.find((g) => g.key === 'apps')).toBeUndefined();
     const home = NAV.filter((g) => g.routes.some((route) => route.path.startsWith('/apps/')));
-    expect(home.map((g) => g.key)).toEqual(['settings']);
+    expect(home.map((g) => g.key)).toEqual(['admin']);
   });
 
   it('/assistant and /growth/intelligence stay two distinct screens', () => {

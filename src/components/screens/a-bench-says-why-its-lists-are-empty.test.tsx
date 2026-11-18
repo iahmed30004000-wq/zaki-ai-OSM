@@ -31,7 +31,6 @@ vi.mock('@/components/ui/Confirm', () => ({
   useAsk: () => vi.fn(async () => null),
   useTell: () => vi.fn(),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));
 vi.mock('@/components/orders/ChangeRequestReview', () => ({ ChangeRequestReview: () => null }));

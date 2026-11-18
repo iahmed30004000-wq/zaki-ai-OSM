@@ -44,7 +44,6 @@ vi.mock('@/lib/api-client', () => ({
 }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useTell: () => vi.fn() }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), success: vi.fn(), done: vi.fn() }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المهام</h1> }));
 vi.mock('@/hooks/useLiveRefresh', () => ({
   // Loads once on mount — never on an interval, never per render.
   useLiveRefresh: (load: () => unknown) => {

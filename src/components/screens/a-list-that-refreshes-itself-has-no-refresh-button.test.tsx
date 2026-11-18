@@ -35,7 +35,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ currentUser: { id: 'u1', name: 'سارة', role: 'COMPANY_ADMIN', permissions: [], status: 'ACTIVE' } }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>التجهيز</h1> }));
 vi.mock('@/components/screens/ops/PickingAssistant', () => ({ PickingAssistant: () => null }));
 vi.mock('@/components/orders/ChangeRequestReview', () => ({ ChangeRequestReview: () => null }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));

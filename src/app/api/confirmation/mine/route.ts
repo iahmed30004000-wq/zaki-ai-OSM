@@ -26,6 +26,7 @@ import { callProofState } from '@/lib/call-proof';
 import {
   CAUGHT_UP_SENTENCE,
   WORK_FIRST_BUTTON,
+  askedDate,
   deskTab,
   dueContext,
   dueLabel,
@@ -155,11 +156,24 @@ async function noAnswerCounts(orderIds: string[]) {
  * «نظام الجولات» ON: every attempt of the desk's orders, grouped by order — ONE read, whatever the number of orders. The
  * counter and the «due now» verdict are both made from it, so the number on a card and the tab it sits in cannot disagree.
  */
-async function attemptsByOrder(orderIds: string[]) {
+async function attemptsByOrder(orderIds: string[], underPlan?: { since: Date; before: { orderId: string; from: Date | null }[] }) {
   const byOrder = new Map<string, AttemptFact[]>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db.orderContactAttempt.findMany({
-    where: { orderId: { in: orderIds } },
+    /*
+     * UNDER «جدول المحاولات», ONLY THE LINES THE CARDS PRINT (H2, cause 10 of the hang — 18/11). The plan counts a line only strictly after it went
+     * on (`cadenceStep`: `createdAt > since`), so the older lines of up to 550 orders were read to be thrown away. Read now: the lines after the
+     * floor, and — for the few orders that still need older ones (`planFloorNeeds` below) — each one's own span up to the floor. Still ONE read.
+     */
+    where: underPlan
+      ? {
+          orderId: { in: orderIds },
+          OR: [
+            { createdAt: { gt: underPlan.since } },
+            ...underPlan.before.map((b) => ({ orderId: b.orderId, createdAt: { ...(b.from ? { gte: b.from } : {}), lte: underPlan.since } })),
+          ],
+        }
+      : { orderId: { in: orderIds } },
     select: { orderId: true, createdAt: true, result: true, employeeId: true, attemptNumber: true },
   });
   for (const row of rows) {
@@ -176,6 +190,36 @@ async function attemptsByOrder(orderIds: string[]) {
  */
 function roundCounts(byOrder: Map<string, AttemptFact[]>, clock: WorkClock) {
   return new Map([...byOrder].map(([orderId, list]) => [orderId, countedRounds(list, clock).counted.length]));
+}
+
+/**
+ * UNDER THE PLAN, WHICH HELD ORDERS STILL NEED LINES FROM BEFORE ITS FLOOR (`since`), AND FROM WHEN (H2 — 18/11). A card reads an older line for two
+ * things only, and each has a first moment before which nothing it reads can change:
+ *
+ *   · the proof, on her own desk (`callProofState`): her latest «اتصل» press since she took the order — a line older than `claimedAt` changes nothing
+ *     (an older press is not hers now, and an older outcome only clears presses older still). An order taken at or before the floor needs its lines
+ *     from `claimedAt`; one with no `claimedAt`, all of them;
+ *   · the customer's promise (`promiseArrived`): «was ANY line logged at or after the asked date» — an order whose date is at or before the floor
+ *     needs its lines from that date.
+ *
+ * The plan itself (`cadenceStep`) never counts a line at or before the floor. Every other order reads the lines after the floor only.
+ */
+function planFloorNeeds(
+  held: readonly { id: string; claimedAt: Date | null; postponedUntil: Date | null; nextFollowUpAt: Date | null }[],
+  since: Date,
+  proof: boolean
+): { orderId: string; from: Date | null }[] {
+  const floor = since.getTime();
+  const needs: { orderId: string; from: Date | null }[] = [];
+  for (const o of held) {
+    const froms: (number | null)[] = [];
+    if (proof && (o.claimedAt === null || o.claimedAt.getTime() <= floor)) froms.push(o.claimedAt ? o.claimedAt.getTime() : null);
+    const asked = askedDate(o);
+    if (asked !== null && asked <= floor) froms.push(asked);
+    if (froms.length === 0) continue;
+    needs.push({ orderId: o.id, from: froms.includes(null) ? null : new Date(Math.min(...(froms as number[]))) });
+  }
+  return needs;
 }
 
 export async function GET(request: Request) {
@@ -379,13 +423,17 @@ export async function GET(request: Request) {
     };
     const clock = rounds ? workClock(cal) : null;
     const shownIds = [...inConfirmation, ...closedToday].map((o) => o.id);
-    const attempts = (rounds && clock) || cadenceCal ? await attemptsByOrder(shownIds) : null;
     /*
      * «إثبات المكالمات» (step A of Confirmation Center v2) — only on her OWN desk and only with the company switch on: for each order she holds, what her «لا يرد» is
      * waiting for (`callProof`: NO_OPENED · WAIT until `unlocksAtMs` · READY), told by the very function the doors ask (`call-proof.ts`), so the card never decides
      * the rule. ONE read for the whole desk (the rounds' attempts are reused when they were read). Off, or on a colleague's desk: no key, no query.
+     * (Asked before the read since H2: under the plan the read itself asks for the older lines the proof needs.)
      */
     const proofOn = !viewing && (await callProofOn(db, companyId));
+    const attempts =
+      (rounds && clock) || cadenceCal
+        ? await attemptsByOrder(shownIds, cadenceAt && cadenceCal ? { since: cadenceAt, before: planFloorNeeds(inConfirmation, cadenceAt, proofOn) } : undefined)
+        : null;
     const proofAttempts = proofOn ? (attempts ?? (await attemptsByOrder(inConfirmation.map((o) => o.id)))) : null;
     // The plan, once per shown order, from the attempts already read: the counted number, whether the next attempt is due, and whether a press now would close it.
     const desks = cadenceCal && attempts ? new Map(shownIds.map((id) => [id, cadenceDesk(attempts.get(id) ?? [], cadenceCal, now)] as const)) : null;

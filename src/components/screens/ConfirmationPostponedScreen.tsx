@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiInboxUnarchiveLine, RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -179,7 +180,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
 
   return (
     <div className="max-w-5xl space-y-3">
-      {!embedded && <ScreenTitle />}
+      {!embedded && <PageHeader title={routeLabel('/confirmation/follow-up')} />}
 
       <p className="text-sm text-[var(--sys-muted-foreground)]">
         القابل للعمل عليه: المستحق خلال {leadDays} يوم أو المتأخر. الباقي للعرض فقط —

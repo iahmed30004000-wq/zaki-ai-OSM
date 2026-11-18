@@ -235,9 +235,10 @@ describe('every screen names itself', () => {
         // التأكيد»): the kit's screen frame. Its `title` is required and it
         // always renders `PageHeader` (its own test, #321) — the same
         // acceptance the-screen-explains-itself.test.tsx gave it in #321.
+        //
+        // 18/11 (R3): `<ScreenTitle` no longer counts — the component is deleted and its 26 screens draw `<PageHeader`.
         return (
           !src.includes('<h1') &&
-          !src.includes('<ScreenTitle') &&
           !src.includes('<PageHeader') &&
           !src.includes('<PanelHeader') &&
           !src.includes('<PageShell')

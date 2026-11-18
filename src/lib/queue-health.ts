@@ -35,6 +35,35 @@ export async function readQueueHealth(client: Client, scope: QueueScope, cal: Bu
   const minutesInShift = inShift && start !== null ? Math.max(0, local.hour * 60 + local.minute - start) : null;
   const capped = (minutes: number): number => (minutesInShift === null ? minutes : Math.min(minutes, minutesInShift));
 
+  /*
+   * «ENTERED TODAY» AND «CLOSED TODAY» START FROM TODAY (H2, cause 7 of the hang — 18/11). Each was one count over EVERY order of the store with two
+   * correlated checks on its attempts and no date to start from. Now each first finds the few orders today names — the company's no-answer lines since
+   * the store's midnight (`order_contact_attempts (companyId, createdAt)`, the 14/11 index), and the store's orders closed and touched since midnight
+   * (`orders (companyId, updatedAt)`) — and asks the SAME question of those ids only. The answers are the same counts (a no-answer line carries its
+   * order's company, as every writer sets it): `queue-health-counts-start-from-todays-attempts.test.ts` holds them to osm/main's on the same rows.
+   */
+  const enteredTodayOf = async (): Promise<number> => {
+    const lines = await client.orderContactAttempt.findMany({
+      where: { companyId: scope.companyId, ...noAnswer, createdAt: { gte: dayStart } },
+      select: { orderId: true },
+      distinct: ['orderId'],
+    });
+    if (lines.length === 0) return 0;
+    return client.order.count({
+      where: { ...scope, id: { in: lines.map((l) => l.orderId) }, contactAttempts: { some: { ...noAnswer, createdAt: { gte: dayStart } }, none: { ...noAnswer, createdAt: { lt: dayStart } } } },
+    });
+  };
+  const closedTodayOf = async (): Promise<number> => {
+    const touched = await client.order.findMany({
+      where: { ...scope, confirmationStatus: { in: FINAL }, updatedAt: { gte: dayStart } },
+      select: { id: true },
+    });
+    if (touched.length === 0) return 0;
+    return client.order.count({
+      where: { ...scope, id: { in: touched.map((o) => o.id) }, confirmationStatus: { in: FINAL }, updatedAt: { gte: dayStart }, contactAttempts: { some: { ...noAnswer, createdAt: { lt: dayStart } } } },
+    });
+  };
+
   const [backlog, dueRows, enteredToday, closedToday, newWaiting, oldestNew, lastPull] = await Promise.all([
     client.order.count({ where: open }),
     client.order.findMany({
@@ -42,8 +71,8 @@ export async function readQueueHealth(client: Client, scope: QueueScope, cal: Bu
       take: DUE_LIST_CAP,
       select: { contactAttempts: { where: noAnswer, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true, nextFollowUpAt: true } } },
     }),
-    client.order.count({ where: { ...scope, contactAttempts: { some: { ...noAnswer, createdAt: { gte: dayStart } }, none: { ...noAnswer, createdAt: { lt: dayStart } } } } }),
-    client.order.count({ where: { ...scope, confirmationStatus: { in: FINAL }, updatedAt: { gte: dayStart }, contactAttempts: { some: { ...noAnswer, createdAt: { lt: dayStart } } } } }),
+    enteredTodayOf(),
+    closedTodayOf(),
     client.order.count({ where: { ...readyToPullWhere(scope, undefined, now), confirmationStatus: 'NEW', contactAttempts: { none: {} } } }),
     client.order.findFirst({ where: { ...readyToPullWhere(scope, undefined, now), confirmationStatus: 'NEW', contactAttempts: { none: {} } }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
     client.orderClaimHistory.findFirst({ where: { companyId: scope.companyId, action: 'CLAIMED', reason: 'PULL_NEXT', order: { storeId: scope.storeId } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),

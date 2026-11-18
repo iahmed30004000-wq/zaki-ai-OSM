@@ -182,45 +182,53 @@ describe('what the layout hands the shell', () => {
     server.arrangement = arranged({ groups: ['admin', 'ops', 'finance', 'main'] });
     const el = await layoutProps();
     // `finance` is not hers: it is not in her menu, so it is not in the order either — and it adds nothing
-    expect(keysOf(el.props.groups)).toEqual(['admin', 'ops', 'main', 'confirmation']);
-    expect(new Set(keysOf(el.props.groups))).toEqual(new Set(keysOf(visibleNav(server.user as never, can))));
+    // 18/11 (R6): was ['admin', 'ops', 'main', 'confirmation'] — her «الإدارة» was only her profile, which is no menu line now
+    // (its door is the header and the phone sheet), so the group is not hers to place: compared against `menuNav`, not `visibleNav`.
+    expect(keysOf(el.props.groups)).toEqual(['ops', 'main', 'confirmation']);
+    expect(new Set(keysOf(el.props.groups))).toEqual(new Set(keysOf(menuNav(server.user as never, can))));
+    expect(keysOf(visibleNav(server.user as never, can))).toContain('admin');
   });
 });
 
 // ───────────────────────── the sidebar, on a desk and as a phone's drawer ─────────────────────────
 
 describe('the drawer follows the groups', () => {
-  it('— unarranged, the lines are in the registry’s order: sixteen of them', async () => {
+  // 18/11 (R6): 16 → 10 lines (1+1+1+1+1+1+1+2+1), written out whole: the dashboard alone, the seven hubs, the store's two loose
+  // lines, and «الإدارة» last. Was: main's five loose screens, «مركز التأكيد» first of the hubs, «الإعدادات» then «الإدارة» last.
+  it('— unarranged, the lines are in the registry’s order: ten of them', async () => {
     const { container } = render(await layoutProps());
-    expect(drawerLines(container)).toHaveLength(16);
-    // main's five screens («السلات المهجورة» beside the orders since 15/11), then the hubs in order — the first hub is «مركز التأكيد», the last the profile’s «الإدارة»
-    expect(drawerLines(container).slice(0, 6)).toEqual(['لوحة التحكم', 'الطلبات', 'السلات المهجورة', 'العملاء', 'المنتجات', 'مركز التأكيد']);
-    expect(drawerLines(container).slice(-3)).toEqual(['صفحات الهبوط', 'الإعدادات', 'الإدارة']);
+    expect(drawerLines(container)).toHaveLength(10);
+    expect(drawerLines(container)).toEqual([
+      'لوحة التحكم', 'الطلبات', 'التأكيد', 'الشحن', 'المخزون والمنتجات', 'المال', 'التقارير', 'المتجر', 'صفحات الهبوط', 'الإدارة',
+    ]);
   });
 
   it('and an arranged order moves the main entries — a hub as one line, a loose group as its screens', async () => {
     server.arrangement = arranged({ groups: ['ops', 'admin', 'main', 'storefront'] });
     const { container } = render(await layoutProps());
     const lines = drawerLines(container);
-    expect(lines.slice(0, 2)).toEqual(['الشحن', 'الإدارة']);
-    expect(lines.slice(2, 7)).toEqual(['لوحة التحكم', 'الطلبات', 'السلات المهجورة', 'العملاء', 'المنتجات']);
-    expect(lines.slice(7, 9)).toEqual(['المتجر', 'صفحات الهبوط']);
+    // 18/11 (R6): «الطلبات» is a hub now — one line where main's five loose screens stood; the rest recounted (10, not 16).
+    expect(lines.slice(0, 3)).toEqual(['الشحن', 'الإدارة', 'الطلبات']);
+    expect(lines.slice(3, 5)).toEqual(['المتجر', 'صفحات الهبوط']);
     // the rest, in the registry’s order
-    expect(lines.slice(9)).toEqual(['مركز التأكيد', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات']);
-    expect(lines).toHaveLength(16);
+    expect(lines.slice(5)).toEqual(['لوحة التحكم', 'التأكيد', 'المخزون والمنتجات', 'المال', 'التقارير']);
+    expect(lines).toHaveLength(10);
   });
 
   it('and the lines inside a group still follow their own order — the two arrangements do not meet', async () => {
-    server.arrangement = arranged({ groups: ['main'], order: ['/products', '/customers'], pinned: ['/orders'] });
+    // 18/11 (R6): was main's loose screens reordered inside main; main is a hub now, so the loose group that shows it is the store's.
+    server.arrangement = arranged({ groups: ['storefront'], order: ['/store/landing-pages'], pinned: [] });
     const { container } = render(await layoutProps());
-    expect(drawerLines(container).slice(0, 4)).toEqual(['الطلبات', 'المنتجات', 'العملاء', 'لوحة التحكم']);
+    expect(drawerLines(container).slice(0, 3)).toEqual(['صفحات الهبوط', 'المتجر', 'لوحة التحكم']);
   });
 
   it('and a group with every screen hidden is not drawn, wherever it was put', async () => {
-    server.arrangement = arranged({ groups: ['chats', 'main'], hidden: ['/growth/whatsapp/inbox', '/growth/telegram/orders', '/growth/landing-chats'] });
+    // 18/11 (R6): was «المحادثات» (`chats`, folded into «الطلبات»); the same rule on the store's group, put first and wholly hidden.
+    server.arrangement = arranged({ groups: ['storefront', 'main'], hidden: ['/store', '/store/landing-pages'] });
     const { container } = render(await layoutProps());
-    expect(drawerLines(container)).not.toContain('المحادثات');
-    expect(drawerLines(container)[0]).toBe('لوحة التحكم');
+    expect(drawerLines(container)).not.toContain('المتجر');
+    expect(drawerLines(container)).not.toContain('صفحات الهبوط');
+    expect(drawerLines(container)[0]).toBe('الطلبات');
   });
 
   it('and a group key nobody has, or one the person may not see, adds no line and takes no place', async () => {
@@ -296,7 +304,12 @@ describe('the bottom bar follows the four', () => {
     here.path = '/admin/profile';
     server.arrangement = arranged({ slots: ['/admin/profile', '/orders', '/ops/tracking'] });
     const { container } = render(await layoutProps());
-    expect(barTabs(container).map((t) => t.href)).toEqual(['/admin/profile']);
+    // 18/11 (R6): was ['/admin/profile'] — the profile is no line, so a person with nothing else has NO tab: the bar is «المزيد»
+    // alone, and its sheet holds the profile's own line (and the way out).
+    expect(barTabs(container).map((t) => t.href)).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'المزيد' }));
+    const sheet = screen.getByRole('dialog', { name: 'كل الشاشات' });
+    expect(within(sheet).getByRole('link', { name: 'الملف الشخصي' }).getAttribute('href')).toBe('/admin/profile');
   });
 
   it('and the role’s base gives a person with no choice of their own the owner’s four — filled by the ranking where the owner named fewer', async () => {

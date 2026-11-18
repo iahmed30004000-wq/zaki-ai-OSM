@@ -20,7 +20,8 @@ import { ClosePickedDialog } from '@/components/screens/tracking/ClosePickedDial
 import { DifferenceMark } from '@/components/screens/tracking/DifferenceMark';
 import { DifferenceDialog } from '@/components/screens/tracking/DifferenceDialog';
 import { apiJson } from '@/lib/api-client';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { Rows, type RowTone } from '@/components/ui/Rows';
@@ -656,7 +657,7 @@ export function TrackingScreen() {
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/ops/tracking')} />
 
       {/* Drawn from the first moment, with or without the numbers: the box is how a parcel is found. */}
       <ListToolbar

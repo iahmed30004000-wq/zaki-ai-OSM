@@ -10,7 +10,8 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { goodsLines } from '@/components/orders/OrderGoods';
 import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { RiAlertLine, RiArrowGoBackLine, RiCloseCircleLine, RiDownload2Line, RiLoader4Line, RiPauseCircleLine, RiTruckLine } from '@remixicon/react';
@@ -700,7 +701,7 @@ export function ShipmentsNewScreen() {
 
   return (
     <div className="max-w-5xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/ops/shipments/new')} />
 
       {/*
         FIRST, BECAUSE IT IS THE FIRST THING A PERSON DOES.

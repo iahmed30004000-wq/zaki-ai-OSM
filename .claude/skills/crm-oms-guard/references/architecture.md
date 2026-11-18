@@ -40,10 +40,14 @@ Rules:
 - Creating a country provisions its default wallet and makes it appear
   in delivery fees and commission rules automatically.
 
-## Navigation — eleven groups, drawn as sixteen lines
+## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **55 pages in 11 groups**; the menu draws them as **16 lines**.
+is its contract. It holds **55 pages in 9 groups**; the menu draws them as **10 lines**.
+
+Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
+the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
+every path, every permission and every title stayed as it was.
 
 How a group is drawn is `NavGroup.hub`, and it is a statement about the MENU only — it never
 changes what a page is, who may open it, or where it lives:
@@ -53,12 +57,13 @@ changes what a page is, who may open it, or where it lives:
   only the ones this person may open, in the order they arranged them. On a road the pills carry the
   step and the «التالي» link. A group with one screen left to a person takes that screen's own name.
 - `cards` — one line that opens a page of cards (the group's first route, `/settings`); every other
-  screen of the group carries a «← الإعدادات» link back to it. Every settings screen sits on exactly
-  one card.
-- `loose` — no heading, no folding: each screen its own line (الرئيسية and واجهة المتجر).
+  screen of the group carries a «← الإدارة» link back to it. Every screen of the group sits on exactly
+  one card (`src/lib/settings-home.ts`). A person who may open a screen of the group but not the door
+  is led by the line to their own first screen, and sees the others as pills.
+- `loose` — no heading, no folding: each screen its own line (اليوم and واجهة المتجر).
 
-Sixteen lines: the five of الرئيسية, one each for مركز التأكيد, الشحن, المخزون, المال, الرقابة,
-النمو والذكاء and المحادثات, the two of واجهة المتجر, one for الإعدادات, one for الإدارة.
+Ten lines: 1+1+1+1+1+1+1+2+1 — اليوم, الطلبات, التأكيد, الشحن, المخزون والمنتجات, المال, التقارير,
+the two of واجهة المتجر, الإدارة.
 
 Three fields of a route are menu facts and nothing else:
 
@@ -69,22 +74,30 @@ Three fields of a route are menu facts and nothing else:
   that one (today: لوحة الأداء, folded under the dashboard). A person who cannot open the parent keeps
   it as a line: folding is for the menu, never for access.
 - **`offMenu`** — the screen's real door is not the menu (today: المساعد الذكي, whose door is the bubble
-  on every screen).
+  on every screen, and الملف الشخصي, whose doors are the name in the header and a line of the phone's
+  «المزيد»).
 
 An address never moves because the menu was rearranged: a bookmark, a notification and a saved menu
-arrangement (which is a list of PATHS) all keep meaning what they meant. A screen that stopped being a
-page keeps its old address as a permanent redirect (`next.config.ts`).
+arrangement (which is a list of PATHS) all keep meaning what they meant. A saved order of GROUPS that
+names a key that went (`control`, `chats`, `settings`) simply loses that entry. A screen that stopped
+being a page keeps its old address as a permanent redirect (`next.config.ts`).
 
-**1. الرئيسية** — loose, five lines
+**1. اليوم** (`today`) — loose, one line
 ```
 لوحة التحكم              /dashboard
+```
+
+**2. الطلبات** (`main`) — tabs; every door an order comes in by
+```
 الطلبات                  /orders
 السلات المهجورة           /abandoned-carts   (the carts the landing pages send; same key as the orders)
 العملاء                  /customers
-المنتجات                 /products
+طلبات تلجرام              /growth/telegram/orders
+صندوق الواتساب            /growth/whatsapp/inbox
+رسائل اللاندينج           /growth/landing-chats   (Zaki pages' chat assistant; whatsapp.view)
 ```
 
-**2. مركز التأكيد** — tabs
+**3. التأكيد** (`confirmation`) — tabs
 ```
 الطلبات الجديدة           /confirmation/queue      (the SUPERVISOR's view of the pool; an agent is sent to طلباتي)
 طلباتي                   /confirmation/mine       (the pull panel is at its top)
@@ -95,7 +108,7 @@ page keeps its old address as a permanent redirect (`next.config.ts`).
 «الطلبات المؤجلة» and «استرجاع الملغى» are no longer screens: they are the two tabs of المتابعة, and an
 agent's own postponed orders are a tab of طلباتي.
 
-**3. الشحن** — tabs; one parcel's road, numbered
+**4. الشحن** (`ops`) — tabs; one parcel's road, numbered
 ```
 1. التجهيز                /ops/preparation
 2. إنشاء شحنة              /ops/shipments/new
@@ -104,15 +117,16 @@ agent's own postponed orders are a tab of طلباتي.
 5. المرتجعات               /ops/returns
 ```
 
-**4. المخزون** — tabs
+**5. المخزون والمنتجات** (`inventory`) — tabs
 ```
+المنتجات                 /products
 أرصدة المخزون             /inventory/balances   («استلام بضاعة جاهزة» is a button on each product's card here)
 تشغيلات الإنتاج           /manufacturing
 حركات المخزون             /inventory/movements
 ```
 
-**5. المال** — tabs. The first four are one errand: see what each courier holds, take it in (by
-statement or by hand), match, close the day.
+**6. المال** (`finance`) — tabs. The first four are one errand: see what each courier holds, take it in
+(by statement or by hand), match, close the day.
 ```
 1. عهدة المندوبين           /finance/agents
 2. التحصيل والكشوف          /finance/collection
@@ -121,34 +135,19 @@ statement or by hand), match, close the day.
    المحافظ والحركات         /finance/wallets
    التحويلات               /finance/transfers
    الأرباح                 /finance/profit
+   العمولات                /settings/commission   (its address stays under /settings — the one screen there not in الإدارة)
 ```
 
-**6. الرقابة** — tabs
-```
-طلبات التعديل             /control/change-requests
-تنبيهات الخصم             /control/discount-alerts   (a price cut given to a customer)
-خصومات الموظفين           /control/penalties         (money off a salary)
-سجل التدقيق               /control/audit
-القائمة السوداء           /control/blacklist
-```
-
-**7. النمو والذكاء** — tabs
+**7. التقارير** (`growth`) — tabs
 ```
 لوحة الأداء               /growth/performance      (folded under the dashboard for whoever can open it)
 الحملات                  /growth/campaigns
-المساعد الذكي             /assistant               (off the menu: the bubble is its door)
 مركز الذكاء               /growth/intelligence
 منصّة التجريب             /growth/bench
+المساعد الذكي             /assistant               (off the menu: the bubble is its door)
 ```
 
-**8. المحادثات** — tabs; the three inboxes. Somebody who wrote to us is not a growth question.
-```
-صندوق الواتساب            /growth/whatsapp/inbox
-طلبات تلجرام              /growth/telegram/orders
-رسائل اللاندينج           /growth/landing-chats
-```
-
-**9. واجهة المتجر** — loose; how the shop LOOKS and what it SAYS. Another agent owns this code.
+**8. واجهة المتجر** (`storefront`) — loose; how the shop LOOKS and what it SAYS. Another agent owns this code.
 ```
 المتجر                    /store
 صفحات الهبوط              /store/landing-pages
@@ -156,14 +155,13 @@ statement or by hand), match, close the day.
 `/store` lists every shop on one card each, and the shop's own screens are the tabs of `/store`
 (`src/lib/store-admin.ts`), not menu entries. The old single-product address redirects permanently.
 
-**10. الإعدادات** — how the system RUNS. A hub of cards: ONE menu line that opens `/settings`, a page of
-cards, each linking only to the screens the person may open; a card with nothing they may open is not
-drawn. `/settings` is also where an ad platform's OAuth round trip lands.
+**9. الإدارة** (`admin`) — how the system RUNS and who runs it. A hub of cards: ONE menu line that opens
+`/settings`, a page of ten cards, each linking only to the screens the person may open; a card with
+nothing they may open is not drawn. `/settings` is also where an ad platform's OAuth round trip lands.
 ```
-الإعدادات                 /settings           (the front door; the union of the keys of the screens it fronts)
+الإعدادات                 /settings           (the front door; the union of the keys of the eight SETTINGS cards)
 البلدان والمتاجر           /settings/geo
 شركات الشحن وأجورها        /settings/couriers  (a courier and its fees are one screen)
-العمولات                  /settings/commission
 قنوات الطلبات              /settings/channels
 بكسل الإعلانات             /settings/tracking
 الربط                    /settings/links     (WhatsApp and Telegram, one card each, each for the key that owns it)
@@ -171,15 +169,19 @@ drawn. `/settings` is also where an ad platform's OAuth round trip lands.
 متجر التطبيقات            /apps/store
 التطبيقات المثبتة          /apps/installed
 إعدادات النظام            /settings/system
-المهام المجدولة            /admin/jobs
-```
-
-**11. الإدارة** — tabs
-```
+المهام المجدولة            /admin/jobs         (on the system card; gate settings.view)
 الموظفين                  /admin/users
 الصلاحيات                 /admin/permissions
-الملف الشخصي              /admin/profile     (every active user; reached from the header, not a line for most)
+طلبات التعديل             /control/change-requests
+تنبيهات الخصم             /control/discount-alerts   (a price cut given to a customer)
+خصومات الموظفين           /control/penalties         (money off a salary)
+سجل التدقيق               /control/audit
+القائمة السوداء           /control/blacklist
+الملف الشخصي              /admin/profile     (every active user; off the menu — the name in the header, a line of «المزيد»)
 ```
+The cards: the eight settings cards (البلدان والمتاجر · الشحن · العمولات · القنوات والتتبّع · واتساب وتلجرام
+· الذكاء الاصطناعي · التطبيقات · النظام), then الموظفون والصلاحيات and الرقابة — 8 + 2 = 10. «العمولات»
+keeps its card: `/settings` opens on `commission.view`.
 
 Detail pages under a registered screen (`/products/[id]`, `/abandoned-carts/[id]`,
 `/admin/users/[id]`, `/store/landing-pages/[id]`) are not registry entries: they open on their parent's
@@ -192,12 +194,12 @@ permission and are never menu lines.
   seasons, next product, expansion, stop-the-bleed, customers. Proposes actions. They are separate
   routes and stay so, even though each carries a little of the other's work (an «اسأل» box inside
   the intelligence centre) — do not merge them.
-- Apps appear ONCE — in الإعدادات, beside what they configure.
+- Apps appear ONCE — in الإدارة, beside the settings they configure.
 - Countries and stores live together in `/settings/geo`. A country provisions its default wallet when
   it is created; wallets are then created, styled and stopped on `/finance/wallets`, beside the ledger
   they belong to.
 - An OPERATION sits with the work and its CONFIGURATION sits in settings: the WhatsApp inbox is in
-  المحادثات and its setup is a card of `/settings/links`; the assistant is work, the provider and the
+  الطلبات and its setup is a card of `/settings/links`; the assistant is work, the provider and the
   key are setup. Two known exceptions are documented, not endorsed: the Telegram product aliases are
   edited on the Telegram orders screen, and ad accounts are linked from the campaigns screen.
 
