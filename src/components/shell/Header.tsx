@@ -8,6 +8,7 @@ import { MyWork } from './MyWork';
 import { InstallAppButton } from './InstallApp';
 import { ShiftChip } from '@/components/attendance/ShiftChip';
 import { ROLE_LABELS } from '@/types/auth';
+import { IconButton } from '@/components/ui/IconButton';
 import { RiLogoutBoxLine, RiMenuLine, RiRepeatLine, RiSearchLine, RiStore2Line } from '@remixicon/react';
 
 export interface ShellContextInfo {
@@ -75,14 +76,11 @@ export function Header({
    */
   return (
     <header ref={bar} className="sticky top-0 z-30 min-h-[72px] py-2 bg-[var(--sys-card)] border-b border-[var(--sys-border)] flex items-center gap-3 px-4 md:px-6">
-      <button
-        onClick={onMenuClick}
-        className="md:hidden flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-[var(--sys-surface)]"
-        aria-label="القائمة"
-        title="القائمة"
-      >
+      {/* 18/11 (R17d): the kit's square — 44px on a phone, its name and tooltip from `label`. `md:hidden` may sit on
+          the button itself: it comes after the kit's `inline-flex` in the sheet. `hidden` does not (see the way out). */}
+      <IconButton type="button" label="القائمة" onClick={onMenuClick} className="md:hidden shrink-0">
         <RiMenuLine className="w-5 h-5 text-[var(--sys-foreground)]" />
-      </button>
+      </IconButton>
 
       {/* Country + store context, always visible: every request carries it */}
       {/* `min-w-0 shrink` is what lets this give way on a phone. Without
@@ -147,7 +145,11 @@ export function Header({
           Ctrl/Cmd + K opens without reaching for the mouse.
 
           Everyone gets the door. What is behind it is still decided per
-          person: record lookup remains the owner's, exactly as before. */}
+          person: record lookup remains the owner's, exactly as before.
+
+          18/11 (R17d): it stays a hand-written press, on purpose. It is drawn as a search FIELD — the words at the
+          start, the key at the end — and the kit Button centres its children in one inline span, so it cannot draw
+          that. R19's allowed list carries it. */}
       <button
         type="button"
         onClick={onSearchClick}
@@ -157,21 +159,20 @@ export function Header({
       >
         <RiSearchLine className="w-4 h-4 shrink-0 text-[var(--sys-muted)]" aria-hidden />
         <span className="flex-1 text-start truncate">ابحث، انتقل، أو نفّذ</span>
-        <kbd className="shrink-0 rounded-sm border border-[var(--sys-border)] bg-[var(--sys-card)] px-1.5 py-0.5 text-xs font-sans text-[var(--sys-muted-foreground)]">
+        <kbd className="shrink-0 rounded-sm border border-[var(--sys-border)] bg-[var(--sys-card)] px-1.5 py-0.5 text-note font-sans text-[var(--sys-muted-foreground)]">
           Ctrl K
         </kbd>
       </button>
 
       {/* A phone has no Ctrl, so it gets the same door as an icon. */}
-      <button
+      <IconButton
         type="button"
+        label="ابحث، انتقل، أو نفّذ"
         onClick={onSearchClick}
-        aria-label="ابحث، انتقل، أو نفّذ"
-        className="md:hidden mr-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]"
-        title="ابحث، انتقل، أو نفّذ"
+        className="md:hidden mr-auto shrink-0 text-[var(--sys-muted-foreground)]"
       >
         <RiSearchLine className="w-5 h-5" />
-      </button>
+      </IconButton>
 
       {/*
         WRAPS INSTEAD OF PUSHING THE PAGE SIDEWAYS.
@@ -218,13 +219,21 @@ export function Header({
             {ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]?.ar ?? userRole}
           </p>
         </Link>
-        <button aria-label="تسجيل الخروج"
-          onClick={logout}
-          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 hidden md:block p-2 rounded-lg text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"
-          title="تسجيل الخروج"
-        >
-          <RiLogoutBoxLine className="icon-mirror w-5 h-5" />
-        </button>
+        {/* 18/11 (R17d): hidden on a phone by its WRAPPER. On the kit button itself `hidden` loses to the kit's own
+            `inline-flex`, which comes later in the sheet, and the way out would be back in the 375px bar. The
+            press is not handed to the kit as a promise: it is the same un-held press it was. */}
+        <span className="hidden md:flex shrink-0">
+          <IconButton
+            type="button"
+            label="تسجيل الخروج"
+            onClick={() => {
+              void logout();
+            }}
+            className="text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)]"
+          >
+            <RiLogoutBoxLine className="icon-mirror w-5 h-5" />
+          </IconButton>
+        </span>
       </div>
     </header>
   );

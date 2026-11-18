@@ -99,10 +99,18 @@ describe('the way out of a session, on a phone', () => {
 describe('and the header keeps hiding its own', () => {
   it('because seven controls in a 375px bar is the defect it was hidden for', () => {
     const header = read(HEADER);
-    const at = header.indexOf('aria-label="تسجيل الخروج"');
+    /*
+     * 18/11 (R17d): the way out is the kit's `IconButton` now, so its name is `label="…"` and not
+     * `aria-label="…"`, and it is hidden by its WRAPPER — `hidden` on the kit button itself loses to the
+     * kit's `inline-flex` in the sheet. The old pin read `hidden md:block` off the button's own tag; it now
+     * reads the wrapper that opens just before it, which says `hidden md:flex`. Same decision, same width.
+     * (The rendered half — the button's parent is hidden, the button is not — is in
+     * the-frame-controls-wear-the-kit.test.tsx.)
+     */
+    const at = header.indexOf('label="تسجيل الخروج"');
     expect(at, 'زر الخروج اختفى من الترويسة كلياً').toBeGreaterThan(0);
-    // The class list of that button, up to the end of its tag.
-    const tag = header.slice(at, header.indexOf('>', at));
-    expect(tag, 'عاد الخروج يظهر على الهاتف في الترويسة').toContain('hidden md:block');
+    const before = header.slice(0, at);
+    const wrapper = before.slice(before.lastIndexOf('<span'), before.lastIndexOf('<IconButton'));
+    expect(wrapper, 'عاد الخروج يظهر على الهاتف في الترويسة').toContain('hidden md:flex');
   });
 });

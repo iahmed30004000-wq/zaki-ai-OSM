@@ -254,7 +254,7 @@ export function Sidebar({
                on a dark menu over a light page («نظيف») was a bright
                chip whose number read at 2.3:1 against the menu.
                «السلات المهجورة» wears the same chip for its NEW carts. */
-            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary-foreground)]"
+            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-note font-bold tabular-nums text-[var(--sys-primary-foreground)]"
             aria-label={byRoute[route.path] ? `${byRoute[route.path]} إشعار غير مقروء` : `${newCarts} سلة جديدة`}
           >
             {byRoute[route.path] || newCarts}
@@ -304,7 +304,7 @@ export function Sidebar({
         </span>
         {unread ? (
           <span
-            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary-foreground)]"
+            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-note font-bold tabular-nums text-[var(--sys-primary-foreground)]"
             aria-label={`${unread} إشعار غير مقروء`}
           >
             {unread}
@@ -380,6 +380,13 @@ export function Sidebar({
 
           {/* Folding is a desktop affair: below 768px this is a drawer laid
               over the screen, and a narrower drawer buys nothing. */}
+          {/*
+            18/11 (R17d): EVERY PRESS OF THIS MENU STAYS HAND-WRITTEN — the two rail folds, the group headings and
+            «اعرض كل القوائم». The menu paints only from its own tokens (R4). The kit's hover is the PAGE's surface,
+            and in the built sheet that rule comes AFTER the menu's own hover, so on a kit button it wins: a light
+            page colour behind a menu line — the fault R4 measured. The headings and the footer press are list rows
+            besides. R19's allowed list carries all four; the-frame-controls-wear-the-kit.test.tsx holds them.
+          */}
           <button
             onClick={toggleRail}
             aria-label={rail ? 'وسّع القائمة' : 'اطوِ القائمة إلى شريط'}
