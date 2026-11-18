@@ -158,10 +158,13 @@ describe('the card draws it so it cannot leave', () => {
 describe('the grids that decide how wide a card is', () => {
   const read = (rel: string) => stripComments(repoFile(rel));
 
-  it('draws the dashboard six as three by two and three as one row, never four across', () => {
+  // 18/11 (R9): was «draws the dashboard six as three by two and three as one row». «اليوم» has THREE figures now, in one row (two
+  // without «عرض المالية»); the other three moved to the performance board, one row there too. The four-across ban stays.
+  it('draws the dashboard three as one row (two without the money key), never four across', () => {
     const src = read('src/components/screens/DashboardScreen.tsx');
-    expect(src).toContain("'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'");
-    expect(src).toContain("'grid grid-cols-1 md:grid-cols-3 gap-4'");
+    expect(src).toContain("canFinance ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'");
+    expect(src.match(/<KpiCard\b/g)?.length).toBe(3);
+    expect(read('src/components/screens/PerformanceScreen.tsx')).toContain("canFinance ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'grid grid-cols-1 gap-4'");
     const old = ['grid grid-cols-2', ['lg', 'grid-cols-4'].join(':')].join(' ');
     expect(src, 'ست بطاقات بأربعة أعمدة تترك صفاً نصفه فارغ').not.toContain(old);
   });

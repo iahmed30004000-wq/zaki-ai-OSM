@@ -54,6 +54,8 @@ vi.mock('@/components/growth/IntelligenceStrip', () => ({ IntelligenceStrip: () 
 vi.mock('@/components/growth/ChannelScores', () => ({ ChannelScoresSection: () => null }));
 vi.mock('@/components/dashboard/LossPanel', () => ({ LossPanel: () => null }));
 vi.mock('@/components/dashboard/WorkToday', () => ({ WorkToday: () => null }));
+// 18/11 (R9): «اليوم»'s one chart has its own door and its own tests (`DailyChart.test.tsx`); these files are about the figures.
+vi.mock('@/components/dashboard/DailyChart', () => ({ DailyChart: () => null }));
 vi.mock('@/components/dashboard/DetailsLinks', () => ({ DetailsLink: () => null, BackToDashboardLink: () => null }));
 vi.mock('@/components/performance/ScoreBoard', () => ({ ScoreBoard: () => null }));
 vi.mock('@/components/performance/LandingAnalyticsTab', () => ({ LandingAnalyticsTab: () => null }));
@@ -113,10 +115,11 @@ describe('the dashboard', () => {
     // an English browser message is never shown: the Arabic sentence stands in
     expect(screen.getByText('تعذّر الاتصال. تحقق من الشبكة وأعد المحاولة.')).toBeTruthy();
     expect(screen.queryByText('Failed to fetch')).toBeNull();
-    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
+    expect(screen.queryByText('60%')).toBeNull();
     apiFetch.mockResolvedValue(json(200, GOOD));
     fireEvent.click(screen.getByText('إعادة المحاولة'));
-    await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
+    // 18/11 (R9): «اليوم» draws three figures and no ranking — the confirmation rate is the tile that proves the retry. Was «الأكثر طلباً».
+    await waitFor(() => expect(screen.getByText('60%')).toBeTruthy());
   });
 
   it('an answer without a body still says something (the fallback sentence)', async () => {
@@ -129,27 +132,33 @@ describe('the dashboard', () => {
   it('ALLOWED: draws the tiles, and no refusal', async () => {
     apiFetch.mockResolvedValue(json(200, GOOD));
     render(<DashboardScreen />);
-    await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
+    // 18/11 (R9): was «الأكثر طلباً» — «اليوم» draws its three figures, not the ranking.
+    await waitFor(() => expect(screen.getByText('60%')).toBeTruthy());
+    expect(screen.getByText('70%')).toBeTruthy();
     expect(screen.queryByText('لا تملك صلاحية «عرض التقارير»')).toBeNull();
   });
 });
 
 describe('PR-10: the smart cards are drawn for insights.view only', () => {
-  it('the dashboard: without the key there is no ranking and no loss panel — but the tiles are there', async () => {
-    who.perms = ['dashboard.view', 'reports.view'];
-    apiFetch.mockResolvedValue(json(200, GOOD));
-    render(<DashboardScreen />);
-    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
-    await waitFor(() => expect(screen.queryByText('تعذّر تحميل أرقام لوحة التحكم')).toBeNull());
-    expect(screen.queryByText('الأكثر طلباً')).toBeNull();
-    expect(screen.queryByText('ترتيب المنتجات والأرباح')).toBeNull();
+  // 18/11 (R9): the dashboard's two smart cards (the ranking and the loss panel) left «اليوم» for the performance board, so the
+  // dashboard draws none for anybody; the board's headlines still answer to the key (below). Was: «the dashboard: without the key
+  // there is no ranking» + its negative «WITH the key draws the ranking».
+  it('the dashboard: no ranking and no loss panel for anybody — but the figures are there', async () => {
+    for (const perms of [['dashboard.view', 'reports.view'], ['dashboard.view', 'reports.view', 'insights.view']]) {
+      cleanup();
+      who.perms = perms;
+      apiFetch.mockResolvedValue(json(200, GOOD));
+      render(<DashboardScreen />);
+      await waitFor(() => expect(screen.getByText('60%')).toBeTruthy());
+      expect(screen.queryByText('الأكثر طلباً')).toBeNull();
+      expect(screen.queryByText('ترتيب المنتجات والأرباح')).toBeNull();
+    }
   });
 
-  it('NEGATIVE (the test of the test): the same dashboard WITH the key draws the ranking', async () => {
+  it('NEGATIVE (the test of the test): the board WITH the key draws the ranking', async () => {
     apiFetch.mockResolvedValue(json(200, GOOD));
-    render(<DashboardScreen />);
+    render(<PerformanceScreen />);
     await waitFor(() => expect(screen.getByText('الأكثر طلباً')).toBeTruthy());
-    expect(screen.getByText('ترتيب المنتجات والأرباح')).toBeTruthy();
   });
 
   it('the performance board: without the key there are no headlines', async () => {

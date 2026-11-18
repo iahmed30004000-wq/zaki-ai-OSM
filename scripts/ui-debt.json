@@ -474,11 +474,6 @@
       "rawSurfaces": 4,
       "textXs": 16
     },
-    "src/components/screens/DashboardScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 10
-    },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,

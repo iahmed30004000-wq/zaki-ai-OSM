@@ -488,7 +488,7 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/settings/no-answer-rounds': 'بطاقة «نظام الجولات» انشالت بـC2 — الباب باقٍ يقرأ ويرفض الكتابة لحد ما C4 يشيله مع محرّكه',
   '/api/settings/no-answer-returns': 'بطاقة «الطلب يرجع للطابور فوراً» انشالت بـC2 — الباب باقٍ يقرأ ويرفض الكتابة لحد ما C4 يشيله مع محرّكه',
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
-  '/api/analytics/daily': 'سلسلةُ الطلبات اليومية للرسم الواحد في «اليوم» (R9) — الباب جاهز والشاشة تأتي بعده عند سونيت',
+  // 18/11 (R9): '/api/analytics/daily' left — «اليوم»'s one chart (`dashboard/DailyChart.tsx`) calls it.
   '/api/orders/confirmation/team/[userId]': 'صفُّ موظفٍ واحد لدرج جدول الفريق (R14a) — الباب جاهز والدرج يأتي بعده عند سونيت',
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
