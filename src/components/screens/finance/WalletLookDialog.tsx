@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { RiCheckLine, RiImageAddLine, RiLoader4Line } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { WALLET_ICON_COMPONENT, WalletPicture } from '@/components/ui/WalletPicture';
 import { uploadWalletImage } from '@/lib/wallet-image-upload';
 import {
@@ -129,7 +130,8 @@ export function WalletLookDialog({
       title="تعديل شكل المحفظة"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <button
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => {
               setImageKey(null);
@@ -138,22 +140,21 @@ export function WalletLookDialog({
               setError(null);
             }}
             disabled={!anyChosen || saving || uploading}
-            className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] disabled:opacity-50"
           >
             رجّع الشكل التلقائي
-          </button>
+          </Button>
           <span className="flex gap-2">
-            <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+            <Button variant="secondary" type="button" onClick={onClose}>
               إلغاء
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="button"
               onClick={() => void save()}
               disabled={!dirty || saving || uploading}
-              className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
             >
               {saving ? 'جارٍ الحفظ…' : 'احفظ'}
-            </button>
+            </Button>
           </span>
         </div>
       }
@@ -164,30 +165,26 @@ export function WalletLookDialog({
           <WalletPicture wallet={{ id: wallet.id, currencyCode: wallet.currencyCode, imageKey, iconKey, colorKey }} size="lg" />
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--sys-heading)]">{wallet.name}</p>
-            <p className="text-xs text-[var(--sys-muted-foreground)]">{where}</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">{where}</p>
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-[var(--sys-heading)]">الصورة</p>
+          <p className="text-note font-medium text-[var(--sys-heading)]">الصورة</p>
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <Button
+              variant="secondary"
               type="button"
               onClick={() => fileBox.current?.click()}
               disabled={uploading}
-              className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm inline-flex items-center gap-1.5 disabled:opacity-50"
             >
               {uploading ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiImageAddLine className="w-4 h-4" />}
               {uploading ? 'جارٍ الرفع…' : imageKey ? 'غيّر الصورة' : 'ارفع صورة'}
-            </button>
+            </Button>
             {imageKey && !uploading && (
-              <button
-                type="button"
-                onClick={() => setImageKey(null)}
-                className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]"
-              >
+              <Button variant="secondary" type="button" onClick={() => setImageKey(null)}>
                 شيل الصورة
-              </button>
+              </Button>
             )}
             <input
               ref={fileBox}
@@ -203,17 +200,17 @@ export function WalletLookDialog({
               }}
             />
           </div>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             PNG أو JPG أو WEBP، لحد 5 ميجابايت. بتظهر صغيرة (32 لـ 44 بكسل) — اختار صورة قريبة وواضحة.
           </p>
           {/* A picture is read by everybody who sees the wallets, and a bank's card is the example the owner gave. */}
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             لا تحط صورة فيها رقم بطاقة أو حساب: كل من بيشوف المحافظ بيشوفها.
           </p>
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-[var(--sys-heading)]">أو اختار أيقونة جاهزة</p>
+          <p className="text-note font-medium text-[var(--sys-heading)]">أو اختار أيقونة جاهزة</p>
           <div role="group" aria-label="الأيقونة" className="flex flex-wrap gap-2">
             {WALLET_ICON_KEYS.map((key) => {
               const Icon = WALLET_ICON_COMPONENT[key];
@@ -239,7 +236,7 @@ export function WalletLookDialog({
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-xs font-medium text-[var(--sys-heading)]">واللون</p>
+          <p className="text-note font-medium text-[var(--sys-heading)]">واللون</p>
           <div role="group" aria-label="اللون" className="flex flex-wrap gap-2">
             {WALLET_COLOR_KEYS.map((key, i) => (
               <button
