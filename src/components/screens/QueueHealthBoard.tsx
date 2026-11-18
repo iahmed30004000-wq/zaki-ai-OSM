@@ -57,7 +57,7 @@ export function QueueHealthBoard() {
         {data.alerts && data.alerts.length > 0 && (
           <ul className="mb-3 space-y-1" role="alert">
             {data.alerts.map((a) => (
-              <li key={a.kind} className="rounded-md border border-[var(--sys-border-strong)] px-3 py-2 text-xs text-[var(--sys-danger)]">
+              <li key={a.kind} className="rounded-md border border-[var(--sys-border-strong)] px-3 py-2 text-xs text-[var(--sys-destructive)]">
                 <strong>{a.title}:</strong> {a.message}
               </li>
             ))}
