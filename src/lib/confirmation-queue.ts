@@ -34,6 +34,10 @@ import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-fir
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
 import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+
+import { RETURNS_MODE } from './returns-mode';
+// The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
+export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -67,7 +71,7 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
  *
  * The ready-time of a «لا يرد» is `ROUND_GAP_BUSINESS_MINUTES` (`no-answer-rounds.ts`): the same three hours that make a round.
  */
-export const RETURNS_MODE = { handLimit: 5, idleBusinessMinutes: 30 } as const;
+// `RETURNS_MODE` = { handLimit: 5, idleBusinessMinutes: 30 } — defined in `returns-mode.ts` (18/11), re-exported above.
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
@@ -1152,8 +1156,10 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
     }
   }
   if (told.length) {
+    // The notice says the limit the release USED: asked of `returnsLimits`, the one function every reader asks (30, or 20 with «أولوية الطابور»). `ReturnsMode` itself carries no figure: its shape is pinned key for key.
+    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime())).idleBusinessMinutes;
     await tx.notification.createMany({
-      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON })),
+      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes })),
     });
   }
   return told.length;

@@ -1,5 +1,6 @@
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
+import { attemptWords, nextAttemptWords } from './attempt-words';
 import { parseHhMm } from './employee-shift';
 import type { AttemptFact } from './no-answer-rounds';
 import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueVerdict } from './work-first';
@@ -309,17 +310,17 @@ export function cadenceWhen(dueAt: Date, now: Date, timeZone: string): string {
  */
 export function cadencePressWords(a: { counted: boolean; closed: boolean; released: boolean; attempt: number; dueAt: Date | null; now: Date; timeZone: string }): string {
   const next = a.attempt + 1;
-  if (a.closed) return `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — أُغلق الطلب تلقائياً وراح على قائمة «ملغاة سابقاً».`;
+  if (a.closed) return `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — أُغلق الطلب تلقائياً وراح على قائمة «ملغاة سابقاً».`;
   if (a.counted) {
     if (a.dueAt) {
       const when = cadenceWhen(a.dueAt, a.now, a.timeZone);
       return a.released
-        ? `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — رجع الطلب للطابور، والمحاولة الجاية ${when}.`
-        : `انحسبت المحاولة ${a.attempt} من ${CADENCE_LIMIT} — المحاولة الجاية ${when}.`;
+        ? `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — رجع الطلب للطابور، والمحاولة الجاية ${when}.`
+        : `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — المحاولة الجاية ${when}.`;
     }
-    return `انحسبت المحاولة ${CADENCE_LIMIT} من ${CADENCE_LIMIT} — الطلب لسا مفتوح، والضغطة الجاية بتجرّب تسكّره من جديد.`;
+    return `انحسبت ${attemptWords(CADENCE_LIMIT, CADENCE_LIMIT, true)} — الطلب لسا مفتوح، والضغطة الجاية بتجرّب تسكّره من جديد.`;
   }
-  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. المحاولة ${next} من ${CADENCE_LIMIT} بتنحسب ${cadenceWhen(a.dueAt, a.now, a.timeZone)}.`;
+  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. ${attemptWords(next, CADENCE_LIMIT, true)} بتنحسب ${cadenceWhen(a.dueAt, a.now, a.timeZone)}.`;
   return a.attempt >= CADENCE_LIMIT ? 'اكتملت المحاولات الخمس — الضغطة انسجّلت بس ما انحسبت.' : 'انسجّلت الضغطة بس ما انحسبت محاولة.';
 }
 
@@ -377,9 +378,8 @@ export function cadenceVerdict(
  */
 export function cadenceCardWords(desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>, now: Date, timeZone: string): string | null {
   if (desk.counted < 1 || desk.counted >= CADENCE_LIMIT) return null;
-  const next = desk.counted + 1;
-  if (desk.due) return `لا يرد راجع — محاولة ${next} من ${CADENCE_LIMIT}`;
-  if (desk.waiting && desk.dueAt) return `محاولة ${next} من ${CADENCE_LIMIT} — جاهز ${cadenceWhen(desk.dueAt, now, timeZone)}`;
+  if (desk.due) return `لا يرد راجع — ${nextAttemptWords(desk.counted, CADENCE_LIMIT)}`;
+  if (desk.waiting && desk.dueAt) return `${nextAttemptWords(desk.counted, CADENCE_LIMIT)} — جاهز ${cadenceWhen(desk.dueAt, now, timeZone)}`;
   return null;
 }
 

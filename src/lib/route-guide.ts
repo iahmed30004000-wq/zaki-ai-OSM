@@ -69,6 +69,7 @@ export const GUIDED_PATHS: readonly string[] = [
   '/confirmation/mine',
   '/confirmation/follow-up',
   '/confirmation/issues',
+  '/confirmation/rules',
   // الشحن — the five stops of one parcel's road
   '/ops/preparation',
   '/ops/shipments/new',

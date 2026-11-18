@@ -205,8 +205,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
   it('— every one of the 52 screens is still there, once, at its own address — and the front door is the 53rd', () => {
     const paths = ALL_ROUTES.map((r) => r.path);
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
-    expect(paths).toHaveLength(53);
-    expect(new Set(paths).size).toBe(53);
+    // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(54);
+    expect(new Set(paths).size).toBe(54);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

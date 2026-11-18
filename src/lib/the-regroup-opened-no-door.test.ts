@@ -98,7 +98,15 @@ interface Dated {
  *   { on: '2026-12-01', path: '/confirmation/rules', change: 'added', permissions: ['settings.view'],
  *     sentence: 'قواعد مركز التأكيد: صفحة جديدة بمفتاح الإعدادات، تأخذ ثماني بطاقات كانت في إعدادات النظام.' },
  */
-const DATED: Dated[] = [];
+const DATED: Dated[] = [
+  {
+    on: '2026-11-18',
+    path: '/confirmation/rules',
+    change: 'added',
+    permissions: ['settings.view'],
+    sentence: 'قواعد مركز التأكيد (C1): صفحة جديدة آخر تبويب بمركز التأكيد، بمفتاح settings.view اللي أبواب بطاقاتها بتسألو أصلاً — أخدت ثماني بطاقات كانت بإعدادات النظام.',
+  },
+];
 
 // ───────────────────────── the comparison ─────────────────────────
 
@@ -175,7 +183,9 @@ describe('the pages and who may open them — pinned, so a regrouping can be pro
 // ───────────────────────── the pin catches what it is for ─────────────────────────
 
 const real = ALL_ROUTES.map((r) => ({ path: r.path, permissions: r.permissions }));
-const pins = () => expectedPairs(ORIGINAL, []);
+// 18/11 (C1): the pins the registry SHOULD have today — the original with DATED applied. Was `expectedPairs(ORIGINAL, [])`, written on the day DATED was empty; with the first
+// dated page (/confirmation/rules) that read every real registry as one drift, so the cases below compare against the dated pins.
+const pins = () => expectedPairs(ORIGINAL, DATED);
 
 describe('the pin fails, and says what to do, when a door is opened or closed', () => {
   it('a key ADDED to a page — a door opened to somebody who was refused', () => {
@@ -211,14 +221,16 @@ describe('the pin fails, and says what to do, when a door is opened or closed', 
   });
 
   it('a dated sentence makes the same change legitimate — the ONE edit that adds a page', () => {
-    const added = [...real, { path: '/confirmation/rules', permissions: ['settings.view'] }];
+    const added = [...real, { path: '/finance/rules', permissions: ['settings.view'] }];
     expect(drift(added, pins())).toHaveLength(1);
+    // 18/11 (C1): the hypothetical page is /finance/rules now — /confirmation/rules is a real dated page.
     const dated: Dated[] = [
-      { on: '2026-12-01', path: '/confirmation/rules', change: 'added', permissions: ['settings.view'], sentence: 'صفحة تجريبية بمفتاح الإعدادات فقط، لهذا الاختبار.' },
+      ...DATED,
+      { on: '2026-12-01', path: '/finance/rules', change: 'added', permissions: ['settings.view'], sentence: 'صفحة تجريبية بمفتاح الإعدادات فقط، لهذا الاختبار.' },
     ];
     expect(drift(added, expectedPairs(ORIGINAL, dated))).toEqual([]);
     // …and it legitimises that change ONLY: the same page with another key set is still a drift.
-    expect(drift([...real, { path: '/confirmation/rules', permissions: ['users.view'] }], expectedPairs(ORIGINAL, dated))).toHaveLength(1);
+    expect(drift([...real, { path: '/finance/rules', permissions: ['users.view'] }], expectedPairs(ORIGINAL, dated))).toHaveLength(1);
   });
 
   it('a dated sentence needs its date, a real reason, and a change that fits the page', () => {
