@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
+    "rawButtons": 660,
     "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawSurfaces": 343,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2598
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -377,13 +377,8 @@
       "rawButtons": 2,
       "textXs": 10
     },
-    "src/components/products/CategoriseDialog.tsx": {
-      "rawButtons": 2,
-      "textXs": 6
-    },
     "src/components/products/CategoryPicker.tsx": {
-      "rawButtons": 3,
-      "textXs": 3
+      "textXs": 1
     },
     "src/components/products/FixedCostEditor.tsx": {
       "rawSurfaces": 1,
@@ -392,11 +387,6 @@
     "src/components/products/ProductAttributes.tsx": {
       "rawCheckboxes": 1,
       "textXs": 3
-    },
-    "src/components/products/ProductEditDialog.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
     },
     "src/components/products/ProductHeadline.tsx": {
       "rawSurfaces": 2,
@@ -621,9 +611,7 @@
       "textXs": 4
     },
     "src/components/screens/ProductsScreen.tsx": {
-      "rawButtons": 6,
-      "rawSurfaces": 4,
-      "textXs": 26
+      "textXs": 2
     },
     "src/components/screens/ProfileScreen.tsx": {
       "rawSurfaces": 1,

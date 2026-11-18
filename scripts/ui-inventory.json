@@ -914,7 +914,7 @@
     "buttons": 3,
     "inputs": 8,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -1411,14 +1411,15 @@
     "tabs": 0
   },
   "src/components/screens/ProductsScreen.tsx": {
-    "buttons": 14,
+    "buttons": 8,
     "inputs": 7,
     "columns": 7,
-    "cards": 1,
+    "cards": 5,
     "modals": 1,
     "icons": 13,
     "links": 2,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 5
   },
   "src/components/screens/ProfileScreen.tsx": {
     "buttons": 1,

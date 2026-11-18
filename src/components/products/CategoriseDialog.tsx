@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { RiLoader4Line } from '@remixicon/react';
 import {
@@ -115,14 +116,14 @@ export function CategoriseDialog({
         </p>
 
         {existing === null ? (
-          <p className="inline-flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+          <p className="inline-flex items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
             <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden />
             جارٍ تحميل تصنيفاتك…
           </p>
         ) : (
           <>
             {loadFailed && (
-              <p className="text-xs leading-relaxed text-[var(--sys-warning)]">
+              <p className="text-note leading-relaxed text-[var(--sys-warning)]">
                 تعذّر تحميل تصنيفاتك الحالية — قد يظهر «جديد» لتصنيفٍ موجود، وسيُطابَق بالاسم عند التطبيق ولن يتكرّر.
               </p>
             )}
@@ -132,7 +133,7 @@ export function CategoriseDialog({
                 <li key={p.id} className="flex flex-wrap items-start gap-2 px-3 py-2">
                   <div className="min-w-[150px] flex-1">
                     <p className="truncate text-sm text-[var(--sys-heading)]">{p.label}</p>
-                    <p className="truncate text-xs text-[var(--sys-muted-foreground)]">{p.sku}</p>
+                    <p className="truncate text-note text-[var(--sys-muted-foreground)]">{p.sku}</p>
                   </div>
                   <select
                     aria-label={`تصنيف ${p.label}`}
@@ -151,7 +152,7 @@ export function CategoriseDialog({
               ))}
             </ul>
 
-            <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
               {picked.length} من {products.length} منتجاً لها تصنيف مختار، والباقي يبقى بلا تصنيف.
               {made.length > 0 && ` سيُنشأ: ${made.join('، ')}.`}
               {picked.length > sending.length && ` يُطبَّق ${sending.length} في المرّة الواحدة — الباقي بعد أن تضغط من جديد.`}
@@ -164,22 +165,20 @@ export function CategoriseDialog({
         )}
 
         <div className="flex flex-wrap items-center gap-2 border-t border-[var(--sys-border)] pt-2">
-          <button
+          <Button
             type="button"
-            onClick={() => void apply()}
+            size="sm"
+            onClick={() => {
+              void apply();
+            }}
             disabled={existing === null || sending.length === 0 || busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 py-1.5 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
             {busy && <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden />}
             {busy ? 'جارٍ التصنيف…' : `طبّق على ${sending.length} منتجاً`}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs"
-          >
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={onClose}>
             إغلاق
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
