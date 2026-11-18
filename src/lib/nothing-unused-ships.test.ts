@@ -298,6 +298,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    */
   // `Switch` LEFT this list on 18/11 (R15c): «شركات الشحن وأجورها» draws it for «نشطة / موقوفة» on every courier row.
   // `Segmented` LEFT this list on 18/11 (R10e): «صندوق الواتساب» draws it for «مفتوحة / مغلقة».
+  // 18/11 (R12a): `Segmented` left this list — «مصدر المنتج» in the new-product form of ProductsScreen draws it too.
 
   /*
    * R2a (18/11) — THE TWO COMPONENTS THE KIT GAINED AND NO SCREEN DRAWS YET.
