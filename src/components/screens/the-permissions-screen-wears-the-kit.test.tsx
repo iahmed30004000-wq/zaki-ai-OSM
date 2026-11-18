@@ -94,7 +94,8 @@ const keyOf = (b: HTMLInputElement) => b.labels?.[0]?.textContent?.match(/[a-z_]
 describe('the frame', () => {
   it('is the menu\'s name for the screen, in the one page heading', async () => {
     render(<PermissionsScreen />);
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain(routeLabel('/admin/permissions'));
+    // The whole heading, not a part of it: «الأدوار والصلاحيات» (the hand-typed name it carried) also contains «الصلاحيات».
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(routeLabel('/admin/permissions'));
     expect(routeLabel('/admin/permissions')).toBe('الصلاحيات');
   });
 
