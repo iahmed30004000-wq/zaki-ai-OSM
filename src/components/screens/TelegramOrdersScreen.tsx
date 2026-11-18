@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { RiArrowGoBackLine, RiEditLine, RiEqualizer2Line, RiRefreshLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Tabs } from '@/components/ui/Tabs';
@@ -17,6 +17,7 @@ import { useConfirm } from '@/components/ui/Confirm';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { routeLabel } from '@/lib/route-registry';
 import { apiJson } from '@/lib/api-client';
 import { arDateTime } from '@/lib/format';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
@@ -321,37 +322,38 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
   const { rows, pagination, extra: facts } = list;
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto" dir="rtl">
-      <PageHeader
-        title="طلبات تلجرام"
-        description="الرسالة المكتوبة بصيغة الطلب بتصير طلب لحالها، واللي فيها غلط بتستنّى هون للمراجعة."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setNames(true)}>
-              منتجات الأب سيل
-            </Button>
-            {canManage && (
-              <Button variant="outline" size="sm" onClick={() => setMerging(true)}>
-                دمج الأب سيل — تجربة
-              </Button>
-            )}
-            {canConnect && (
-              <Link href="/settings/links#telegram">
-                <Button variant="outline" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
-              </Link>
-            )}
-            <Button variant="ghost" size="sm" onClick={refresh}>
-              <RiRefreshLine className="w-4 h-4 ml-1" /> تحديث
-            </Button>
-          </div>
-        }
-      >
-        {bot && (
+    <PageShell
+      title={routeLabel('/growth/telegram/orders')}
+      description="الرسالة المكتوبة بصيغة الطلب بتصير طلب لحالها، واللي فيها غلط بتستنّى هون للمراجعة."
+      width="wide"
+      badge={
+        bot && (
           <StatusChip tone={bot === 'on' ? 'good' : bot === 'off' ? 'bad' : 'neutral'}>
             {bot === 'on' ? 'البوت متصل' : bot === 'off' ? 'البوت غير متصل' : 'حالة البوت مش معروفة'}
           </StatusChip>
-        )}
-      </PageHeader>
+        )
+      }
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setNames(true)}>
+            منتجات الأب سيل
+          </Button>
+          {canManage && (
+            <Button variant="outline" size="sm" onClick={() => setMerging(true)}>
+              دمج الأب سيل — تجربة
+            </Button>
+          )}
+          {canConnect && (
+            <Link href="/settings/links#telegram">
+              <Button variant="outline" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
+            </Link>
+          )}
+          <Button variant="ghost" size="sm" onClick={refresh}>
+            <RiRefreshLine className="w-4 h-4 ml-1" /> تحديث
+          </Button>
+        </div>
+      }
+    >
 
       <p className="text-sm text-[var(--sys-muted-foreground)]">
         الرسالة لازم تكون بهالعناوين، سطر لكل معلومة: رقم الطلب (بيُستعمل لدمج رسالتي الأب سيل فقط) · تاريخ الطلب · إسم العميل · رقم الهاتف · عنوان العميل · إسم المنتج · إسم العرض · السعر · الكمية. غير هيك ما بتصير طلب.
@@ -414,6 +416,6 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
           onPage={list.goTo}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -5,7 +5,7 @@
     "rawSurfaces": 348,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2613
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -710,17 +710,11 @@
       "textXs": 10
     },
     "src/components/screens/TelegramAliasesDialog.tsx": {
-      "textXs": 8
-    },
-    "src/components/screens/TelegramOrdersScreen.tsx": {
-      "textXs": 9
+      "textXs": 1
     },
     "src/components/screens/TelegramSettingsScreen.tsx": {
       "rawSurfaces": 1,
       "textXs": 12
-    },
-    "src/components/screens/TelegramUpsellMergeDialog.tsx": {
-      "textXs": 3
     },
     "src/components/screens/TrackingScreen.tsx": {
       "rawButtons": 27,
