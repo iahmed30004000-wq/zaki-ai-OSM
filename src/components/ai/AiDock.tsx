@@ -6,6 +6,7 @@ import { RiCloseLine, RiDeleteBinLine, RiLoader4Line, RiRobot2Line, RiSendPlaneL
 import { useBulkActive } from '@/components/shell/BulkBar';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 import { arTime } from '@/lib/format';
 import { useAppOptional } from '@/context/AppContext';
 import { dockKey } from '@/lib/dock-memory';
@@ -224,8 +225,12 @@ function AiDockSurface() {
       // is the whole difference between an assistant and an interruption.
       /* The open panel clears the bar for the same reason the button does. */
       style={{ bottom: 'calc(var(--sys-mobile-nav-h) + env(safe-area-inset-bottom) + 0.75rem)' }}
-      className="fixed end-4 z-40 flex h-[min(32rem,calc(100vh-8rem))] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] shadow-overlay md:!bottom-4 md:h-[min(32rem,calc(100vh-2rem))]"
+      /* 18/11 (R17b): this element only places the panel — corner, width, height. The
+         surface itself is the kit's `Card plain` inside it: a panel over the page, not a
+         page-level card, so it wears no theme ornament. */
+      className="fixed end-4 z-40 h-[min(32rem,calc(100vh-8rem))] w-[min(22rem,calc(100vw-2rem))] md:!bottom-4 md:h-[min(32rem,calc(100vh-2rem))]"
     >
+      <Card plain className="flex h-full flex-col overflow-hidden shadow-overlay">
       {/*
         18/11 (R17b): the header wore the heading colour as a fill, with its own
         pale buttons — the one dark bar in the product. It is the card's own
@@ -320,6 +325,7 @@ function AiDockSurface() {
           <RiSendPlaneLine className="icon-mirror h-4 w-4" />
         </IconButton>
       </form>
+      </Card>
     </div>
   );
 }

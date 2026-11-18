@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 678,
+    "rawButtons": 672,
     "rawCheckboxes": 77,
-    "rawSurfaces": 349,
+    "rawSurfaces": 348,
     "rawDatePickers": 16,
     "screenTitle": 27,
-    "textXs": 2648
+    "textXs": 2633
   },
   "files": {
     "src/app/(system)/(shell)/settings/tracking/page.tsx": {
@@ -39,9 +39,7 @@
       "rawSurfaces": 1
     },
     "src/components/ai/AiDock.tsx": {
-      "rawButtons": 6,
-      "rawSurfaces": 1,
-      "textXs": 9
+      "rawButtons": 1
     },
     "src/components/apps/SystemTokensPanel.tsx": {
       "rawCheckboxes": 1,
@@ -1131,8 +1129,7 @@
       "textXs": 1
     },
     "src/components/shell/CommandPalette.tsx": {
-      "rawButtons": 3,
-      "textXs": 6
+      "rawButtons": 2
     },
     "src/components/shell/EditingStoreBar.tsx": {
       "rawSurfaces": 1,
