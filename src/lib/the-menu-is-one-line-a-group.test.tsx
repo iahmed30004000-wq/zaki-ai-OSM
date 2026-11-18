@@ -105,9 +105,11 @@ describe('the menu is ten lines', () => {
     // اليوم 1 (loose, one screen) + الطلبات 1 + التأكيد 1 + الشحن 1 + المخزون والمنتجات 1 + المال 1 + التقارير 1 + واجهة المتجر 2 (loose,
     // two screens, until the store's own request folds them) + الإدارة 1 = 1+1+1+1+1+1+1+2+1 = 10.
     // And the 54 screens: 1 + 5 + 5 + 5 + 4 + 8 + 5 + 2 + 19 = 54.
-    expect(ALL_ROUTES).toHaveLength(54);
+    // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج», the last tab of «الطلبات» (contract oms-lp.v1 §11):
+    // 1 + 6 + 5 + 5 + 4 + 8 + 5 + 2 + 19 = 55. One more screen, no more line (it is a tab of an existing hub).
+    expect(ALL_ROUTES).toHaveLength(55);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 5, 5, 5, 4, 8, 5, 2, 19]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 8, 5, 2, 19]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });

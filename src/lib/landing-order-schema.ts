@@ -57,6 +57,13 @@ export const ARRIVED_WITHOUT_REGION_ACTION = 'ARRIVED_WITHOUT_REGION';
  */
 export const FROM_ABANDONED_CART_ACTION = 'FROM_ABANDONED_CART';
 
+/**
+ * The history row of an order of a product with variants that came with no choice per piece (an older page, an
+ * abandoned cart): the size and colour of every piece are asked on the call (the owner, 2026-11-18). Named in Arabic
+ * by `order-timeline.ts`.
+ */
+export const VARIANTS_NOT_CHOSEN_ACTION = 'VARIANTS_NOT_CHOSEN';
+
 /** Matches a submitted city against the country's regions, ignoring case and spacing. */
 export function isKnownRegion(regions: string[], value: string): boolean {
   const v = value.trim().toLocaleLowerCase('ar');

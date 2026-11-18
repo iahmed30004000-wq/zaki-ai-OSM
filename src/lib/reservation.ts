@@ -1,6 +1,7 @@
 import { db } from './db';
 import type { Prisma } from '@prisma/client';
 import { realStoresHere } from './test-store';
+import { lineVariantShortage } from './product-variants';
 
 /**
  * RESERVATION — per LINE, never per order (contract, inventory section).
@@ -340,7 +341,7 @@ export async function reserveOrderLines(
    */
   const items = await tx.orderItem.findMany({
     where: { orderId, order: { OR: [{ storeId: null }, { store: realStoresHere() }] } },
-    select: { id: true, companyId: true, productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true },
+    select: { id: true, companyId: true, productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true, variantSummary: true },
   });
   // The add-ons the customer accepted on the thank-you screen — they reserve with the lines (see `reservedElsewhere`).
   const addOns = await tx.orderAddOn.findMany({
@@ -364,7 +365,15 @@ export async function reserveOrderLines(
       continue;
     }
     const available = await availableStock(tx, item.companyId, item.productId, orderId);
-    const missing = Math.max(0, need - available);
+    /*
+     * A LINE WHOSE PIECES WERE CHOSEN (product variants, the owner 2026-11-18) is short when ANY of its combinations is
+     * — «أسود · L» runs out alone even while the product still has «كحلي · M». Asked under the product's lock taken
+     * above, which covers its combinations. A line with no pieces chosen (`variantSummary` null) asks nothing more.
+     */
+    const variantMissing = item.variantSummary
+      ? await lineVariantShortage(tx, { companyId: item.companyId, productId: item.productId, orderItemId: item.id, orderId })
+      : 0;
+    const missing = Math.max(0, need - available, variantMissing);
 
     if (missing > 0) {
       outcome.shortages.push({
