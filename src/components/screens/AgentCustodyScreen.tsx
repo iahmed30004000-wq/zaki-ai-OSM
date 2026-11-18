@@ -4,7 +4,10 @@ import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { amount, arDateShort, type Currency } from '@/lib/format';
 import { RiAlertLine, RiArchiveLine, RiArrowLeftSLine, RiEBike2Line, RiLoader4Line, RiQuestionLine, RiUserLocationLine, RiWallet3Line } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { routeLabel } from '@/lib/route-registry';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
 import { SHIPPING_STATUS_AR } from '@/lib/shipping-workflow';
@@ -133,18 +136,16 @@ export function AgentCustodyScreen() {
     const awaiting = open.owing.filter((o) => o.collected === null);
 
     return (
-      <div className="max-w-4xl space-y-4">
-        <button
-          onClick={() => setOpen(null)}
-          className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1"
-        >
-          <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
-          كل المندوبين
-        </button>
-
-        <PageHeader title={`عهدة ${open.agent.name}`}
+        <PageShell title={`عهدة ${open.agent.name}`}
           description={open.agent.code}
-        />
+          width="medium"
+          actions={
+            <Button variant="quiet" size="sm" onClick={() => setOpen(null)}>
+              <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
+              كل المندوبين
+            </Button>
+          }
+        >
 
         <Summary totals={open.totals} money={money} />
 
@@ -204,33 +205,33 @@ export function AgentCustodyScreen() {
           commission becomes payable only then).
         */}
         {open.owing.length > 0 && (
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 space-y-2">
-            <h4 className="text-xs font-black text-[var(--sys-foreground)]">
+          <Card padding="md" className="space-y-2">
+            <h4 className="text-sm font-black text-[var(--sys-foreground)]">
               استلام ما بذمّته
             </h4>
-            <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
               المندوب لا يرسل كشفاً، فتحصيلُه يدويّ: من شاشة متابعة الشحن تُختار طلباتُه
               المسلَّمة وتُسمّى المحفظة، فتُكتب حركةُ المحفظة هناك وتُغلق الطلبات وتصبح عمولتُها
               مستحقّة. لا يُكتب مالٌ من هذه الشاشة، ولا تصلح شاشةُ الكشوف لمندوب.
             </p>
             <a
               href="/ops/tracking"
-              className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 py-1.5 text-xs font-medium text-[var(--sys-primary-foreground)]"
+              className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 py-1.5 text-sm font-medium text-[var(--sys-primary-foreground)]"
             >
               <RiWallet3Line className="w-4 h-4" aria-hidden />
               سجّل تحصيلاً يدويّاً من {open.agent.name}
             </a>
-          </div>
+          </Card>
         )}
-      </div>
+        </PageShell>
     );
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
-      <PageHeader title="عهدة المندوبين"
+    <PageShell title={routeLabel('/finance/agents')}
           description="ما بيد كل مندوب الآن: بضاعة لم تُغلق، ومال مؤكَّد حصّله ولم يسلّمه، وطلبات سُلّمت بلا مبلغ مسجَّل."
-        />
+          width="medium"
+        >
 
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
@@ -243,7 +244,8 @@ export function AgentCustodyScreen() {
           why="المندوبون يُضافون من الإعدادات ← شركات الشحن بنوع «مندوب»، ثم يظهر عهدةُ كل واحد هنا."
         />
       ) : (
-        <ul className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
+        <Card plain>
+        <ul className="divide-y divide-[var(--sys-border)]">
           {agents.map(({ agent, totals }) => (
             <li key={agent.id}>
               <button
@@ -262,7 +264,7 @@ export function AgentCustodyScreen() {
                       </span>
                       <Balance totals={totals} money={money} />
                     </div>
-                    <dl className="mt-2 grid grid-cols-3 gap-2 text-xs text-[var(--sys-muted-foreground)]">
+                    <dl className="mt-2 grid grid-cols-3 gap-2 text-note text-[var(--sys-muted-foreground)]">
                       <div>
                         <dt>بيده</dt>
                         <dd className="font-semibold text-[var(--sys-heading)] tabular-nums">
@@ -287,17 +289,17 @@ export function AgentCustodyScreen() {
                     {agent.name}
                   </span>
 
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     بيده:{' '}
                     <span className="font-semibold text-[var(--sys-heading)] tabular-nums">{totals.inHandCount}</span> طلب
                     <span className="text-[var(--sys-muted)]"> ({money(totals.inHandValue)})</span>
                   </span>
 
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     حصّل مؤكَّد: <span className="font-semibold text-[var(--sys-heading)] tabular-nums">{money(totals.collected)}</span>
                   </span>
 
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     له: <span className="font-semibold text-[var(--sys-heading)] tabular-nums">{money(totals.fees)}</span>
                   </span>
 
@@ -309,7 +311,7 @@ export function AgentCustodyScreen() {
                     agent carrying twelve delivered orders needs to know which
                     of the two facts he is looking at. */}
                 {totals.hasUnconfirmed && (
-                  <p className="mt-1.5 text-xs text-[var(--sys-warning)] tabular-nums">
+                  <p className="mt-1.5 text-note text-[var(--sys-warning)] tabular-nums">
                     و{totals.awaitingCount} طلباً سُلّم بلا مبلغ مسجَّل (قيمة الطلبات {money(totals.awaitingValue)}) — غير محتسب
                   </p>
                 )}
@@ -317,16 +319,17 @@ export function AgentCustodyScreen() {
             </li>
           ))}
         </ul>
+        </Card>
       )}
 
-      <p className="text-xs text-[var(--sys-muted)]">
+      <p className="text-note text-[var(--sys-muted)]">
         الأرقام محسوبة من الطلبات نفسها لحظة فتح الشاشة — لا رصيد مخزَّن يمكن أن يختلف عن الواقع.
         و«حصّل مؤكَّد» هو ما سُجِّل فعلاً لا ما نتوقّعه: {WHY_NO_AMOUNT}
       </p>
 
       {/* The money road goes on from here: «التحصيل». */}
       <NextStepButton />
-    </div>
+    </PageShell>
   );
 }
 
@@ -344,7 +347,7 @@ function Balance({ totals, money }: { totals: Totals; money: (n: number) => stri
 
   return (
     <span
-      className={`ms-auto text-xs font-bold tabular-nums px-2.5 py-1 rounded-md border ${
+      className={`ms-auto text-note font-bold tabular-nums px-2.5 py-1 rounded-md border ${
         owesUs || unknownOnly
           ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]'
           : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]'
@@ -372,7 +375,7 @@ function Summary({ totals, money }: { totals: Totals; money: (n: number) => stri
               : 'bg-[var(--sys-surface)] border-[var(--sys-border)]'
           }`}
         >
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             {unknownOnly
               ? 'لا مبلغ مؤكَّد'
               : totals.balance > 0
@@ -390,7 +393,7 @@ function Summary({ totals, money }: { totals: Totals; money: (n: number) => stri
       {/* The other half of the picture, in a strip of its own so it can never
           be mistaken for cash. */}
       {totals.hasUnconfirmed && (
-        <p className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3 text-xs leading-relaxed text-[var(--sys-warning)]">
+        <p className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3 text-note leading-relaxed text-[var(--sys-warning)]">
           <RiAlertLine className="w-4 h-4 inline align-[-3px] me-1" aria-hidden />
           <span className="tabular-nums">{totals.awaitingCount}</span> طلباً سُلّم ولم يُسجَّل له مبلغ محصَّل —
           قيمة هذه الطلبات <span className="tabular-nums">{money(totals.awaitingValue)}</span> وأجورها{' '}
@@ -404,11 +407,11 @@ function Summary({ totals, money }: { totals: Totals; money: (n: number) => stri
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-      <p className="text-xs text-[var(--sys-muted-foreground)]">{label}</p>
+    <Card plain padding="sm">
+      <p className="text-note text-[var(--sys-muted-foreground)]">{label}</p>
       <p className="text-sm font-black text-[var(--sys-heading)] tabular-nums mt-0.5" dir="ltr">{value}</p>
       {hint && <p className="text-xs text-[var(--sys-muted)] tabular-nums" dir="ltr">{hint}</p>}
-    </div>
+    </Card>
   );
 }
 
@@ -427,14 +430,14 @@ function Section({
   // reader meets «JOD 2.000 أجرة». On a phone only the FIGURE is left-to-right and the label stays outside it.
   const fig = (n: number) => (phone ? <span dir="ltr">{money(n)}</span> : money(n));
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg">
+    <Card>
       <div className="px-4 py-3 border-b border-[var(--sys-border)]">
-        <h4 className="text-xs font-black text-[var(--sys-heading)] flex items-center gap-2">
+        <h4 className="text-sm font-black text-[var(--sys-heading)] flex items-center gap-2">
           <Icon className="w-4 h-4 text-[var(--sys-primary)]" />
           {title}
-          <span className="text-xs font-medium text-[var(--sys-muted)] tabular-nums">{orders.length}</span>
+          <span className="text-note font-medium text-[var(--sys-muted)] tabular-nums">{orders.length}</span>
         </h4>
-        <p className="text-xs text-[var(--sys-muted)] mt-0.5 leading-relaxed">{subtitle}</p>
+        <p className="text-note text-[var(--sys-muted)] mt-0.5 leading-relaxed">{subtitle}</p>
       </div>
 
       {orders.length === 0 ? (
@@ -447,7 +450,7 @@ function Section({
           {orders.map((o) => {
             const stuck = o.shippingStatus === 'FAILED_DELIVERY' || o.shippingStatus === 'RETURN_REQUESTED';
             return (
-              <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-xs">
+              <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
                 <OrderRef id={o.id} number={o.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
                 {stuck && (
                   <span className="inline-flex items-center gap-1 text-[var(--sys-warning)]">
@@ -482,6 +485,6 @@ function Section({
           })}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }
