@@ -5,7 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { useRegions } from '@/hooks/useRegions';
 import { arDateTime } from '@/lib/format';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiForbidLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -249,8 +249,9 @@ export function ConfirmationIssuesScreen() {
     'w-full h-11 md:h-10 px-3 rounded-lg border-2 border-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] text-sm focus:outline-none';
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/confirmation/issues')} />
+    // The frame (R8g): `max-w-4xl` is the shell's `medium`, and the list keeps its own 12px rhythm inside it.
+    <PageShell title={routeLabel('/confirmation/issues')} width="medium">
+    <div className="space-y-3">
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
@@ -480,5 +481,6 @@ export function ConfirmationIssuesScreen() {
         );
       })}
     </div>
+    </PageShell>
   );
 }

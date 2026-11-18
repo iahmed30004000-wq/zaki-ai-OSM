@@ -93,15 +93,23 @@ describe('one page header', () => {
     expect(offenders, 'ملفات لسّا بترسم ScreenTitle').toEqual([]);
   });
 
-  it.each(TABLE)('%s draws PageHeader with the registry name of %s, read, never typed', (file, path, count) => {
+  /*
+   * 18/11 (R8g, «الإشكالات» on the kit): this test said «draws PageHeader» and read only `<PageHeader`. A screen that moves onto
+   * the frame draws `<PageShell title=…>`, and the frame draws exactly that `PageHeader` with exactly that title (PageShell.tsx) —
+   * so the frame counts as the header here. Every other check is unchanged: one import, the title read through `routeLabel`,
+   * never typed, and the count per file. A file that drew BOTH would count two and fail.
+   */
+  it.each(TABLE)('%s draws PageHeader (itself or through PageShell) with the registry name of %s, read, never typed', (file, path, count) => {
     const src = stripComments(repoFile(file));
-    expect(src, 'ما بيستورد PageHeader').toMatch(/import \{ PageHeader \} from '@\/components\/ui\/PageHeader';/);
+    expect(src, 'ما بيستورد PageHeader ولا PageShell').toMatch(
+      /import \{ PageHeader \} from '@\/components\/ui\/PageHeader';|import \{ PageShell \} from '@\/components\/ui\/PageShell';/
+    );
     expect(src, 'ما بيستورد routeLabel').toMatch(/import \{ routeLabel \} from '@\/lib\/route-registry';/);
-    const headers = src.match(/<PageHeader\b/g) ?? [];
+    const headers = src.match(/<(?:PageHeader|PageShell)\b/g) ?? [];
     expect(headers, 'عدد الرؤوس').toHaveLength(count);
-    const titled = src.match(new RegExp(`<PageHeader\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
+    const titled = src.match(new RegExp(`<(?:PageHeader|PageShell)\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
     expect(titled, `العنوان مش routeLabel('${path}')`).toHaveLength(count);
-    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<PageHeader\s+title="/);
+    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<(?:PageHeader|PageShell)\s+title="/);
   });
 
   it.each(TABLE.filter((r) => r[3] !== null))('%s is drawn by the page at %s', (file, path, _count, page) => {
