@@ -9,13 +9,15 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { useTell } from '@/components/ui/Confirm';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { MissionDone } from '@/components/ui/NextStep';
@@ -148,6 +150,14 @@ const read = (body: unknown): PagedRead<Row, Extra> => {
   const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View }; mayChargeFee?: boolean; mayReceiveAll?: boolean };
   return { rows: b.orders, pagination: b.pagination, extra: { facts: b.facts, view: b.applied.view, mayChargeFee: b.mayChargeFee !== false, mayReceiveAll: b.mayReceiveAll === true } };
 };
+
+/**
+ * The list's frame. A desk: the page's card around the table. A phone: no frame — the cards ARE the list, and a card
+ * inside a card is a second edge for nothing. Module-level, so the frame keeps one identity between renders.
+ */
+function ListFrame({ phone, children }: { phone: boolean; children: React.ReactNode }) {
+  return phone ? <div>{children}</div> : <Card padding="sm">{children}</Card>;
+}
 
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
 
@@ -297,50 +307,54 @@ export function ReturnsScreen() {
   ];
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/ops/returns')} />
-
-      {/* Drawn from the first moment, with or without the numbers: a desk that scans must never open without its box. */}
-      <ListToolbar
-        search={term}
-        onSearch={setTerm}
-        placeholder="امسح أو اكتب المرجع أو الاسم…"
-        searchAutoFocus
-        searchDir="ltr"
-        // A phone is the scanner a warehouse already owns. It keeps
-        // scanning: a returned pallet is twenty parcels, not one.
-        searchExtra={
-          <>
-            <ScanButton
-              title="امسح بوليصة المرتجع — QR أو باركود"
-              continuous
-              onScan={(code) => {
-                // Putting it in the box IS the search — the list reloads whenever the
-                // box changes, so there is one request and one code path, the same
-                // one a typed search takes.
-                setTerm(code);
-                return code;
-              }}
-            />
-            {receiveAllTotal > 0 && (
-              <Button size="md" className="shrink-0" onClick={() => setReceivingAll(true)}>
-                استلام الكل ({receiveAllTotal})
-              </Button>
-            )}
-          </>
-        }
-        filters={filters ?? []}
-        activeCount={activeCount}
-        onReset={reset}
-      />
-
+    <PageShell
+      title={routeLabel('/ops/returns')}
+      width="wide"
+      // The frame's row of questions (R11e): the search, the scan, «استلام الكل» and the dropdowns. It was the first block of
+      // the content; it is the same place on the screen, now the one every screen keeps its filters in.
+      // Drawn from the first moment, with or without the numbers: a desk that scans must never open without its box.
+      filters={
+        <ListToolbar
+          search={term}
+          onSearch={setTerm}
+          placeholder="امسح أو اكتب المرجع أو الاسم…"
+          searchAutoFocus
+          searchDir="ltr"
+          // A phone is the scanner a warehouse already owns. It keeps
+          // scanning: a returned pallet is twenty parcels, not one.
+          searchExtra={
+            <>
+              <ScanButton
+                title="امسح بوليصة المرتجع — QR أو باركود"
+                continuous
+                onScan={(code) => {
+                  // Putting it in the box IS the search — the list reloads whenever the
+                  // box changes, so there is one request and one code path, the same
+                  // one a typed search takes.
+                  setTerm(code);
+                  return code;
+                }}
+              />
+              {receiveAllTotal > 0 && (
+                <Button size="md" className="shrink-0" onClick={() => setReceivingAll(true)}>
+                  استلام الكل ({receiveAllTotal})
+                </Button>
+              )}
+            </>
+          }
+          filters={filters ?? []}
+          activeCount={activeCount}
+          onReset={reset}
+        />
+      }
+    >
       {list.error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{list.error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
 
       {!extra ? (
         <SkeletonRows rows={4} />
       ) : (
-        <div className={phone ? undefined : 'rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3'}>
+        <ListFrame phone={phone}>
           {/* A returns clerk reads this at the door with a parcel in one
               hand. Six columns on a phone is unreadable; the card leads
               with the reference on the label and whose parcel it is. */}
@@ -421,12 +435,9 @@ export function ReturnsScreen() {
                         استلام
                       </Button>
                     ) : (
-                      <button
-                        onClick={() => setActive(r as PendingRow)}
-                        className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
-                      >
+                      <Button variant="quiet" size="sm" onClick={() => setActive(r as PendingRow)}>
                         استلام
-                      </button>
+                      </Button>
                     )
                 : undefined
             }
@@ -472,7 +483,7 @@ export function ReturnsScreen() {
               />
             </div>
           )}
-        </div>
+        </ListFrame>
       )}
 
       {active && (
@@ -500,7 +511,7 @@ export function ReturnsScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -611,15 +622,9 @@ function ReceiveAllDialog({
             <li>التوصيل الجزئي بينترك، بينستلم من نافذته لحاله.</li>
           </ul>
           <p className="font-medium text-[var(--sys-destructive)]">ما في تراجع بعد الضغطة.</p>
-          <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(e) => setAcknowledged(e.target.checked)}
-              className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
-            />
-            <span>أقرّ إني عددت وفحصت المرتجعات</span>
-          </label>
+          <div className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2">
+            <Checkbox id="returns-receive-all-ack" checked={acknowledged} onChange={setAcknowledged} label="أقرّ إني عددت وفحصت المرتجعات" />
+          </div>
         </div>
       )}
     </Modal>
@@ -669,18 +674,13 @@ function ReceiveDialog({
   const actionRow = (
     <div className="flex gap-2 pt-1">
       {!gated && (
-        <button
-          type="submit"
-          form={phone ? formId : undefined}
-          disabled={busy || !acknowledged}
-          className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50${phone ? ' flex-1' : ''}`}
-        >
+        <Button type="submit" form={phone ? formId : undefined} disabled={busy || !acknowledged} className={phone ? 'flex-1' : undefined}>
           {busy ? 'جارٍ الحفظ…' : 'تأكيد الاستلام'}
-        </button>
+        </Button>
       )}
-      <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">
+      <Button type="button" variant="secondary" onClick={onClose}>
         {arrived === false ? 'إغلاق' : 'إلغاء'}
-      </button>
+      </Button>
     </div>
   );
 
@@ -739,7 +739,7 @@ function ReceiveDialog({
           in the row behind this dialog said 1 while the list said 3.
         */}
         <div className="border border-[var(--sys-border)] rounded-lg overflow-hidden">
-          <div className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 bg-[var(--sys-surface)] text-xs font-medium text-[var(--sys-muted-foreground)]`}>
+          <div className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 bg-[var(--sys-surface)] text-note font-medium text-[var(--sys-muted-foreground)]`}>
             {!phone && <span>المنتج</span>}
             <span className={phone ? 'text-center' : 'w-12 text-center'}>شُحن</span>
             <span className={phone ? 'text-center' : 'w-12 text-center'}>استلمه</span>
@@ -748,7 +748,7 @@ function ReceiveDialog({
           {order.lines.map((l) => (
             <div
               key={l.itemId}
-              className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 border-t border-[var(--sys-border)] text-xs items-center`}
+              className={`${phone ? 'grid grid-cols-3' : 'grid grid-cols-[1fr_auto_auto_auto]'} gap-2 px-2 py-1.5 border-t border-[var(--sys-border)] text-note items-center`}
             >
               {/* The name is the thing being checked. A phone gives it a line of its own, in full, with the three
                   numbers in a row under it; a desk keeps one row and the ellipsis. */}
@@ -782,44 +782,43 @@ function ReceiveDialog({
           and the record say another.
         */}
         {order.action && (
-          <div className="bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-2">
+          <Card plain padding="sm" className="space-y-2">
             <p className="text-sm font-medium text-[var(--sys-heading)]">{order.action.question}</p>
+            {/*
+              Two `Button`s, not a `Segmented`: the pair starts with no answer, and a second press on «نعم» puts the count
+              back to the whole expected figure — a segmented bar calls its handler only on a CHANGE, so it would swallow it.
+              The chosen answer wears its colour (green yes, red no); the other stays framed.
+            */}
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant={arrived === true ? 'success' : 'secondary'}
+                aria-pressed={arrived === true}
                 onClick={() => {
                   setArrived(true);
                   setReceived(order.expectedQty);
                 }}
-                className={`h-11 md:h-10 px-3 rounded-lg border text-sm ${
-                  arrived === true
-                    ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success)] text-[var(--sys-success)] font-medium'
-                    : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
-                }`}
               >
                 {order.action.yes}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant={arrived === false ? 'danger' : 'secondary'}
+                aria-pressed={arrived === false}
                 onClick={() => {
                   setArrived(false);
                   setReceived(0);
                 }}
-                className={`h-11 md:h-10 px-3 rounded-lg border text-sm ${
-                  arrived === false
-                    ? 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] font-medium'
-                    : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
-                }`}
               >
                 {order.action.no}
-              </button>
+              </Button>
             </div>
             {arrived === false && (
-              <p className="text-xs text-[var(--sys-destructive)]">
+              <p className="text-note text-[var(--sys-destructive)]">
                 لا يُسجَّل استلام إذن. الطلب يبقى مفتوحاً على نصفه الراجع، ويظهر في هذه القائمة حتى تصل القطع.
               </p>
             )}
-          </div>
+          </Card>
         )}
 
         {/*
@@ -828,7 +827,7 @@ function ReceiveDialog({
           their half and would otherwise leave believing the order is done.
         */}
         {order.completion.halves.length > 1 && (
-          <ul className="text-xs bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 space-y-1">
+          <ul className="text-note bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 space-y-1">
             <li className="font-medium text-[var(--sys-heading)]">
               هذا الطلب يُتَمَّم مرتين — لا يُغلق إلا بإتمام النصفين:
             </li>
@@ -881,23 +880,19 @@ function ReceiveDialog({
                 «إذا كانت بيضا فتكون أزرق»
 
               `accent-color` is the one property that tints a native
-              checkbox, and nothing in the product set it — not here and not
-              in system.css. So every tick box on this desk drew the user
-              agent's own grey-and-white control, on a surface built out of
-              `--sys-*` tokens, and a checked box did not read as checked.
-              `min-h-11 min-w-11` on the label keeps the phone tap target at
-              44px while the box itself stays 20px.
+              checkbox, and nothing in the product set it — so every tick box
+              on this desk drew the user agent's grey-and-white control. The
+              kit's `Checkbox` (R11e, 18/11) carries the accent and the 44px
+              row on a phone; each box has its own id, so a press on its words
+              ticks it and no other.
             */}
             {mayChargeFee && (
-            <label className="flex min-h-11 items-center gap-2 text-sm text-[var(--sys-foreground)] md:min-h-0">
-              <input
-                type="checkbox"
+              <Checkbox
+                id={`returns-fee-${order.id}`}
                 checked={courierFee}
-                onChange={(e) => setCourierFee(e.target.checked)}
-                className="h-5 w-5 shrink-0 accent-[var(--sys-primary)]"
+                onChange={setCourierFee}
+                label="احتساب أجرة إرجاع لشركة الشحن (تُؤخذ من جدول الأجور)"
               />
-              احتساب أجرة إرجاع لشركة الشحن (تُؤخذ من جدول الأجور)
-            </label>
             )}
 
             {/*
@@ -910,7 +905,7 @@ function ReceiveDialog({
               Above the input on purpose: the order is read, then added to.
             */}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-[var(--sys-muted-foreground)]">
+              <span className="text-note text-[var(--sys-muted-foreground)]">
                 ما كُتب على هذا الطلب قبل الآن
               </span>
               <OrderNotesPeek
@@ -929,15 +924,14 @@ function ReceiveDialog({
               onChange={(e) => setNote(e.target.value)}
             />
 
-            <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
-              <input
-                type="checkbox"
+            <div className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2">
+              <Checkbox
+                id={`returns-ack-${order.id}`}
                 checked={acknowledged}
-                onChange={(e) => setAcknowledged(e.target.checked)}
-                className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
+                onChange={setAcknowledged}
+                label="أقرّ بأنني عددت البضاعة وفحصتها. لا تدخل البضاعة للمخزون قبل هذا الإقرار."
               />
-              <span>أقرّ بأنني عددت البضاعة وفحصتها. لا تدخل البضاعة للمخزون قبل هذا الإقرار.</span>
-            </label>
+            </div>
           </>
         )}
 
