@@ -366,11 +366,6 @@
       "rawDatePickers": 1,
       "textXs": 42
     },
-    "src/components/screens/CouriersScreen.tsx": {
-      "rawButtons": 11,
-      "rawSurfaces": 4,
-      "textXs": 16
-    },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,
@@ -739,14 +734,8 @@
       "rawCheckboxes": 1,
       "textXs": 2
     },
-    "src/components/settings/CourierCredentials.tsx": {
-      "rawButtons": 1,
-      "textXs": 12
-    },
     "src/components/settings/CourierFees.tsx": {
-      "rawButtons": 6,
-      "rawSurfaces": 4,
-      "textXs": 14
+      "rawSurfaces": 1
     },
     "src/components/settings/CustomConversionsCard.tsx": {
       "rawButtons": 5,

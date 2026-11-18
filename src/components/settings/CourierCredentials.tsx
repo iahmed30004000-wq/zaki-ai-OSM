@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { apiJson } from '@/lib/api-client';
@@ -131,7 +132,7 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
 
   if (!status) {
     return (
-      <p className="flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+      <p className="flex items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
         <RiLoader4Line className="h-4 w-4 animate-spin" /> جارٍ القراءة…
       </p>
     );
@@ -144,12 +145,12 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--sys-heading)]">
+          <p className="flex items-center gap-1.5 text-note font-bold text-[var(--sys-heading)]">
             <RiKey2Line className="h-4 w-4 text-[var(--sys-primary)]" />
             حساب {status.name} على {status.adapterCode}
           </p>
           {status.hasCredentials ? (
-            <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+            <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">
               محفوظ ومشفَّر
               {status.emailHint && <> · الدخول <span dir="ltr">{status.emailHint}</span></>}
               {status.accountCompanyId !== null && <> · رقم الشركة {status.accountCompanyId}</>}
@@ -157,7 +158,7 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
               {status.savedBy && <> · {status.savedBy}</>}
             </p>
           ) : (
-            <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+            <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">
               لا حساب محفوظ — الشحنات تُنشأ يدوياً حتى تُدخله.
             </p>
           )}
@@ -167,33 +168,33 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
           {/* "Saved" is not "works". A typo sits there looking fine until the
               first real batch fails with the parcels already packed. */}
           {canManage && status.hasCredentials && (
-            <Button size="sm" variant="outline" onClick={runTest} disabled={testing}>
+            <Button type="button" size="sm" variant="secondary" onClick={() => { void runTest(); }} disabled={testing}>
               {testing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPlug2Line className="h-4 w-4" />}
               اختبر الاتصال
             </Button>
           )}
           {canManage && (
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)} disabled={!status.encryptionAvailable}>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setOpen(true)} disabled={!status.encryptionAvailable}>
             <RiKey2Line className="h-4 w-4" /> {status.hasCredentials ? 'تغيير الحساب' : 'إدخال الحساب'}
           </Button>
           )}
           {canManage && status.hasCredentials && (
-            <button aria-label="حذف الحساب"
+            <IconButton
+              label="حذف الحساب"
               type="button"
-              onClick={clear}
+              size="sm"
+              onClick={() => { void clear(); }}
               disabled={saving}
-              title="حذف الحساب"
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-2 text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"
             >
-              <RiDeleteBinLine className="h-4 w-4" />
-            </button>
+              <RiDeleteBinLine className="h-4 w-4 text-[var(--sys-destructive)]" />
+            </IconButton>
           )}
         </div>
       </div>
 
       {test && (
         <p
-          className={`flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-xs ${
+          className={`flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-note ${
             test.ok
               ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border border-[var(--sys-success-soft)]'
               : 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border border-[var(--sys-destructive-border)]'
@@ -209,7 +210,7 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
       )}
 
       {!status.encryptionAvailable && (
-        <p className="flex items-start gap-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-2.5 text-xs leading-relaxed text-[var(--sys-warning)]">
+        <p className="flex items-start gap-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-2.5 text-note leading-relaxed text-[var(--sys-warning)]">
           <RiShieldFlashLine className="mt-0.5 h-4 w-4 shrink-0" />
           مفتاح التشفير غير مُهيّأ على الخادم. أضف <code dir="ltr">APP_ENCRYPTION_KEY</code> إلى
           ملف <code dir="ltr">.env</code> ثم أعد التشغيل — كلمة المرور لن تُحفظ بلا تشفير.
@@ -217,7 +218,7 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
       )}
 
       {status.hasCredentials && status.readable === false && (
-        <p className="flex items-start gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs leading-relaxed text-[var(--sys-destructive)]">
+        <p className="flex items-start gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note leading-relaxed text-[var(--sys-destructive)]">
           <RiShieldFlashLine className="mt-0.5 h-4 w-4 shrink-0" />
           الحساب محفوظ لكن لا يمكن فكّ تشفيره — غالباً تغيّر مفتاح التشفير. الشحنات
           تُنشأ يدوياً حتى تُدخله من جديد.
@@ -227,13 +228,13 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
       {/* Only what is KNOWN: the account is saved and can be read back. Whether the courier accepts it is what the
           test above answers; this line never asked them, so it never says «سليم» or «تُنشأ آلياً». */}
       {status.hasCredentials && status.readable && !test && (
-        <p className="flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+        <p className="flex items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
           <RiShieldCheckLine className="h-4 w-4" /> الحساب محفوظ ومشفّر — لم يُفحص مع الشركة بعد.
         </p>
       )}
 
-      {done && <p className="flex items-center gap-1.5 text-xs text-[var(--sys-success)]"><RiCheckLine className="h-4 w-4" />{done}</p>}
-      {error && !open && <p className="text-xs text-[var(--sys-destructive)]">{error}</p>}
+      {done && <p className="flex items-center gap-1.5 text-note text-[var(--sys-success)]"><RiCheckLine className="h-4 w-4" />{done}</p>}
+      {error && !open && <p className="text-note text-[var(--sys-destructive)]">{error}</p>}
 
       <Modal
         isOpen={open}
@@ -314,16 +315,16 @@ export function CourierCredentials({ providerId }: { providerId: string }) {
             onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
           />
 
-          <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             الحقول المطلوبة هي ما تطلبه الشركة على كل شحنة — بدون أيٍّ منها تُرفض
             الشحنة عندهم لا عندنا. كلمة المرور تُشفَّر قبل أن تُكتب، ولا يُعيدها أي
             طلب بعد ذلك: لتغييرها تُدخلها من جديد.
           </p>
 
-          {error && <p className="text-xs text-[var(--sys-destructive)]">{error}</p>}
+          {error && <p className="text-note text-[var(--sys-destructive)]">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="outline" onClick={() => { setOpen(false); setForm({ ...BLANK }); }}>
+            <Button type="button" variant="secondary" onClick={() => { setOpen(false); setForm({ ...BLANK }); }}>
               إلغاء
             </Button>
             <Button type="submit" loading={saving}>
