@@ -62,12 +62,14 @@ const mount = async () => {
   await act(async () => {});
 };
 const cards = () => screen.queryAllByRole('listitem');
+/** 18/11 (R9): the heading is «بدّو إياك هلق» — the plan's one list of «اليوم». Was «شغلك اليوم». */
+const HEADING = 'بدّو إياك هلق';
 
 describe('what it shows', () => {
   it('— a card for each kind that has work, worst first, with its number, its name and what to do', async () => {
     answer([item('CONFIRM_POOL', 40), item('LATE_SHIPMENTS', 3), item('RETURNS_WAITING', 14)]);
     await mount();
-    expect(screen.getByRole('heading', { name: 'شغلك اليوم' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: HEADING })).toBeTruthy();
     const rows = cards();
     // Late work outranks waiting work (`rank`), whatever order the server sent.
     expect(rows.map((li) => li.textContent)).toEqual([
@@ -114,20 +116,20 @@ describe('what it says when there is nothing', () => {
   it('and NOTHING AT ALL for a person who has no kind of work — it would be a statement about work they were never given', async () => {
     answer([]);
     await mount();
-    expect(screen.queryByRole('heading', { name: 'شغلك اليوم' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull();
     expect(screen.queryByText(/لا شيء ينتظرك/)).toBeNull();
   });
 
   it('and nothing while the first answer has not come', async () => {
     apiFetch.mockReturnValue(new Promise(() => {}));
     await mount();
-    expect(screen.queryByRole('heading', { name: 'شغلك اليوم' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull();
   });
 
   it('and nothing, and NOT «لا شيء», when the request fails — nobody knows that nothing is waiting', async () => {
     answer(null);
     await mount();
-    expect(screen.queryByRole('heading', { name: 'شغلك اليوم' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull();
     apiFetch.mockRejectedValue(new Error('offline'));
     cleanup();
     await mount();
@@ -183,12 +185,15 @@ describe('every kind of work has its sentence', () => {
 describe('how it is wired', () => {
   const code = (f: string) => stripComments(repoFile(f));
 
-  it('— the dashboard leads with it, ahead of the intelligence strip and the tiles', () => {
+  // 18/11 (R9): was «the dashboard leads with it, ahead of the intelligence strip and the tiles». «اليوم» is three figures, this ONE
+  // list and one chart, in that order (the plan's «واجهة 2»); the strip and the tiles moved to the performance board.
+  it('— the dashboard draws it once, after its three figures and before its one chart, and no intelligence strip', () => {
     const src = code('src/components/screens/DashboardScreen.tsx');
     const work = src.indexOf('<WorkToday />');
-    const strip = src.indexOf('<IntelligenceStrip />');
     expect(work, 'ما انحط').toBeGreaterThan(-1);
-    expect(work, 'بعد شريط الذكاء').toBeLessThan(strip);
+    expect(work, 'قبل الأرقام').toBeGreaterThan(src.lastIndexOf('<KpiCard'));
+    expect(work, 'بعد الرسم').toBeLessThan(src.indexOf('<DailyChart'));
+    expect(src).not.toContain('<IntelligenceStrip');
     expect(src.match(/<WorkToday\s*\/>/g)).toHaveLength(1);
   });
 

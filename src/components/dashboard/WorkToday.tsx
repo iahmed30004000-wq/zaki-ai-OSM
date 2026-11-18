@@ -12,7 +12,7 @@ import { MissionCard } from './MissionCard';
 import { visibleWork, workKind, type WorkItem } from '@/lib/my-work';
 
 /**
- * «شغلك اليوم» — WHAT IS WAITING FOR YOU, AND WHAT TO DO ABOUT IT.
+ * «بدّو إياك هلق» (was «شغلك اليوم» until R9, 18/11) — WHAT IS WAITING FOR YOU, AND WHAT TO DO ABOUT IT.
  *
  * The owner, 21/10: «حاسو معجوق وصعب … كل خطوة تودّي للثانية». The dashboard
  * opened on the month: tiles of what HAD happened, and nothing telling
@@ -80,7 +80,7 @@ export function WorkToday() {
       <MissionCard items={items} />
 
       <h2 id="work-today" className="mb-2 mt-4 text-sm font-bold text-[var(--sys-heading)]">
-        شغلك اليوم
+        بدّو إياك هلق
       </h2>
 
       {work.length === 0 ? (
