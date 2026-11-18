@@ -36,14 +36,15 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AskAi } from '@/components/growth/AskAi';
 import { userCan } from '@/lib/can';
 import { GRADE_RANK, scoreCustomer } from '@/lib/customer-score';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { apiFetch } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { Pager } from '@/components/ui/Pager';
 import { useIsPhone } from '@/hooks/useIsPhone';
 
 export function CustomersScreen() {
-  const { t, currentUser } = useApp();
+  const { currentUser } = useApp();
   /* A phone scrolls the facts sideways, wraps the history and stacks the form; a desk is as it was. */
   const onPhone = useIsPhone();
   // The assistant's own gate: a panel that opens onto a refusal is noise.
@@ -237,23 +238,25 @@ export function CustomersScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={t.customers}
-            description="سِجلّ العملاء: توحيدُ الأرقام، وكشفُ التكرار، وسجلُّ الطلبات — ومن يستلم ومن يرفض"
-            actions={
-              <><Button
+      {/*
+        THE ONE FRAME (R10d, 18/11): the header, the filters row, then the content — the order every screen on
+        the kit keeps. The name is the menu's (`routeLabel`), the width is the full one this screen always had.
+      */}
+      <PageShell
+        title={routeLabel('/customers')}
+        description="سِجلّ العملاء: توحيدُ الأرقام، وكشفُ التكرار، وسجلُّ الطلبات — ومن يستلم ومن يرفض"
+        actions={
+          <Button
             size="sm"
             onClick={() => setCreateModalOpen(true)}
             className="flex items-center space-x-1.5 bg-[var(--sys-destructive)] hover:bg-[var(--sys-destructive)]/85"
           >
             <RiAddCircleLine className="w-4 h-4" />
             <span>إضافة عميل</span>
-          </Button></>
-            }
-          />
-
-        {/* The search, and under it the three dropdowns that narrow the same list. */}
+          </Button>
+        }
+        filters={
+        /* The search, and under it the three dropdowns that narrow the same list. */
         <div className="space-y-2">
         {/* RiSearchLine */}
         <div className="relative max-w-md">
@@ -341,7 +344,8 @@ export function CustomersScreen() {
           </div>
         )}
         </div>
-
+        }
+      >
         {/*
           WHAT THE BOOK SAYS, ABOVE WHAT THE PAGE SHOWS.
 
@@ -528,7 +532,7 @@ export function CustomersScreen() {
           phone, no address ever reaches a model.
         */}
         {canAskAi && <AskAi preselect={['CUSTOMERS']} />}
-      </div>
+      </PageShell>
 
       {/* Customer Details & History Modal */}
       {selectedCustomer && (
