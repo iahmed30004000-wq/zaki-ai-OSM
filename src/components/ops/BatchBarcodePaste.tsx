@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { RiLoader4Line } from '@remixicon/react';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { apiJson } from '@/lib/api-client';
 import type { LineOutcome, LineResult } from '@/lib/batch-barcodes';
@@ -82,29 +84,29 @@ export function BatchBarcodePaste({
       maxWidth="lg"
       footer={
         <div className="flex gap-2">
-          <button
-            onClick={() => void send(true)}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => { void send(true); }}
             disabled={busy !== null || !text.trim()}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
           >
             {busy === 'check' && <RiLoader4Line className="w-4 h-4 animate-spin" />}
             تحقّق
-          </button>
-          <button
-            onClick={() => void send(false)}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => { void send(false); }}
             disabled={busy !== null || !mayWrite}
             title={mayWrite ? undefined : 'اضغط «تحقّق» أول — «اكتب» بيكتب اللي ظهر بالتحقّق بس'}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {busy === 'write' && <RiLoader4Line className="w-4 h-4 animate-spin" />}
             {mayWrite ? `اكتب (${answer.counts.written})` : 'اكتب'}
-          </button>
-          <button
-            onClick={onClose}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
-          >
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             إغلاق
-          </button>
+          </Button>
         </div>
       }
     >
@@ -118,36 +120,33 @@ export function BatchBarcodePaste({
           placeholder={'ORD-2026-0722, 1234567890\nORD-2026-0963\t1234567891'}
           helperText="رقم الطلب أو رقمنا المرجعي. طلب من دفعة تانية بينرفض، وطلب عليه باركود تاني ما بيتغيّر إلا إذا علّمت تحت."
         />
-        <label className="flex items-center gap-2 text-xs text-[var(--sys-foreground)]">
-          <input
-            type="checkbox"
-            checked={overwrite}
-            onChange={(e) => setOverwrite(e.target.checked)}
-            className="h-3.5 w-3.5 cursor-pointer accent-[var(--sys-primary)]"
-          />
-          استبدل الباركود القديم إذا الطلب عليه باركود تاني
-        </label>
+        <Checkbox
+          id={`batch-paste-overwrite-${batch.id}`}
+          checked={overwrite}
+          onChange={(on) => setOverwrite(on)}
+          label="استبدل الباركود القديم إذا الطلب عليه باركود تاني"
+        />
 
         {error && (
-          <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+          <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
             {error}
           </p>
         )}
 
         {answer && (
           <div role="status" className="space-y-2">
-            <p className="text-xs font-bold text-[var(--sys-heading)]">
+            <p className="text-sm font-bold text-[var(--sys-heading)]">
               {answer.dryRun ? 'نتيجة التحقّق (ما انكتب شي): ' : 'انحفظ: '}
               {`${WORD.written[answer.dryRun ? 'dry' : 'done']} ${answer.counts.written} · `}
               {`${WORD.unchanged[answer.dryRun ? 'dry' : 'done']} ${answer.counts.unchanged} · `}
               {`مرفوض ${answer.counts.refused}`}
             </p>
             {answer.dryRun && !fresh && (
-              <p className="text-xs text-[var(--sys-warning)]">تغيّرت اللصقة بعد التحقّق — اضغط «تحقّق» من جديد.</p>
+              <p className="text-sm text-[var(--sys-warning)]">تغيّرت اللصقة بعد التحقّق — اضغط «تحقّق» من جديد.</p>
             )}
             <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
               {answer.lines.map((l) => (
-                <li key={l.line} className="flex flex-wrap items-center gap-2 p-2 text-xs">
+                <li key={l.line} className="flex flex-wrap items-center gap-2 p-2 text-sm">
                   <span className="text-[var(--sys-muted)] tabular-nums">سطر {l.line}</span>
                   {/* A line that named an order of the batch draws it through `OrderRef`; one that did not is what was pasted. */}
                   {l.orderId && l.orderNumber ? (
