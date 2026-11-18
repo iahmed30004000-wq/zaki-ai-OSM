@@ -25,7 +25,8 @@ import {
   RiPriceTag3Line,
 } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { batchTotal, batchUnitCost } from '@/lib/product-cost';
 import { Rows } from '@/components/ui/Rows';
@@ -437,40 +438,36 @@ export function ManufacturingScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title="تشغيلات الإنتاج"
-            description="الباب الذي تدخل منه بضاعة المنتجات التي تصنّعها — كل تشغيلة ببنود كلفتها،
+      <PageShell
+        title={routeLabel('/manufacturing')}
+        description="الباب الذي تدخل منه بضاعة المنتجات التي تصنّعها — كل تشغيلة ببنود كلفتها،
               ومنها تُحسب تكلفة الوحدة التي يقرأها الربح."
-            actions={
-              <>
-          {/* The two doors this screen is next to, said out loud rather than
-              left in the sidebar: the product itself, and the other door
-              stock comes in through. «ضيف زر يوديني على المنتجات». */}
-          <AdvancedGroup holds="المنتجات · استلام بضاعة جاهزة">
-          <Link href="/products">
-            <Button size="sm" variant="secondary" className="flex items-center space-x-1.5">
-              <RiPriceTag3Line className="w-4 h-4" />
-              <span>المنتجات</span>
+        actions={
+          <>
+            {/* The two doors this screen is next to, said out loud rather than
+                left in the sidebar: the product itself, and the other door
+                stock comes in through. «ضيف زر يوديني على المنتجات». */}
+            <AdvancedGroup holds="المنتجات · استلام بضاعة جاهزة">
+              <Link href="/products">
+                <Button size="sm" variant="secondary" className="flex items-center space-x-1.5">
+                  <RiPriceTag3Line className="w-4 h-4" />
+                  <span>المنتجات</span>
+                </Button>
+              </Link>
+              <Link href="/inventory/balances">
+                <Button size="sm" variant="secondary" className="flex items-center space-x-1.5">
+                  <RiInboxArchiveLine className="w-4 h-4" />
+                  <span>استلام بضاعة جاهزة</span>
+                </Button>
+              </Link>
+            </AdvancedGroup>
+            <Button size="sm" onClick={openNewBatch} className="flex items-center space-x-1.5">
+              <RiAddCircleLine className="w-4 h-4" />
+              <span>تشغيلة جديدة</span>
             </Button>
-          </Link>
-          <Link href="/inventory/balances">
-            <Button size="sm" variant="secondary" className="flex items-center space-x-1.5">
-              <RiInboxArchiveLine className="w-4 h-4" />
-              <span>استلام بضاعة جاهزة</span>
-            </Button>
-          </Link>
-          </AdvancedGroup>
-          <Button
-            size="sm"
-            onClick={openNewBatch}
-            className="flex items-center space-x-1.5"
-          >
-            <RiAddCircleLine className="w-4 h-4" />
-            <span>تشغيلة جديدة</span>
-          </Button></>
-            }
-          />
+          </>
+        }
+      >
 
         {/*
           THE READ OVER THE LIST — «تشغيلات الإنتاج: AI + Score», and there is
@@ -712,7 +709,7 @@ export function ManufacturingScreen() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
 
       {costing && (
         <BatchCostDialog batch={costing} onClose={() => setCosting(null)} onSaved={loadData} />
