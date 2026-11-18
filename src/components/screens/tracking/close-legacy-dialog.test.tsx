@@ -360,5 +360,9 @@ describe('NO NEW CSS — every class the dialog and the strip button use is one 
     // ...which is the string the other strip buttons carry (not a copy that could drift into something new).
     const same = src.split(`<Button ${props} onClick=`).length - 1;
     expect(same).toBeGreaterThanOrEqual(3);
+    // …and nothing after the handler either: a `className` or a `size` written after `onClick=` would change the look
+    // the props above promise (the tag must close right after the handler).
+    const tail = before.slice(before.lastIndexOf('<Button'));
+    expect(tail, 'خاصية بعد onClick').toMatch(/ onClick=\{\(\) => [^{}]*\}>\s*$/);
   });
 });

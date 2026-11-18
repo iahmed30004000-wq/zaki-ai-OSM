@@ -312,7 +312,16 @@ describe('the tracking card on a phone', () => {
     // state `min-h-11` itself. The count is of both.
     const buttons = [...actions.matchAll(/<[bB]utton\b(?:[^<>{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\/?>/g)];
     expect(buttons.length).toBeGreaterThanOrEqual(5);
-    const short = buttons.filter((m) => !m[0].startsWith('<Button') && !/min-h-11/.test(m[0]));
+    // …unless the caller shrinks it: a height under 44 that is not a desk-only (`md:`) one, a `max-h-*`, or `min-h-0`
+    // without the `md:` — on a kit button that beats the kit's own `h-11` as surely as a bare word would.
+    const SHRINKS = /(?<![\w:-])(?:h-(?:\d|10)(?!\d)|h-\[\d+px\]|max-h-[\w[\]-]+|min-h-0)(?![\w-])/;
+    const tooShort = (tag: string) => (tag.startsWith('<Button') ? SHRINKS.test(tag) : !/min-h-11/.test(tag));
+    // The rule is held against itself first (NEGATIVE): a shrunk kit button fails, a desk-only height does not.
+    expect(tooShort('<Button size="sm" className="h-8">')).toBe(true);
+    expect(tooShort('<Button size="sm" className="flex-1 min-h-0">')).toBe(true);
+    expect(tooShort('<Button size="sm" className="md:h-8 md:min-h-0 flex-1">')).toBe(false);
+    expect(tooShort('<button className="text-xs">')).toBe(true);
+    const short = buttons.filter((m) => tooShort(m[0]));
     expect(short.map((m) => m[0].slice(0, 60)), 'زرٌّ في الكرت دون 44 بكسل').toEqual([]);
   });
 });
