@@ -3,11 +3,7 @@ import { requireContext } from '@/lib/geo-context';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { getDateRange, type DateFilter } from '@/lib/analytics';
-import { teamPerformance } from '@/lib/team-performance';
-import { attendance } from '@/lib/attendance';
-import { db } from '@/lib/db';
-import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
-import type { PersonShift } from '@/lib/employee-shift';
+import { confirmationTeamAnswer, withAttendance } from '@/lib/confirmation-team-answer';
 
 /**
  * GET /api/orders/confirmation/team?period=&startDate=&endDate=
@@ -45,55 +41,12 @@ export async function GET(req: Request) {
       timezone: country.timezone,
     };
 
-    /*
-     * ONE COMPUTATION PER QUESTION, IN THE REPORTS' LANE (`lib/heavy-lane.ts`, the owner 13/11: «لوحة الأداء بتضل تعلق»).
-     *
-     * The table reads three append-only logs of a ninety-day window for every employee at once. Asked by two tabs, or again by a
-     * page that timed out, it is computed once and shared; and it runs on the reports' six connections, not on the pool every other
-     * screen waits in. The answer holds no figure that depends on who asks (the key `team.monitor` was checked above).
-     */
-    const key = ['team', companyId, storeId, start?.toISOString() ?? '', end?.toISOString() ?? ''].join('|');
-    const { result, marks } = await heavyOnce(key, REPORT_TTL_MS, async () => {
-      const result = await teamPerformance({ companyId, storeId, calendar, start, end });
-
-      // Attendance rides along on the same window, for the same people. Two
-      // requests for one table would let the halves disagree about the dates.
-      const userIds = result.employees.map((e) => e.id);
-      // Each person's own hours, where they have them. Without these the
-      // lateness column measures a noon shift against a nine o'clock country
-      // and reports three hours late, every day, forever.
-      const shifts = new Map<string, PersonShift>(
-        (
-          await db.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, shiftStart: true, shiftEnd: true, restDays: true },
-          })
-        ).map((u) => [u.id, { shiftStart: u.shiftStart, shiftEnd: u.shiftEnd, restDays: u.restDays }])
-      );
-
-      const marks =
-        start && end
-          ? await attendance({ companyId, storeId, userIds, calendar, shifts, start, end })
-          : new Map();
-      return { result, marks };
-    });
+    // ONE COMPUTATION PER QUESTION, IN THE REPORTS' LANE — moved to `lib/confirmation-team-answer.ts` so the door of one person reads the same answer.
+    const { result, marks } = await confirmationTeamAnswer({ companyId, storeId, calendar, start, end });
 
     return NextResponse.json({
       ...result,
-      employees: result.employees.map((e) => {
-        const a = marks.get(e.id);
-        return {
-          ...e,
-          // Days here, days late, and the hours actually spent — the
-          // fingerprint, beside the work it produced.
-          daysPresent: a?.daysPresent ?? 0,
-          daysLate: a?.daysLate ?? 0,
-          totalLateMinutes: a?.totalLateMinutes ?? 0,
-          avgPresentMinutes: a?.avgPresentMinutes ?? null,
-          daysWithoutWork: a?.daysWithoutWork ?? 0,
-          daysLateEstimated: a?.daysLateEstimated ?? 0,
-        };
-      }),
+      employees: result.employees.map((e) => withAttendance(e, marks)),
       window: { start: start?.toISOString() ?? null, end: end?.toISOString() ?? null },
       definitions: {
         claimed: 'الطلبات التي سحبها الموظف من المجمّع خلال المدة',
