@@ -51,6 +51,9 @@ vi.mock('@/components/ui/DateRange', () => ({
 }));
 vi.mock('@/components/shell/ThemeDecor', () => ({ ThemeDecor: () => null }));
 vi.mock('@/components/growth/ChannelScores', () => ({ ChannelScoresSection: () => null }));
+// 18/11 (R9): the strip and the loss panel moved here from the dashboard; each has its own door and its own tests.
+vi.mock('@/components/growth/IntelligenceStrip', () => ({ IntelligenceStrip: () => null }));
+vi.mock('@/components/dashboard/LossPanel', () => ({ LossPanel: () => null }));
 vi.mock('@/components/dashboard/DetailsLinks', () => ({ BackToDashboardLink: () => null }));
 vi.mock('@/components/performance/ScoreBoard', () => ({ ScoreBoard: () => null }));
 vi.mock('@/components/performance/NoAnswerWatch', () => ({ NoAnswerWatch: () => null }));

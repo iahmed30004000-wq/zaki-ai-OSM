@@ -66,13 +66,20 @@ describe('the names', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('the dashboard draws them — each ranking row hands over its product’s id, and the team rows the person’s', () => {
-    const src = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
-    expect(src).toContain('<ProductNameLink id={r.id} name={r.name} />');
+  // 18/11 (R9): was «the dashboard draws them» over DashboardScreen's ranking card and leaderboard. «اليوم» kept three figures, one
+  // list and one chart; the leaderboard MOVED to the performance board, and the ranking card was that board's four headlines a
+  // second time — so the links went onto the headlines (`Rank`) instead. «الأكثر رفضاً» (ranked by RATE — rejected ÷ total, `analytics.ts`) is not a headline there; its
+  // two inputs per product are the board's «الطلبات» and «مرفوض على الهاتف» columns.
+  it('the performance board draws them — each headline hands over its product’s id, and the team rows the person’s', () => {
+    const src = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
+    expect(src).toContain('<ProductNameLink id={id} name={name} />');
     expect(src).toContain('<PersonNameLink id={mod.id} name={mod.name} />');
-    for (const k of ['mostRequested', 'mostProfitable', 'mostDelivered', 'highestRejection']) {
-      expect(src, k).toContain(`id: analytics?.rankings?.${k}?.id`);
+    for (const k of ['mostRequested', 'mostProfitable', 'mostDelivered']) {
+      expect(src, k).toContain(`id={analytics?.rankings?.${k}?.id}`);
     }
+    expect(src).toContain('id={topReturned?.productId}');
+    // NEGATIVE: «اليوم» no longer draws a ranking at all.
+    expect(stripComments(repoFile('src/components/screens/DashboardScreen.tsx'))).not.toContain('ProductNameLink');
   });
 });
 
