@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
+    "rawButtons": 666,
     "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawSurfaces": 343,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2606
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -738,9 +738,8 @@
       "textXs": 23
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 5,
-      "textXs": 35
+      "rawButtons": 1,
+      "textXs": 9
     },
     "src/components/screens/WhatsAppSettingsScreen.tsx": {
       "rawButtons": 2,

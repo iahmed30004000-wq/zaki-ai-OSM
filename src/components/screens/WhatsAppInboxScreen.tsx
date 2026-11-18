@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi, qs } from '@/lib/screen-api';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiArrowRightSLine, RiChat3Line, RiCheckDoubleLine, RiCheckLine, RiCloseLine, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSendPlaneLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiUserLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
@@ -330,18 +330,22 @@ export function WhatsAppInboxScreen() {
       {/* The window minus the header AS IT IS: the bar grows when it wraps, so a fixed 72 left the inbox
           taller than the window by the extra row and the page scrolled under it. */}
       <div className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
-        {/* Header */}
-        <PageHeader title={routeLabel('/growth/whatsapp/inbox')}
-            description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
-            actions={
-              <>{conn?.connection && (
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
-              <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
-              {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
-            </span>
-          )}</>
-            }
-          />
+        {/* The header is the kit's PageShell (R10e, 18/11). It is drawn WITHOUT children on purpose: the panes below
+            must take the rest of this measured column (`flex-1`), and PageShell's own body is not a flex item —
+            so the panes are its next sibling in the column, not its child. */}
+        <PageShell
+          title={routeLabel('/growth/whatsapp/inbox')}
+          description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
+          width="full"
+          actions={
+            <>{conn?.connection && (
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-note font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
+                <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
+                {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
+              </span>
+            )}</>
+          }
+        />
 
         {/* No connection state */}
         {!loading && conn && conn.status !== 'CONNECTED' ? (

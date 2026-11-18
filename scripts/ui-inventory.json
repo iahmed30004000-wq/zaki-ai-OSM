@@ -1681,14 +1681,15 @@
     "tabs": 0
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
-    "buttons": 7,
+    "buttons": 4,
     "inputs": 3,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
-    "icons": 17,
+    "icons": 16,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/screens/WhatsAppSettingsScreen.tsx": {
     "buttons": 2,
