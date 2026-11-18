@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   settings: null as string | null,
   allowed: true,
-  products: [] as { id: string; storeId: string }[],
+  products: [] as { id: string; storeId: string; companyId?: string }[],
   orders: [] as { productId: string; storeId: string; createdAt: Date; confirmationStatus: string; shippingStatus: string }[],
   logAudit: vi.fn(),
   writes: [] as string[],
@@ -37,8 +37,9 @@ vi.mock('@/lib/db', () => {
           q.where.storeId
             ? h.products.map((p) => ({ ...p, name: 'منتج', sku: null, basePrice: 10, createdAt: new Date(), category: null }))
             : [],
-        findFirst: async (q: { where: { id: string; store: { isTest: boolean } } }) => {
-          const p = h.products.find((x) => x.id === q.where.id);
+        findFirst: async (q: { where: { id: string; companyId: string; store: { isTest: boolean } } }) => {
+          // The company is part of the question: another company's bench product is not found.
+          const p = h.products.find((x) => x.id === q.where.id && (x.companyId ?? 'c1') === q.where.companyId);
           return p && q.where.store.isTest ? { id: p.id, name: 'منتج', store: { country: BENCH.country } } : null;
         },
       },
@@ -172,6 +173,28 @@ describe('POST — rules and spend, the owner’s numbers only', () => {
     expect(r.status).toBe(400);
     expect((await r.json()).errorAr).toContain('منصّة التجريب');
     expect(h.settings).toBeNull();
+  });
+
+  it('NEGATIVE: another company’s bench product is not found', async () => {
+    h.products.push({ id: 'p-other', storeId: 'bench-1', companyId: 'c2' });
+    const r = await post({ action: 'spend', productId: 'p-other', day: today(), amount: 5 });
+    expect(r.status).toBe(400);
+    expect(h.settings).toBeNull();
+  });
+
+  it('saving product A’s rules or spend leaves product B’s untouched', async () => {
+    h.products.push({ id: 'p2', storeId: 'bench-1' });
+    await post({ action: 'rules', productId: 'p2', rules: { targetCpo: 7 } });
+    await post({ action: 'spend', productId: 'p2', day: daysAgo(1), amount: 9 });
+    const before = JSON.parse(h.settings!);
+    await post({ action: 'rules', productId: 'p1', rules: { targetCpo: 5 } });
+    await post({ action: 'spend', productId: 'p1', day: today(), amount: 3 });
+    const id = JSON.parse(h.settings!).benchSpend.p1[0].id;
+    await post({ action: 'correct', productId: 'p1', entryId: id, amount: 4 });
+    await post({ action: 'rules', productId: 'p1', rules: null });
+    const after = JSON.parse(h.settings!);
+    expect(after.benchRules.p2).toEqual(before.benchRules.p2);
+    expect(after.benchSpend.p2).toEqual(before.benchSpend.p2);
   });
 
   it('NEGATIVE: without `growth.intelligence` nothing moves', async () => {

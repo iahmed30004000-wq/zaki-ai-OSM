@@ -316,6 +316,13 @@ describe('the rules form is checked, never clamped', () => {
     expect(parseBenchRules({})).toEqual({ rules: { ...DEFAULT_BENCH_RULES }, errors: [] });
   });
 
+  // Review of #318: 1.15 * 100 is 114.99999999999999 in floats, and an exact check refused it.
+  it.each([1.13, 1.15, 2.55, 1.3, 2])('accepts the two-decimal multiplier %s', (m) => {
+    const { rules, errors } = parseBenchRules({ failMultiplier: m });
+    expect(errors).toEqual([]);
+    expect(rules.failMultiplier).toBe(m);
+  });
+
   it('strings from a form are read as numbers', () => {
     expect(parseBenchRules({ targetCpo: '5', capSpend: '80' }).rules).toMatchObject({ targetCpo: 5, capSpend: 80 });
   });
@@ -330,6 +337,7 @@ describe('the rules form is checked, never clamped', () => {
     ['zero fail orders', { failMinOrders: 0 }],
     ['multiplier under 1', { failMultiplier: 0.9 }],
     ['multiplier with three decimals', { failMultiplier: 1.333 }],
+    ['multiplier 1.155 (three decimals)', { failMultiplier: 1.155 }],
     ['a start day that is not a day', { startDay: '2026-02-30' }],
   ];
   it.each(bad)('refuses %s with an Arabic sentence', (_n, raw) => {

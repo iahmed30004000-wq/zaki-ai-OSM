@@ -139,7 +139,7 @@ export function parseBenchRules(raw: unknown): { rules: BenchRules; errors: stri
 
   let failMultiplier = DEFAULT_BENCH_RULES.failMultiplier;
   const m = num(pick('failMultiplier'));
-  if (m === null || m < 1 || m > 10 || Math.round(m * 100) !== m * 100) {
+  if (m === null || m < 1 || m > 10 || Math.abs(m * 100 - Math.round(m * 100)) > 1e-9) {
     errors.push('مضاعف الفشل: اكتب رقم من 1 لـ10، بخانتين عشريتين بالأكتر.');
   } else failMultiplier = m;
 
