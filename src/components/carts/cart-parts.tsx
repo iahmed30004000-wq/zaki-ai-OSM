@@ -59,7 +59,7 @@ export function CartContact({ cart, dialCode }: { cart: CartRow; dialCode: strin
     <div className="flex items-center gap-2">
       <a
         href={tel}
-        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2 py-1 text-xs font-semibold text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]"
+        className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2 py-1 text-note font-semibold text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]"
       >
         <RiPhoneLine className="w-4 h-4" /> اتصال
       </a>
@@ -68,12 +68,12 @@ export function CartContact({ cart, dialCode }: { cart: CartRow; dialCode: strin
           href={wa}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2 py-1 text-xs font-semibold text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)]"
+          className="inline-flex min-h-11 md:min-h-0 items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2 py-1 text-note font-semibold text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)]"
         >
           <RiWhatsappLine className="w-4 h-4" /> واتساب
         </a>
       ) : (
-        <span className="text-xs text-[var(--sys-muted)]" title="الرقم بلا رمز بلد">واتساب غير متاح</span>
+        <span className="text-note text-[var(--sys-muted)]" title="الرقم بلا رمز بلد">واتساب غير متاح</span>
       )}
     </div>
   );
@@ -123,7 +123,7 @@ export function CartStatusControls({
           const next = e.target.value;
           if (next) void send({ action: 'status', status: next }, `صارت «${CART_STATUS_AR[next as keyof typeof CART_STATUS_AR]?.label ?? next}»`);
         }}
-        className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 py-1 text-xs"
+        className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 py-1 text-note"
       >
         <option value="">غيّر الحالة…</option>
         {HAND_STATUSES.filter((s) => s !== cart.status).map((s) => (
