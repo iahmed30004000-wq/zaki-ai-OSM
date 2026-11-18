@@ -76,6 +76,9 @@ interface Payload {
   dna: { sellers: number; minSellers: number; traits: Trait[] | null; whyNot: string | null };
 }
 
+/** The one line a report tab with no window says where the date box would be. */
+const NO_WINDOW_LINE = 'الأرقام هون لحظية — ما بتتبع المدة';
+
 export function BenchScreen() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +101,19 @@ export function BenchScreen() {
        of screens, so a title cannot drift from the menu entry. What a
        screen adds is the sentence underneath. 18/11 (R14c): the frame is
        `PageShell`, which draws that same `PageHeader` with that same title. */
-    <PageShell title={routeLabel('/growth/bench')} description="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام">
+    <PageShell
+      title={routeLabel('/growth/bench')}
+      description="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام"
+      /*
+        NO DATE BOX, AND IT SAYS SO (18/11, R14c). The four report tabs share
+        one span of days; this door (`/api/growth/bench`) takes none — its
+        figures are as of now. So the row where the other tabs draw the date
+        box carries this one line instead, and the screen neither reads nor
+        writes the shared span: the span the owner picked elsewhere is kept,
+        not silently dropped.
+      */
+      toolbar={<p className="text-note text-[var(--sys-muted-foreground)]">{NO_WINDOW_LINE}</p>}
+    >
 
       {error && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-sm text-[var(--sys-destructive)]">
