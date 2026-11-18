@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { RiArrowRightLine, RiExternalLinkLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { routeLabel } from '@/lib/route-registry';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
@@ -169,7 +171,7 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
 
   const fact = (label: string, value: React.ReactNode) => (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-xs text-[var(--sys-muted-foreground)]">{label}</dt>
+      <dt className="text-note text-[var(--sys-muted-foreground)]">{label}</dt>
       <dd className="text-sm text-[var(--sys-heading)]">{value || <span className="text-[var(--sys-muted)]">—</span>}</dd>
     </div>
   );
@@ -226,48 +228,41 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
         {(may.work || may.assign) && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-[var(--sys-border)] pt-4">
             {may.work && (
-              <label className="flex flex-col gap-1 text-xs text-[var(--sys-foreground)]">
-                موعد المتابعة
-                <span className="flex items-center gap-2">
-                  <input
-                    type="datetime-local"
-                    value={followUp}
-                    onChange={(e) => setFollowUp(e.target.value)}
-                    className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 py-1 text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      void press(
-                        { action: 'follow_up', at: followUp ? new Date(followUp).toISOString() : null },
-                        followUp ? 'انحفظ موعد المتابعة' : 'انشال موعد المتابعة'
-                      )
-                    }
-                  >
-                    احفظ
-                  </Button>
-                </span>
-              </label>
+              // The kit's box (R10c): a day AND an hour, so it is the kit's `Input` and not `DateRange` (a span of days). The value,
+              // the change and the body sent are the ones the raw box had.
+              <div className="flex items-end gap-2">
+                <Input id="cart-follow-up-at" label="موعد المتابعة" type="datetime-local" value={followUp} onChange={(e) => setFollowUp(e.target.value)} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() =>
+                    void press(
+                      { action: 'follow_up', at: followUp ? new Date(followUp).toISOString() : null },
+                      followUp ? 'انحفظ موعد المتابعة' : 'انشال موعد المتابعة'
+                    )
+                  }
+                >
+                  احفظ
+                </Button>
+              </div>
             )}
             {may.assign && (
-              <label className="flex flex-col gap-1 text-xs text-[var(--sys-foreground)]">
-                المسؤول
-                <select
-                  value={cart.assignedTo?.id ?? ''}
-                  disabled={busy}
-                  onChange={(e) => void press({ action: 'assign', userId: e.target.value || null }, e.target.value ? 'انسندت السلة' : 'انشال الإسناد')}
-                  className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 py-1 text-sm"
-                >
-                  <option value="">غير مسندة</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                id="cart-assignee"
+                label="المسؤول"
+                value={cart.assignedTo?.id ?? ''}
+                disabled={busy}
+                onChange={(e) => void press({ action: 'assign', userId: e.target.value || null }, e.target.value ? 'انسندت السلة' : 'انشال الإسناد')}
+              >
+                <option value="">غير مسندة</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
             )}
           </div>
         )}
@@ -307,7 +302,7 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
                 <p className={a.action === 'NOTE' ? 'whitespace-pre-wrap text-sm text-[var(--sys-heading)]' : 'text-sm text-[var(--sys-foreground)]'}>
                   {activityText(a, names)}
                 </p>
-                <p className="text-xs text-[var(--sys-muted)]">
+                <p className="text-note text-[var(--sys-muted)]">
                   {a.user?.name ?? 'صفحات الهبوط'} · {arDateTime(a.createdAt)}
                 </p>
               </li>
@@ -324,7 +319,7 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
 function BackLink() {
   return (
     <Link href="/abandoned-carts" className="inline-flex items-center gap-1 text-sm text-[var(--sys-primary)] hover:underline">
-      <RiArrowRightLine className="icon-mirror w-4 h-4" /> السلات المهجورة
+      <RiArrowRightLine className="icon-mirror w-4 h-4" /> {routeLabel('/abandoned-carts')}
     </Link>
   );
 }

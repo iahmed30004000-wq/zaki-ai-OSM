@@ -23,8 +23,7 @@
       "textXs": 4
     },
     "src/components/carts/cart-parts.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 4
+      "rawSurfaces": 1
     },
     "src/components/confirmation/CallHelperCard.tsx": {
       "rawSurfaces": 1,
@@ -308,14 +307,6 @@
     "src/components/scan/ScanButton.tsx": {
       "rawButtons": 3
     },
-    "src/components/screens/AbandonedCartDetailScreen.tsx": {
-      "rawDatePickers": 1,
-      "textXs": 4
-    },
-    "src/components/screens/AbandonedCartsScreen.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 8
-    },
     "src/components/screens/AgentCustodyScreen.tsx": {
       "rawButtons": 1,
       "textXs": 1
@@ -412,10 +403,6 @@
     "src/components/screens/LandingPagesScreen.tsx": {
       "rawButtons": 8,
       "textXs": 3
-    },
-    "src/components/screens/LeadsLane.tsx": {
-      "rawButtons": 2,
-      "textXs": 5
     },
     "src/components/screens/ManufacturingScreen.tsx": {
       "textXs": 3
