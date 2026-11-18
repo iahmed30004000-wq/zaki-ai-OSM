@@ -74,7 +74,7 @@ export function ProductStock({
     return (
       <Card>
         <CardContent className="p-4">
-          <p className="text-xs text-[var(--sys-destructive)]">{error}</p>
+          <p className="text-note text-[var(--sys-destructive)]">{error}</p>
         </CardContent>
       </Card>
     );
@@ -83,7 +83,7 @@ export function ProductStock({
   if (!stock) {
     return (
       <Card>
-        <CardContent className="flex items-center gap-2 p-4 text-xs text-[var(--sys-muted-foreground)]">
+        <CardContent className="flex items-center gap-2 p-4 text-note text-[var(--sys-muted-foreground)]">
           <RiLoader4Line className="h-4 w-4 animate-spin" /> جارٍ تحميل المخزون…
         </CardContent>
       </Card>
@@ -101,7 +101,7 @@ export function ProductStock({
           <span className="flex items-center gap-2">
             <RiStackLine className="h-4 w-4 text-[var(--sys-primary)]" />
             <span>معلومات المنتج وبياناته</span>
-            <span className="rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-xs font-bold text-[var(--sys-foreground)]">
+            <span className="rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-bold text-[var(--sys-foreground)]">
               {made ? 'منتج مصنّع' : 'منتج جاهز'}
             </span>
           </span>
@@ -159,7 +159,7 @@ export function ProductStock({
           />
         )}
 
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           {stock.averageCost !== undefined && stock.fixedCost == null &&
             '«متوسط مرجّح» يعني: كل دفعة بوزن ما تبقّى منها فعلاً. 90 قطعة بـ3 و10 بـ8 تكلفتها 3.50 للقطعة — لا 5.50. الدفعات الفارغة خارج الحساب لأنها تقول ماذا كلّف الماضي، لا ماذا تكلّف قطعة اليوم.'}
           {stock.batchCount > 0 && ` المخزون موزّع على ${stock.batchCount} دفعة.`}
@@ -167,7 +167,7 @@ export function ProductStock({
 
         <Link
           href="/inventory/movements"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-primary)] hover:underline"
+          className="inline-flex items-center gap-1.5 text-note font-semibold text-[var(--sys-primary)] hover:underline"
         >
           <RiArrowLeftRightLine className="icon-mirror h-4 w-4" /> سجل حركات هذا المخزون
         </Link>
@@ -193,7 +193,7 @@ function Tile({
 
   return (
     <div className={`rounded-lg border p-3 ${tones[tone]}`}>
-      <p className="flex items-center gap-1 text-xs font-medium text-[var(--sys-muted-foreground)]">
+      <p className="flex items-center gap-1 text-note font-medium text-[var(--sys-muted-foreground)]">
         {icon} {label}
       </p>
       <p className="mt-0.5 text-sm font-black tabular-nums" dir="ltr">{value}</p>

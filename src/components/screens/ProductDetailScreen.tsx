@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -163,16 +164,13 @@ export function ProductDetailScreen() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <button
-              onClick={() => window.history.back()}
-              className="text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] flex items-center space-x-1 rtl:space-x-reverse mb-1.5 cursor-pointer"
-            >
+            <Button variant="quiet" size="sm" onClick={() => window.history.back()}>
               <RiArrowRightLine className="icon-mirror w-4 h-4" />
               <span>عودة للمنتجات</span>
-            </button>
+            </Button>
             <h1 className="text-xl font-bold text-[var(--sys-heading)]">{product.name}</h1>
             <div className="flex items-center space-x-2 rtl:space-x-reverse mt-1.5">
-              <span className="font-mono text-xs font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
+              <span className="font-mono text-note font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
               <Badge variant={productStatusTone(product.status)}>{productStatusAr(product.status)}</Badge>
               {/* The picture count is said once, in the gallery's own heading — «0 صورة» up here and an empty gallery
                   under it were one fact written twice. */}
@@ -270,7 +268,7 @@ export function ProductDetailScreen() {
                   </div>
                 )}
                 {primary && (
-                  <span className="absolute top-3 left-3 rtl:left-auto rtl:right-3 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-xs font-bold px-2 py-1 rounded-lg flex items-center space-x-1 rtl:space-x-reverse">
+                  <span className="absolute top-3 left-3 rtl:left-auto rtl:right-3 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-note font-bold px-2 py-1 rounded-lg flex items-center space-x-1 rtl:space-x-reverse">
                     <RiStarLine className="w-4 h-4" />
                     <span>الصورة الرئيسية</span>
                   </span>
@@ -308,22 +306,24 @@ export function ProductDetailScreen() {
                       </button>
                       {canImages && (
                         <div className="absolute inset-0 bg-[var(--sys-sidebar)]/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-1 rtl:space-x-reverse">
-                          <button onClick={() => setPrimary(img.id)} aria-label="تعيين كرئيسية" title="تعيين كرئيسية" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-warning)] hover:bg-[var(--sys-card)] cursor-pointer">
-                            <RiStarLine className="w-4 h-4" />
-                          </button>
+                          {/* The kit's square: 44px on a phone, 32 on a desk. Each press still calls its own handler, and the
+                              promise it returns is dropped as it always was (`void`): the page reloads under itself, no busy state. */}
+                          <IconButton variant="secondary" size="sm" label="تعيين كرئيسية" onClick={() => { void setPrimary(img.id); }}>
+                            <RiStarLine className="w-4 h-4 text-[var(--sys-warning)]" />
+                          </IconButton>
                           {idx > 0 && !img.isPrimary && (
-                            <button onClick={() => moveImage(idx, -1)} aria-label="تحريك يسار" title="تحريك يسار" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-foreground)] hover:bg-[var(--sys-card)] cursor-pointer">
+                            <IconButton variant="secondary" size="sm" label="تحريك يسار" onClick={() => { void moveImage(idx, -1); }}>
                               <RiArrowUpSLine className="w-4 h-4 rotate-[-90deg] rtl:rotate-[270deg]" />
-                            </button>
+                            </IconButton>
                           )}
                           {idx < images.length - 1 && !img.isPrimary && (
-                            <button onClick={() => moveImage(idx, 1)} aria-label="تحريك يمين" title="تحريك يمين" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-foreground)] hover:bg-[var(--sys-card)] cursor-pointer">
+                            <IconButton variant="secondary" size="sm" label="تحريك يمين" onClick={() => { void moveImage(idx, 1); }}>
                               <RiArrowDownSLine className="w-4 h-4 rotate-[-90deg] rtl:rotate-[270deg]" />
-                            </button>
+                            </IconButton>
                           )}
-                          <button onClick={() => deleteImage(img.id)} aria-label="حذف" title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-destructive)] hover:bg-[var(--sys-card)] cursor-pointer">
-                            <RiDeleteBinLine className="w-4 h-4" />
-                          </button>
+                          <IconButton variant="secondary" size="sm" label="حذف" onClick={() => { void deleteImage(img.id); }}>
+                            <RiDeleteBinLine className="w-4 h-4 text-[var(--sys-destructive)]" />
+                          </IconButton>
                         </div>
                       )}
                     </div>
@@ -356,7 +356,7 @@ export function ProductDetailScreen() {
                 them said nothing.
               */}
               <CardHeader title="وصف المنتج وسعره" />
-              <CardContent className="text-xs space-y-2">
+              <CardContent className="text-note space-y-2">
                 <p className="text-[var(--sys-foreground)]">{product.description || '—'}</p>
                 {/* The base price, alone: «متوسط تكلفة الوحدة» was here as well as in the headline above and in the
                     stock card below — three copies of one figure in three spellings («كلفة» / «تكلفة»). */}

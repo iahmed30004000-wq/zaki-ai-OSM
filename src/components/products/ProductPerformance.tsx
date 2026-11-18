@@ -55,7 +55,7 @@ export function ProductPerformance({ productId }: { productId: string }) {
   return (
     <Card>
       <CardHeader title="أداء المبيعات" subtitle={subtitle} />
-      <CardContent className="text-xs space-y-2">
+      <CardContent className="text-note space-y-2">
         {failed && <p className="text-[var(--sys-muted-foreground)]">{failed}</p>}
         {!failed && !answer && <p className="text-[var(--sys-muted-foreground)]">جارٍ القراءة…</p>}
         {answer && !answer.salesVisible && (
