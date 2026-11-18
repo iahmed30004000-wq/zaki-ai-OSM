@@ -11,7 +11,8 @@ import { ThemePicker } from '@/components/settings/ThemePicker';
 import { MenuOrderCard } from '@/components/settings/MenuOrderCard';
 import { PasskeySection } from '@/components/settings/PasskeySection';
 import { RiCheckboxCircleLine, RiErrorWarningLine, RiShieldCheckLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 
 export function ProfileScreen() {
   const { currentUser, refreshUser } = useApp();
@@ -62,15 +63,14 @@ export function ProfileScreen() {
   };
 
   return (
-    <>
-      <div className="space-y-6 max-w-3xl">
-        <PageHeader title="الملف الشخصي"
-          description="تحديث بياناتك الشخصية وكلمة المرور — الدور والصلاحيات يديرها المدير فقط"
-        />
-
+      <PageShell
+        title={routeLabel('/admin/profile')}
+        width="narrow"
+        description="تحديث بياناتك الشخصية وكلمة المرور — الدور والصلاحيات يديرها المدير فقط"
+      >
         {message && (
           <div
-            className={`p-3 rounded-lg text-xs flex items-center space-x-2 rtl:space-x-reverse ${
+            className={`p-3 rounded-lg text-sm flex items-center space-x-2 rtl:space-x-reverse ${
               message.type === 'success'
                 ? 'bg-[var(--sys-success-soft)] border-0 text-[var(--sys-success)]'
                 : 'bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'
@@ -90,9 +90,9 @@ export function ProfileScreen() {
             cannot be asked to improve it. */}
         {/* How the system looks, on the page about them. It applies the
             moment it is clicked — choosing a theme means looking at it. */}
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+        <Card padding="md">
           <ThemePicker initial={currentUser?.systemTheme} />
-        </div>
+        </Card>
 
         {/*
           AND THE MENU, ON THE SAME PAGE AND FOR THE SAME REASON.
@@ -123,7 +123,7 @@ export function ProfileScreen() {
               title="معلومات الحساب"
               subtitle="تُدار من قِبل مدير النظام — للقراءة فقط"
             />
-            <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
               <div className="bg-[var(--sys-surface)] p-3 rounded-lg">
                 <span className="text-[var(--sys-muted)] block">البريد الإلكتروني</span>
                 <span className="font-bold text-[var(--sys-heading)]">{currentUser?.email}</span>
@@ -197,7 +197,7 @@ export function ProfileScreen() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
-              <p className="text-xs text-[var(--sys-muted-foreground)] flex items-center space-x-1.5 rtl:space-x-reverse">
+              <p className="text-note text-[var(--sys-muted-foreground)] flex items-center space-x-1.5 rtl:space-x-reverse">
                 <RiShieldCheckLine className="w-4 h-4 text-[var(--sys-destructive)]" />
                 <span>تغيير كلمة المرور يُنهي جميع الجلسات النشطة على حسابك.</span>
               </p>
@@ -214,7 +214,6 @@ export function ProfileScreen() {
         {/* Outside the form: registering a key is its own act, and a finger
             on the sensor must not be submitting a name change with it. */}
         <PasskeySection />
-      </div>
-    </>
+      </PageShell>
   );
 }

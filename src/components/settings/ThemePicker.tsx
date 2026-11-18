@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
 import { AUTO_DARK, AUTO_LIGHT, AUTO_THEME, THEME_CHOICES, hasDarkMenuOnLightPage, sanitizeTheme, themeByKey } from '@/lib/system-themes';
 import { DECOR_LEVELS, readDecor, setDecor, type DecorLevel } from '@/lib/theme-decoration';
 import { RiCheckLine, RiPaletteLine } from '@remixicon/react';
+import { Segmented } from '@/components/ui/Segmented';
 
 /**
  * CHOOSING HOW THE SYSTEM LOOKS.
@@ -104,10 +105,10 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
 
   return (
     <section dir="rtl">
-      <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-foreground)]">
+      <h3 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-[var(--sys-foreground)]">
         <RiPaletteLine className="h-4 w-4 text-[var(--sys-primary)]" /> مظهر النظام
       </h3>
-      <p className="mb-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="mb-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         اختيارك أنت وحدك، ويتبعك بين الأجهزة. ألوان المعاني لا تتغيّر بين المظاهر: الأحمر متأخر أو
         خسارة، والأخضر محصَّل، والكهرماني يحتاج انتباهاً — يتغيّر السطح فقط. ولا يمسّ هذا شكل متجرك
         إطلاقاً.
@@ -137,7 +138,7 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
               }`}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-[var(--sys-heading)]">{choice.ar}</span>
+                <span className="text-sm font-semibold text-[var(--sys-heading)]">{choice.ar}</span>
                 {active && <RiCheckLine className="h-4 w-4 text-[var(--sys-primary)]" />}
               </span>
 
@@ -165,7 +166,7 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
                 ))}
               </span>
 
-              <span className="mt-1.5 block text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <span className="mt-1.5 block text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                 {choice.note}
               </span>
             </button>
@@ -174,7 +175,7 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
       </div>
 
       {failed && (
-        <p className="mt-2 text-xs text-[var(--sys-warning)]">
+        <p className="mt-2 text-sm text-[var(--sys-warning)]">
           طُبِّق المظهر هنا، لكن تعذّر حفظه — سيعود إلى السابق على جهاز آخر.
         </p>
       )}
@@ -221,6 +222,7 @@ const DECOR_AR: Record<DecorLevel, { ar: string; note: string }> = {
 function DecorationLevel() {
   const router = useRouter();
   const [level, setLevel] = useState<DecorLevel>('light');
+  const titleId = useId();
   // Read after mount: the cookie is the browser's, and the server has
   // already used it to paint. Reading it in render would differ between
   // the two and React would say so.
@@ -245,33 +247,26 @@ function DecorationLevel() {
 
   return (
     <div className="mt-4 border-t border-[var(--sys-border)] pt-3">
-      <h4 className="mb-1 text-xs font-semibold text-[var(--sys-foreground)]">زخرفةُ المظهر</h4>
-      <p className="mb-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <h4 id={titleId} className="mb-1 text-sm font-semibold text-[var(--sys-foreground)]">زخرفةُ المظهر</h4>
+      <p className="mb-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         في ثلاثةِ أماكنَ فقط: شاشةُ الدخول، والقائمةُ الفارغة، ورأسُ القائمة الجانبيّة.
         ولا تظهر أبداً وراءَ جدولٍ أو حقلٍ أو طلبٍ أو مبلغٍ أو كميّةِ مخزون — الأرقامُ لا يُقرأُ من
         خلفِها شيء.
       </p>
-      <div className="flex flex-wrap gap-2">
-        {DECOR_LEVELS.map((key) => {
-          const active = key === level;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => choose(key)}
-              aria-pressed={active}
-              className={`min-h-11 md:min-h-0 rounded-lg border px-3 py-2 text-right ${
-                active
-                  ? 'border-[var(--sys-primary)] ring-1 ring-[var(--sys-primary)]'
-                  : 'border-[var(--sys-border)] hover:border-[var(--sys-border-strong)]'
-              }`}
-            >
-              <span className="block text-xs font-semibold text-[var(--sys-heading)]">{DECOR_AR[key].ar}</span>
-              <span className="block text-xs text-[var(--sys-muted-foreground)]">{DECOR_AR[key].note}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* 18/11 (R16d): three levels, one chosen — the kit's `Segmented`. The note of each level stays written under the bar, all three. */}
+      <Segmented
+        aria-labelledby={titleId}
+        options={DECOR_LEVELS.map((key) => ({ value: key, label: DECOR_AR[key].ar }))}
+        value={level}
+        onChange={(next) => choose(next as DecorLevel)}
+      />
+      <ul className="mt-2 space-y-1 text-note text-[var(--sys-muted-foreground)]">
+        {DECOR_LEVELS.map((key) => (
+          <li key={key}>
+            <span className="font-semibold text-[var(--sys-heading)]">{DECOR_AR[key].ar}</span> — {DECOR_AR[key].note}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
