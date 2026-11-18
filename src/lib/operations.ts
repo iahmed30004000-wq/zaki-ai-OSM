@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { availableStock, freeFromPools, stockPoolsFor, type StockPools } from './reservation';
+import { realStoresOnly } from './test-store';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -50,6 +51,9 @@ export async function preparationGroups(tx: Tx, scope: { companyId: string; stor
         storeId: scope.storeId,
         confirmationStatus: 'CONFIRMED',
         shippingStatus: { in: ['NOT_READY', 'PACKING'] },
+        // A bench's orders stop at confirmation (`test-store.ts`, B2): never on the packing list — nor, through this one
+        // function, in the picking assistant's.
+        ...realStoresOnly(),
       },
     },
     select: {

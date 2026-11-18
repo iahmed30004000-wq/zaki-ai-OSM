@@ -15,6 +15,8 @@ import { zodMessage } from '@/lib/zod-message';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, shipmentListWhere, whyNotBatchable } from '@/lib/batching-guard';
 import { SHIP_HOLD_RELEASED, holdEndsInBatch } from '@/lib/shipment-hold';
+import { isBenchStore } from '@/lib/bench-store';
+import { BENCH_LIST_EMPTY_AR, BENCH_STOPS_AR, BENCH_STOPS_CODE } from '@/lib/test-store';
 
 /**
  * Shipment creation.
@@ -58,6 +60,17 @@ export async function GET(req: Request) {
      * the address-book key; for everyone else the key is not there at all, so the payload provably does not carry it.
      */
     const maySeeAddress = can(user, 'customers.view');
+
+    // A bench offers nothing to ship (`test-store.ts`), and says why rather than look broken.
+    if (await isBenchStore(db, { companyId, storeId })) {
+      return NextResponse.json({
+        count: 0,
+        heldCount: 0,
+        allowNegativeStock: country.allowNegativeStock,
+        orders: [],
+        benchNote: BENCH_LIST_EMPTY_AR,
+      });
+    }
 
     const q = new URL(req.url).searchParams;
     const from = q.get('from') ? new Date(q.get('from')!) : null;
@@ -294,6 +307,11 @@ export async function POST(req: Request) {
 
     const provider = await db.deliveryProvider.findFirst({ where: { id: deliveryProviderId, companyId } });
     if (!provider) return NextResponse.json({ error: 'شركة الشحن غير موجودة' }, { status: 404 });
+
+    // A bench's orders stop at confirmation (`test-store.ts`): none of them goes on a trolley, whatever the list said.
+    if (await isBenchStore(db, { companyId, storeId })) {
+      return NextResponse.json({ error: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
+    }
 
     const orders = await db.order.findMany({
       where: { id: { in: orderIds }, companyId, storeId },

@@ -124,6 +124,8 @@ export async function GET(req: Request) {
           // whether the counting desk received it, and with a fee or not —
           // the half of «where it ended up» the order's own columns lack
           returnReceipt: { select: { courierFeeCharged: true, receivedQty: true, damagedQty: true, missingQty: true } },
+          // The bench mark: a confirmed bench order reads «مؤكَّد — تيست، ما بينشحن» (`test-store.ts`, B2).
+          store: { select: { isTest: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -140,8 +142,10 @@ export async function GET(req: Request) {
       // the legacy `status` column is kept for compatibility but never drives
       // a screen, because it drifts from confirmation/shipping status.
       // Cost, profit and the customer's private counters only to their own keys — see order-projection.ts.
-      orders: orders.map(({ assignee, _count, ...o }) => projectOrder({
+      orders: orders.map(({ assignee, _count, store, ...o }) => projectOrder({
         ...o,
+        // Derived from the store, never stored: the core state list stays closed (B2).
+        testStore: store?.isTest === true,
         reservedFor: heldFor({ ...o, assignee, everClaimed: _count.claimHistory > 0 }, new Date()),
         state: deriveCoreState(o as unknown as StateSource),
         zone: getZone(deriveCoreState(o as unknown as StateSource)),

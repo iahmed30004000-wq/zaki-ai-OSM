@@ -139,6 +139,8 @@ export function ShipmentsNewScreen() {
   const [rows, setRows] = useState<Row[] | null>(null);
   /** How many are being held back, shown on the tab so none can seem to vanish. */
   const [heldCount, setHeldCount] = useState(0);
+  // A bench store (B2): the server's sentence for why the list is empty — its orders stop at confirmation.
+  const [benchNote, setBenchNote] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
   const [exceptions, setExceptions] = useState<{ orderNumber: string; reasons: string[] }[]>([]);
@@ -373,10 +375,11 @@ export function ShipmentsNewScreen() {
     Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
     if (view === 'held') q.set('held', 'only');
     try {
-      const data = await apiJson<{ orders: Row[]; heldCount?: number }>(`/api/ops/shipments?${q}`);
+      const data = await apiJson<{ orders: Row[]; heldCount?: number; benchNote?: string }>(`/api/ops/shipments?${q}`);
       if (mine !== loadSeq.current) return;
       setRows(data.orders);
       setHeldCount(data.heldCount ?? 0);
+      setBenchNote(data.benchNote ?? null);
       setSelected({});
     } catch (e) {
       if (mine !== loadSeq.current) return;
@@ -1141,7 +1144,9 @@ export function ShipmentsNewScreen() {
               );
             }}
             empty={
-              narrowed ? (
+              benchNote ? (
+                <MissionDone why={benchNote} />
+              ) : narrowed ? (
                 <EmptyState
                   icon={RiTruckLine}
                   title="لا طلبات جاهزة للشحن بهذه الفلاتر"

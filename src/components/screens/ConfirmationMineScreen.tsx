@@ -133,6 +133,8 @@ interface OrderRow {
   merchantRef: string | null;
   confirmationStatus: string;
   state: string;
+  /** A bench store's order (B2): «مؤكَّد — تيست، ما بينشحن». Absent = a real store's. */
+  testStore?: boolean;
   previousOrders: number;
   version: number;
   totalAmount: number;
@@ -1747,7 +1749,7 @@ export function ConfirmationMineScreen() {
                     <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">{order.orderNumber}</span>
                     <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
                   </span>
-                  <OrderStateBadge state={order.state} />
+                  <OrderStateBadge state={order.state} testStore={order.testStore} />
                   {/* Where it came from — see `sourceLabel`. It decides what
                       she can do about bad data, so it belongs beside the
                       number rather than three cards deep. */}

@@ -52,6 +52,8 @@ import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/ch
 import { fixedCostsOf, unitCostsOf } from '@/lib/product-fixed-cost';
 import { heldFor, reservationHoursLeft } from '@/lib/order-reservation';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
+import { isBenchStore } from '@/lib/bench-store';
+import { BENCH_FORWARD_SHIPPING, BENCH_STOPS_AR, BENCH_STOPS_CODE, benchStopsHere } from '@/lib/test-store';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
 const RESERVED_GOODS_EDIT_AR =
@@ -317,6 +319,8 @@ export async function GET(
         // taken it» (the press of «إغلاق الشحنة — سُلّمت للشركة») from a
         // parcel that is only labelled and still on our floor.
         shippingBatch: { select: { id: true, batchNumber: true, status: true } },
+        // The bench mark: a confirmed bench order reads «مؤكَّد — تيست، ما بينشحن» (`test-store.ts`, B2).
+        store: { select: { isTest: true } },
         landingPage: { select: { id: true, name: true, slug: true } },
         addOns: { orderBy: { createdAt: 'asc' } },
         moderator: { select: { id: true, name: true, email: true, phone: true } },
@@ -533,12 +537,14 @@ export async function GET(
     const held = heldFor({ ...order, everClaimed: order.claimHistory.length > 0 }, asOf);
     const reservedFor = held ? { ...held, hoursLeft: reservationHoursLeft(order.assignedAt!, asOf) } : null;
     // The colleague's account status stays on the server: the screen is told whom it is held for, not what her account is.
-    const { assignee: _heldFor, ...orderToSend } = order;
+    // The store row stays on the server too: the screen is told only whether it is a bench (B2), derived, never stored.
+    const { assignee: _heldFor, store: _store, ...orderToSend } = order;
+    const testStore = _store?.isTest === true;
 
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...orderToSend, items, state, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...orderToSend, items, state, testStore, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money
@@ -1263,6 +1269,26 @@ export async function PATCH(
           { error: 'Forbidden: orders.change_status required', errorAr: 'لا تملك صلاحية تغيير حالة الطلب.' }, { status: 403 }
         );
       }
+    }
+
+    /*
+     * A BENCH ORDER STOPS AT CONFIRMATION (B2, 18/11 — `test-store.ts`). This door writes `shippingStatus` too — by the
+     * field itself and by the combined `status: 'SHIPPED'` — so it asks the same question as the shipping door, of the
+     * ORDER's store: no step toward a courier for a bench order not already on a trolley or gone. Cancelling and the
+     * statuses after the handover are not steps toward a courier and are not asked.
+     */
+    if (
+      typeof updateData.shippingStatus === 'string' &&
+      updateData.shippingStatus !== existing.shippingStatus &&
+      BENCH_FORWARD_SHIPPING.includes(updateData.shippingStatus) &&
+      benchStopsHere({
+        shippingBatchId: existing.shippingBatchId ?? null,
+        shippingStatus: String(existing.shippingStatus),
+        shippedAt: existing.shippedAt ?? null,
+      }) &&
+      (await isBenchStore(db, { companyId, storeId: existing.storeId ?? storeId }))
+    ) {
+      return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
     }
 
     if (moderatorId !== undefined) {

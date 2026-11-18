@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, requireContext } = vi.hoisted(() => ({
   db: {
+    // B2 (18/11): the shipping doors now ask whether the store is a test bench (`bench-store.ts`); unset, this answers «no».
+    store: { findFirst: vi.fn() },
     order: { findMany: vi.fn(), count: vi.fn() },
     orderItem: { findMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
     orderAddOn: { findMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },

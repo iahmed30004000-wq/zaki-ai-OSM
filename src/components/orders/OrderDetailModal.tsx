@@ -606,7 +606,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3 shadow-raised">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <span className="text-xs font-semibold text-[var(--sys-muted)]">حالة الطلب</span>
-              <OrderStateBadge state={order.state} />
+              <OrderStateBadge state={order.state} testStore={order.testStore} />
 
               {order.deliveryProvider && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] text-xs font-semibold text-[var(--sys-muted-foreground)]">
