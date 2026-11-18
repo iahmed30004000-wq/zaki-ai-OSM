@@ -9,6 +9,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Badge } from '@/components/ui/Badge';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -21,7 +23,8 @@ import {
   type ScopeValue, type CatalogItem,
 } from '@/lib/permission-catalog';
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiArrowUpSLine, RiCloseLine, RiDeleteBinLine, RiFileCopyLine, RiGroupLine, RiKey2Line, RiPencilLine, RiSearchLine, RiShieldCheckLine, RiToolsLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { RoleMenuPanel } from '@/components/settings/RoleMenuPanel';
 
@@ -393,9 +396,8 @@ export function PermissionsScreen() {
   const activeCount = Object.keys(draft).length;
 
   return (
-    <>
-      <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <PageHeader title={ar ? 'الأدوار والصلاحيات' : 'Roles & Permissions'}
+    <div dir={isRtl ? 'rtl' : 'ltr'}>
+      <PageShell title={routeLabel('/admin/permissions')}
             description={ar
                 ? 'إدارة أدوار الفريق وصلاحياتهم — تُطبق التغييرات فورًا على الخادم.'
                 : 'Manage team roles and their permissions — changes apply server-side immediately.'}
@@ -418,10 +420,10 @@ export function PermissionsScreen() {
             )}
           </div></>
             }
-          />
+          >
 
         {savedFlash && (
-          <div className="rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-xs font-medium px-4 py-2.5">
+          <div className="rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-note font-medium px-4 py-2.5">
             {ar ? 'تم الحفظ بنجاح' : 'Saved successfully'}
           </div>
         )}
@@ -464,7 +466,7 @@ export function PermissionsScreen() {
                           {role.companyId === null ? (ar ? 'دور نظامي' : 'System') : (ar ? 'دور شركة' : 'Company')}
                         </Badge>
                       </div>
-                      <p className="text-xs text-[var(--sys-muted)] mt-1">
+                      <p className="text-note text-[var(--sys-muted)] mt-1">
                         {ar ? 'أُنشئ' : 'Created'} {arDate(role.createdAt)}
                       </p>
                     </div>
@@ -475,14 +477,14 @@ export function PermissionsScreen() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-3 mt-3 text-xs text-[var(--sys-muted-foreground)]">
+                  <div className="flex items-center gap-3 mt-3 text-note text-[var(--sys-muted-foreground)]">
                     <span className="inline-flex items-center gap-1"><RiGroupLine className="w-4 h-4" />{role.usersCount} {ar ? 'مستخدم' : 'users'}</span>
                     <span className="inline-flex items-center gap-1"><RiKey2Line className="w-4 h-4" />{role.permissionsCount} {ar ? 'صلاحية' : 'permissions'}</span>
                   </div>
 
                   <div className="flex items-center gap-1.5 mt-4">
                     {isSuperAdminRole ? (
-                      <span className="text-xs text-[var(--sys-muted)]" title={ar ? 'وصول كامل مركزيًا' : 'Central full access'}>
+                      <span className="text-note text-[var(--sys-muted)]" title={ar ? 'وصول كامل مركزيًا' : 'Central full access'}>
                         {ar ? 'قراءة فقط' : 'Read-only'}
                       </span>
                     ) : (
@@ -493,7 +495,7 @@ export function PermissionsScreen() {
                           </Button>
                         )}
                         {canEdit && role.isSystem && !canEditSystem && (
-                          <span className="text-xs text-[var(--sys-muted)]">
+                          <span className="text-note text-[var(--sys-muted)]">
                             قراءة فقط — تعديل الأدوار الأساسية يحتاج صلاحية «تعديل قوالب الأدوار الأساسية».
                           </span>
                         )}
@@ -561,7 +563,7 @@ export function PermissionsScreen() {
             </div>
 
             {restoredFlash && (
-              <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-xs px-4 py-2.5">
+              <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-note px-4 py-2.5">
                 {ar
                   ? 'تم تحميل الصلاحيات الافتراضية للدور — لن تُطبّق حتى تضغط حفظ التغييرات.'
                   : 'The role defaults are loaded — nothing changes until you press Save.'}
@@ -591,7 +593,7 @@ export function PermissionsScreen() {
             */}
             {draft['confirmation.work'] && !draft['orders.contact_log'] && (
               <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] px-4 py-3 space-y-1.5">
-                <p className="flex items-start gap-2 text-xs font-bold text-[var(--sys-warning)]">
+                <p className="flex items-start gap-2 text-note font-bold text-[var(--sys-warning)]">
                   <RiAlertLine className="w-4 h-4 shrink-0 mt-px" />
                   <span>
                     {ar
@@ -599,7 +601,7 @@ export function PermissionsScreen() {
                       : 'This role cannot confirm or postpone its own orders — the rule is: contact first'}
                   </span>
                 </p>
-                <p className="flex items-start gap-2 text-xs text-[var(--sys-heading)]">
+                <p className="flex items-start gap-2 text-note text-[var(--sys-heading)]">
                   <RiToolsLine className="w-4 h-4 shrink-0 mt-px text-[var(--sys-warning)]" />
                   <span>
                     {ar
@@ -621,7 +623,7 @@ export function PermissionsScreen() {
               one. Said here, beside the tick that used to be the only way.
             */}
             {draft['confirmation.work'] && (
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 {ar
                   ? '«طلباتي» ما بدها «عرض الطلبات»: الطلب اللي بين إيدين الموظف بينفتح ويشتغل عليه حتى لو «عرض الطلبات» مطفية.'
                   : '«My orders» does not need «View orders»: the order in the agent’s hands opens and can be worked even with «View orders» off.'}
@@ -638,7 +640,7 @@ export function PermissionsScreen() {
             */}
             {draft['confirmation.pull'] && !draft['confirmation.work'] && (
               <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] px-4 py-3 space-y-1.5">
-                <p className="flex items-start gap-2 text-xs font-bold text-[var(--sys-warning)]">
+                <p className="flex items-start gap-2 text-note font-bold text-[var(--sys-warning)]">
                   <RiAlertLine className="w-4 h-4 shrink-0 mt-px" />
                   <span>
                     {/* With «عرض الطلبات» the pulled order still opens from the list, so only a role without it is told it cannot work them. */}
@@ -647,7 +649,7 @@ export function PermissionsScreen() {
                       : `This role pulls orders that will not appear on its desk${draft['orders.view'] ? '' : ' — and cannot work them'}`}
                   </span>
                 </p>
-                <p className="flex items-start gap-2 text-xs text-[var(--sys-heading)]">
+                <p className="flex items-start gap-2 text-note text-[var(--sys-heading)]">
                   <RiToolsLine className="w-4 h-4 shrink-0 mt-px text-[var(--sys-warning)]" />
                   <span>
                     {ar
@@ -668,10 +670,10 @@ export function PermissionsScreen() {
                       onClick={() => setOpenModules((p) => ({ ...p, [m.module]: !p[m.module] }))}
                       className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-[var(--sys-surface)] hover:bg-[var(--sys-border)]/60 transition-colors cursor-pointer text-start"
                     >
-                      <span className="text-xs font-bold text-[var(--sys-heading)]">
+                      <span className="text-note font-bold text-[var(--sys-heading)]">
                         {ar ? MODULE_LABELS[m.module]?.ar ?? m.module : MODULE_LABELS[m.module]?.en ?? m.module}
                         {moduleActive > 0 && (
-                          <span className="ms-2 text-xs font-bold text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-md px-1.5 py-0.5">
+                          <span className="ms-2 text-note font-bold text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-md px-1.5 py-0.5">
                             {moduleActive}
                           </span>
                         )}
@@ -685,18 +687,19 @@ export function PermissionsScreen() {
                           return (
                             <div key={item.key} className="px-4 py-3">
                               <div className="flex items-center justify-between gap-3">
-                                <label className="flex items-center gap-2.5 cursor-pointer min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!d}
-                                    onChange={() => togglePerm(item)}
-                                    className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer shrink-0"
-                                  />
-                                  <span className="text-xs text-[var(--sys-heading)] font-medium truncate">
-                                    {ar ? item.ar : item.en}
-                                  </span>
-                                  <span className="text-xs text-[var(--sys-muted)] font-mono hidden sm:inline truncate" dir="ltr">{item.key}</span>
-                                </label>
+                                {/* The id is the role AND the key: a key alone repeats from one role's matrix to the next, and a label
+                                    pointing at an id another box also carries ticks that box instead (R2b). */}
+                                <Checkbox
+                                  id={`perm-${editingRole?.id ?? 'new'}-${item.key}`}
+                                  checked={!!d}
+                                  onChange={() => togglePerm(item)}
+                                  label={
+                                    <span className="flex items-center gap-2.5 min-w-0">
+                                      <span className="font-medium truncate">{ar ? item.ar : item.en}</span>
+                                      <span className="text-note text-[var(--sys-muted)] font-mono hidden sm:inline truncate" dir="ltr">{item.key}</span>
+                                    </span>
+                                  }
+                                />
                                 {d && item.scopes && item.scopes.length > 1 && (
                                   <div className="w-44 shrink-0">
                                     <Select
@@ -713,92 +716,94 @@ export function PermissionsScreen() {
 
                               {/* What the last tick pulled in or took off, under the row that was clicked */}
                               {cascade?.at === item.key && (
-                                <p role="status" className="mt-1 ms-6 text-xs text-[var(--sys-warning)]">{cascade.text}</p>
+                                <p role="status" className="mt-1 ms-6 text-note text-[var(--sys-warning)]">{cascade.text}</p>
                               )}
                               {/* An old pair the person has not touched: said, never fixed behind their back */}
                               {d && item.requires && !draft[item.requires] && (
-                                <p className="mt-1 ms-6 text-xs text-[var(--sys-warning)]">
+                                <p className="mt-1 ms-6 text-note text-[var(--sys-warning)]">
                                   {`بتحتاج «${catalogItem(item.requires)?.ar ?? item.requires}» — مش مفعّلة.`}
                                 </p>
                               )}
-                              {item.note && <p className="mt-1 ms-6 text-xs text-[var(--sys-muted)]">{item.note}</p>}
+                              {item.note && <p className="mt-1 ms-6 text-note text-[var(--sys-muted)]">{item.note}</p>}
                               {item.opens && item.opens.length > 0 && (
-                                <p className="mt-1 ms-6 text-xs text-[var(--sys-muted)]">{`بتفتح: ${item.opens.join(' · ')}`}</p>
+                                <p className="mt-1 ms-6 text-note text-[var(--sys-muted)]">{`بتفتح: ${item.opens.join(' · ')}`}</p>
                               )}
 
                               {/* CATEGORY scope → category checkboxes */}
                               {d && d.scope === 'CATEGORY' && (
-                                <div className="mt-2 ms-6 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3">
+                                <Card plain className="mt-2 ms-6 p-3">
                                   {categories.length === 0 ? (
-                                    <p className="text-xs text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا معنى لصلاحية محصورة بتصنيف. تُعرَّف من «المنتجات ← التصنيفات».</p>
+                                    <p className="text-note text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا معنى لصلاحية محصورة بتصنيف. تُعرَّف من «المنتجات ← التصنيفات».</p>
                                   ) : (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                                       {categories.map((c) => (
-                                        <label key={c.id} className="flex items-center gap-1.5 text-xs text-[var(--sys-heading)] cursor-pointer">
-                                          <input
-                                            type="checkbox"
-                                            checked={d.scopeIds.includes(c.id)}
-                                            onChange={() => toggleScopeId(item.key, c.id)}
-                                            className="w-3.5 h-3.5 accent-[var(--sys-primary)] cursor-pointer"
-                                          />
-                                          {c.name}
-                                        </label>
+                                        <Checkbox
+                                          key={c.id}
+                                          id={`perm-${editingRole?.id ?? 'new'}-${item.key}-category-${c.id}`}
+                                          checked={d.scopeIds.includes(c.id)}
+                                          onChange={() => toggleScopeId(item.key, c.id)}
+                                          label={c.name}
+                                        />
                                       ))}
                                     </div>
                                   )}
-                                </div>
+                                </Card>
                               )}
 
                               {/* SPECIFIC scope → product search + chips */}
                               {d && d.scope === 'SPECIFIC' && (
-                                <div className="mt-2 ms-6 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3 space-y-2">
+                                <Card plain className="mt-2 ms-6 p-3 space-y-2">
                                   <div className="relative">
                                     <RiSearchLine className="absolute top-1/2 -translate-y-1/2 start-2.5 w-4 h-4 text-[var(--sys-muted)]" />
                                     <Input
                                       value={productQuery}
                                       onChange={(e) => setProductQuery(e.target.value)}
                                       placeholder={ar ? 'ابحث عن منتج بالاسم…' : 'Search products by name…'}
-                                      className="ps-8 text-xs"
+                                      className="ps-8 text-note"
                                     />
                                   </div>
-                                  {productLoading && <p className="text-xs text-[var(--sys-muted)]">{ar ? 'جارِ البحث…' : 'Searching…'}</p>}
+                                  {productLoading && <p className="text-note text-[var(--sys-muted)]">{ar ? 'جارِ البحث…' : 'Searching…'}</p>}
                                   {productResults.length > 0 && (
-                                    <div className="max-h-36 overflow-y-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] divide-y divide-[var(--sys-surface)]">
+                                    <Card plain className="max-h-36 overflow-y-auto divide-y divide-[var(--sys-surface)]">
                                       {productResults.slice(0, (productPage + 1) * 10).map((p) => (
-                                        <button
+                                        <Button
                                           key={p.id}
+                                          variant="quiet"
+                                          size="sm"
                                           onClick={() => !d.scopeIds.includes(p.id) && toggleScopeId(item.key, p.id)}
-                                          className="w-full text-start px-3 py-2 text-xs text-[var(--sys-heading)] hover:bg-[var(--sys-surface)] cursor-pointer"
+                                          className="w-full justify-start"
                                         >
                                           {p.name}
-                                        </button>
+                                        </Button>
                                       ))}
                                       {(productPage + 1) * 10 < productResults.length && (
-                                        <button
+                                        <Button
+                                          variant="quiet"
+                                          size="sm"
                                           onClick={() => setProductPage((p) => p + 1)}
-                                          className="w-full px-3 py-2 text-xs font-bold text-[var(--sys-primary)] hover:bg-[var(--sys-surface)] cursor-pointer"
+                                          className="w-full"
                                         >
                                           {ar ? 'تحميل المزيد' : 'Load more'}
-                                        </button>
+                                        </Button>
                                       )}
-                                    </div>
+                                    </Card>
                                   )}
                                   {d.scopeIds.length > 0 && (
                                     <div className="flex flex-wrap gap-1.5">
                                       {d.scopeIds.map((id) => {
                                         const prod = productResults.find((p) => p.id === id);
                                         return (
-                                          <span key={id} className="inline-flex items-center gap-1 text-xs font-medium bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5">
+                                          <span key={id} className="inline-flex items-center gap-1 text-note font-medium bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5">
                                             {prod?.name ?? id}
-                                            <button onClick={() => toggleScopeId(item.key, id)} aria-label="أزل من النطاق" title="أزل من النطاق" className="cursor-pointer hover:text-[var(--sys-destructive)]">
+                                            <IconButton size="sm" label="أزل من النطاق" onClick={() => toggleScopeId(item.key, id)}>
                                               <RiCloseLine className="w-4 h-4" />
-                                            </button>
+                                            </IconButton>
                                           </span>
                                         );
                                       })}
                                     </div>
                                   )}
-                                </div>
+                                </Card>
                               )}
                             </div>
                           );
@@ -809,7 +814,7 @@ export function PermissionsScreen() {
                 );
               })}
               {visibleModules.length === 0 && (
-                <p className="text-xs text-[var(--sys-muted)] text-center py-6">{ar ? 'لا صلاحيات مطابقة' : 'No matching permissions'}</p>
+                <p className="text-note text-[var(--sys-muted)] text-center py-6">{ar ? 'لا صلاحيات مطابقة' : 'No matching permissions'}</p>
               )}
             </div>
 
@@ -837,7 +842,7 @@ export function PermissionsScreen() {
             </p>
             {deletingRole && deletingRole.usersCount > 0 && (
               <div className="rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] p-3 space-y-2">
-                <p className="text-xs font-bold text-[var(--sys-warning)]">
+                <p className="text-note font-bold text-[var(--sys-warning)]">
                   {ar
                     ? `هذا الدور مرتبط بـ ${deletingRole.usersCount} مستخدم. اختر دورًا بديلًا:`
                     : `${deletingRole.usersCount} user(s) hold this role. Pick a replacement:`}
@@ -854,7 +859,7 @@ export function PermissionsScreen() {
                 />
               </div>
             )}
-            {deleteError && <p className="text-xs text-[var(--sys-destructive)]">{deleteError}</p>}
+            {deleteError && <p className="text-note text-[var(--sys-destructive)]">{deleteError}</p>}
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setDeletingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button variant="danger" onClick={confirmDelete} loading={deleting}>{ar ? 'حذف نهائي' : 'Delete'}</Button>
@@ -875,14 +880,14 @@ export function PermissionsScreen() {
               value={duplicateName}
               onChange={(e) => setDuplicateName(e.target.value)}
             />
-            {duplicateError && <p className="text-xs text-[var(--sys-destructive)]">{duplicateError}</p>}
+            {duplicateError && <p className="text-note text-[var(--sys-destructive)]">{duplicateError}</p>}
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setDuplicatingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button onClick={confirmDuplicate} loading={duplicating}>{ar ? 'نسخ' : 'Duplicate'}</Button>
             </div>
           </div>
         </Modal>
-      </div>
-    </>
+      </PageShell>
+    </div>
   );
 }

@@ -391,10 +391,7 @@
       "textXs": 17
     },
     "src/components/screens/PermissionsScreen.tsx": {
-      "rawButtons": 4,
-      "rawCheckboxes": 2,
-      "rawSurfaces": 3,
-      "textXs": 30
+      "rawButtons": 1
     },
     "src/components/screens/PreparationScreen.tsx": {
       "rawButtons": 1,
@@ -624,10 +621,6 @@
     "src/components/screens/tracking/WriteOffDialog.tsx": {
       "rawButtons": 2,
       "textXs": 3
-    },
-    "src/components/screens/users/UserAccessSections.tsx": {
-      "rawCheckboxes": 2,
-      "textXs": 10
     },
     "src/components/screens/users/UserCommissionCurrency.tsx": {
       "rawButtons": 2,

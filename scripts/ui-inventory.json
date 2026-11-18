@@ -1475,14 +1475,16 @@
     "tabs": 0
   },
   "src/components/screens/PermissionsScreen.tsx": {
-    "buttons": 16,
-    "inputs": 9,
+    "buttons": 15,
+    "inputs": 7,
     "columns": 0,
-    "cards": 3,
+    "cards": 6,
     "modals": 3,
     "icons": 19,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 2
   },
   "src/components/screens/PreparationScreen.tsx": {
     "buttons": 8,
@@ -2237,13 +2239,14 @@
   },
   "src/components/screens/users/UserAccessSections.tsx": {
     "buttons": 2,
-    "inputs": 3,
+    "inputs": 1,
     "columns": 0,
     "cards": 1,
     "modals": 0,
     "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 2
   },
   "src/components/screens/users/UserCommissionCurrency.tsx": {
     "buttons": 2,
