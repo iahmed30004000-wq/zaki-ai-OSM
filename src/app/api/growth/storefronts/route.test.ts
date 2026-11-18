@@ -71,6 +71,27 @@ beforeEach(() => {
   db.product.count.mockResolvedValue(1);
 });
 
+describe('a bench (منصّة تجريب) is never opened here either — B1, 18/11', () => {
+  it('refuses with the sentence, before the page rules and before any write', async () => {
+    store.isTest = true;
+    store.landingPageId = PAGE;
+    const res = await patch({ storeId: MINE, live: true });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain('منصّة تجريب');
+    expect(db.store.update).not.toHaveBeenCalled();
+  });
+
+  it('closing a store is never refused, bench or not', async () => {
+    store.isTest = true;
+    expect((await patch({ storeId: MINE, live: false })).status).toBe(200);
+  });
+
+  it('reads the mark from the store it is about to open', async () => {
+    await patch({ storeId: MINE, live: true });
+    expect(db.store.findFirst.mock.calls[0][0].select.isTest).toBe(true);
+  });
+});
+
 describe('opening', () => {
   it('refuses a store whose slug a store of another company also holds', async () => {
     store.landingPageId = PAGE;
