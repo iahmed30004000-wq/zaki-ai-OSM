@@ -660,28 +660,34 @@ export function TrackingScreen() {
   const quietFit = phone ? 'flex-1' : undefined;
 
   return (
-    <PageShell title={routeLabel('/ops/tracking')} width="wide">
-
-      {/* Drawn from the first moment, with or without the numbers: the box is how a parcel is found. */}
-      <ListToolbar
-        search={term}
-        onSearch={choose(setTerm)}
-        placeholder="رقم الطلب، المرجع، الباركود، اسم العميل أو الهاتف"
-        searchLabel="بحث"
-        // The camera fills the same box a person types into, and the same request goes out: a scan is a search, so it
-        // sees exactly the parcels this account may see. One scan finds one parcel, so the sheet closes after a hit.
-        // The box has a label above it, so the button sits on the input's line (`self-end`), not between the two.
-        searchExtra={
-          <ScanButton
-            title="امسح بوليصة الشحنة — QR أو باركود"
-            onScan={(code) => choose(setTerm)(code)}
-            className="self-end shrink-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-          />
-        }
-        filters={filters}
-        activeCount={activeCount}
-        onReset={reset}
-      />
+    <PageShell
+      title={routeLabel('/ops/tracking')}
+      width="wide"
+      // The frame's row of questions (R11d): the search, the scan and the dropdowns that narrow the list. It was the first
+      // block of the content; it is the same place on the screen, now the one every screen keeps its filters in.
+      // Drawn from the first moment, with or without the numbers: the box is how a parcel is found.
+      filters={
+        <ListToolbar
+          search={term}
+          onSearch={choose(setTerm)}
+          placeholder="رقم الطلب، المرجع، الباركود، اسم العميل أو الهاتف"
+          searchLabel="بحث"
+          // The camera fills the same box a person types into, and the same request goes out: a scan is a search, so it
+          // sees exactly the parcels this account may see. One scan finds one parcel, so the sheet closes after a hit.
+          // The box has a label above it, so the button sits on the input's line (`self-end`), not between the two.
+          searchExtra={
+            <ScanButton
+              title="امسح بوليصة الشحنة — QR أو باركود"
+              onScan={(code) => choose(setTerm)(code)}
+              className="self-end shrink-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
+            />
+          }
+          filters={filters}
+          activeCount={activeCount}
+          onReset={reset}
+        />
+      }
+    >
 
       {extra && extra.lateCount > 0 && (
         <p className="flex w-fit items-center gap-1 text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-3 h-10">
