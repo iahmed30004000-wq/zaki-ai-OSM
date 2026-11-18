@@ -62,11 +62,15 @@ const contrast = (a: string, b: string) => {
 };
 
 describe('the palettes', () => {
-  it('there are twelve palettes, and the default is one of them', () => {
+  it('there are fourteen palettes, and the default is one of them', () => {
     // Three were the product's own; eight are the owner's, from his PC
     // application; the twelfth, «ساحل النيون», is the one with photographs
-    // (21/10). Every gate below runs over all twelve.
-    expect(SYSTEM_THEMES).toHaveLength(13);
+    // (21/10). Every gate below runs over all of them.
+    // 18/11/2026 (R1): 13 → 14. The fourteenth is «نظيف» (`clean`): a light page, a dark
+    // menu, one colour — added to the END of the list, beside no other palette's values
+    // (`a-clean-palette.test.tsx` holds the thirteen older ones byte for byte), and it is
+    // not the default, not an automatic pick and not the new staff's look (that is R5).
+    expect(SYSTEM_THEMES).toHaveLength(14);
     expect(themeByKey(DEFAULT_THEME).key).toBe(DEFAULT_THEME);
   });
 

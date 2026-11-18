@@ -111,7 +111,7 @@ export function LeadsLane() {
                     <a className="block text-xs tabular-nums text-[var(--sys-primary)]" href={`tel:${l.phone}`} dir="ltr">
                       {l.phone}
                     </a>
-                    {l.recentOrder && <span className="block text-xs text-[var(--sys-danger)]">طلب نفس المنتج من آخر 24 ساعة</span>}
+                    {l.recentOrder && <span className="block text-xs text-[var(--sys-destructive)]">طلب نفس المنتج من آخر 24 ساعة</span>}
                   </span>
                 ),
               },

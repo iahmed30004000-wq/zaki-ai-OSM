@@ -74,6 +74,8 @@ export const storeCreateSchema = z.object({
   logo: z.string().url().max(500).optional(),
   status: z.enum(STORE_STATUSES).default('ACTIVE'),
   type: z.enum(STORE_TYPES).default('MULTI_PRODUCT'),
+  /** «منصّة تجريب» — orders are made and confirmed as usual, judged on the bench screen, never open to visitors. */
+  isTest: z.boolean().default(false),
 });
 
 // countryId is intentionally absent: a store never moves between countries.
@@ -84,6 +86,8 @@ export const storeUpdateSchema = z
     logo: z.string().url().max(500).nullable(),
     status: z.enum(STORE_STATUSES),
     type: z.enum(STORE_TYPES),
+    /** The switch «منصّة تجريب». The doors refuse it on an open storefront (and an open one on a bench) in words — see test-store.ts. */
+    isTest: z.boolean(),
     /** Whether an advertised price already includes delivery — read on every direct order. */
     priceIncludesDelivery: z.boolean(),
     // ─── The store's public face ───

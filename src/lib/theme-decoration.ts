@@ -68,6 +68,17 @@ export function sanitizeDecor(raw: unknown): DecorLevel {
 export const DECOR_COOKIE = 'zk-decor';
 
 /**
+ * THE THEMES THAT WEAR NOTHING — added 18/11/2026 with «نظيف» (`clean`, R1).
+ *
+ * A theme's ornament is mood, and «نظيف» is the one palette whose whole point is the absence of it: white cards,
+ * a dark menu, one colour. So it has no mask, no wash, no photograph and no file under `public/brand/decor/`;
+ * `decorCss` answers an empty string for it at every level, exactly as it does for «off», and the three layers
+ * (`ThemeDecor`) stay inert. The list is CLOSED: a theme joins it only by being added here on purpose, and
+ * `a-clean-palette.test.tsx` fails if another one does.
+ */
+export const UNDECORATED: readonly string[] = ['clean'];
+
+/**
  * The ambient CSS for one theme at one level.
  *
  * Built ENTIRELY from that theme's own tokens: `--sys-primary` and
@@ -89,6 +100,8 @@ export const DECOR_COOKIE = 'zk-decor';
  */
 export function decorCss(theme: SystemTheme, level: DecorLevel, chosenKey?: string): string {
   if (level === 'off') return '';
+  // `auto` resolves to a dark/light pair that DOES wear its ornaments, so only a chosen undecorated theme is silent.
+  if (UNDECORATED.includes(theme.key) && chosenKey !== AUTO_THEME) return '';
   /*
    * ── «تلقائي» WEARS TWO ORNAMENTS, FOR THE SAME REASON IT HAS TWO PALETTES ──
    *

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { useApp } from '@/context/AppContext';
@@ -36,6 +36,9 @@ interface StoreRow {
   type: string;
   logo?: string | null;
   priceIncludesDelivery?: boolean;
+  /** «منصّة تجريب» — see `BenchSwitch`. */
+  isTest?: boolean;
+  _count?: { orders: number };
 }
 interface CountryRow {
   id: string;
@@ -306,6 +309,7 @@ export function GeoSettingsScreen() {
                   <p className="text-sm font-medium text-[var(--sys-heading)]">{s.name}</p>
                   <p className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
                     /{s.slug} · {storeTypeLabel(s.type)}
+                    {s.isTest ? ' · منصّة تجريب' : ''}
                   </p>
                   {/* The policy for Telegram, the systems door and the paste-in dialog WHOLE, and for the sales page wherever no
                       offer says otherwise; until it had a control every store priced as price + delivery. The exceptions are the
@@ -325,6 +329,7 @@ export function GeoSettingsScreen() {
                     فيه «شامل» أو لأ بخانة «شامل التوصيل» (مفعّلة افتراضياً). وبصفحة البيع بتفك علامة «السعر شامل التوصيل» عن
                     العرض: ولو كل عروض سلّة الزبون غير مؤشَّرة بتنضاف الأجرة. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
                   </p>
+                  <BenchSwitch store={s} mayManage={mayManage} onSaved={load} />
                 </div>
                 <button
                   onClick={() => setStorefrontFor((cur) => (cur === s.id ? null : s.id))}
@@ -615,7 +620,7 @@ function AddStore({
   onDone: () => void;
 }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: '', slug: '', type: 'MULTI_PRODUCT' });
+  const [form, setForm] = useState({ name: '', slug: '', type: 'MULTI_PRODUCT', isTest: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -626,7 +631,7 @@ function AddStore({
       await apiJson('/api/geo/stores', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ countryId, name: form.name.trim(), slug: form.slug.trim().toLowerCase(), type: form.type }),
+        body: JSON.stringify({ countryId, name: form.name.trim(), slug: form.slug.trim().toLowerCase(), type: form.type, isTest: form.isTest }),
       });
       onDone();
     } catch (e: any) {
@@ -656,6 +661,9 @@ function AddStore({
       <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
         النوع: متعدد المنتجات — صفحة رئيسية بالمنتجات.
       </p>
+      <div className="md:col-span-3">
+        <BenchBox checked={form.isTest} onChange={(isTest) => setForm({ ...form, isTest })} />
+      </div>
       <div className="md:col-span-3 flex gap-2">
         <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm disabled:opacity-60">
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
@@ -665,6 +673,94 @@ function AddStore({
         </button>
       </div>
     </form>
+  );
+}
+
+/**
+ * «منصّة تجريب» — THE CHECKBOX AND THE ONE SENTENCE UNDER IT, for both forms.
+ *
+ * A bench is a store whose orders are made and confirmed like any other and
+ * judged on the bench screen (/growth/bench); it is never open to visitors.
+ * Until this existed nothing in the app could mark a store, and the bench
+ * screen told the owner to do it «من البلدان والمتاجر» where there was no
+ * such field. A real checkbox with a real label — keyboard and phone as the
+ * delivery checkbox beside it.
+ */
+function BenchBox({
+  checked,
+  onChange,
+  disabled,
+  children,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  children?: React.ReactNode;
+}) {
+  const said = useId();
+  return (
+    <div>
+      <label className="flex min-h-11 md:min-h-0 items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
+        <input type="checkbox" checked={checked} disabled={disabled} aria-describedby={said} onChange={(e) => onChange(e.target.checked)} />
+        منصّة تجريب
+      </label>
+      <p id={said} className="max-w-prose text-xs text-[var(--sys-muted-foreground)]">
+        طلباتها بتنعمل وبتتأكد متل أي متجر، وبتنحكم بشاشة منصّة التجريب — وما بتنفتح للزوّار أبداً.
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The switch on a store that exists. The door decides (an open storefront, or
+ * the company's only real store, is refused in words) and the sentence it
+ * answers with is shown right here, under the box — not as a toast that is
+ * gone before it is read. A store that already holds orders says what the
+ * switch will do to them before the press, as a sentence: no dialog.
+ */
+function BenchSwitch({ store, mayManage, onSaved }: { store: StoreRow; mayManage: boolean; onSaved: () => Promise<void> | void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const orders = store._count?.orders ?? 0;
+  const isTest = !!store.isTest;
+
+  const change = async (next: boolean) => {
+    // UX only — the door asks again. A disabled box that a script clicks anyway sends nothing.
+    if (!mayManage) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiJson(`/api/geo/stores/${store.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isTest: next }),
+      });
+      await onSaved();
+    } catch (e: any) {
+      setError(e?.message || 'تعذّر الحفظ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <BenchBox checked={isTest} disabled={!mayManage || busy} onChange={change}>
+        {orders > 0 && (
+          <p className="max-w-prose text-xs text-[var(--sys-muted-foreground)]">
+            {isTest
+              ? `على المتجر ${orders} طلب: إذا شلت العلامة، بترجع طلباته تنعدّ بأرقام الشركة وبتطلع من شاشة المنصّة.`
+              : `على المتجر ${orders} طلب: إذا علّمته منصّة تجريب، بتطلع طلباته من أرقام الشركة وبتنعدّ بشاشة المنصّة.`}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-xs text-[var(--sys-destructive)]">
+            {error}
+          </p>
+        )}
+      </BenchBox>
+    </div>
   );
 }
 
