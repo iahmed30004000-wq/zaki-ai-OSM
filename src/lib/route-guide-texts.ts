@@ -24,7 +24,7 @@ import type { GuideText } from './route-guide';
  *    written here: it is read from the menu's own order, so it cannot go stale.
  *
  * Every screen of the menu that is ours has one. The two that were left out waited for something: the dashboard for its own
- * «شغلك اليوم» section (it is there now, and the guide's first step names it), and `/settings/tracking` for a title to hang the
+ * «شغلك اليوم» section (it is there now — «بدّو إياك هلق» since R9 — and the guide names it), and `/settings/tracking` for a title to hang the
  * button on (the page draws one now). A screen without a guide still has no ⓘ — a button that opens an empty promise is worse than
  * no button — and the storefront's screens are another agent's.
  */
@@ -32,12 +32,12 @@ export const GUIDE_TEXTS: Record<string, GuideText> = {
   // ───────────────────────── الرئيسية ─────────────────────────
   '/dashboard': {
     steps: [
-      'اختر الفترة من الأزرار فوق: «اليوم» أو «7 أيام» أو «30 يوم» أو «هذا الشهر» أو «الكل» — كل الأرقام تتبدّل معها.',
-      'أول ما ترى «شغلك اليوم»: ما ينتظرك أنت بالذات. اضغط البطاقة لتفتح الشاشة التي فيها الشغل.',
-      'تحته «ما يحتاج تدخّلاً»: ما تعلّق الآن قبل أن تقرأ ما حدث.',
-      'بعدها الأرقام التي يُدار بها الدفع عند الاستلام: الربح والإيراد ونسب التأكيد والتوصيل و«نسبة الإرجاع» و«لم يُحصَّل بعد».',
-      'لربح كل منتج وترتيب المنتجات وأداء الفريق بمدة تختارها: «التفاصيل» بجانب أزرار الفترة.',
-      'لطلب جديد بسرعة: «طلب سريع»، أو «إدخال بالذكاء الاصطناعي» وتلصق فيه رسالة الزبون كما وصلتك.',
+      'اختار المدة من خانة التاريخ: «اليوم» أو «أمس» أو «آخر 7 أيام» أو «آخر 30 يوم» أو «تاريخ محدد» — الأرقام والرسم بيتبدّلوا معها.',
+      'فوق ثلاث أرقام: صافي الربح ونسبة التأكيد ونسبة التوصيل. اضغط الرقم بتفتح شاشته.',
+      'تحتها «بدّو إياك هلق»: الشغل اللي مستنيك إنت. اضغط البطاقة بتفتح الشاشة اللي فيها الشغل.',
+      'وبالآخر «الطلبات كل يوم»: كم طلب انعمل وتأكّد وتوصّل بكل يوم من المدة.',
+      'باقي الأرقام والحالات وأسباب الخسارة وترتيب الموظفين: «التفاصيل».',
+      'لطلب جديد بسرعة: «طلب سريع»، أو «إدخال بالذكاء الاصطناعي» وتلصق فيه رسالة الزبون متل ما وصلتك.',
     ],
     watch: 'كل رقم مالي يحسبه الخادم لا الشاشة؛ والربح يظهر «—» إذا كانت بيانات التكلفة ناقصة، والبطاقة تقول أيّ حقلٍ فاضٍ.',
   },
