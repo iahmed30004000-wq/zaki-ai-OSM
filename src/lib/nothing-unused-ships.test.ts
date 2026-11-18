@@ -311,9 +311,9 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    *
    * 18/11 (R17b): `IconButton` left — the assistant's bubble and the search palette, both in the shell
    * layout, are the first to render it.
+   * 18/11 (R9): `StatTile` left — the seven state tiles that moved from the dashboard to the performance board are the first
+   * to render it.
    */
-  'src/components/ui/StatTile.tsx:StatTile':
-    'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
 };
 
 describe('كلُّ مكوّنٍ إمّا تعرضه شاشة أو يُقال إنه بُني ولم يُوصَل', () => {
@@ -483,7 +483,7 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
  */
 const NO_CALLER_FOUND: Record<string, string> = {
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
-  '/api/analytics/daily': 'سلسلةُ الطلبات اليومية للرسم الواحد في «اليوم» (R9) — الباب جاهز والشاشة تأتي بعده عند سونيت',
+  // 18/11 (R9): '/api/analytics/daily' left — «اليوم»'s one chart (`dashboard/DailyChart.tsx`) calls it.
   '/api/orders/confirmation/team/[userId]': 'صفُّ موظفٍ واحد لدرج جدول الفريق (R14a) — الباب جاهز والدرج يأتي بعده عند سونيت',
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',

@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
+    "rawButtons": 671,
     "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawSurfaces": 346,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2622
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -517,11 +517,6 @@
     "src/components/screens/CustomersScreen.tsx": {
       "rawSurfaces": 3,
       "textXs": 11
-    },
-    "src/components/screens/DashboardScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 10
     },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
