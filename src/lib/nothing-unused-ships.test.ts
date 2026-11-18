@@ -283,6 +283,20 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    */
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
+
+  /*
+   * THE KIT'S THREE NEW CONTROLS (R2b, 18/11) — built and tested, rendered by no screen yet.
+   *
+   * The restructure moves every hand-written tick box, on/off toggle and compressed option pair onto these in the
+   * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
+   * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
+   */
+  'src/components/ui/Checkbox.tsx:Checkbox':
+    'مربّع الاختيار الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  'src/components/ui/Switch.tsx:Switch':
+    'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  'src/components/ui/Segmented.tsx:Segmented':
+    'شريط الخيارات المضغوط (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
 };
 
 describe('كلُّ مكوّنٍ إمّا تعرضه شاشة أو يُقال إنه بُني ولم يُوصَل', () => {
