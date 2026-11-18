@@ -370,13 +370,15 @@ describe('NO NEW CSS — every class the dialog uses is one the product already 
 
   it('the button in `TrackingScreen` wears the very classes of «تحويل» beside it — and builds no token of its own', () => {
     const src = readFileSync(join(root, 'components/screens/TrackingScreen.tsx'), 'utf8');
-    const KNOWN = 'inline-flex min-h-11 items-center text-xs text-[var(--sys-primary)] hover:underline md:min-h-0${quiet}';
-    const at = src.indexOf('تراجع عن التسليم…');
-    expect(at, 'the button is on the screen').toBeGreaterThan(0);
-    // the button's own class is the LAST one before its label
-    const before = [...src.slice(Math.max(0, at - 400), at).matchAll(/className=\{`([^`]+)`\}/g)];
-    expect(before[before.length - 1]?.[1]).toBe(KNOWN);
-    // …and the transfer button carries exactly the same string
-    expect(src.split(KNOWN).length - 1, 'two buttons, one string').toBe(2);
+    // 18/11 (R11d): both are the kit's `Button` now, and what they share is the look the screen picks for its quiet presses
+    // (`quiet` on a desk, the bordered `secondary` on a phone) and the share of the row (`quietFit`) — no class string at all.
+    const KNOWN = ['type="button"', 'variant={quiet}', 'size="sm"', 'className={quietFit}'];
+    for (const label of [/>\s*تراجع عن التسليم…\s*<\/Button>/, />\s*تحويل\s*<\/Button>/]) {
+      const at = src.search(label);
+      expect(at, `${label} is on the screen`).toBeGreaterThan(0);
+      // the button's own tag is the LAST one opened before its label
+      const tag = src.slice(src.lastIndexOf('<Button', at), at);
+      for (const k of KNOWN) expect(tag, `${label}: ${k}`).toContain(k);
+    }
   });
 });

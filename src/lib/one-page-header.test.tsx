@@ -114,6 +114,12 @@ describe('one page header', () => {
     expect(src, 'عنوان مكتوب باليد').not.toMatch(/<(?:PageHeader|PageShell)\s+title="/);
   });
 
+  it('— and PageShell is a PageHeader with the same title, so a screen on the frame still prints the registry name once', () => {
+    const shell = stripComments(repoFile('src/components/ui/PageShell.tsx'));
+    expect(shell).toMatch(/<PageHeader title=\{title\}/);
+    expect(shell.match(/<PageHeader\b/g) ?? []).toHaveLength(1);
+  });
+
   it.each(TABLE.filter((r) => r[3] !== null))('%s is drawn by the page at %s', (file, path, _count, page) => {
     const pageSrc = stripComments(repoFile(page!));
     if (page !== file) expect(pageSrc, `${page} ما بيرسم ${exportedName(file)}`).toMatch(new RegExp(`<${exportedName(file)}\\b`));
