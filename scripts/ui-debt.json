@@ -369,10 +369,7 @@
       "textXs": 15
     },
     "src/components/screens/CommissionSettingsScreen.tsx": {
-      "rawButtons": 12,
-      "rawSurfaces": 4,
-      "rawDatePickers": 2,
-      "textXs": 33
+      "rawDatePickers": 2
     },
     "src/components/screens/ConfirmationIssuesScreen.tsx": {
       "textXs": 12
@@ -588,19 +585,6 @@
       "rawSurfaces": 2,
       "textXs": 13
     },
-    "src/components/screens/commission/FairnessPanel.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 11
-    },
-    "src/components/screens/commission/PayoutDialog.tsx": {
-      "rawButtons": 2,
-      "textXs": 12
-    },
-    "src/components/screens/commission/PeriodProgress.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 7
-    },
     "src/components/screens/confirmation/ActionDialogs.tsx": {
       "rawButtons": 1,
       "rawDatePickers": 2,
@@ -759,11 +743,6 @@
       "rawButtons": 5,
       "rawSurfaces": 3,
       "textXs": 27
-    },
-    "src/components/settings/AgentCommissionCard.tsx": {
-      "rawButtons": 3,
-      "rawCheckboxes": 1,
-      "textXs": 8
     },
     "src/components/settings/CallProofCard.tsx": {
       "rawCheckboxes": 1,

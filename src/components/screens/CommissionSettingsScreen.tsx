@@ -6,7 +6,11 @@ import { PayoutDialog } from '@/components/screens/commission/PayoutDialog';
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from '@/types/auth';
 import { PeriodProgress } from '@/components/screens/commission/PeriodProgress';
 import { FairnessPanel, type FairnessData } from '@/components/screens/commission/FairnessPanel';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
 import { routeLabel } from '@/lib/route-registry';
 import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import {
@@ -144,24 +148,26 @@ export function CommissionSettingsScreen() {
   useLiveRefresh(load);
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/settings/commission')} />
-
-      {/* «قاعدة جديدة» was in the header of the THIRD card: below the rule paragraph, the period list and the fairness
-          panel, so several screens down. On a phone it is the first thing under the title. */}
-      {phone && canManage && (
-        <button
-          onClick={() => setNewOpen(true)}
-          className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center justify-center gap-1.5"
-        >
-          <RiAddCircleLine className="w-4 h-4" /> قاعدة جديدة
-        </button>
-      )}
-
-      <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+    <PageShell
+      title={routeLabel('/settings/commission')}
+      width="wide"
+      // «قاعدة جديدة» was in the header of the THIRD card: below the rule paragraph, the period list and the fairness
+      // panel, so several screens down. On a phone it is the first thing under the title: the frame's actions row, which
+      // a phone draws under the name (18/11, R13h: it was the first block after the header, the same place on the screen).
+      actions={
+        phone && canManage && (
+          <Button onClick={() => setNewOpen(true)} className="w-full">
+            <RiAddCircleLine className="w-4 h-4" /> قاعدة جديدة
+          </Button>
+        )
+      }
+    >
+      <Card plain padding="sm">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
         القاعدة لا تُعدَّل بعد كتابتها: لإنهاء العمل بها حدِّد لها تاريخ انتهاء واكتب قاعدة جديدة من اليوم التالي.
         العمولة تُحتسب بالقاعدة السارية يوم التسليم، وتصبح مستحقة عند اعتماد كشف التحصيل.
-      </p>
+        </p>
+      </Card>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
@@ -176,16 +182,13 @@ export function CommissionSettingsScreen() {
           somebody has already decided who deserves what. */}
       <FairnessPanel data={fairness} />
 
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sys-border)]">
           <h2 className="text-sm font-medium text-[var(--sys-heading)]">قواعد العمولة</h2>
           {canManage && !phone && (
-            <button
-              onClick={() => setNewOpen(true)}
-              className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
-            >
+            <Button size="sm" onClick={() => setNewOpen(true)}>
               <RiAddCircleLine className="w-4 h-4" /> قاعدة جديدة
-            </button>
+            </Button>
           )}
         </div>
 
@@ -193,7 +196,7 @@ export function CommissionSettingsScreen() {
             correct arithmetic and reads on a payslip as a quiet month, so
             the screen says which it is instead of showing a silent zero. */}
         {noRuleInForce && rules && rules.length > 0 && (
-          <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] px-3 py-2.5 text-xs leading-relaxed text-[var(--sys-warning)]">
+          <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] px-3 py-2.5 text-note leading-relaxed text-[var(--sys-warning)]">
             <RiAlertLine className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               لا قاعدة سارية على هذا المتجر اليوم — القواعد الموجودة إمّا منتهية أو معطّلة، فلا تُحتسب أي
@@ -245,7 +248,7 @@ export function CommissionSettingsScreen() {
                 key: 'metric',
                 label: 'يُحتسب على',
                 render: (r) => (
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     {METRIC_LABEL_AR[r.metric] ?? r.metric}
                     {r.period !== 'PER_ORDER' && ` · ${PERIOD_LABEL_AR[r.period] ?? r.period}`}
                   </span>
@@ -272,7 +275,7 @@ export function CommissionSettingsScreen() {
                       {/* What a rule pays was only in the `title`, which a phone never shows. */}
                       {phone &&
                         r.tiers.map((t, i) => (
-                          <span key={i} className="block text-xs text-[var(--sys-muted-foreground)] tabular-nums" dir="ltr">
+                          <span key={i} className="block text-note text-[var(--sys-muted-foreground)] tabular-nums" dir="ltr">
                             {`${t.from}${t.to === null ? '+' : `–${t.to}`}: ${t.value}`}
                           </span>
                         ))}
@@ -285,7 +288,7 @@ export function CommissionSettingsScreen() {
                 key: 'from',
                 label: 'من',
                 render: (r) => (
-                  <span className="text-xs tabular-nums" dir="ltr">
+                  <span className="text-note tabular-nums" dir="ltr">
                     {String(r.effectiveFrom).slice(0, 10)}
                   </span>
                 ),
@@ -294,7 +297,7 @@ export function CommissionSettingsScreen() {
                 key: 'to',
                 label: 'إلى',
                 render: (r) => (
-                  <span className="text-xs tabular-nums" dir="ltr">
+                  <span className="text-note tabular-nums" dir="ltr">
                     {r.effectiveTo ? String(r.effectiveTo).slice(0, 10) : '—'}
                   </span>
                 ),
@@ -302,9 +305,9 @@ export function CommissionSettingsScreen() {
             ]}
             actions={(r) =>
               r.effectiveTo || !r.isActive || !canManage ? null : (
-                <button onClick={() => setEndFor(r)} className="text-xs text-[var(--sys-primary)] hover:underline">
+                <Button variant="quiet" size="sm" onClick={() => setEndFor(r)}>
                   إنهاء العمل بها
-                </button>
+                </Button>
               )
             }
             empty={
@@ -316,9 +319,9 @@ export function CommissionSettingsScreen() {
             }
           />
         )}
-      </div>
+      </Card>
 
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <Card className="overflow-hidden">
         <h2 className="text-sm font-medium text-[var(--sys-heading)] px-4 py-3 border-b border-[var(--sys-border)]">
           عمولات الشهر الحالي ({period()})
         </h2>
@@ -362,12 +365,9 @@ export function CommissionSettingsScreen() {
               // An entry used to reach «مستحقة» and stop: nothing turned it
               // into money, so the cash left by hand.
               t.payable > 0 && canPay ? (
-                <button
-                  onClick={() => setPaying({ id: t.userId, name: t.name })}
-                  className="h-11 md:h-7 rounded-md border border-[var(--sys-primary)] px-2.5 text-xs font-medium text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)]"
-                >
+                <Button variant="secondary" size="sm" onClick={() => setPaying({ id: t.userId, name: t.name })}>
                   صرف
-                </button>
+                </Button>
               ) : null
             }
             empty={
@@ -378,7 +378,7 @@ export function CommissionSettingsScreen() {
             }
           />
         )}
-      </div>
+      </Card>
 
       {/* «حاسبة عمولة الموظفات (تقدير)» — moved here from «إعدادات النظام» (the owner, 17/11): everything about commission in one place. It is an ESTIMATE for the
           performance score; the real commission is the rules and the entries above. The card says so itself, and draws nothing for who cannot read the settings. */}
@@ -415,7 +415,7 @@ export function CommissionSettingsScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -544,7 +544,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         className="space-y-3"
       >
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">اسم القاعدة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">اسم القاعدة</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -557,7 +557,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
 
         <div className="grid grid-cols-2 gap-3">
           <label>
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">تنطبق على دور</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">تنطبق على دور</span>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
@@ -569,7 +569,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             </select>
           </label>
           <label>
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">أو موظف بعينه</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">أو موظف بعينه</span>
             <select
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
@@ -583,7 +583,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             </select>
           </label>
           {userId && (
-            <p className="col-span-2 -mt-1 text-xs text-[var(--sys-muted-foreground)]">
+            <p className="col-span-2 -mt-1 text-note text-[var(--sys-muted-foreground)]">
               قاعدة باسم موظف تتجاوز قاعدة دوره.
             </p>
           )}
@@ -591,7 +591,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
 
         <div className="grid grid-cols-2 gap-3">
           <label>
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">تُحتسب على</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">تُحتسب على</span>
             <select
               value={metric}
               onChange={(e) => pickMetric(e.target.value as CommissionMetric)}
@@ -603,7 +603,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             </select>
           </label>
           <label>
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الفترة</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الفترة</span>
             <select
               value={perOrder ? 'PER_ORDER' : period}
               disabled={perOrder}
@@ -617,7 +617,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           </label>
         </div>
 
-        <p className="rounded-lg bg-[var(--sys-surface)] px-2.5 py-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="rounded-lg bg-[var(--sys-surface)] px-2.5 py-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           {perOrder
             ? 'تُحتسب مع كل طلب مسلَّم، لحظة تسليمه.'
             : `تُحتسب بعد انتهاء ${PERIOD_LABEL_AR[period]} — لأن العدد لا يُعرف قبل أن ينتهي.`}
@@ -627,32 +627,29 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
             band opening at the goal. Offered as its own shape because that
             is how a seller thinks of it, and because it pays BESIDE the
             tiers rather than instead of them. */}
-        <div className="flex gap-1.5">
-          {([
+        {/* 18/11 (R13h): three raw buttons were a compact choice of one; the kit's `Segmented` is that choice. Its options are
+            `type="button"` (this sits inside the form) and the same rule turns the two banded shapes off for a per-order rule. */}
+        <Segmented
+          aria-label="شكل القاعدة"
+          size="sm"
+          className="w-full"
+          value={shape}
+          onChange={(next) => pickShape(next as 'single' | 'tiers' | 'target')}
+          options={([
             ['single', 'قيمة واحدة'],
             ['tiers', 'شرائح'],
             ['target', 'هدف ومكافأة'],
-          ] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => pickShape(value)}
-              disabled={value !== 'single' && perOrder}
-              className={`h-11 md:h-8 flex-1 rounded-lg border text-xs font-medium disabled:opacity-40 ${
-                shape === value
-                  ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]'
-                  : 'border-[var(--sys-border)] text-[var(--sys-foreground)]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+          ] as const).map(([value, label]) => ({
+            value,
+            label,
+            disabled: value !== 'single' && perOrder,
+          }))}
+        />
 
         {!banded ? (
           <div className="grid grid-cols-2 gap-3">
             <label>
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as CommissionType)}
@@ -664,7 +661,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               </select>
             </label>
             <label>
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
                 {type === 'PERCENT' ? 'النسبة %' : 'المبلغ'}
               </span>
               <input
@@ -682,7 +679,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         ) : shape === 'target' ? (
           <div className="grid grid-cols-2 gap-3">
             <label>
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
                 الهدف {isRate ? '(نسبة %)' : '(عدد)'}
               </span>
               <input
@@ -698,7 +695,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               />
             </label>
             <label>
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المكافأة</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المكافأة</span>
               <input
                 type="number"
                 step="0.01"
@@ -710,7 +707,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
                 dir="ltr"
               />
             </label>
-            <p className="col-span-2 rounded-lg bg-[var(--sys-surface)] px-2.5 py-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="col-span-2 rounded-lg bg-[var(--sys-surface)] px-2.5 py-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
               مكافأة واحدة عند بلوغ الهدف، مهما زاد العدد عليه — وتُدفع فوق أي قاعدة شرائح أخرى، لا بدلاً
               منها.
             </p>
@@ -718,7 +715,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         ) : (
           <div className="space-y-2">
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">كيف تدفع الشريحة</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">كيف تدفع الشريحة</span>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as CommissionType)}
@@ -732,9 +729,9 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
 
             <div className="rounded-lg border border-[var(--sys-border)] p-2 space-y-2">
               {phone ? (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">«إلى» فارغة = فما فوق.</p>
+                <p className="text-note text-[var(--sys-muted-foreground)]">«إلى» فارغة = فما فوق.</p>
               ) : (
-                <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr_auto] gap-1.5 text-xs font-medium text-[var(--sys-muted-foreground)]">
+                <div className="grid grid-cols-[1fr_1fr_1fr_1.2fr_auto] gap-1.5 text-note font-medium text-[var(--sys-muted-foreground)]">
                   <span>من {isRate ? '%' : ''}</span>
                   <span>إلى (فارغ = فما فوق)</span>
                   <span>القيمة</span>
@@ -747,7 +744,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
                   <div className="grid grid-cols-3 gap-1.5">
                     {(['from', 'to', 'value'] as const).map((field) => (
                       <label key={field} className="block min-w-0">
-                        <span className="mb-0.5 block text-xs font-medium text-[var(--sys-muted-foreground)]">
+                        <span className="mb-0.5 block text-note font-medium text-[var(--sys-muted-foreground)]">
                           {field === 'from' ? `من ${isRate ? '%' : ''}` : field === 'to' ? 'إلى' : 'القيمة'}
                         </span>
                         <input
@@ -773,15 +770,15 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
                       aria-label="اسم الشريحة"
                       className="h-11 min-w-0 flex-1 px-2 rounded-lg border border-[var(--sys-border-input)] text-sm"
                     />
-                    <button
+                    <IconButton
                       type="button"
+                      size="sm"
                       onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
                       disabled={tiers.length === 1}
-                      aria-label="حذف الشريحة" title="حذف الشريحة"
-                      className="h-11 w-11 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-destructive)] disabled:opacity-30"
+                      label="حذف الشريحة"
                     >
                       ×
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
               ) : (
@@ -807,31 +804,33 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
                     placeholder="اختياري"
                     className="h-11 md:h-10 px-2 rounded-lg border border-[var(--sys-border-input)] text-sm"
                   />
-                  <button
+                  <IconButton
                     type="button"
+                    size="sm"
                     onClick={() => setTiers(tiers.filter((_, j) => j !== i))}
                     disabled={tiers.length === 1}
-                    aria-label="حذف الشريحة" title="حذف الشريحة"
-                    className="h-11 md:h-9 w-9 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-destructive)] disabled:opacity-30"
+                    label="حذف الشريحة"
                   >
                     ×
-                  </button>
+                  </IconButton>
                 </div>
               ))}
-              <button
+              <Button
                 type="button"
+                variant={phone ? 'secondary' : 'quiet'}
+                size="sm"
                 onClick={() => setTiers([...tiers, { from: '', to: '', value: '', label: '' }])}
-                className={phone ? 'h-11 w-full rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-primary)]' : 'text-xs font-medium text-[var(--sys-primary)]'}
+                className={phone ? 'w-full' : undefined}
               >
                 + شريحة
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {!perOrder && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
               أقل عدد طلبات قبل الاحتساب (اختياري)
             </span>
             <input
@@ -843,7 +842,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
-            <span className="mt-1 block text-xs text-[var(--sys-muted)]">
+            <span className="mt-1 block text-note text-[var(--sys-muted)]">
               {isRate
                 ? 'نسبة تسليم 100٪ من طلبين ليست أداءً — يُقاس الحد على عدد الطلبات لا على النسبة.'
                 : 'أقل من هذا العدد لا تستحق القاعدة شيئاً.'}
@@ -852,7 +851,7 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سارية من</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">سارية من</span>
           <input
             type="date"
             value={from}
@@ -866,16 +865,12 @@ function NewRuleDialog({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'جارٍ الحفظ…' : 'حفظ'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -908,11 +903,13 @@ function EndRuleDialog({ rule, onClose, onSaved }: { rule: Rule; onClose: () => 
         }}
         className="space-y-3"
       >
-        <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm">
+          <p className="text-sm text-[var(--sys-foreground)]">
           الطلبات المسلَّمة حتى هذا التاريخ تبقى محسوبة بهذه القاعدة. لما بعده اكتب قاعدة جديدة.
-        </p>
+          </p>
+        </Card>
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">آخر يوم تسري فيه</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">آخر يوم تسري فيه</span>
           <input
             type="date"
             value={to}
@@ -924,16 +921,12 @@ function EndRuleDialog({ rule, onClose, onSaved }: { rule: Rule; onClose: () => 
         </label>
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" disabled={saving}>
             إنهاء
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
