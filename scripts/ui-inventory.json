@@ -1498,7 +1498,7 @@
     "buttons": 1,
     "inputs": 5,
     "columns": 0,
-    "cards": 3,
+    "cards": 4,
     "modals": 0,
     "icons": 3,
     "links": 0,
@@ -2375,14 +2375,15 @@
     "tabs": 0
   },
   "src/components/settings/PasskeySection.tsx": {
-    "buttons": 4,
+    "buttons": 3,
     "inputs": 1,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/settings/PenaltyRulesCard.tsx": {
     "buttons": 2,
@@ -2496,7 +2497,7 @@
     "tabs": 0
   },
   "src/components/settings/ThemePicker.tsx": {
-    "buttons": 2,
+    "buttons": 1,
     "inputs": 0,
     "columns": 0,
     "cards": 0,
