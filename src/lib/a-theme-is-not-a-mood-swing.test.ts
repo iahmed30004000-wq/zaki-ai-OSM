@@ -138,7 +138,10 @@ describe('the shape of a card — the frame, and nothing under the figure', () =
   });
 
   it('and gives each of the nine a corner, an edge and a glyph', () => {
-    for (const theme of SYSTEM_THEMES.filter((t) => !['ops', 'day', 'calm'].includes(t.key))) {
+    // 18/11/2026 (R1): «نظيف» joins the plain ones — a card with the product's own corner and
+    // no glyph is the point of that palette (it has its own slot in SHAPES, held by
+    // a-clean-palette.test.tsx). Was: only ops, day and calm were exempt.
+    for (const theme of SYSTEM_THEMES.filter((t) => !['ops', 'day', 'calm', 'clean'].includes(t.key))) {
       const css = shapeCss(theme);
       expect(css, `${theme.key}: بلا شكل`).toContain(`.${CARD_CLASS}`);
       expect(css, `${theme.key}: بلا زاوية`).toContain('border-radius:');

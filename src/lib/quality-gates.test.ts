@@ -412,7 +412,28 @@ describe('the payload', () => {
    * is LF. The cap is stated above the measurement, never at a figure the
    * build has to round down to meet.
    */
-  const CSS_BUDGET_KB = 94.04;
+  /*
+   * 18/11 (R2a, the kit) — 94.04 → 94.09, THE FIRST OF THE TWO RISES THE
+   * RESTRUCTURE PLAN ALLOWS (the second is the shell's, R4).
+   *
+   * What grew: the icon button states its WIDTH beside its height — the
+   * phone's width and the two desk steps of it (32 and 40), utilities the
+   * sheet had little or none of — and the large button's height now being
+   * the phone's own. The card's paddings are steps already in the sheet.
+   * Measured by a production
+   * build (`NEXT_DIST_DIR=.next-verify`, Turbopack, both `.css` files):
+   * 96,341 bytes = 94.083 KB, against the 96,288 recorded above (+53).
+   * The cap is the measurement rounded UP to the next hundredth, 96,348
+   * bytes — 7 bytes of room, for the CRLF/LF two-byte difference the note
+   * above describes — and not a round figure the build has to meet.
+   *
+   * Nothing else was added to the sheet on purpose: the two new looks of
+   * `Button` reuse the class lists of `outline` and `ghost`, and the tests
+   * build their class names from pieces. After R4 this number only holds or
+   * falls (R19 takes the old names out and the budget comes down to the
+   * measurement).
+   */
+  const CSS_BUDGET_KB = 94.09;
 
   it(`keeps the first-load stylesheet at or under ${CSS_BUDGET_KB} KB`, () => {
     /*

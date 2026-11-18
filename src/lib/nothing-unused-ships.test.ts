@@ -281,8 +281,30 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * «فيه فرق» dialog renders it from there as well as the matching screen — so it is rendered by another file, and
    * an entry that said «only its own file draws it» was exactly what this test calls stale.
    */
+  /*
+   * `PageShell` (18/11, R2c of the plan of 17/11) — THE ONE FRAME OF A SCREEN, built and tested, rendered by no screen yet. The screens
+   * move onto it one by one from R3 (the header first); this line leaves the list with the first screen that renders it, and the
+   * «has the unwired list gone stale» test below fails the day it does, so the entry cannot outlive its reason.
+   */
+  'src/components/ui/PageShell.tsx:PageShell':
+    'إطار الشاشة الواحد (رأس + شريط أدوات + مرشّحات + محتوى) — مبنيّ ومفحوص، وتنتقل إليه الشاشات واحدة واحدة من R3؛ يغادر القائمة بأول شاشة ترسمه.',
+
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
+
+  /*
+   * R2a (18/11) — THE TWO COMPONENTS THE KIT GAINED AND NO SCREEN DRAWS YET.
+   *
+   * The restructure moves the screens onto the kit one screen per pull
+   * request, by hand. These two are added first, with their own tests
+   * (IconButton.test.tsx, Card.kit.test.tsx), and each entry leaves this
+   * list in the pull request that first renders it — not before, and never
+   * by adding it to another list.
+   */
+  'src/components/ui/IconButton.tsx:IconButton':
+    'زرُّ الأيقونة بلا نصّ — اسمُه مفروضٌ بالنوع، ومربّعٌ ٤٤ على الهاتف؛ بُني مع عدّة R2a ولم تنتقل إليه أيّ شاشة بعد (يخرج من القائمة بأول شاشة تُنقل).',
+  'src/components/ui/StatTile.tsx:StatTile':
+    'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
 };
 
 describe('كلُّ مكوّنٍ إمّا تعرضه شاشة أو يُقال إنه بُني ولم يُوصَل', () => {

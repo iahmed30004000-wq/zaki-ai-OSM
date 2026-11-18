@@ -201,7 +201,8 @@ describe('two entries, one root, and nobody guessing which is which', () => {
 });
 
 describe('nothing was moved that a link, a bookmark or a saved layout points at', () => {
-  it('— every one of the 51 screens is still there, once, at its own address — and the front door is the 52nd', () => {
+  // 18/11 (R0): the title said «the 51 screens … the 52nd» while the assertion below says 53 (15/11, «السلات المهجورة»). Only the words changed.
+  it('— every one of the 52 screens is still there, once, at its own address — and the front door is the 53rd', () => {
     const paths = ALL_ROUTES.map((r) => r.path);
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.

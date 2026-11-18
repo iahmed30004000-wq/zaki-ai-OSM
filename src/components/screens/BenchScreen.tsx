@@ -9,6 +9,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Money } from '@/components/ui/Money';
 import { RiFlaskLine, RiLoader4Line } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
+import { BenchTestPanel, VerdictChip, type BenchProductTest } from './BenchTestPanel';
 
 /**
  * /growth/bench — منصّة التجريب: جدول النتائج ولوحتها.
@@ -34,9 +36,16 @@ import { RiFlaskLine, RiLoader4Line } from '@remixicon/react';
  * reading below ten sellers rather than describing one product.
  */
 
-interface BenchResult {
-  id: string;
-  name: string;
+/*
+ * ── AND THE VERDICT (18/11) ──
+ *
+ * Each product now carries its test (BenchTestPanel.tsx): a verdict chip by
+ * the owner's rules — success / continue / fail / cap — its confirmation
+ * rate, and a panel for its rules and its spend by day. The verdict reads
+ * confirmations and spend only, never shipping: a bench order stops at
+ * confirmation. The delivery columns stay for what already shipped.
+ */
+interface BenchResult extends BenchProductTest {
   sku: string | null;
   bench: string | null;
   price: number;
@@ -69,6 +78,8 @@ interface Payload {
 export function BenchScreen() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +89,8 @@ export function BenchScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [round]);
+  const open = data?.results.find((p) => p.id === openId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -181,6 +193,11 @@ export function BenchScreen() {
                   nothing decided is not a failure; it is Tuesday.
                 */
                 alert={(p) => (p.decided > 0 && p.returned > p.delivered ? 'warn' : null)}
+                actions={(p) => (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setOpenId(p.id)}>
+                    الأرقام والصرف
+                  </Button>
+                )}
                 columns={[
                   {
                     key: 'name',
@@ -207,6 +224,51 @@ export function BenchScreen() {
                     label: 'طلبات',
                     align: 'end',
                     render: (p) => <span className="tabular-nums">{p.orders}</span>,
+                  },
+                  {
+                    key: 'verdict',
+                    label: 'الحكم',
+                    render: (p) => <VerdictChip verdict={p.verdict} />,
+                  },
+                  {
+                    key: 'confirmed',
+                    label: 'نسبة التأكيد',
+                    align: 'end',
+                    render: (p) =>
+                      p.test.confirmationRate === null ? (
+                        <span className="text-[var(--sys-muted)]">—</span>
+                      ) : (
+                        <span className="tabular-nums">
+                          {p.test.confirmationRate}%
+                          <span className="ms-1 text-xs text-[var(--sys-muted)]">
+                            {p.test.confirmed} من {p.test.orders}
+                          </span>
+                        </span>
+                      ),
+                  },
+                  {
+                    key: 'spend',
+                    label: 'الصرف',
+                    align: 'end',
+                    hideOnPhone: true,
+                    render: (p) =>
+                      p.test.spend === null ? (
+                        <span className="text-[var(--sys-muted)]">ما انكتب</span>
+                      ) : (
+                        <Money value={p.test.spend} currency={p.currency} minorUnit={p.minorUnit} />
+                      ),
+                  },
+                  {
+                    key: 'cpo',
+                    label: 'تكلفة الطلب',
+                    align: 'end',
+                    hideOnPhone: true,
+                    render: (p) =>
+                      p.test.costPerOrder === null ? (
+                        <span className="text-[var(--sys-muted)]">—</span>
+                      ) : (
+                        <Money value={p.test.costPerOrder} currency={p.currency} minorUnit={p.minorUnit} />
+                      ),
                   },
                   {
                     key: 'delivered',
@@ -249,6 +311,22 @@ export function BenchScreen() {
               />
             </CardContent>
           </Card>
+
+          {open && (
+            <BenchTestPanel
+              key={`${open.id}:${JSON.stringify(open.rules)}`}
+              product={open}
+              send={(body) =>
+                apiJson<{ ok: boolean }>('/api/growth/bench', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                })
+              }
+              onClose={() => setOpenId(null)}
+              onChanged={() => setRound((n) => n + 1)}
+            />
+          )}
         </>
       )}
     </div>

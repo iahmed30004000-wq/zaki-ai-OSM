@@ -43,7 +43,8 @@ describe('who wears it', () => {
     for (const t of SYSTEM_THEMES) {
       const count = tiles(shapeCss(t)).length;
       if (ISLAMIC.includes(t.key)) expect(count, t.key).toBe(2);
-      else if (['ops', 'day', 'calm'].includes(t.key)) expect(count, t.key).toBe(0);
+      // 18/11/2026 (R1): «نظيف» is a plain one too (was: only ops, day and calm) — see a-clean-palette.test.tsx.
+      else if (['ops', 'day', 'calm', 'clean'].includes(t.key)) expect(count, t.key).toBe(0);
       else expect(count, t.key).toBe(1);
     }
   });
