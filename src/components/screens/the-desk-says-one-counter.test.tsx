@@ -170,7 +170,7 @@ describe('1 · under the plan: one counter, the attempt this press will be', () 
 
   it('count 1: the button says «محاولة 2 من 5» — not «1/5» — and the card carries the server’s line with the same words', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 1, dueWords: 'محاولة 2 من 5 — جاهز الساعة 17:30', closesOnNext: false }, PLAN);
+    withRow({ noAnswerCount: 1, dueWords: 'محاولة 2 من 5 — جاهز الساعة 17:30', closesOnNext: false, attemptWords: 'محاولة 2 من 5' }, PLAN);
     await draw();
     expect(buttonSaying('لا يرد — محاولة 2 من 5'), 'لا يرد — محاولة 2 من 5').toBeTruthy();
     expect(nobody()).not.toMatch(/\b[0-9]\/5\b/);
@@ -181,14 +181,14 @@ describe('1 · under the plan: one counter, the attempt this press will be', () 
 
   it('count 0 (a fresh order): «محاولة 1 من 5»', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 0 }, PLAN);
+    withRow({ noAnswerCount: 0, attemptWords: 'محاولة 1 من 5' }, PLAN);
     await draw();
     expect(buttonSaying('لا يرد — محاولة 1 من 5'), 'لا يرد — محاولة 1 من 5').toBeTruthy();
   });
 
   it('a full plan (5 counted, still open) has no sixth: «محاولة 5 من 5» on the button and on the tag, from the same function', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 5, dueWords: null, closesOnNext: true }, PLAN);
+    withRow({ noAnswerCount: 5, dueWords: null, closesOnNext: true, attemptWords: 'محاولة 5 من 5' }, PLAN);
     await draw();
     expect(buttonSaying('لا يرد — محاولة 5 من 5'), 'لا يرد — محاولة 5 من 5').toBeTruthy();
     expect(screen.getAllByText('محاولة 5 من 5').length).toBeGreaterThan(0);
@@ -197,7 +197,7 @@ describe('1 · under the plan: one counter, the attempt this press will be', () 
 
   it('on a phone the same button says the same words', async () => {
     phone.value = true;
-    withRow({ noAnswerCount: 2, dueWords: 'محاولة 3 من 5 — جاهز الساعة 18:00', closesOnNext: false }, PLAN);
+    withRow({ noAnswerCount: 2, dueWords: 'محاولة 3 من 5 — جاهز الساعة 18:00', closesOnNext: false, attemptWords: 'محاولة 3 من 5' }, PLAN);
     await draw();
     expect(buttonSaying('لا يرد — محاولة 3 من 5'), 'لا يرد — محاولة 3 من 5').toBeTruthy();
   });
@@ -206,14 +206,14 @@ describe('1 · under the plan: one counter, the attempt this press will be', () 
 describe('2 · the hint says only what the server told the card', () => {
   it('the plan, closesOnNext true: «المحاولة القادمة تُغلق الطلب تلقائياً»', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 4, closesOnNext: true, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00' }, { cadenceOn: true, noAnswerLimit: 5 });
+    withRow({ noAnswerCount: 4, closesOnNext: true, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
     await draw();
     expect(screen.getByText(HINT_NEXT)).toBeTruthy();
   });
 
   it('the plan, closesOnNext false at 4 of 5 (an early press, or a due that has not come): NO hint — the client arithmetic would have said «تُغلق» — and no «متبقٍ»', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 4, closesOnNext: false, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00' }, { cadenceOn: true, noAnswerLimit: 5 });
+    withRow({ noAnswerCount: 4, closesOnNext: false, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
     await draw();
     expect(screen.queryByText(HINT_NEXT)).toBeNull();
     expect(nobody()).not.toContain('متبقٍ');
@@ -222,7 +222,7 @@ describe('2 · the hint says only what the server told the card', () => {
 
   it('the plan, the server said nothing (no closesOnNext): no hint either', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 4 }, { cadenceOn: true, noAnswerLimit: 5 });
+    withRow({ noAnswerCount: 4, attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
     await draw();
     expect(screen.queryByText(HINT_NEXT)).toBeNull();
   });
@@ -264,6 +264,41 @@ describe('2 · the hint says only what the server told the card', () => {
   });
 });
 
+describe('2b · the red «لا يرد» follows the same fact as the hint (review of C1, 18/11)', () => {
+  const red = (text: string) => (buttonSaying(text)?.className ?? '').includes('text-[var(--sys-destructive)]');
+
+  it('the plan: red only when the server said a press now closes it — 4 of 5 with closesOnNext false is NOT red, though the old arithmetic (remaining ≤ 1) would make it red', async () => {
+    phone.value = false;
+    withRow({ noAnswerCount: 4, closesOnNext: false, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
+    await draw();
+    expect(red('لا يرد — محاولة 5 من 5')).toBe(false);
+    cleanup();
+    withRow({ noAnswerCount: 1, closesOnNext: true, dueWords: 'محاولة 2 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 2 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
+    await draw();
+    expect(red('لا يرد — محاولة 2 من 5')).toBe(true);
+  });
+
+  it('the rounds: never red (presses are not rounds); the base rule: red at one left, as always', async () => {
+    phone.value = false;
+    withRow({ noAnswerCount: 2 }, { rounds: true, noAnswerLimit: 3 });
+    await draw();
+    expect(red('لا يرد 2/3')).toBe(false);
+    cleanup();
+    withRow({ noAnswerCount: 2 }, { noAnswerLimit: 3 });
+    await draw();
+    expect(red('لا يرد 2/3')).toBe(true);
+  });
+
+  it('the plan: the count chip is not drawn beside the server’s line — neither «ما ردّ …» nor a second «محاولة N من 5» chip', async () => {
+    phone.value = false;
+    withRow({ noAnswerCount: 2, closesOnNext: false, dueWords: 'محاولة 3 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 3 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
+    await draw();
+    // the button and the server's line — and nothing else — carry the number
+    expect(screen.queryAllByText('محاولة 3 من 5')).toHaveLength(0);
+    expect(nobody()).not.toMatch(/ما ردّ (مرّة|مرّتين|\d+ مرّات)/);
+  });
+});
+
 describe('3 · the older generations print what they always did', () => {
   it('the rounds: «لا يرد 2/3» on the button and «جولة 2 من 3 (2/3)» on the tag', async () => {
     phone.value = false;
@@ -286,9 +321,10 @@ describe('3 · the older generations print what they always did', () => {
 
 describe('4 · the words live in one place', () => {
   const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
-  it('the screen prints the attempt through `nextAttemptWords`, and neither it nor the cadence file spells «محاولة N من 5» by hand', () => {
+  it('the server writes the attempt through `nextAttemptWords` (the screen prints it), and neither it nor the cadence file spells «محاولة N من 5» by hand', () => {
     const screenSrc = read('src/components/screens/ConfirmationMineScreen.tsx');
-    expect(screenSrc).toContain("from '@/lib/attempt-words'");
+    expect(screenSrc).not.toContain("from '@/lib/attempt-words'"); // the server writes the words (the desk bundle is at its ceiling)
+    expect(read('src/app/api/confirmation/mine/route.ts')).toContain('nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT)');
     expect(screenSrc).not.toMatch(/محاولة \$\{/);
     const cadence = read('src/lib/no-answer-cadence.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(cadence).not.toMatch(/محاولة \$\{[^}]*\} من/);

@@ -6,7 +6,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 vi.mock('@/lib/db', () => ({ db: {} }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>قواعد مركز التأكيد</h1> }));
+// The title is the kit's `PageShell` (its own test holds it); only the ⓘ button, which reads the shell's context, is stood in for.
+vi.mock('@/components/shell/ScreenGuide', () => ({ GuideButton: () => null }));
 
 /*
  * The eight cards are stubbed to a marker each: THIS file pins WHERE they stand (the page, the order, the old group), not what each says — each card's own test does that, and
@@ -160,9 +161,9 @@ describe('3 · «إعدادات النظام» keeps its own cards and none of t
 describe('4 · the box', () => {
   it('is titled «القاعدة بالمختصر», first under the title, one list item per line the server sent', () => {
     const { container } = render(<ConfirmationRulesScreen lines={LINES} />);
-    const children = [...container.firstElementChild!.children];
-    expect(children[0].textContent).toBe('قواعد مركز التأكيد');
-    expect(children[1].textContent).toContain('القاعدة بالمختصر');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('قواعد مركز التأكيد');
+    const body = container.querySelector('[dir="rtl"]') as HTMLElement;
+    expect(body.firstElementChild!.textContent).toContain('القاعدة بالمختصر');
     const items = [...container.querySelectorAll('[data-rule-summary] li')].map((n) => n.textContent);
     expect(items).toEqual(LINES);
   });
@@ -180,8 +181,8 @@ describe('5 · the phone: 375 px has nothing to scroll sideways', () => {
     const { container } = render(<ConfirmationRulesScreen lines={LINES} />);
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toMatch(/\bmax-w-3xl\b/);
-    expect(root.className).toMatch(/\bspace-y-4\b/);
-    expect(root.getAttribute('dir')).toBe('rtl');
+    const body = root.querySelector('[dir="rtl"]') as HTMLElement;
+    expect(body.className).toMatch(/\bspace-y-4\b/);
   });
 
   it('no class that makes a row wider than its parent', () => {

@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { CallProofCard } from '@/components/settings/CallProofCard';
 import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
 import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
@@ -27,39 +28,39 @@ import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
  */
 export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
   return (
-    <div className="max-w-3xl space-y-4" dir="rtl">
-      <ScreenTitle note="كل قواعد التأكيد بمكان واحد." />
+    <PageShell title={routeLabel('/confirmation/rules')} description="كل قواعد التأكيد بمكان واحد." width="narrow">
+      <div className="space-y-4" dir="rtl">
+        <Card>
+          <CardHeader title="القاعدة بالمختصر" subtitle="هيك بيصير بالطلب اللي ما بيرد، بأرقام الإعدادات الحالية. للقراءة بس." />
+          <CardContent>
+            <ul className="list-disc space-y-1.5 ps-5 text-sm leading-relaxed text-[var(--sys-foreground)]" data-rule-summary>
+              {lines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader title="القاعدة بالمختصر" subtitle="هيك بيصير بالطلب اللي ما بيرد، بأرقام الإعدادات الحالية. للقراءة بس." />
-        <CardContent>
-          <ul className="list-disc space-y-1.5 ps-5 text-sm leading-relaxed text-[var(--sys-foreground)]" data-rule-summary>
-            {lines.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+        <CallProofCard />
+        <QueuePriorityCard />
+        <QueueModesCard />
+        <IntakeFilterCard />
+        <WinbackV2Card />
+        <LeadsV2Card />
 
-      <CallProofCard />
-      <QueuePriorityCard />
-      <QueueModesCard />
-      <IntakeFilterCard />
-      <WinbackV2Card />
-      <LeadsV2Card />
-
-      <section className="space-y-4" aria-labelledby="old-rules-heading">
-        <div>
-          <h2 id="old-rules-heading" className="text-base font-bold text-[var(--sys-heading)]">
-            قواعد قديمة — بتنشال بالتحديث الجاي
-          </h2>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-            القاعدة الوحدة اللي فوق هي اللي بتحكم لما «إثبات المكالمات وجدول المحاولات» يكون شغّال. هدول الاتنين بيضلّوا طريق الرجوع لو طفّيته.
-          </p>
-        </div>
-        <NoAnswerRoundsCard />
-        <NoAnswerReturnsCard />
-      </section>
-    </div>
+        <section className="space-y-4" aria-labelledby="old-rules-heading">
+          <div>
+            <h2 id="old-rules-heading" className="text-base font-bold text-[var(--sys-heading)]">
+              قواعد قديمة — بتنشال بالتحديث الجاي
+            </h2>
+            <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+              القاعدة الوحدة اللي فوق هي اللي بتحكم لما «إثبات المكالمات وجدول المحاولات» يكون شغّال. هدول الاتنين بيضلّوا طريق الرجوع لو طفّيته.
+            </p>
+          </div>
+          <NoAnswerRoundsCard />
+          <NoAnswerReturnsCard />
+        </section>
+      </div>
+    </PageShell>
   );
 }

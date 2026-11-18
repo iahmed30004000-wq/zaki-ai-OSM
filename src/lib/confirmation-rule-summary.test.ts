@@ -27,6 +27,8 @@ import { forgetCallProofSwitch } from './call-proof-switch';
 const FACTS: RuleFacts = {
   proofOn: true,
   priorityOn: false,
+  roundsOn: false,
+  returnsOn: false,
   hand: RETURNS_MODE.handLimit,
   idleMinutes: RETURNS_MODE.idleBusinessMinutes,
   workStart: '10:00',
@@ -154,5 +156,53 @@ describe('readRuleFacts reads what the engine reads', () => {
     expect(f.proofOn).toBe(false);
     expect(f.priorityOn).toBe(false);
     expect(f.hand).toBe(RETURNS_MODE.handLimit);
+  });
+});
+
+// ───────────────────────── every state of the five switches (review of C1, 18/11) ─────────────────────────
+/**
+ * The box was false in the legacy state: with the plan OFF, «نظام الجولات» ON and «الطلب يرجع للطابور فوراً» ON it said «بعد 90 دقيقة عمل» and «بعد 3 مرات»,
+ * while the release uses the mode's idle limit (30, or 20 with the priority on) and the close counts ROUNDS. Each row below is one state, and what it must and must not say.
+ */
+describe('the box tells the truth of every state', () => {
+  const PRI = { hand: QUEUE_PRIORITY_LIMITS.handLimit, idleMinutes: QUEUE_PRIORITY_LIMITS.idleBusinessMinutes };
+  const OFF = { hand: RETURNS_MODE.handLimit, idleMinutes: RETURNS_MODE.idleBusinessMinutes };
+  type Row = [string, Partial<RuleFacts>, string[], string[]];
+  const rows: Row[] = [
+    ['plan off · rounds off · returns off', { proofOn: false, ...OFF }, [`بعد ${NO_ANSWER_LIMIT} مرات «لا يرد»`, `${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`, 'أولوية الطابور مطفية'], ['جولات', 'فوراً» شغّال']],
+    ['plan off · rounds off · returns stored on (inert)', { proofOn: false, returnsOn: true, ...OFF }, [`بعد ${NO_ANSWER_LIMIT} مرات «لا يرد»`, `${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`, 'ما بيشتغل: بدّو «نظام الجولات»'], ['بيجهز بعد']],
+    ['plan off · rounds on · returns off', { proofOn: false, roundsOn: true, ...OFF }, [`بعد ${NO_ANSWER_LIMIT} جولات على 2 أيام`, '3 ساعات عمل = جولة وحدة', `${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`, '12 ساعة عمل'], [`${NO_ANSWER_LIMIT} مرات «لا يرد»`, 'بيجهز بعد']],
+    ['plan off · rounds on · returns on · priority off', { proofOn: false, roundsOn: true, returnsOn: true, ...OFF }, [`بعد ${NO_ANSWER_LIMIT} جولات`, 'بيجهز بعد 3 ساعات عمل', `بإيدها ${RETURNS_MODE.handLimit} طلبات`, `${RETURNS_MODE.idleBusinessMinutes} دقيقة عمل`], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`, `${NO_ANSWER_LIMIT} مرات «لا يرد»`]],
+    ['plan off · rounds on · returns on · priority on', { proofOn: false, roundsOn: true, returnsOn: true, priorityOn: true, ...PRI }, [`بإيدها ${QUEUE_PRIORITY_LIMITS.handLimit} طلبات`, `${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة عمل`, 'أولوية الطابور شغّالة'], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`, 'ما بيشتغلوا إلا']],
+    ['plan off · rounds off · priority on (inert)', { proofOn: false, priorityOn: true, ...PRI }, ['ما بيشتغلوا إلا مع «إثبات المكالمات»', `${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`], ['بإيدها']],
+    ['plan on · rounds off', { proofOn: true, ...OFF }, [`المحاولة ${CADENCE_LIMIT} على`, `${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`], ['جولات', 'نظام الجولات']],
+    ['plan on · rounds on (its releases still run)', { proofOn: true, roundsOn: true, ...OFF }, [`المحاولة ${CADENCE_LIMIT} على`, '«نظام الجولات» شغّال كمان', '12 ساعة عمل'], [`${NO_ANSWER_LIMIT} جولات`]],
+    ['plan on · rounds on · returns on · priority on', { proofOn: true, roundsOn: true, returnsOn: true, priorityOn: true, ...PRI }, ['3 طلبات', '20 دقيقة دوام', 'أولوية الطابور شغّالة'], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`]],
+  ];
+  it.each(rows)('%s', (_name, over, says, never) => {
+    const t = text(over);
+    for (const s of says) expect(t, s).toContain(s);
+    for (const n of never) expect(t, n).not.toContain(n);
+    expect(t).not.toMatch(/[A-Za-z]/);
+  });
+});
+
+describe('readRuleFacts reads the two legacy switches too', () => {
+  let n = 0;
+  let CO = '';
+  const client = (settings: object) => ({ company: { findUnique: vi.fn(async () => ({ settings: JSON.stringify(settings) })) } });
+  const ON = { enabled: true, enabledAt: '2026-11-17T00:00:00.000Z' };
+  beforeEach(() => {
+    CO = `co-rules-legacy-${++n}`;
+  });
+
+  it('rounds on and returns on: both read, and the limits are the mode’s', async () => {
+    const f = await readRuleFacts(client({ noAnswerRounds: ON, noAnswerReturns: ON }) as never, CO, {});
+    expect(f).toMatchObject({ proofOn: false, roundsOn: true, returnsOn: true, hand: RETURNS_MODE.handLimit, idleMinutes: RETURNS_MODE.idleBusinessMinutes });
+  });
+
+  it('nothing stored: both off', async () => {
+    const f = await readRuleFacts(client({}) as never, CO, {});
+    expect(f).toMatchObject({ roundsOn: false, returnsOn: false });
   });
 });

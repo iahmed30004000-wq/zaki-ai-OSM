@@ -26,7 +26,8 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 
 import { PullPanel, useQueue, type QueueResponse } from './PullPanel';
 import { planRule, returnsModeRule } from '@/lib/pull-plan-words';
-import { QUEUE_PRIORITY_LIMITS, RETURNS_MODE } from '@/lib/queue-priority';
+import { QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
+import { RETURNS_MODE } from '@/lib/returns-mode';
 
 const BASE: QueueResponse = {
   waiting: 10,

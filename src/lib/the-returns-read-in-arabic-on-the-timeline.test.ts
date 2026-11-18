@@ -123,7 +123,7 @@ describe('on the timeline', () => {
     // 18/11 (C1): was «تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور». The 30 was typed, and the release uses 20 with «أولوية الطابور» on — a line written then would read 30 forever.
     // The line carries no figure now (as the rounds' release already did, RV1413); the notice she got said the real one (`idleWhy`).
     expect(event.detail).toBe('تحرير تلقائي — مرّت مهلة الخمول وما انسجّلت عليه أي محاولة، ورجع للطابور');
-    expect(event.detail).not.toMatch(/d/);
+    expect(event.detail).not.toMatch(/\d/);
   });
 
   it.each([[undefined], [PLAN_MARKED]])('no English code ever reaches the page, and the three are told apart (metadata %o)', async (metadata) => {

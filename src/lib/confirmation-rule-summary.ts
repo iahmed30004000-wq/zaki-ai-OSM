@@ -6,6 +6,10 @@ import { MIN_CALL_MS } from './call-proof-words';
 import { attemptWords } from './attempt-words';
 import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS, cadenceEveningAnchor, cadenceWorkWindow } from './no-answer-cadence';
 import { cadenceSince } from './no-answer-cadence-switch';
+import { ROUND_CLOSE_MIN_DAYS, ROUND_GAP_BUSINESS_MINUTES, ROUND_RELEASE_BUSINESS_MINUTES, roundsOn } from './no-answer-rounds';
+import { roundsSwitch } from './no-answer-rounds-switch';
+import { returnsSwitchOn } from './no-answer-returns';
+import { returnsSwitch } from './no-answer-returns-switch';
 import { POSTPONE_MAX_TIMES, QUEUE_PRIORITY } from './queue-priority';
 import { QUEUE_MODES_DEFAULTS, readQueueModes, type QueueModesConfig } from './queue-modes-settings';
 import { queuePrioritySwitch } from './queue-priority-switch';
@@ -28,6 +32,10 @@ export interface RuleFacts {
   proofOn: boolean;
   /** «أولوية الطابور» is on. */
   priorityOn: boolean;
+  /** «نظام الجولات» is on (the legacy counting and its three releases). */
+  roundsOn: boolean;
+  /** «الطلب يرجع للطابور فوراً» is STORED on — it works only with the rounds (or under the plan, which brings its own). */
+  returnsOn: boolean;
   /** The hand limit and the idle limit the release actually uses — `returnsLimits`, never a literal. */
   hand: number;
   idleMinutes: number;
@@ -40,21 +48,36 @@ export interface RuleFacts {
 
 /** Hours in the way a person says them: «ساعة» · «ساعتين» · «5 ساعات». */
 function hoursWords(h: number): string {
-  return h === 1 ? 'ساعة' : h === 2 ? 'ساعتين' : `${h} ساعات`;
+  return h === 1 ? 'ساعة' : h === 2 ? 'ساعتين' : h > 10 ? `${h} ساعة` : `${h} ساعات`;
 }
 const clock = (hour: number) => `${String(hour % 24).padStart(2, '0')}:00`;
 
 export function ruleSummaryLines(f: RuleFacts): string[] {
   const priority = f.priorityOn ? 'أولوية الطابور شغّالة' : 'أولوية الطابور مطفية';
+  const hours = (minutes: number) => hoursWords(minutes / 60);
   if (!f.proofOn) {
-    return [
-      `«إثبات المكالمات وجدول المحاولات» مطفي: «لا يرد» بينفتح بأي وقت، والطلب بيسكّر لحالو بعد ${NO_ANSWER_LIMIT} مرات «لا يرد» (القاعدة القديمة)، من غير موعد محسوب بين المرة والمرة.`,
-      `الطلب اللي ما انسجّلت عليه محاولة بيرجع للطابور بعد ${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل.`,
-      f.priorityOn
-        ? `أولوية الطابور شغّالة، بس حد اليد (${f.hand}) ومهلة ${f.idleMinutes} دقيقة ما بيشتغلوا إلا مع «إثبات المكالمات»، أو مع «نظام الجولات» و«الطلب يرجع للطابور فوراً» الاتنين (تحت).`
-        : 'أولوية الطابور مطفية: السحب زي ما هو.',
-      'شغّل «إثبات المكالمات وجدول المحاولات» لتشتغل القاعدة الجديدة، وهالصفحة بتتحدّث بأرقامها.',
+    // THE LEGACY STATES (18/11, review of C1): which of the old rules runs is decided by «نظام الجولات» and «الطلب يرجع للطابور فوراً» — the box says the one in force.
+    const legacyReturns = f.roundsOn && f.returnsOn;
+    const lines = [
+      f.roundsOn
+        ? `«إثبات المكالمات وجدول المحاولات» مطفي، و«نظام الجولات» شغّال: «لا يرد» خلال ${hours(ROUND_GAP_BUSINESS_MINUTES)} عمل = جولة وحدة، والطلب بيسكّر لحالو بعد ${NO_ANSWER_LIMIT} جولات على ${ROUND_CLOSE_MIN_DAYS} أيام مختلفين.`
+        : `«إثبات المكالمات وجدول المحاولات» مطفي: «لا يرد» بينفتح بأي وقت، والطلب بيسكّر لحالو بعد ${NO_ANSWER_LIMIT} مرات «لا يرد» (القاعدة القديمة)، من غير موعد محسوب بين المرة والمرة.`,
+      legacyReturns
+        ? `«الطلب يرجع للطابور فوراً» شغّال: «لا يرد» أو موعد بيطلّع الطلب من إيدها فوراً، وبعد «لا يرد» بيجهز بعد ${hours(ROUND_GAP_BUSINESS_MINUTES)} عمل. بإيدها ${f.hand} طلبات بالأكثر، والطلب اللي ما انسجّلت عليه محاولة ${f.idleMinutes} دقيقة عمل بيرجع للطابور لحالو (${priority}).`
+        : f.roundsOn
+          ? `الطلب اللي ما انسجّلت عليه محاولة بيرجع للطابور بعد ${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل، والجولة اللي ما حدا ردّ عليها بترجع بعد ${hours(ROUND_RELEASE_BUSINESS_MINUTES)} عمل.`
+          : `الطلب اللي ما انسجّلت عليه محاولة بيرجع للطابور بعد ${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل.`,
     ];
+    if (f.returnsOn && !f.roundsOn) lines.push('«الطلب يرجع للطابور فوراً» مخزّن شغّال بس ما بيشتغل: بدّو «نظام الجولات».');
+    if (!legacyReturns) {
+      lines.push(
+        f.priorityOn
+          ? `أولوية الطابور شغّالة، بس حد اليد (${f.hand}) ومهلة ${f.idleMinutes} دقيقة ما بيشتغلوا إلا مع «إثبات المكالمات»، أو مع «نظام الجولات» و«الطلب يرجع للطابور فوراً» الاتنين (تحت).`
+          : 'أولوية الطابور مطفية: السحب زي ما هو.'
+      );
+    }
+    lines.push('شغّل «إثبات المكالمات وجدول المحاولات» لتشتغل القاعدة الجديدة، وهالصفحة بتتحدّث بأرقامها.');
+    return lines;
   }
   const window = cadenceWorkWindow(f.workStart, f.workEnd);
   const lines = [
@@ -71,6 +94,9 @@ export function ruleSummaryLines(f: RuleFacts): string[] {
   } else {
     lines.push('ترتيب السحب: زي ما هو، بلا حصة للمتأخر ولا حد لتأجيل الموعد (أولوية الطابور مطفية).');
   }
+  if (f.roundsOn) {
+    lines.push(`«نظام الجولات» شغّال كمان: عدّو ما بيشتغل مع الجدول، بس تحريرو لسا بيرجّع الجولة اللي ما حدا ردّ عليها بعد ${hours(ROUND_RELEASE_BUSINESS_MINUTES)} عمل.`);
+  }
   lines.push(`وعدّاد واحد بكل الشاشات: «${attemptWords(2, CADENCE_LIMIT)}» — رقم المحاولة اللي بتصير بالضغطة الجاية.`);
   return lines;
 }
@@ -81,15 +107,19 @@ export async function readRuleFacts(
   companyId: string,
   country: { workHoursStart?: string | null; workHoursEnd?: string | null }
 ): Promise<RuleFacts> {
-  const [since, priority, limits, modes] = await Promise.all([
+  const [since, priority, limits, modes, rounds, returns] = await Promise.all([
     cadenceSince(client, companyId),
     queuePrioritySwitch(client, companyId),
     returnsLimits(client, companyId),
     readQueueModes(client, companyId).catch(() => QUEUE_MODES_DEFAULTS),
+    roundsSwitch(client, companyId).catch(() => null),
+    returnsSwitch(client, companyId).catch(() => null),
   ]);
   return {
     proofOn: !!since,
     priorityOn: priority.enabled,
+    roundsOn: roundsOn(rounds),
+    returnsOn: returnsSwitchOn(returns),
     hand: limits.handLimit,
     idleMinutes: limits.idleBusinessMinutes,
     workStart: country.workHoursStart,

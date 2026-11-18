@@ -46,7 +46,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
-import { nextAttemptWords } from '@/lib/attempt-words';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -129,6 +128,8 @@ interface OrderRow {
   callHelperLink?: string;
   /** «جدول المحاولات» is on: a press made NOW would close this order — a fact of the server's clock. Absent = the count decides, as it always did. */
   closesOnNext?: boolean;
+  /** «جدول المحاولات» is on: the attempt the next press will be, in the one counter's words («محاولة 2 من 5», `attempt-words.ts`), written by the server. Absent = the old counters. */
+  attemptWords?: string;
   /** RV2391: the server's number-free sentence for a closed card whose count is not the close's. Absent = print the count as always. */
   closedWords?: string;
   merchantRef: string | null;
@@ -1507,13 +1508,13 @@ export function ConfirmationMineScreen() {
             /*
               THE «لا يرد» BUTTON AND THE HINT BESIDE IT SAY WHAT THE SERVER KNOWS (the owner, 17/11 — «أزرار بتناقض بطاقاتها»).
 
-              Under the plan (`cadenceOn`) the button prints the attempt THIS press will be — «محاولة 2 من 5», the very words of the card's tag (`nextAttemptWords`,
+              Under the plan (`cadenceOn`) the button prints the attempt THIS press will be — «محاولة 2 من 5», the very words of the card's tag (`attemptWords`, written by the server through `nextAttemptWords`,
               one function) — and it is red only when the server said a press now would close the order (`closesOnNext`). Under the rounds the number of presses
               left is not the number of rounds left, so the card says nothing it cannot know: no countdown, no red. Only the base rule (neither switch) keeps
               the client's arithmetic, because there every press counts and the arithmetic is true.
             */
             const planned = !!data.cadenceOn;
-            const closesNow = planned ? !!order.closesOnNext : data.rounds ? false : remaining <= 1;
+            const closesNow = planned ? !!order.closesOnNext : !data.rounds && remaining <= 1;
             /*
               EACH BUTTON OF THE CARD, DRAWN ONCE, PLACED BY THE WIDTH.
 
@@ -1557,8 +1558,8 @@ export function ConfirmationMineScreen() {
                 wide={phone}
               >
                 لا يرد
-                {planned ? (
-                  <span className="tabular-nums"> — {nextAttemptWords(order.noAnswerCount, data.noAnswerLimit)}</span>
+                {order.attemptWords ? (
+                  ` — ${order.attemptWords}`
                 ) : (
                   <span className="tabular-nums" dir="ltr">
                     {' '}
@@ -1589,20 +1590,13 @@ export function ConfirmationMineScreen() {
               </Action>
             );
             // Said only where it is true: the base rule's arithmetic, or the plan's own fact for this card (`closesOnNext`). Under the rounds, and under the plan when a press now would not close it: nothing.
-            const remainingHint =
-              planned || data.rounds ? (
-                planned && order.closesOnNext ? (
-                  <span className="text-xs text-[var(--sys-muted)]">المحاولة القادمة تُغلق الطلب تلقائياً</span>
-                ) : null
-              ) : (
-                <span className="text-xs text-[var(--sys-muted)]">
-                  {remaining === 0
-                    ? 'بلغ الحد'
-                    : remaining === 1
-                      ? 'المحاولة القادمة تُغلق الطلب تلقائياً'
-                      : `متبقٍ ${remaining} محاولات قبل الإغلاق التلقائي`}
-                </span>
-              );
+            // -1 = say nothing (the rounds; the plan when a press now would not close it); 1 under the plan = the server's `closesOnNext`.
+            const left = planned || data.rounds ? (planned && order.closesOnNext ? 1 : -1) : remaining;
+            const remainingHint = left >= 0 && (
+              <span className="text-xs text-[var(--sys-muted)]">
+                {left === 0 ? 'بلغ الحد' : left === 1 ? 'المحاولة القادمة تُغلق الطلب تلقائياً' : `متبقٍ ${left} محاولات قبل الإغلاق التلقائي`}
+              </span>
+            );
             /*
               CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
               Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —
@@ -1780,7 +1774,7 @@ export function ConfirmationMineScreen() {
                   {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && !(planned && !readOnly && order.dueWords) && (
                     <span className="text-xs font-medium text-[var(--sys-warning)]">
                       {planned ? (
-                        <span className="tabular-nums">{nextAttemptWords(order.noAnswerCount, data.noAnswerLimit)}</span>
+                        order.attemptWords
                       ) : (
                         <>
                           {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}

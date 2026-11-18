@@ -33,9 +33,10 @@ import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
-import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, RETURNS_MODE, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
 
-// The mode's two numbers are DEFINED beside their sibling `QUEUE_PRIORITY_LIMITS` (`queue-priority.ts`, no imports, so a screen and the settings cards can say them) and re-exported here: every importer is unchanged.
+import { RETURNS_MODE } from './returns-mode';
+// The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
 export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 
@@ -70,7 +71,7 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
  *
  * The ready-time of a «لا يرد» is `ROUND_GAP_BUSINESS_MINUTES` (`no-answer-rounds.ts`): the same three hours that make a round.
  */
-// `RETURNS_MODE` = { handLimit: 5, idleBusinessMinutes: 30 } — defined in `queue-priority.ts` (18/11), re-exported above.
+// `RETURNS_MODE` = { handLimit: 5, idleBusinessMinutes: 30 } — defined in `returns-mode.ts` (18/11), re-exported above.
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling

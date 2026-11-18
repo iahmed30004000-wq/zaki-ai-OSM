@@ -41,15 +41,6 @@ export const QUEUE_PRIORITY = {
 } as const;
 
 /**
- * «الطلب يرجع للطابور فوراً (تجريبي)» — THE TWO NUMBERS OF THE MODE, IN ONE PLACE (the owner, 9/11; rules in `no-answer-returns.ts`, the readers in `confirmation-queue.ts`).
- * Moved here on 18/11 from `confirmation-queue.ts` (which re-exports it) so the words that say them — the settings cards, the release notice, the rules page — can import them without the database.
- *
- *   · `handLimit` — the most one agent holds, in her hands plus held for her. `idleBusinessMinutes` — nothing logged on an order in her hand for this many WORKING minutes lets it go back.
- *   · With the queue-priority key on, `QUEUE_PRIORITY_LIMITS` below are the numbers instead (`returnsLimits` asks).
- */
-export const RETURNS_MODE = { handLimit: 5, idleBusinessMinutes: 30 } as const;
-
-/**
  * STEP D2 — the returns mode's two numbers with the queue-priority key ON: an agent holds at most 3 (was 5), and an order nothing was logged on goes back after 20 working
  * minutes (was 30). The study: 718 pulls were returned untouched in one week, 404 of them at the 17:00 shift change. Where the key is off, `RETURNS_MODE` (5 and 30) is asked as ever.
  */

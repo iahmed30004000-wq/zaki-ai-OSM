@@ -115,7 +115,7 @@ vi.mock('@/lib/call-proof-switch', () => ({
 import { GET } from './route';
 import { cadenceCalOf, cadencePress } from '@/lib/no-answer-cadence';
 
-type Row = { id: string; noAnswerCount: number; dueNow: boolean; dueReason: string | null; dueAt: string | null; dueWords: string | null; closesOnNext?: boolean };
+type Row = { id: string; noAnswerCount: number; dueNow: boolean; dueReason: string | null; dueAt: string | null; dueWords: string | null; closesOnNext?: boolean; attemptWords?: string };
 type Desk = {
   work: Row[]; noAnswer: Row[]; closedToday: Row[]; noAnswerLimit: number; cadenceOn?: boolean; rounds?: boolean; due?: unknown; callProofOn?: boolean;
 };
@@ -268,6 +268,14 @@ describe('ON — where each card sits and what it says', () => {
     expect(byId(d, 'dn').closesOnNext).toBe(false);
     expect(byId(d, 'nw').closesOnNext).toBe(false);
     expect(byId(d, 'old').closesOnNext).toBe(false);
+  });
+
+  it('C1 (18/11): every held card carries the one counter’s words for its button — the attempt the next press will be, never past five', async () => {
+    const d = await desk();
+    expect(byId(d, 'nw').attemptWords).toBe('محاولة 1 من 5');
+    expect(byId(d, 'wt').attemptWords).toBe('محاولة 2 من 5');
+    expect(byId(d, 'f4d').attemptWords).toBe('محاولة 5 من 5');
+    expect(byId(d, 'c5').attemptWords).toBe('محاولة 5 من 5');
   });
 
   it('on a THURSDAY with Friday and Saturday off: a card whose #3 was Thursday afternoon waits in «بانتظار» for SUNDAY 09:00 (the country’s own start of work) — and that is the very due the door would store for the same lines', async () => {

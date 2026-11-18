@@ -1,6 +1,6 @@
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { IDLE_RETURNED_REASON } from './no-answer-returns';
-import { RETURNS_MODE } from './queue-priority';
+import { RETURNS_MODE } from './returns-mode';
 
 /**
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
