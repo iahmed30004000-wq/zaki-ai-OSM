@@ -1,12 +1,4 @@
 {
-  "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 348,
-    "rawDatePickers": 16,
-    "screenTitle": 0,
-    "textXs": 2632
-  },
   "files": {
     "src/app/(system)/error.tsx": {
       "rawButtons": 1,
