@@ -101,7 +101,8 @@ describe('and the owner is what screens read', () => {
   });
 
   it('and the dashboard tiles take theirs from it', () => {
-    const src = readFileSync(join(root, 'src/components/screens/DashboardScreen.tsx'), 'utf8');
+    // 18/11 (R9): the tiles moved from the dashboard to the performance board. Was: DashboardScreen.tsx.
+    const src = readFileSync(join(root, 'src/components/screens/PerformanceScreen.tsx'), 'utf8');
     // The tile builder, and no hand-picked colour beside a state name.
     expect(src).toMatch(/const tone = STATE_TONE\[state\]/);
     expect(src).toMatch(/color: TONE_TEXT\[tone\], dot: TONE_DOT\[tone\]/);

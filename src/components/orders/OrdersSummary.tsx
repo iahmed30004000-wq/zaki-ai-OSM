@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
 import { Tabs } from '@/components/ui/Tabs';
 import { Money } from '@/components/ui/Money';
+import { StatTile } from '@/components/ui/StatTile';
 import { STATE_LABEL_AR, type CoreState } from '@/lib/order-state';
 
 /**
@@ -66,29 +66,19 @@ export function OrdersSummary({
     <div className="space-y-3">
       <Tabs tabs={tabs} value={status} onChange={(key) => onStatus(key === status ? 'all' : key)} />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Figure label="عدد الطلبات">
-          <span className="font-bold tabular-nums text-[var(--sys-heading)]">{cards.orders}</span>
-        </Figure>
-        <Figure label="إجمالي القيمة">{money(cards.value)}</Figure>
-        <Figure label="متوسط الطلب">{cards.average === null ? '—' : money(cards.average)}</Figure>
+        <StatTile label="عدد الطلبات" value={cards.orders} />
+        <StatTile label="إجمالي القيمة" value={money(cards.value)} />
+        <StatTile label="متوسط الطلب" value={cards.average === null ? '—' : money(cards.average)} />
         {/*
           The net profit is written only when an order's finance is recorded (PATCH /api/orders/:id/finance), so most orders
           carry none. A card that read «0 from 0 orders» would look like a loss; with nothing recorded there is no card, and
           with something it says how many orders the figure covers.
         */}
         {cards.profit !== undefined && cards.profit.orders > 0 && (
-          <Figure label={`صافي الربح (من ${cards.profit.orders} طلب مسجّل ربحه)`}>{money(cards.profit.value)}</Figure>
+          <StatTile label={`صافي الربح (من ${cards.profit.orders} طلب مسجّل ربحه)`} value={money(cards.profit.value)} />
         )}
       </div>
     </div>
   );
 }
 
-function Figure({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-      <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
-      <p className="mt-0.5 text-base">{children}</p>
-    </div>
-  );
-}
