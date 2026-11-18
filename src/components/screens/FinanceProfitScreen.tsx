@@ -350,17 +350,16 @@ export function FinanceProfitScreen() {
             <span>سجّل مصروفاً</span>
           </Button>
         }
-      >
-
-        <div className="flex flex-wrap items-center gap-3">
+        // The span box (D2) and its one sentence act on every figure of the screen: the frame's toolbar row. Its lines are byte-for-byte the same.
+        toolbar={<>
           <div className="w-56">
             <DateRange value={range} onChange={setRange} label="منذ البداية" />
           </div>
           <p className="text-note text-[var(--sys-muted)]">
             {range.from && range.to ? 'الأرقام للمدة المختارة: الموصَّل فيها، ومصاريفها.' : 'الأرقام منذ البداية — كل الموصَّل وكل المصاريف.'}
           </p>
-        </div>
-
+        </>}
+      >
         {/* Real Profit KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
