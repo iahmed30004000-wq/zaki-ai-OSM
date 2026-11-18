@@ -169,14 +169,19 @@ describe('«أرصدة المخزون»', () => {
 
   it('PHONE: «استلام» is a button across the card; DESK: the word it was', async () => {
     await draw(2);
+    /*
+     * 18/11 (R12c, the kit look): the desk's «استلام» was a raw underlined word (`hover:underline`); it is now the kit's
+     * quiet button (`Button variant="quiet" size="sm"`, no fill, no edge). The question stays the same: a full-width
+     * filled button on a phone, a small quiet one on a desk.
+     */
     const b = within(cardOf('منتج 01')).getByRole('button', { name: 'استلام' });
     expect(b.className).toContain('w-full');
-    expect(b.className).not.toContain('hover:underline');
+    expect(b.className).not.toContain('bg-transparent');
     cleanup();
     phone.value = false;
     await draw(2);
     const d = within(cardOf('منتج 01')).getByRole('button', { name: 'استلام' });
-    expect(d.className).toContain('hover:underline');
+    expect(d.className).toContain('bg-transparent');
     expect(d.className).not.toContain('w-full');
   });
 
@@ -184,7 +189,8 @@ describe('«أرصدة المخزون»', () => {
     await draw(2);
     const content = cardOf('منتج 01');
     expect(content.className).toContain('p-4');
-    expect(within(content).getByRole('button', { name: 'من أين الدرجة؟' }).className).toContain('min-h-11');
+    // 18/11 (R12c): was `min-h-11` on a raw button; the kit's small button is 44px tall on a phone by its own `h-11`.
+    expect(within(content).getByRole('button', { name: 'من أين الدرجة؟' }).className).toMatch(/(^|\s)h-11(\s|$)/);
     cleanup();
     phone.value = false;
     await draw(2);
