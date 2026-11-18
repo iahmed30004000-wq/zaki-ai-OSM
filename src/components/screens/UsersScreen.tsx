@@ -1,8 +1,9 @@
 ﻿'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { Pager } from '@/components/ui/Pager';
 import { Select, Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -16,9 +17,9 @@ import { apiJson } from '@/lib/api-client';
 import { CreateUserModal } from './users/CreateUserModal';
 import { useConfirm } from '@/components/ui/Confirm';
 import { ASSIGNABLE_ROLES, ROLE_LABELS as ROLE_LABELS_AR, USER_STATUSES } from '@/types/auth';
-import { findRoute, routeLabel } from '@/lib/route-registry';
+import { routeLabel } from '@/lib/route-registry';
 import { RiForbidLine, RiKey2Line, RiLogoutBoxLine, RiMedalLine, RiPlayCircleLine, RiRefreshLine, RiSearchLine, RiShieldCheckLine, RiShieldCrossLine, RiUserAddLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { HealthChip } from '@/components/ui/HealthChip';
@@ -195,8 +196,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
 
   return (
     <>
-      <div className="space-y-6">
-        <PageHeader title={routeLabel('/admin/users')}
+      <PageShell title={routeLabel('/admin/users')}
             description="مراجعة طلبات التسجيل، تعيين الأدوار، تنشيط/إيقاف الحسابات — كل إجراء يُسجَّل في سجل التدقيق"
             actions={
               <><div className="flex items-center gap-2">
@@ -208,22 +208,13 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
             )}
             {/* The list does not refresh itself, so the refresh stays — drawn, not
                 folded: a «متقدم» holding one icon button was a click for nothing. */}
-            <Button variant="outline" size="sm" onClick={() => loadUsers(pagination.page)} className="p-2" aria-label="تحديث القائمة" title="تحديث">
+            <IconButton variant="secondary" size="sm" onClick={() => loadUsers(pagination.page)} label="تحديث القائمة">
               <RiRefreshLine className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            </IconButton>
           </div></>
             }
-          />
-
-        {error && (
-          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">{error}</div>
-        )}
-
-        {/* «عاين كـ» — the owner's alone (src/lib/preview-mode.ts). The door asks again; this is only where it is drawn. */}
-        {userHasFullAccess(currentUser) && !currentUser?.preview && <PreviewPicker />}
-
-        {/* Filters */}
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            filters={
+        <Card plain padding="md" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="relative sm:col-span-2">
             <RiSearchLine className="absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--sys-muted)]" />
             <input
@@ -231,10 +222,10 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
               placeholder="بحث بالاسم أو البريد الإلكتروني..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-11 md:h-auto w-full pl-9 pr-4 rtl:pl-4 rtl:pr-9 md:py-2 text-xs bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
+              className="h-11 md:h-auto w-full pl-9 pr-4 rtl:pl-4 rtl:pr-9 md:py-2 text-sm bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
             />
           </div>
-          <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="text-xs py-2">
+          <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="all">كل الأدوار</option>
             {ASSIGNABLE_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -242,7 +233,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
               </option>
             ))}
           </Select>
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="text-xs py-2">
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="all">كل الحالات</option>
             {USER_STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -251,10 +242,19 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
             ))}
           </Select>
           <div className="flex items-center space-x-2 rtl:space-x-reverse">
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="text-xs py-1.5" />
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="text-xs py-1.5" />
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
-        </div>
+        </Card>
+            }
+          >
+
+        {error && (
+          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">{error}</div>
+        )}
+
+        {/* «عاين كـ» — the owner's alone (src/lib/preview-mode.ts). The door asks again; this is only where it is drawn. */}
+        {userHasFullAccess(currentUser) && !currentUser?.preview && <PreviewPicker />}
 
         {/*
           WHAT THE GRADE IS MADE OF, AND WHAT IS MISSING BEFORE IT SPEAKS.
@@ -266,28 +266,28 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
           close or six people to train, which is worth more than one score.
         */}
         {gradeData && (
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-4 space-y-2">
+          <Card plain padding="md" className="space-y-2">
             <div className="flex items-center gap-2">
               <RiMedalLine className="w-4 h-4 text-[var(--sys-primary)]" />
-              <h3 className="text-xs font-bold text-[var(--sys-heading)]">
+              <h3 className="text-sm font-bold text-[var(--sys-heading)]">
                 التقدير: ممّا يُبنى، وما ينقص قبل أن ينطق
               </h3>
             </div>
-            <p className="text-xs font-semibold text-[var(--sys-foreground)] leading-relaxed">
+            <p className="text-sm font-semibold text-[var(--sys-foreground)] leading-relaxed">
               {gradeData.readiness.why}
             </p>
             {gradeData.readiness.madeOf.length > 0 && (
-              <p className="text-xs text-[var(--sys-muted-foreground)] leading-relaxed">
+              <p className="text-sm text-[var(--sys-muted-foreground)] leading-relaxed">
                 يُبنى على: {gradeData.readiness.madeOf.join('، ')} — عن {PERIOD_AR[gradeData.window.period]} وفي
                 المتجر المختار وحده، ولا يُعطى رقمٌ لمن عيّنتُه أقلّ من {gradeData.minSample} طلباً. الترتيب داخل
                 الدور نفسه، لا بين الأدوار: البنودُ التي لا يقدر دورٌ على كسبها لا تُحسَب عليه صفراً.
               </p>
             )}
-            <p className="text-xs text-[var(--sys-muted)] leading-relaxed">
+            <p className="text-note text-[var(--sys-muted)] leading-relaxed">
               لا يُستدعى أيُّ نموذجٍ في هذا الرقم. كلُّ جملةٍ هنا قالبٌ حول عددٍ مقروءٍ من السجل، والرقمُ نفسه
               هو رقمُ بطاقةِ الأداء لا حساباً ثانياً له.
             </p>
-          </div>
+          </Card>
         )}
 
         {/* RiGroupLine Table */}
@@ -301,7 +301,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
                   { key: 'c0', label: "المستخدم", primary: true,
                     render: (u) => (
                   <><p className="font-bold text-[var(--sys-heading)]">{u.name}</p>
-                        <p className="text-xs text-[var(--sys-muted)]">{u.email}</p></>
+                        <p className="text-note text-[var(--sys-muted)]">{u.email}</p></>
                 ) },
                   { key: 'c1', label: "الدور الحالي", primary: true,
                     render: (u) => (
@@ -329,20 +329,20 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
                   { key: 'c7', label: "التقدير",
                     render: (u) => {
                       const g = gradeOf(u.id);
-                      if (!g) return <span className="text-xs text-[var(--sys-muted)]">—</span>;
+                      if (!g) return <span className="text-sm text-[var(--sys-muted)]">—</span>;
                       return (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <HealthChip health={{ tone: g.tone, label: g.label, why: g.why }} />
                             {g.scored && g.scored.total !== null && (
-                              <span className="text-xs font-bold tabular-nums text-[var(--sys-primary)]">
+                              <span className="text-sm font-bold tabular-nums text-[var(--sys-primary)]">
                                 {g.scored.total}
                                 <span className="font-normal text-[var(--sys-muted-foreground)]"> / {g.scored.possible}</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-[var(--sys-muted-foreground)] leading-relaxed">{g.why}</p>
-                          <p className={`text-xs leading-relaxed ${g.stale ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted)]'}`}>
+                          <p className="text-note text-[var(--sys-muted-foreground)] leading-relaxed">{g.why}</p>
+                          <p className={`text-note leading-relaxed ${g.stale ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted)]'}`}>
                             {g.presence}
                           </p>
                         </div>
@@ -369,7 +369,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
                   */
                   { key: 'c2fa', label: "التحقّق بخطوتين",
                     render: (u) => (
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${u.totpEnabledAt ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
+                      <span className={`inline-flex items-center gap-1 text-sm font-semibold ${u.totpEnabledAt ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
                         {u.totpEnabledAt ? 'مفعّل' : twoFactorRequired ? 'بانتظار أوّل دخول' : 'غير مطلوب'}
                       </span>
                     ) },
@@ -380,16 +380,15 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
                   <><div className="flex items-center gap-1.5 justify-end rtl:justify-start">
                           {/* Every act in the panel it opens (status, sign-out) asks «تعديل المستخدمين» — no button for who would only be refused. */}
                           {userCan(currentUser, 'users.edit') && (
-                            <Button size="sm" variant="outline" onClick={() => openManage(u)} className="text-xs">
+                            <Button size="sm" variant="secondary" onClick={() => openManage(u)}>
                               <RiShieldCheckLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
                               إدارة
                             </Button>
                           )}
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="secondary"
                             onClick={() => (window.location.href = `/admin/users/${u.id}`)}
-                            className="text-xs"
                             title="الدور والصلاحيات والوصول"
                           >
                             <RiKey2Line className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
@@ -424,7 +423,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
 
       <CreateUserModal
         isOpen={createOpen}
@@ -455,29 +454,31 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
         {manageUser && (
           <div className="space-y-5">
             {modalError && (
-              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">{modalError}</div>
+              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">{modalError}</div>
             )}
 
             {/* The role is changed in ONE place — the employee's page, where the
                 permissions it carries and the stores it reaches are shown with
                 it. A second editor here set the role's name and left its
                 permissions on the old role. */}
-            <a
-              href={`/admin/users/${manageUser.id}`}
-              className="flex items-center justify-between rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs font-semibold text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-            >
-              <span>الدور الحالي: {ROLE_LABELS[manageUser.role] || manageUser.role}</span>
-              <span>تغيير الدور والصلاحيات والوصول ←</span>
-            </a>
+            <Card plain>
+              <a
+                href={`/admin/users/${manageUser.id}`}
+                className="flex items-center justify-between p-3 text-sm font-semibold text-[var(--sys-foreground)] hover:text-[var(--sys-primary)]"
+              >
+                <span>الدور الحالي: {ROLE_LABELS[manageUser.role] || manageUser.role}</span>
+                <span>تغيير الدور والصلاحيات والوصول ←</span>
+              </a>
+            </Card>
 
             {manageReach && !manageReach.ok && (
-              <p className="text-xs text-[var(--sys-muted-foreground)]">{manageReach.why}</p>
+              <p className="text-sm text-[var(--sys-muted-foreground)]">{manageReach.why}</p>
             )}
 
             {/* Status actions — only for an account this person may act on. */}
             {manageReach?.ok !== false && (
-            <div className="border border-[var(--sys-border)] rounded-lg p-4 space-y-3 bg-[var(--sys-surface)]">
-              <h4 className="text-xs font-bold text-[var(--sys-foreground)]">حالة الحساب</h4>
+            <Card plain padding="md" className="space-y-3">
+              <h4 className="text-sm font-bold text-[var(--sys-foreground)]">حالة الحساب</h4>
               <div className="flex flex-wrap gap-2">
                 {manageUser.status === 'PENDING' && (
                   <Button size="sm" variant="success" loading={actionLoading} onClick={() => handleAction('changeStatus', { status: 'ACTIVE' })}>
@@ -527,15 +528,15 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
                     تعطيل
                   </Button>
                 )}
-                <Button size="sm" variant="outline" loading={actionLoading} onClick={() => handleAction('forceLogout')}>
+                <Button size="sm" variant="secondary" loading={actionLoading} onClick={() => handleAction('forceLogout')}>
                   <RiLogoutBoxLine className="icon-mirror w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
                   إنهاء كل الجلسات
                 </Button>
               </div>
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 إيقاف/تعطيل الحساب ينهي جميع الجلسات النشطة فوراً عبر إبطال التوكن الحالي.
               </p>
-            </div>
+            </Card>
             )}
           </div>
         )}
@@ -551,7 +552,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
         <div className="space-y-4">
           <p className="text-sm text-[var(--sys-foreground)] leading-relaxed">{pendingAction?.msg}</p>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPendingAction(null)}>
+            <Button variant="secondary" size="sm" onClick={() => setPendingAction(null)}>
               إلغاء
             </Button>
             <Button

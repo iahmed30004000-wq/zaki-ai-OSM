@@ -963,7 +963,10 @@ describe('«عهدة المندوبين»', () => {
   it('FIN-21: the way back to the list is 44px under a finger and the old size on a desk', async () => {
     await draw();
     await open();
-    expect(screen.getByRole('button', { name: /كل المندوبين/ }).className).toContain('min-h-11 md:min-h-0');
+    // 18/11 (R13a, the custody screen onto the kit): the way back is the kit's `Button` (quiet, sm) now, not a hand-drawn
+    // button. It said `min-h-11 md:min-h-0` (44px on a phone, its own height on a desk); the kit's sm says `h-11 md:h-8`
+    // (44px on a phone, 32px on a desk) — the same promise, written by the kit.
+    expect(screen.getByRole('button', { name: /كل المندوبين/ }).className).toContain('h-11 md:h-8');
   });
 });
 
