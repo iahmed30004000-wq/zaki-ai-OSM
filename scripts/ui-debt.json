@@ -2,10 +2,10 @@
   "totals": {
     "rawButtons": 672,
     "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawSurfaces": 345,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2621
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -513,10 +513,6 @@
       "rawButtons": 11,
       "rawSurfaces": 4,
       "textXs": 16
-    },
-    "src/components/screens/CustomersScreen.tsx": {
-      "rawSurfaces": 3,
-      "textXs": 11
     },
     "src/components/screens/DashboardScreen.tsx": {
       "rawButtons": 1,

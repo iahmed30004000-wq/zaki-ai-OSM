@@ -530,7 +530,9 @@ describe('«العملاء» — the customer’s file and the new-customer form
   it('A DESK: the history keeps its 15rem window; a row is one line', async () => {
     const list = await openFile();
     expect(list.getAttribute('class')).toBe('divide-y divide-[var(--sys-border)] max-h-60 overflow-y-auto');
-    expect(list.firstElementChild!.getAttribute('class')).toBe('py-2.5 flex items-center justify-between text-xs');
+    // 18/11 (R10d): was «… justify-between text-xs». The screen moved onto the kit's type scale (body text is
+    // text-sm); the row's layout — one line on a desk — is what this pins, and it did not change.
+    expect(list.firstElementChild!.getAttribute('class')).toBe('py-2.5 flex items-center justify-between text-sm');
   });
 
   it('A PHONE: the history runs down the dialog’s own scroll, and a row wraps so the product name keeps its room', async () => {
