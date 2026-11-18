@@ -938,8 +938,7 @@
       "textXs": 2
     },
     "src/components/settings/MenuOrderCard.tsx": {
-      "rawButtons": 10,
-      "textXs": 14
+      "rawButtons": 2
     },
     "src/components/settings/MessageTemplatesCard.tsx": {
       "rawButtons": 3,
