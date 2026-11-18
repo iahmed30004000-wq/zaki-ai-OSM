@@ -85,7 +85,7 @@ function Figure({
 }) {
   return (
     <div className="rounded-lg bg-[var(--sys-surface)] p-2 text-center" title={hint}>
-      <span className="block text-xs text-[var(--sys-muted)]">{label}</span>
+      <span className="block text-note text-[var(--sys-muted)]">{label}</span>
       <span
         className={`tabular-nums text-[var(--sys-heading)] ${strong ? 'text-sm font-black' : 'text-sm font-bold'}`}
         dir="ltr"
@@ -251,7 +251,7 @@ export function InventoryBalancesScreen() {
    * fold is a native disclosure that says what is inside.
    */
   const windowNote = (inFold: boolean) => (
-    <p className={inFold ? 'w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]' : 'mt-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]'}>
+    <p className={inFold ? 'w-full text-note leading-relaxed text-[var(--sys-muted-foreground)]' : 'mt-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]'}>
       {ledgerDays === null || ledgerDays < MIN_LEDGER_DAYS ? (
         <>
           سجل التسليمات لا يعود لأكثر من {ledgerDays ?? 0} يوم، و{MIN_LEDGER_DAYS} أيام هي أقلّ ما
@@ -334,7 +334,7 @@ export function InventoryBalancesScreen() {
             the filtered page tells you about your own filter. Each one is a
             filter, so a count is never a dead end. */}
         {alerts.length > 0 && (
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+          <Card padding="sm">
             <div className="flex flex-wrap items-center gap-2">
               {alerts.map((a) => {
                 const active = only === a.state;
@@ -357,13 +357,9 @@ export function InventoryBalancesScreen() {
                 );
               })}
               {only !== null && (
-                <button
-                  type="button"
-                  onClick={() => setOnly(null)}
-                  className="inline-flex min-h-11 items-center text-xs font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
-                >
+                <Button type="button" variant="quiet" size="sm" onClick={() => setOnly(null)}>
                   اعرض الكل
-                </button>
+                </Button>
               )}
             </div>
 
@@ -378,27 +374,27 @@ export function InventoryBalancesScreen() {
             ) : (
               windowNote(false)
             )}
-          </div>
+          </Card>
         )}
 
         {/* 114 cards need a way in, so the search comes before them rather
             than after the scroll. */}
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+        <Card padding="sm">
           <input
             value={term}
             onChange={(e) => setTerm(e.target.value)}
             placeholder="ابحث باسم المنتج أو رمزه…"
             className="w-full min-w-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
-          <p className="mt-1.5 text-xs text-[var(--sys-muted-foreground)]">
+          <p className="mt-1.5 text-note text-[var(--sys-muted-foreground)]">
             {visible.length} من {stockSummary.length} منتج — الأسوأ أوّلاً
           </p>
-        </div>
+        </Card>
 
         {!loading && stockSummary.length > 0 && visible.length === 0 && (
-          <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 text-sm text-[var(--sys-muted-foreground)]">
-            لا منتجَ يطابق ما اخترته.
-          </p>
+          <Card padding="md">
+            <p className="text-sm text-[var(--sys-muted-foreground)]">لا منتجَ يطابق ما اخترته.</p>
+          </Card>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -449,7 +445,7 @@ export function InventoryBalancesScreen() {
                 <CardContent className={phone ? 'p-4 space-y-3' : 'p-5 space-y-3'}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <span className="font-mono text-xs font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">
+                      <span className="font-mono text-note font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">
                         {s.sku}
                       </span>
                       <a
@@ -460,7 +456,7 @@ export function InventoryBalancesScreen() {
                       </a>
                       {/* Which door adds to this one — the question you ask
                           the moment you see it is running out. */}
-                      <span className="mt-1 inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-xs font-semibold text-[var(--sys-foreground)]">
+                      <span className="mt-1 inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]">
                         {s.sourceType === 'PURCHASED' ? 'جاهز — يُستلم' : 'مصنّع — تشغيلة'}
                       </span>
                     </div>
@@ -472,7 +468,7 @@ export function InventoryBalancesScreen() {
                       «قارب على الانتهاء» tells a reader nothing they can act
                       on. «12 متاحة و1.9 تخرج يومياً — تكفي 6 أيام» tells them
                       how many to buy. */}
-                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{h.why}</p>
+                  <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">{h.why}</p>
 
                   {/*
                     A PHONE READS THREE FIGURES AND UNFOLDS THE REST.
@@ -507,7 +503,7 @@ export function InventoryBalancesScreen() {
                   )}
 
                   <div className={phone ? 'flex flex-wrap items-center justify-between gap-2 pt-1' : 'flex items-center justify-between gap-2 pt-1'}>
-                    <span className="text-xs text-[var(--sys-muted)]">
+                    <span className="text-note text-[var(--sys-muted)]">
                       دخل {s.produced} · خرج {s.sold}
                     </span>
                     {/* Only a product you BUY ready comes in here; a made one
@@ -519,23 +515,20 @@ export function InventoryBalancesScreen() {
                           استلام
                         </Button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setReceiving(s)}
-                          className="text-xs font-medium text-[var(--sys-primary)] hover:underline"
-                        >
+                        <Button type="button" variant="quiet" size="sm" onClick={() => setReceiving(s)}>
                           استلام
-                        </button>
+                        </Button>
                       ))}
                     {h.bands.length > 0 && (
-                      <button
+                      <Button
                         type="button"
+                        variant="quiet"
+                        size="sm"
                         onClick={() => setOpenBands(bandsOpen ? null : s.id)}
                         aria-expanded={bandsOpen}
-                        className="inline-flex min-h-11 items-center text-xs font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
                       >
                         {bandsOpen ? 'أخفِ البنود' : 'من أين الدرجة؟'}
-                      </button>
+                      </Button>
                     )}
                   </div>
 
@@ -545,7 +538,7 @@ export function InventoryBalancesScreen() {
                   {bandsOpen && (
                     <ul className="space-y-1.5 rounded-lg bg-[var(--sys-surface)] p-2.5">
                       {h.bands.map((b) => (
-                        <li key={b.key} className="text-xs leading-relaxed">
+                        <li key={b.key} className="text-note leading-relaxed">
                           <span className="font-semibold text-[var(--sys-heading)]">{b.ar}</span>{' '}
                           <span className="tabular-nums text-[var(--sys-foreground)]" dir="ltr">
                             {Math.round(b.earned)}/{b.weight}
@@ -573,13 +566,15 @@ export function InventoryBalancesScreen() {
             appeared twice under two names, and nobody could tell which was
             the record. This screen answers "how much is left"; that one
             answers "what happened". */}
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 text-sm text-[var(--sys-muted-foreground)]">
-          تبحث عمّا دخل وما خرج ومن سجّله؟{' '}
-          <a href="/inventory/movements" className="font-medium text-[var(--sys-primary)] hover:underline">
-            سجل حركات المخزون
-          </a>{' '}
-          — هذه الشاشة تقول كم بقي، وتلك تقول ماذا حدث.
-        </p>
+        <Card padding="md">
+          <p className="text-sm text-[var(--sys-muted-foreground)]">
+            تبحث عمّا دخل وما خرج ومن سجّله؟{' '}
+            <a href="/inventory/movements" className="font-medium text-[var(--sys-primary)] hover:underline">
+              سجل حركات المخزون
+            </a>{' '}
+            — هذه الشاشة تقول كم بقي، وتلك تقول ماذا حدث.
+          </p>
+        </Card>
       </div>
 
       {receiveFor && (
@@ -609,7 +604,7 @@ export function InventoryBalancesScreen() {
       >
         <form onSubmit={handleAdjustStock} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">
+            <label className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">
               المنتج *
             </label>
             {/*
@@ -633,12 +628,12 @@ export function InventoryBalancesScreen() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">المتاح في النظام</label>
+              <label className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">المتاح في النظام</label>
               <div className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 ${phone ? 'flex h-11 items-center' : 'py-2'} text-sm font-bold tabular-nums text-[var(--sys-muted-foreground)]`} dir="ltr">
                 {systemQty}
               </div>
               {selected && (
-                <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+                <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">
                   على الرف {selected.remaining} · محجوز {selected.reserved}
                 </p>
               )}
@@ -654,7 +649,7 @@ export function InventoryBalancesScreen() {
             />
           </div>
 
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             عُدَّ ما يمكن بيعه فقط — دون المحجوز لطلبات مفتوحة، ومنها طلبات خرجت مع شركة الشحن ولم تُسلَّم بعد.
           </p>
 
@@ -669,7 +664,7 @@ export function InventoryBalancesScreen() {
                   : 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)]'
             }`}
           >
-            <p className="text-xs font-medium text-[var(--sys-muted-foreground)]">الفرق الذي سيُسجَّل</p>
+            <p className="text-note font-medium text-[var(--sys-muted-foreground)]">الفرق الذي سيُسجَّل</p>
             <p
               className={`mt-0.5 text-lg font-black tabular-nums ${
                 difference === null || difference === 0
@@ -682,7 +677,7 @@ export function InventoryBalancesScreen() {
             >
               {difference === null ? '—' : difference > 0 ? `+${difference}` : difference}
             </p>
-            <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+            <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">
               {difference === null
                 ? 'اكتب الكمية المعدودة ليظهر الفرق.'
                 : difference === 0
@@ -702,9 +697,9 @@ export function InventoryBalancesScreen() {
             required
           />
 
-          {countError && <p className="text-xs text-[var(--sys-destructive)]">{countError}</p>}
+          {countError && <p className="text-sm text-[var(--sys-destructive)]">{countError}</p>}
 
-          <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             إضافة بضاعة جديدة لا تتم من هنا: ما تصنعه يدخل من «تشغيلات الإنتاج»
             ببنود كلفته، وما تشتريه جاهزاً من «استلام بضاعة جاهزة» بسعر شرائه.
             البضاعة التي تدخل بلا تكلفة تخفض متوسط التكلفة وتُظهر ربحاً لم يتحقق.
