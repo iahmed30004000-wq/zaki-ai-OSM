@@ -6,6 +6,11 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { rateOf } from '@/lib/order-state';
 import { benchExcludedAr, realStoresHere } from '@/lib/test-store';
 import { dnaLineAr, readDna, whyNoDna, type DnaProduct } from '@/lib/product-dna';
+import { localDay } from '@/lib/eod-report';
+import { logAudit } from '@/lib/audit';
+import { judgeBenchProduct, type BenchOrderDay } from '@/lib/bench-verdict';
+import { addSpend, correctSpend, liveSpend, voidSpend, BenchRefused } from '@/lib/bench-spend';
+import { benchProduct, changeBenchSpend, readBenchBook, saveBenchRules } from '@/lib/bench-book';
 
 /**
  * GET /api/growth/bench — the test bench's own results, and the shop's DNA.
@@ -24,7 +29,17 @@ import { dnaLineAr, readDna, whyNoDna, type DnaProduct } from '@/lib/product-dna
  * thing on the bench can have it too. Reading the bench's own products
  * would be asking the experiment what the answer is.
  *
- * It writes nothing. Everything here is a count.
+ * The GET writes nothing. Everything here is a count.
+ *
+ * ── AND THE VERDICT (18/11) ──
+ *
+ * Each product also carries its test: spend to date, orders, confirmed,
+ * the confirmation rate, cost per order and per confirmed order, the day of
+ * the test, and the verdict by the owner's rules (src/lib/bench-verdict.ts —
+ * every number is computed there, none here). The POST writes the two things
+ * the verdict needs from a person: a product's rules, and its spend by day.
+ * Both stay in the company's settings (src/lib/bench-book.ts); nothing here
+ * touches an order, the books or a commission.
  */
 export async function GET() {
   try {
@@ -35,11 +50,14 @@ export async function GET() {
      * THE BENCH STORES. Plural on purpose: a shop may run one bench per
      * country, and a reading that assumed one would silently show the first.
      */
-    const benches = await db.store.findMany({
+    const benchRows = await db.store.findMany({
       where: { companyId, isTest: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, country: { select: { currencyCode: true, minorUnit: true, timezone: true } } },
       orderBy: { name: 'asc' },
     });
+    const benches = benchRows.map((b) => ({ id: b.id, name: b.name }));
+    // Each bench's own money and day: «currency = the store's currency», «day = the store's day».
+    const placeOf = new Map(benchRows.map((b) => [b.id, b.country]));
 
     /*
      * EVERY PRODUCT ON THE BENCH, AND WHAT HAPPENED TO IT.
@@ -82,10 +100,42 @@ export async function GET() {
       tally.set(row.productId, t);
     }
 
+    /*
+     * THE VERDICT'S INPUTS: each order's store day and whether it was
+     * CONFIRMED — nothing about shipping, because a bench order stops at
+     * confirmation. Three columns per order, bench stores only.
+     */
+    const dated = benchIds.length
+      ? await db.order.findMany({
+          where: { companyId, storeId: { in: benchIds } },
+          select: { productId: true, storeId: true, createdAt: true, confirmationStatus: true },
+        })
+      : [];
+    const now = new Date();
+    const ordersOf = new Map<string, BenchOrderDay[]>();
+    for (const o of dated) {
+      const place = o.productId && o.storeId ? placeOf.get(o.storeId) : undefined;
+      if (!o.productId || !place) continue;
+      const list = ordersOf.get(o.productId) ?? [];
+      list.push({ day: localDay(o.createdAt, place.timezone), confirmed: o.confirmationStatus === 'CONFIRMED' });
+      ordersOf.set(o.productId, list);
+    }
+    const book = await readBenchBook(companyId);
+
     const byId = new Map(benches.map((b) => [b.id, b.name]));
     const results = products.map((p) => {
       const t = tally.get(p.id) ?? { orders: 0, delivered: 0, returned: 0 };
       const decided = t.delivered + t.returned;
+      const place = (p.storeId && placeOf.get(p.storeId)) || { currencyCode: country.currencyCode, minorUnit: country.minorUnit, timezone: country.timezone };
+      const { rules, custom } = book.rulesOf(p.id);
+      const entries = book.spendOf(p.id);
+      const { figures, verdict } = judgeBenchProduct({
+        today: localDay(now, place.timezone),
+        minorUnit: place.minorUnit,
+        rules,
+        orders: ordersOf.get(p.id) ?? [],
+        spend: liveSpend(entries),
+      });
       return {
         id: p.id,
         name: p.name,
@@ -105,6 +155,19 @@ export async function GET() {
          */
         deliveryRate: rateOf(t.delivered, decided),
         decided,
+        /*
+         * THE TEST: its period's figures, the rules they were judged by
+         * (so a verdict after a mid-test edit says which numbers it used),
+         * the verdict, and the hand-written spend with its voided lines.
+         */
+        currency: place.currencyCode,
+        minorUnit: place.minorUnit,
+        today: localDay(now, place.timezone),
+        test: figures,
+        rules,
+        customRules: custom,
+        verdict,
+        spendEntries: [...entries].sort((a, b) => (a.day === b.day ? a.at.localeCompare(b.at) : b.day.localeCompare(a.day))),
       };
     });
 
@@ -156,6 +219,74 @@ export async function GET() {
       },
     });
   } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+/**
+ * POST /api/growth/bench — the owner's numbers for one bench product.
+ *
+ *   { action: 'rules',   productId, rules }            rules = null → back to the defaults
+ *   { action: 'spend',   productId, day, amount }      one live entry per day
+ *   { action: 'correct', productId, entryId, amount, reason? }  void + new entry, same day
+ *   { action: 'void',    productId, entryId, reason }  never deleted
+ *
+ * The same key the screen already needs to be read (`growth.intelligence`):
+ * whoever reads the verdict sets the numbers it is judged by. No new key.
+ */
+export async function POST(req: Request) {
+  try {
+    const { user, companyId } = await requireContext();
+    await requirePermission('growth.intelligence');
+
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body !== 'object') throw new BenchRefused('الطلب فاضي.');
+    const product = await benchProduct(companyId, body.productId);
+    const today = localDay(new Date(), product.timezone);
+    const at = new Date().toISOString();
+
+    if (body.action === 'rules') {
+      const before = (await readBenchBook(companyId)).rulesOf(product.id);
+      const saved = await saveBenchRules(companyId, product.id, body.rules === null ? null : body.rules ?? {});
+      await logAudit({
+        companyId,
+        userId: user.id,
+        action: 'BENCH_RULES_UPDATED',
+        entity: 'Product',
+        entityId: product.id,
+        previousData: { ...before.rules },
+        newData: saved ? { ...saved } : { reset: true },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    const base = { byId: user.id, at, today, minorUnit: product.minorUnit };
+    let change: Parameters<typeof changeBenchSpend>[2];
+    if (body.action === 'spend') {
+      change = (list) => addSpend(list, { ...base, id: crypto.randomUUID(), day: body.day, amount: body.amount });
+    } else if (body.action === 'correct') {
+      change = (list) =>
+        correctSpend(list, { ...base, entryId: String(body.entryId ?? ''), newId: crypto.randomUUID(), amount: body.amount, reason: body.reason });
+    } else if (body.action === 'void') {
+      change = (list) => voidSpend(list, { entryId: String(body.entryId ?? ''), reason: body.reason, byId: user.id, at });
+    } else {
+      throw new BenchRefused('طلب مش معروف.');
+    }
+
+    await changeBenchSpend(companyId, product.id, change);
+    await logAudit({
+      companyId,
+      userId: user.id,
+      action: `BENCH_SPEND_${String(body.action).toUpperCase()}`,
+      entity: 'Product',
+      entityId: product.id,
+      newData: { day: body.day ?? null, amount: body.amount ?? null, entryId: body.entryId ?? null, reason: body.reason ?? null },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    if (error instanceof BenchRefused) {
+      return NextResponse.json({ error: error.message, errorAr: error.message }, { status: 400 });
+    }
     return apiErrorResponse(error);
   }
 }
