@@ -3,7 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiLoader4Line, RiLockLine, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -74,12 +76,14 @@ export function ClosingScreen() {
   }, [load]);
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/finance/closing')} />
-
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex gap-3 items-end">
+    <PageShell
+      title={routeLabel('/finance/closing')}
+      width="wide"
+      // The day is the one control that acts on the whole screen, so it sits in the frame's toolbar row under the name.
+      // It stays a native date FIELD: the closing is ONE day, and the kit's range picker answers a span.
+      toolbar={
         <label>
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">يوم الإغلاق</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">يوم الإغلاق</span>
           <input
             type="date"
             value={date}
@@ -89,7 +93,8 @@ export function ClosingScreen() {
             dir="ltr"
           />
         </label>
-      </div>
+      }
+    >
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
@@ -108,11 +113,11 @@ export function ClosingScreen() {
       ) : (
         <div className="space-y-3">
           {rows.map((r) => (
-            <div key={r.walletId} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4">
+            <Card plain padding="md" key={r.walletId}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-medium text-[var(--sys-heading)]">{r.walletName}</h3>
-                  <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums mt-0.5">
+                  <p className="text-note text-[var(--sys-muted-foreground)] tabular-nums mt-0.5">
                     رصيد الدفاتر{' '}
                     {/* On a phone it takes the same decimals as the counted figure beside it; the desk line is as it was. */}
                     <Money value={r.bookBalance} currency={r.currencyCode} minorUnit={phone ? r.minorUnit : undefined} />
@@ -131,7 +136,7 @@ export function ClosingScreen() {
                 <div className="flex items-center gap-3">
                   {r.closing && (
                     <span
-                      className={`text-xs px-2 py-1 rounded-full border tabular-nums ${
+                      className={`text-note px-2 py-1 rounded-full border tabular-nums ${
                         r.closing.difference === 0
                           ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/40'
                           : 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
@@ -146,25 +151,27 @@ export function ClosingScreen() {
                     </span>
                   )}
                   {r.closing?.status === 'APPROVED' ? (
-                    <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1">
+                    <span className="text-note text-[var(--sys-success)] inline-flex items-center gap-1">
                       <RiLockLine className="w-4 h-4" /> معتمد
                     </span>
                   ) : (
                     <>
                       {mayCount && (
-                      <button
+                      <Button
+                        size="sm"
                         disabled={!!r.blockedBy}
                         onClick={() => setCountFor(r)}
-                        className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                       >
                         {r.closing ? 'تعديل الجرد' : 'تسجيل الجرد'}
-                      </button>
+                      </Button>
                       )}
                       {r.closing && mayApprove && (
-                        <button
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           disabled={busy === r.walletId}
                           title="يعتمده شخص غير من سجّل الحركات أو الجرد"
-                          onClick={async () => {
+                          onClick={() => { void (async () => {
                             setBusy(r.walletId);
                             setDone(null);
                             try {
@@ -179,11 +186,10 @@ export function ClosingScreen() {
                             } finally {
                               setBusy(null);
                             }
-                          }}
-                          className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-success)] disabled:opacity-50"
+                          })(); }}
                         >
                           اعتماد
-                        </button>
+                        </Button>
                       )}
                     </>
                   )}
@@ -191,11 +197,11 @@ export function ClosingScreen() {
               </div>
 
               {phone && r.closing && r.closing.status === 'OPEN' && mayApprove && (
-                <p className="mt-2 text-xs text-[var(--sys-muted-foreground)]">يعتمده شخص غير من سجّل الحركات أو الجرد</p>
+                <p className="mt-2 text-note text-[var(--sys-muted-foreground)]">يعتمده شخص غير من سجّل الحركات أو الجرد</p>
               )}
 
               {r.blockedBy && (
-                <p className="mt-3 text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-2.5 flex items-start gap-2">
+                <p className="mt-3 text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-2.5 flex items-start gap-2">
                   <RiAlertLine className="w-4 h-4 shrink-0" />
                   إغلاق {new Date(r.blockedBy.date).toISOString().slice(0, 10)} فيه فرق{' '}
                   <b className="tabular-nums">{r.blockedBy.difference}</b> بلا تفسير — فسّره واعتمده قبل إغلاق هذا اليوم.
@@ -203,11 +209,11 @@ export function ClosingScreen() {
               )}
 
               {r.closing?.explanation && (
-                <p className="mt-3 text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-2.5">
+                <Card plain className="mt-3 p-2.5 text-note text-[var(--sys-muted-foreground)]">
                   التفسير: {r.closing.explanation}
-                </p>
+                </Card>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -224,7 +230,7 @@ export function ClosingScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -273,12 +279,12 @@ function CountDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 tabular-nums">
+        <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)] tabular-nums">
           رصيد الدفاتر: <b>{row.bookBalance}</b> {row.currencyCode}
-        </p>
+        </Card>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المبلغ المعدود فعلياً</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المبلغ المعدود فعلياً</span>
           <input
             type="number"
             step="0.001"
@@ -309,7 +315,7 @@ function CountDialog({
 
         {needsExplanation && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب الفرق (إلزامي)</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">سبب الفرق (إلزامي)</span>
             <textarea
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
@@ -324,16 +330,15 @@ function CountDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ الحفظ…' : 'حفظ الجرد'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
