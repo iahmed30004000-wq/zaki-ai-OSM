@@ -60,13 +60,27 @@ describe('the release job with the cadence', () => {
     expect(out.processed).toBe(2);
   });
 
-  it('rounds ON: the fifth argument is exactly { rounds } and the cadence is never asked', async () => {
+  /*
+   * UPDATED 2026-11-18 (request C2, decision 5): this test was «rounds ON: the fifth argument is exactly { rounds } and the cadence is never asked» — with BOTH switches on the
+   * job handed the rounds alone, so their 12-hour / date + 3 h / 90-minute releases ran beside the plan. C2 stops them while the plan is on: the plan is asked FIRST and the
+   * second transaction carries the plan's mode (`{ rounds, returns }`, whose `cadence` makes `releaseNoAnswerRounds` skip `releaseByRounds`). The rounds alone (plan off) is main's, below.
+   */
+  it('rounds ON + cadence ON (C2): the plan is asked first and the second transaction carries its mode — the rounds are never handed in alone', async () => {
     sw.value = { enabled: true, enabledAt: new Date('2026-11-01T05:00:00Z') };
     cad.since = new Date('2026-11-01T05:00:00Z');
     await releaseClaims.run({ now: NOW } as never);
     expect(db.$transaction).toHaveBeenCalledTimes(2);
+    expect(queue.readReturnsMode).toHaveBeenCalledTimes(1);
+    expect(queue.releaseNoAnswerRounds).toHaveBeenCalledTimes(1);
+    expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value, returns: { marker: 'the-cadence-mode' } });
+    expect(cad.asked).toBe(1);
+  });
+
+  it('rounds ON + cadence OFF: the fifth argument is exactly { rounds }, as on main — the way back', async () => {
+    sw.value = { enabled: true, enabledAt: new Date('2026-11-01T05:00:00Z') };
+    await releaseClaims.run({ now: NOW } as never);
+    expect(db.$transaction).toHaveBeenCalledTimes(2);
     expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value });
     expect(queue.readReturnsMode).not.toHaveBeenCalled();
-    expect(cad.asked).toBe(0);
   });
 });

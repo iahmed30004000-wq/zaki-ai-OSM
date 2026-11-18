@@ -113,7 +113,10 @@ describe('the lane lives on globalThis', () => {
 describe('the dashboard waits a minute for its report too', () => {
   const src = read('src/components/screens/DashboardScreen.tsx');
   it('its analytics call carries the longer wait — it queues in the same lane as the board', () => {
-    expect(src).toMatch(/apiFetch\(`\/api\/analytics\?period=\$\{period\}`, \{ timeoutMs: 60_000 \}\)/);
+    // 18/11 (R9): the days of «آخر 7 أيام»، «آخر 30 يوم» and a picked span ride beside the name (`${days}`). Was: `?period=${period}`.
+    expect(src).toMatch(/apiFetch\(`\/api\/analytics\?period=\$\{period\}\$\{days\}`, \{ timeoutMs: 60_000 \}\)/);
+    // and its one chart waits the same minute
+    expect(read('src/components/dashboard/DailyChart.tsx')).toMatch(/apiFetch\(`\/api\/analytics\/daily\?\$\{query\}`, \{ timeoutMs: 60_000 \}\)/);
   });
 });
 

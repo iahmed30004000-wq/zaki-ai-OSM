@@ -21,6 +21,8 @@ vi.mock('@/lib/db', () => ({ db: {} }));
 
 import { CallProofCard } from './CallProofCard';
 import { CADENCE_EVENING_FROM, CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_WORKDAY_END, CADENCE_WORKDAY_START } from '@/lib/no-answer-cadence';
+import { CONFIRMATION_RULE } from '@/lib/confirmation-rule';
+import { QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 import { RETURNS_MODE } from '@/lib/confirmation-queue';
 
 beforeEach(() => {
@@ -52,14 +54,16 @@ describe('the sentence of «إثبات المكالمات وجدول المحا�
     expect(CADENCE_GAPS_MS.afterFirst).toBe(30 * 60_000);
     expect(text).toContain('التالتة بعد ساعتين');
     expect(CADENCE_GAPS_MS.afterSecond).toBe(2 * 3_600_000);
-    // #4 is at the COUNTRY's start of work; only when the country has no hours does the plan use the constants 10:00 and 22:00 (said in 12-hour spoken form: «10 الصبح لحد 10 بالليل»), #5 from 18:00
-    expect(text).toContain('الرابعة عند بداية دوام البلد');
+    // UPDATED 2026-11-18 (request C2): the sentence said «الرابعة عند بداية دوام البلد» and «الخامسة الساعة 6 مسا (… قبل 7 مسا)» — the anchors moved to 11:00 (clamped into the
+    // window) and 19:30, and the card now READS them from the one rule set. Only when the country has no hours does the plan use 10:00 and 22:00 («10 الصبح لحد 10 بالليل»).
+    expect(text).toContain(`الرابعة الساعة ${CONFIRMATION_RULE.morning} الصبح (أو ببداية دوام البلد إذا بيبلّش بعدها)`);
+    expect(text).not.toContain('الرابعة عند بداية دوام البلد');
     expect(Number(/من (\d+) الصبح لحد \d+ بالليل/.exec(text)?.[1])).toBe(Number(CADENCE_WORKDAY_START.slice(0, 2)));
     expect(Number(/من \d+ الصبح لحد (\d+) بالليل/.exec(text)?.[1])).toBe(Number(CADENCE_WORKDAY_END.slice(0, 2)) - 12);
-    expect(Number(/الخامسة الساعة (\d+) مسا/.exec(text)?.[1])).toBe(Number(CADENCE_EVENING_FROM.slice(0, 2)) - 12);
-    // ruling 16: #5 stays inside the country's hours — an hour before the end of work when that is earlier than 18:00 (the cap is 18:00, so «7 مسا» is the cap + 1 h)
-    expect(text).toContain('أو قبل نهاية دوام البلد بساعة إذا دوامو بيخلص قبل 7 مسا');
-    expect(Number(/قبل (\d+) مسا\)/.exec(text)?.[1])).toBe(Number(CADENCE_EVENING_FROM.slice(0, 2)) - 12 + 1);
+    expect(/الخامسة الساعة (\d\d:\d\d) مسا/.exec(text)?.[1]).toBe(CADENCE_EVENING_FROM);
+    expect(CADENCE_EVENING_FROM).toBe('19:30');
+    // ruling 16: #5 stays inside the country's hours — an hour before the end of work when that is earlier than the cap + 1 h (19:30 + 1 h = 20:30)
+    expect(text).toContain('أو قبل نهاية دوام البلد بساعة إذا دوامو بيخلص قبل 20:30)');
     expect(text).toContain('وبتضل ضمن ساعات الدوام');
   });
 
@@ -89,11 +93,18 @@ describe('the sentence of «إثبات المكالمات وجدول المحا�
     expect(text).toContain('اللي انسجّل قبل التشغيل ما بينحسب');
   });
 
-  it('tells him the same switch brings «الطلب يرجع للطابور فوراً» — and its numbers ARE the constants: 5 orders, 30 working minutes', async () => {
+  // UPDATED 2026-11-18 (request C2, decisions 4 and 9): it said «وبيشغّل معو «الطلب يرجع للطابور فوراً»: … 5 طلبات … 30 دقيقة دوام … ومع «أولوية الطابور» شغّالة: 3 طلبات و20» —
+  // under the plan the hand and the idle release are the rule set's 3 and 20 WHATEVER «أولوية الطابور» says, and the old card's name is gone from the page.
+  it('tells him the same switch brings the return to the queue — and its numbers ARE the rule set\'s: 3 orders, 20 working minutes, whatever the priority key says', async () => {
     const text = await subtitle();
-    expect(text).toContain('«الطلب يرجع للطابور فوراً»');
-    expect(Number(/ما بتمسك أكتر من (\d+) طلبات/.exec(text)?.[1])).toBe(RETURNS_MODE.handLimit);
-    expect(Number(/(\d+) دقيقة دوام بيرجع للطابور لحاله/.exec(text)?.[1])).toBe(RETURNS_MODE.idleBusinessMinutes);
+    expect(text).toContain('وبيشغّل معو رجوع الطلب للطابور');
+    expect(text).not.toContain('«الطلب يرجع للطابور فوراً»');
+    expect(text).not.toContain('ومع «أولوية الطابور» شغّالة');
+    expect(Number(/ما بتمسك أكتر من (\d+) طلبات/.exec(text)?.[1])).toBe(QUEUE_PRIORITY_LIMITS.handLimit);
+    expect(Number(/(\d+) دقيقة دوام بيرجع للطابور لحاله/.exec(text)?.[1])).toBe(QUEUE_PRIORITY_LIMITS.idleBusinessMinutes);
+    expect(QUEUE_PRIORITY_LIMITS.handLimit).not.toBe(RETURNS_MODE.handLimit);
+    expect(Number(/موعد الزبون (\d+) مرات بالأكثر/.exec(text)?.[1])).toBe(CONFIRMATION_RULE.postponeMax);
+    expect(text).toContain('والتأجيل بسبب «لا يرد» ممنوع');
     expect(text).toContain('بيرجّع الطلبات المتروكة تدريجياً');
   });
 

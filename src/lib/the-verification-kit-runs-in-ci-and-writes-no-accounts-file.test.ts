@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { EXPECTED_HAND_OUT, EXPECTED_REFUSALS, USERS, buildScenario, diffHandOut } from '../../scripts/verify-on-postgres/scenario.mjs';
+import { EXPECTED_HAND_FULL, EXPECTED_HAND_OUT, EXPECTED_REFUSALS, USERS, buildScenario, diffHandOut } from '../../scripts/verify-on-postgres/scenario.mjs';
 
 /**
  * DEFINITION OF DONE — the verification kit in CI (planner 15/11, ruling 30) and «console only, no accounts file» (ruling 32).
@@ -258,7 +258,15 @@ describe("pull-order --assert can fail, and what it asserts is the planner's rul
     expect(src).toMatch(/EXPECTED_HAND_OUT\[desk\.email\]/);
     expect(src).toMatch(/EXPECTED_REFUSALS\.atSeed/);
     expect(src).toMatch(/EXPECTED_REFUSALS\.whenEmpty/);
-    expect(EXPECTED_REFUSALS).toEqual({ atSeed: 'UNTOUCHED_ORDER', whenEmpty: 'QUEUE_EMPTY' });
+    // UPDATED 2026-11-18 (request C2): was { atSeed, whenEmpty } only. Under the plan the hand is three whatever «أولوية الطابور» says, so agent 1 (three in hand at seed) is
+    // refused CAP_TOTAL first — the kit now asserts that (step 3·0), then has her decide the two she rang, and 3a / 3b are proved as before.
+    expect(EXPECTED_REFUSALS).toEqual({ atSeed: 'UNTOUCHED_ORDER', whenEmpty: 'QUEUE_EMPTY', handFull: 'CAP_TOTAL' });
+    expect(src).toMatch(/EXPECTED_REFUSALS\.handFull/);
+    expect(src).toMatch(/EXPECTED_HAND_FULL\[desk\.email\]/);
+    expect(EXPECTED_HAND_FULL).toEqual({ [USERS.agent1On.email]: 3 });
+    // the seed really puts three open orders in her hand — the hand limit of the plan
+    const held = buildScenario(new Date('2026-11-18T10:00:00Z')).filter((o) => o.heldBy === 'agent1On' && o.status !== 'CANCELLED');
+    expect(held).toHaveLength(3);
   });
 
   /**

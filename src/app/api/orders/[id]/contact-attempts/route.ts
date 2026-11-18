@@ -14,7 +14,7 @@ import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from
 import { NO_ANSWER_RETURNED_REASON, markPlanReturnLine } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
-import { callProofOn } from '@/lib/call-proof-switch';
+import { callProofOn, callProofReadFailed } from '@/lib/call-proof-switch';
 import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
 import { callProofState } from '@/lib/call-proof';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
@@ -65,6 +65,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     });
   } catch (error: any) {
     return apiErrorResponse(error);
+  }
+}
+
+/** The 503's words (request C2): nothing was written, and pressing again in a moment works. */
+const PLAN_UNREAD_AR = 'ما قدرنا نقرأ قاعدة المحاولات هلّق، وما انسجّل شي. جرّبي «لا يرد» كمان شوي.';
+
+/** Was the plan's switch unreadable just now? Asked through a try: a route test that mocks the switch module without this export reads «no». */
+function planSwitchUnread(companyId: string): boolean {
+  try {
+    return callProofReadFailed(companyId);
+  } catch {
+    return false;
   }
 }
 
@@ -174,6 +186,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const proofOn = await callProofOn(db, companyId);
     const guardedClass = (NO_ANSWER_RESULTS as readonly string[]).includes(result!);
     /*
+     * REQUEST C2 (18/11), finding #23: A FAILED READ OF THE PLAN'S SWITCH NEVER CLOSES BY THREE. A read that threw is OFF for ten seconds, and OFF here is the old rule —
+     * the third «لا يرد» of all time closes the order. A «لا يرد» while the switch cannot be read is refused with 503 before anything is written; she presses again in a
+     * moment. Any other result goes on as ever (it closes nothing). A read that WORKED and said off is not this: that is the way back, line for line.
+     */
+    if (guardedClass && !proofOn && planSwitchUnread(companyId)) {
+      return NextResponse.json({ error: PLAN_UNREAD_AR, errorAr: PLAN_UNREAD_AR, code: 'PLAN_SWITCH_UNREAD' }, { status: 503 });
+    }
+    /*
      * «جدول المحاولات» (step B) — the SAME switch as the proof above (one switch: proof off means cadence off, and then it is not even asked). `cadenceAt` is the moment the switch
      * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world (the country's timezone, rest days and work hours — the SAME builder the desk uses). Null, and every line below is today's, key for key.
      */
@@ -209,7 +229,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         ? cadencePress(
             await tx.orderContactAttempt.findMany({
               where: { orderId: id, companyId },
-              select: { createdAt: true, result: true, attemptNumber: true },
+              // `nextFollowUpAt`: the due each counted line STORED — the plan checks the next press against it (request C2: history keeps its verdicts).
+              select: { createdAt: true, result: true, attemptNumber: true, nextFollowUpAt: true },
             }),
             { at: pressedAt, result: result! },
             cal

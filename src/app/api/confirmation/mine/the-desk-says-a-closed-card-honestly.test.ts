@@ -103,8 +103,9 @@ const only = (d: Desk) => {
 function line(orderId: string, at: string, result = 'NO_ANSWER') {
   attempts.push({ orderId, createdAt: new Date(at), result, employeeId: 'u1', attemptNumber: attempts.filter((a) => a.orderId === orderId).length + 1 });
 }
-/** The plan's own run of five counted, over two local days (the first `n` of them): Sunday 10:00 · +30 min · +2 h, then Monday 10:00 (≥ 8 h after #3, a work day in Amman) and 18:00 (≥ 3 h after #4). */
-const PLAN_FIVE = ['2026-11-08T07:00:00.000Z', '2026-11-08T07:30:00.000Z', '2026-11-08T09:30:00.000Z', '2026-11-09T07:00:00.000Z', '2026-11-09T15:00:00.000Z'];
+/** The plan's own run of five counted, over two local days (the first `n` of them): Sunday 10:00 · +30 min · +2 h, then Monday 11:00 (the morning anchor, ≥ 8 h after #3, a work day in Amman) and 18:00 (≥ 3 h after #4). */
+// UPDATED 2026-11-18 (request C2): #4 was pressed at 07:00Z (10:00 Amman) — under the morning anchor (11:00) that is early, so it is pressed at 08:00Z (11:00).
+const PLAN_FIVE = ['2026-11-08T07:00:00.000Z', '2026-11-08T07:30:00.000Z', '2026-11-08T09:30:00.000Z', '2026-11-09T08:00:00.000Z', '2026-11-09T15:00:00.000Z'];
 function planned(orderId: string, n = 5) {
   for (const at of PLAN_FIVE.slice(0, n)) line(orderId, at);
 }

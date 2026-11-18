@@ -36,6 +36,13 @@ import {
  */
 const NO_ANSWER_BY_HAND_AR = `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${CADENCE_LIMIT} محاولات «لا يرد» محسوبة على يومين. اختر سبباً تانياً من القائمة.`;
 
+/**
+ * Request C2: a date whose reason is «لا يرد» is refused while the plan is on, with this sentence and code. The postpone dialog does not offer the reason while the plan
+ * is on (`NO_ANSWER_NOT_A_POSTPONE_HINT` in `postpone-reasons.ts` says why there).
+ */
+const NO_ANSWER_POSTPONE_AR = 'التأجيل بسبب «لا يرد» ممنوع — سجّلي «لا يرد» وبيرجع الطلب لحالو بموعده.';
+const NO_ANSWER_POSTPONE_CODE = 'NO_ANSWER_NOT_A_POSTPONE';
+
 /** The answer to a reason that is not on the list — one sentence, so the plan's code with the switch off can be answered with it byte for byte. */
 const PICK_A_REASON_AR = 'اختر سبب الرفض من القائمة';
 
@@ -295,6 +302,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Follow-up scheduling validation (POSTPONED / FOLLOW_UP_REQUIRED / future contact)
     const followUpDate: Date | null = null;
     if (action === 'schedule_follow_up' || (action === 'contact_result' && nextFollowUpAt)) {
+      /*
+       * REQUEST C2 (18/11): «لا يرد» IS NEVER A POSTPONEMENT WHILE THE PLAN IS ON. A date whose reason is «لا يرد» used to be a way round the five attempts — it counted
+       * no attempt and came back as a customer's promise ahead of the retries. With «إثبات المكالمات وجدول المحاولات» on it is refused before anything is read or
+       * written: she records «لا يرد» and the plan brings the order back at its due. The plan off (or unreadable): asked of nothing, as on main.
+       */
+      if (nextFollowUpAt && followUpReason === 'NO_ANSWER' && (await cadenceSince(db, companyId))) {
+        return NextResponse.json(
+          { error: NO_ANSWER_POSTPONE_AR, errorAr: NO_ANSWER_POSTPONE_AR, code: NO_ANSWER_POSTPONE_CODE },
+          { status: 409 }
+        );
+      }
       if (nextFollowUpAt) {
         const d = new Date(nextFollowUpAt);
         if (isNaN(d.getTime())) return NextResponse.json({ error: 'تاريخ المتابعة غير صالح' }, { status: 400 });
@@ -306,7 +324,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // when the customer asked for, and how often they have asked.
         if (target === 'POSTPONED') {
           // Step D2 (spec: «Postponed max 2»): with «أولوية الطابور» on, an order already postponed twice is not postponed a third time — the customer's answer is a decision, not another date.
-          if ((await queuePrioritySwitch(db, companyId)).enabled) {
+          // Request C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on the cap holds WHATEVER «أولوية الطابور» says (the plan is asked first; off, the line is main's).
+          if ((await cadenceSince(db, companyId)) || (await queuePrioritySwitch(db, companyId)).enabled) {
             const seen = await db.order.findFirst({ where: { id, companyId }, select: { postponeCount: true } });
             if ((seen?.postponeCount ?? 0) >= POSTPONE_MAX_TIMES) {
               return NextResponse.json({ error: `هالطلب انأجّل ${POSTPONE_MAX_TIMES} مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.`, code: 'POSTPONE_LIMIT' }, { status: 409 });

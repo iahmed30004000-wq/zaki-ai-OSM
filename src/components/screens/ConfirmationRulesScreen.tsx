@@ -10,8 +10,6 @@ import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
 import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
 import { QueueModesCard } from '@/components/settings/QueueModesCard';
-import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
-import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
 
 /**
  * «قواعد مركز التأكيد» — THE ONE PAGE OF THE CONFIRMATION RULES (the owner's plan of 17/11, request C1).
@@ -21,11 +19,14 @@ import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
  * what the rule is in one reading. «/settings/system» keeps the company's name, the score, the deductions, the offer after the order, the clean-line settlement
  * and the partners — and none of these eight.
  *
- * The two OLD cards («نظام الجولات» and «الطلب يرجع للطابور فوراً») are not removed here: they are the rollback path of the one rule above, and they leave with their engine
- * in the next change. They stand together at the bottom under their own heading, which says that.
+ * The two OLD cards («نظام الجولات» and «الطلب يرجع للطابور فوراً») LEFT this page in request C2 (18/11): the one rule replaced them, and one line under the box says so.
+ * Their doors keep GET and refuse every write (409 `RULE_RETIRED`); their stored values are not touched; their engine code leaves later (C4).
  *
  * `lines` is the box's text, written on the server from the constants and the switches the engine reads (`confirmation-rule-summary.ts`) — this screen decides nothing and types no number.
  */
+/** The one line that says where the two old cards went (request C2). */
+export const RULE_REPLACED_LINE = 'القاعدة الوحدة اللي فوق بدّلت «نظام الجولات» و«الطلب يرجع للطابور فوراً» — انشالوا من هون وما بيتغيّروا بعد هلّق.';
+
 export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
   return (
     <PageShell title={routeLabel('/confirmation/rules')} description="كل قواعد التأكيد بمكان واحد." width="narrow">
@@ -38,6 +39,9 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
                 <li key={line}>{line}</li>
               ))}
             </ul>
+            <p className="mt-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]" data-rule-replaced>
+              {RULE_REPLACED_LINE}
+            </p>
           </CardContent>
         </Card>
 
@@ -48,18 +52,6 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
         <WinbackV2Card />
         <LeadsV2Card />
 
-        <section className="space-y-4" aria-labelledby="old-rules-heading">
-          <div>
-            <h2 id="old-rules-heading" className="text-base font-bold text-[var(--sys-heading)]">
-              قواعد قديمة — بتنشال بالتحديث الجاي
-            </h2>
-            <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
-              القاعدة الوحدة اللي فوق هي اللي بتحكم لما «إثبات المكالمات وجدول المحاولات» يكون شغّال. هدول الاتنين بيضلّوا طريق الرجوع لو طفّيته.
-            </p>
-          </div>
-          <NoAnswerRoundsCard />
-          <NoAnswerReturnsCard />
-        </section>
       </div>
     </PageShell>
   );

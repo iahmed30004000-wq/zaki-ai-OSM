@@ -142,17 +142,18 @@ beforeEach(() => {
   plan('wt', ['2026-11-15T09:50:00.000Z']);
   // dn: #1 forty minutes ago → #2 was due ten minutes ago.
   plan('dn', ['2026-11-15T09:20:00.000Z']);
-  // The mocked country (Jordan's live row) works 09:00-17:00 with Friday and Saturday off, and #4 is due at ITS start of work (09:00 = 06:00Z in Amman): the fixtures sit on working days, #2 and #3
+  // UPDATED 2026-11-18 (request C2): #4 was due at the start of work (09:00 = 06:00Z) and the fixtures pressed it then; it is due at the MORNING anchor now (11:00 = 08:00Z), so #4 is pressed at 08:00Z.
+  // The mocked country (Jordan's live row) works 09:00-17:00 with Friday and Saturday off, and #4 is due at the morning anchor (11:00 = 08:00Z in Amman): the fixtures sit on working days, #2 and #3
   // inside the work hours and #4 on its due — a press on a rest day, or outside the hours, before its due would be EARLY and would not count.
   // c5: five counted over two working days (Sunday and Monday last week); still open (the close did not go through).
-  plan('c5', ['2026-11-08T10:00:00.000Z', '2026-11-08T10:30:00.000Z', '2026-11-08T12:30:00.000Z', '2026-11-09T06:00:00.000Z', '2026-11-09T15:00:00.000Z']);
+  plan('c5', ['2026-11-08T10:00:00.000Z', '2026-11-08T10:30:00.000Z', '2026-11-08T12:30:00.000Z', '2026-11-09T08:00:00.000Z', '2026-11-09T15:00:00.000Z']);
   // f4d: four counted (Monday and Tuesday last week), the evening of #5 passed days ago — a press now would close it.
-  plan('f4d', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T06:00:00.000Z']);
-  // f4w: four counted — #3 was Thursday 15:00 (#1 12:30, #2 13:00, all inside the hours), Friday and Saturday are rest days, so #4 was this morning, Sunday, at 09:00 (06:00Z); #5 is due at 16:00 today (ruling 16: an hour before Jordan's 17:00 end),
+  plan('f4d', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T08:00:00.000Z']);
+  // f4w: four counted — #3 was Thursday 15:00 (#1 12:30, #2 13:00, all inside the hours), Friday and Saturday are rest days, so #4 was this morning, Sunday, at 11:00 (08:00Z); #5 is due at 16:00 today (ruling 16: an hour before Jordan's 17:00 end),
   // so a press now is early and closes nothing.
-  plan('f4w', ['2026-11-12T09:30:00.000Z', '2026-11-12T10:00:00.000Z', '2026-11-12T12:00:00.000Z', '2026-11-15T06:00:00.000Z']);
+  plan('f4w', ['2026-11-12T09:30:00.000Z', '2026-11-12T10:00:00.000Z', '2026-11-12T12:00:00.000Z', '2026-11-15T08:00:00.000Z']);
   // x1: today's closed card — its five counted attempts (Monday and Tuesday last week).
-  plan('x1', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T06:00:00.000Z', '2026-11-10T15:00:00.000Z']);
+  plan('x1', ['2026-11-09T10:00:00.000Z', '2026-11-09T10:30:00.000Z', '2026-11-09T12:30:00.000Z', '2026-11-10T08:00:00.000Z', '2026-11-10T15:00:00.000Z']);
   // old: two lines from BEFORE the switch went on — invisible to the plan.
   plan('old', ['2026-10-20T08:00:00.000Z', '2026-10-20T08:30:00.000Z']);
 });
@@ -282,7 +283,7 @@ describe('ON — where each card sits and what it says', () => {
     expect(byId(d, 'wt').noAnswerHint).toBeUndefined();
   });
 
-  it('on a THURSDAY with Friday and Saturday off: a card whose #3 was Thursday afternoon waits in «بانتظار» for SUNDAY 09:00 (the country’s own start of work) — and that is the very due the door would store for the same lines', async () => {
+  it('on a THURSDAY with Friday and Saturday off: a card whose #3 was Thursday afternoon waits in «بانتظار» for SUNDAY 11:00 (the morning anchor, C2) — and that is the very due the door would store for the same lines', async () => {
     extraOrders.push({ id: 'th', attemptCount: 3 });
     // #1 12:30, #2 13:00, #3 15:00 Amman (all inside 09:00-17:00); now is Thursday 17:00.
     plan('th', ['2026-11-19T09:30:00.000Z', '2026-11-19T10:00:00.000Z', '2026-11-19T12:00:00.000Z']);
@@ -292,8 +293,9 @@ describe('ON — where each card sits and what it says', () => {
     expect(r).toBeDefined();
     expect(r.noAnswerCount).toBe(3);
     expect(r.dueNow).toBe(false);
-    expect(r.dueAt).toBe('2026-11-22T06:00:00.000Z');
-    expect(r.dueWords).toBe('محاولة 4 من 5 — جاهز الأحد الساعة 09:00'); // the weekday, not «بكرة»: Friday and Saturday are skipped
+    // UPDATED 2026-11-18 (request C2): was Sunday 09:00 (06:00Z) — #4 is due at the morning anchor now.
+    expect(r.dueAt).toBe('2026-11-22T08:00:00.000Z');
+    expect(r.dueWords).toBe('محاولة 4 من 5 — جاهز الأحد الساعة 11:00'); // the weekday, not «بكرة»: Friday and Saturday are skipped
     expect(d.work.some((x) => x.id === 'th')).toBe(false);
     // the door asks `cadencePress` with the lines before the press and the press itself, on the calendar `cadenceCalOf` builds — the same function the desk used, fed the same country
     const lines = attempts.filter((a) => a.orderId === 'th');
