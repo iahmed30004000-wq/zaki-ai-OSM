@@ -1904,6 +1904,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/FoldCard.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/LinkLineDialog.tsx": {
     "buttons": 7,
     "inputs": 1,
@@ -1938,7 +1948,7 @@
     "buttons": 3,
     "inputs": 1,
     "columns": 20,
-    "cards": 0,
+    "cards": 4,
     "modals": 0,
     "icons": 3,
     "links": 0,
@@ -1966,13 +1976,14 @@
   },
   "src/components/screens/finance/QueueTools.tsx": {
     "buttons": 2,
-    "inputs": 3,
+    "inputs": 2,
     "columns": 0,
     "cards": 0,
     "modals": 0,
     "icons": 2,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/finance/ReverseTransferDialog.tsx": {
     "buttons": 2,

@@ -658,10 +658,6 @@
       "rawSurfaces": 1,
       "textXs": 1
     },
-    "src/components/screens/finance/BulkDecide.tsx": {
-      "rawButtons": 1,
-      "textXs": 4
-    },
     "src/components/screens/finance/ClosingScreen.tsx": {
       "rawButtons": 4,
       "rawSurfaces": 4,
@@ -680,13 +676,6 @@
       "rawButtons": 4,
       "textXs": 11
     },
-    "src/components/screens/finance/DifferencesByPerson.tsx": {
-      "textXs": 4
-    },
-    "src/components/screens/finance/FoldCard.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/finance/LinkLineDialog.tsx": {
       "rawButtons": 7,
       "rawSurfaces": 1,
@@ -703,21 +692,11 @@
       "textXs": 1
     },
     "src/components/screens/finance/MatchingScreen.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 4,
-      "textXs": 14
-    },
-    "src/components/screens/finance/NotMentionedActions.tsx": {
       "rawButtons": 1,
-      "textXs": 4
+      "textXs": 2
     },
     "src/components/screens/finance/PartnersSection.tsx": {
       "textXs": 5
-    },
-    "src/components/screens/finance/QueueTools.tsx": {
-      "rawButtons": 2,
-      "rawCheckboxes": 1,
-      "textXs": 6
     },
     "src/components/screens/finance/ReverseTransferDialog.tsx": {
       "rawButtons": 2,
@@ -725,15 +704,11 @@
       "textXs": 2
     },
     "src/components/screens/finance/SearchAllStatements.tsx": {
-      "rawButtons": 3,
-      "textXs": 10
+      "rawButtons": 1
     },
     "src/components/screens/finance/ShortfallPeopleDialog.tsx": {
       "rawButtons": 2,
       "rawSurfaces": 1,
-      "textXs": 1
-    },
-    "src/components/screens/finance/StatementTally.tsx": {
       "textXs": 1
     },
     "src/components/screens/finance/SwapDialog.tsx": {
