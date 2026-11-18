@@ -113,6 +113,12 @@
   --sys-chart-6: #C97A94;
   --sys-sidebar: #0A1A2E;
   --sys-sidebar-foreground: #9FB6C2;
+  /* The menu's own five (R4, 18/11): it never borrows a content colour. */
+  --sys-sidebar-muted: #9FB6C2;
+  --sys-sidebar-border: #1C3A52;
+  --sys-sidebar-hover: #0e2a3e;
+  --sys-sidebar-heading: #E6F1F4;
+  --sys-sidebar-accent: #36B5CC;
   --sys-scrollbar: #1C3A52;
   --sys-scrollbar-hover: #597183;
 
@@ -220,6 +226,11 @@
     --sys-chart-6: #c1758e;
     --sys-sidebar: #F4F8FA;
     --sys-sidebar-foreground: #4A6272;
+    --sys-sidebar-muted: #4A6272;
+    --sys-sidebar-border: #D5E1E6;
+    --sys-sidebar-hover: #e9f1f4;
+    --sys-sidebar-heading: #0C3252;
+    --sys-sidebar-accent: #1A6382;
     --sys-scrollbar: #D5E1E6;
     --sys-scrollbar-hover: #99acba;
     /* The sidebar's thumb too, now that it is a value rather than an
@@ -348,14 +359,17 @@ html[lang="ar"] td {
  * `--shell-nav` is read by two places — the sidebar's own width and the
  * margin that keeps the page clear of it — so they cannot disagree. The
  * attribute is RENDERED by the server from a cookie (see
- * src/lib/sidebar-rail.ts); doing it in React would paint 280px and then
+ * src/lib/sidebar-rail.ts); doing it in React would paint 240px and then
  * snap to 76px on every single page load.
  *
  * Only from 768px up. Below that the sidebar is a drawer laid over the
  * screen, where a rail of unlabelled icons would be narrower for no gain.
+ *
+ * 240, not 280, since 18/11 (R4): «a wider page» is a narrower menu. The
+ * forty pixels go to every screen at once; no screen's own width moved.
  */
 :root {
-  --shell-nav: 280px;
+  --shell-nav: 240px;
 
   /*
    * THE PHONE'S BOTTOM BAR, MEASURED ONCE.

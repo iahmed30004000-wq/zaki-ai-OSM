@@ -61,7 +61,16 @@ export const RENAME = {
    */
   'border-input': 'color-border-input',
   'sidebar-foreground': 'color-text-sidebar',
-  // ── border ───────────────────────────────────────────────────────────
+  /*
+   * 18/11/2026 (R4): the menu's own five, so a dark menu on a light page
+   * never borrows a content colour. Carried like the rest — a rename only.
+   */
+  'sidebar-muted': 'color-text-sidebar-muted',
+  'sidebar-heading': 'color-text-sidebar-heading',
+  'sidebar-accent': 'color-text-sidebar-accent',
+  'sidebar-border': 'color-border-sidebar',
+  'sidebar-hover': 'color-surface-sidebar-hover',
+  // ── border───────────────────────────────────────────────────────────
   'border': 'color-border',
   'border-strong': 'color-border-strong',
   'focus': 'color-focus',
