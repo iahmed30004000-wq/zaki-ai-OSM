@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import { RiErrorWarningLine } from '@remixicon/react';
 import { reloadOnceForStaleBuild } from '@/lib/stale-build';
+import { Button } from '@/components/ui/Button';
 
 /**
  * ONE BOUNDARY FOR THE WHOLE SYSTEM SIDE, AND WHY ONE IS ENOUGH.
@@ -113,13 +114,9 @@ export default function SystemError({
             the first screen their role holds, which is a door that always
             opens.
           */}
-          <button
-            type="button"
-            onClick={() => retry()}
-            className="h-11 md:h-10 px-5 text-sm font-medium rounded-lg border border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface-strong)]"
-          >
+          <Button type="button" variant="secondary" onClick={() => retry()}>
             أعد المحاولة
-          </button>
+          </Button>
         </div>
       </div>
     </div>
