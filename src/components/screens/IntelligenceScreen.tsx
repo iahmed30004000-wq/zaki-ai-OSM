@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { AskAi } from '@/components/growth/AskAi';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { Tabs } from '@/components/ui/Tabs';
 import { RiAlertLine, RiCheckboxCircleLine, RiEyeLine, RiLightbulbLine, RiLoader4Line } from '@remixicon/react';
@@ -65,6 +67,24 @@ const TONE: Record<string, { border: string; chip: string; label: string }> = {
   GOOD: { border: 'border-[var(--sys-success)]/40', chip: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/40', label: 'جيد' },
 };
 
+/**
+ * THE SHARED RANGE OF THE FOUR REPORT TABS, AND WHY THIS ONE DRAWS NO PICKER (R14d, 18/11).
+ *
+ * `/api/growth/intelligence` takes no window: its detectors read the store as it is now (and the rates over its whole history).
+ * A date box here would be a control that changes nothing. So the tab draws this one line where the others draw the box, and it
+ * neither reads nor writes the stored range — the span picked on another tab is still there when the person goes back.
+ */
+const NO_WINDOW_LINE = 'الأرقام هون لحظية — ما بتتبع المدة';
+
+/**
+ * «أداء» IS A JUDGEMENT, NOT AN EIGHTH RANKING — AND IT LINKS TO THE ONE TABLE.
+ *
+ * Its findings are counted on the server (each confirmer against this store's own average); they carry no person's id, so the
+ * screen cannot point at one row, and recomputing a ranking here from another door is what the one-table decision forbids. The
+ * tab stays as it is, and under it one link opens the employees table on the performance board, which reads the shared range.
+ */
+const TEAM_TABLE_HREF = '/growth/performance';
+
 export function IntelligenceScreen() {
   // «اسأل الذكاء» answers at `/api/growth/intelligence/ask`, which asks `ai.use`: without it the box was drawn to be refused.
   const mayAsk = useCan('ai.use');
@@ -99,16 +119,22 @@ export function IntelligenceScreen() {
   useLiveRefresh(load);
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/growth/intelligence')} />
-
+    <PageShell
+      title={routeLabel('/growth/intelligence')}
+      width="medium"
+      toolbar={<p className="text-note text-[var(--sys-muted-foreground)]">{NO_WINDOW_LINE}</p>}
+    >
+      {/* The screen's own rhythm (space-y-3) inside the frame's: the chips, the tabs and the tab's one line belong together. */}
+      <div className="space-y-3">
       {/* The AI sits under the rule-based findings, never instead of them:
           those carry their evidence and can be checked, and the numbers it
           is handed are the same numbers. */}
-      <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+      <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
+        <p>
         تحليل مبني على طلباتك الفعلية — كل رقم هنا محسوب من طلبات موجودة، لا تقديرات. وما لا تكفي
         البيانات للإجابة عليه يُقال فيه «لا تكفي البيانات» بدل رقم يبدو معقولاً.
-      </p>
+        </p>
+      </Card>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
@@ -119,7 +145,7 @@ export function IntelligenceScreen() {
       ) : (
         <>
           {/* A count of what needs a person, before any of the detail. */}
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="flex flex-wrap gap-2 text-note">
             {data.counts.alarm > 0 && (
               <span className={`px-2.5 py-1 rounded-full border ${TONE.ALARM.chip}`}>
                 {data.counts.alarm} يحتاج تدخّلاً
@@ -147,9 +173,15 @@ export function IntelligenceScreen() {
 
           {/* What this tab is for, in one line. A tab whose name is one
               word needs it; «خطر» alone does not say what was measured. */}
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             {TABS.find((t) => t.key === tab)?.blurb}
           </p>
+
+          {tab === 'team' && (
+            <Link href={TEAM_TABLE_HREF} className="inline-flex min-h-11 items-center text-note font-medium text-[var(--sys-primary)] hover:underline md:min-h-0">
+              جدول الموظفين بالمدة اللي اخترتها ←
+            </Link>
+          )}
 
           <div className="space-y-2">
             {shown.length === 0 ? (
@@ -157,11 +189,13 @@ export function IntelligenceScreen() {
                 /* A rate tab, with nothing to rate. Say the number and the
                    threshold rather than «no results», which reads as a
                    failure of the analysis. */
-                <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-sm text-[var(--sys-muted-foreground)]">
+                <Card plain padding="lg" className="text-center text-sm text-[var(--sys-muted-foreground)]">
                   <RiLightbulbLine className="mx-auto mb-2 h-5 w-5 text-[var(--sys-muted)]" />
+                  <p>
                   هذا التبويب نِسَبٌ، و{data.totalOrders} طلباً لا تكفي — يحتاج {data.minSample} على الأقل
                   حتى لا تكون النسبة ضجيجاً.
-                </p>
+                  </p>
+                </Card>
               ) : (
                 <p className="rounded-lg border border-[var(--sys-success)]/30 bg-[var(--sys-success-soft)] p-6 text-center text-sm text-[var(--sys-success)]">
                   <RiCheckboxCircleLine className="mx-auto mb-2 h-5 w-5" />
@@ -182,15 +216,15 @@ export function IntelligenceScreen() {
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-medium text-[var(--sys-heading)]">{f.title}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${tone.chip}`}>{tone.label}</span>
+                        <span className={`text-note px-2 py-0.5 rounded-full border ${tone.chip}`}>{tone.label}</span>
                       </div>
 
                       {/* The number it rests on, so the claim can be checked. */}
-                      <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{f.evidence}</p>
+                      <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{f.evidence}</p>
 
-                      <p className="text-sm text-[var(--sys-foreground)] mt-2 bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-2.5">
-                        {f.action}
-                      </p>
+                      <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)] mt-2">
+                        <p>{f.action}</p>
+                      </Card>
                     </div>
                   </div>
                 </div>
@@ -200,6 +234,7 @@ export function IntelligenceScreen() {
         </>
       )}
       {mayAsk && <AskAi />}
-    </div>
+      </div>
+    </PageShell>
   );
 }

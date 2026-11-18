@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { Tabs } from '@/components/ui/Tabs';
 import { useApp } from '@/context/AppContext';
@@ -50,8 +50,7 @@ export function ConfirmationFollowUpScreen() {
   ];
 
   return (
-    <div className="max-w-5xl space-y-4">
-      <PageHeader title={routeLabel('/confirmation/follow-up')} />
+    <PageShell title={routeLabel('/confirmation/follow-up')} width="wide">
       {/* the pages system's leads (step E2): its own door, drawn only when the owner turned «ليدز الصفحات» on and there is a lead waiting */}
       <LeadsLane />
       <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />
@@ -64,6 +63,6 @@ export function ConfirmationFollowUpScreen() {
           <WinbackScreen embedded />
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

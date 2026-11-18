@@ -537,11 +537,15 @@ describe('4 — the top row, on a phone and on a desk', () => {
     expect(topRow().lastElementChild).toBe(pair);
   });
 
-  it('the wallet’s own press is exactly what it was — the same classes, the same place', async () => {
+  it('the wallet’s own press is exactly what it was — the same size and look, the same place', async () => {
     await draw();
-    expect(ownRecord().className).toBe(
-      'h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50'
-    );
+    // 18/11 (R13e, the money screens onto the kit): the press is the kit's `Button variant="primary" size="sm"` now, so its class
+    // string is the kit's and not the one typed here before («h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] … text-xs …»).
+    // What the old string promised still holds, token by token: 44px on a phone, 32 on a desk, the primary fill, the small text.
+    const own = new Set(ownRecord().className.split(/\s+/));
+    for (const t of ['h-11', 'md:h-8', 'px-3', 'rounded-lg', 'bg-[var(--sys-primary)]', 'text-[var(--sys-primary-foreground)]', 'text-xs', 'font-medium', 'inline-flex', 'items-center', 'gap-1.5', 'disabled:opacity-50']) {
+      expect(own.has(t), t).toBe(true);
+    }
     expect(ownRecord().parentElement!.className).toBe('flex items-center gap-1.5');
   });
 
@@ -578,6 +582,11 @@ describe('NO NEW CSS — every class the top press, the row and the wallet quest
         }).split(/\s+/));
       }
     }
+    // 18/11 (R13e): the two top presses are the kit's `Button` now and pass only their place in the row, as a plain ternary
+    // (`className={phone ? '…' : '…'}`) and not a template string — so the quoted words of such an expression are read too.
+    for (const m of src.matchAll(/className=\{([^`}][^}]*)\}/g)) {
+      for (const s of m[1].matchAll(/'([^']*)'/g)) out.push(...s[1].split(/\s+/));
+    }
     return out.filter(Boolean);
   };
 
@@ -605,7 +614,10 @@ describe('NO NEW CSS — every class the top press, the row and the wallet quest
   it('the three pieces carry classes at all (the scan is not empty), and they are written from what the file and the product already use', () => {
     const { mine, rest } = analysed();
     const used = new Set(mine.flatMap(classesIn));
-    expect(used.size, 'the pieces have classes').toBeGreaterThan(30);
+    // 18/11 (R13e): was «> 30». The three top presses' own class strings (about a dozen words each) moved into the kit's
+    // Button.tsx; the pieces keep 26 words of their own (the row, the question, the place in the row). The floor still proves
+    // the scan is not empty.
+    expect(used.size, 'the pieces have classes').toBeGreaterThan(20);
     const elsewhere = new Set([...files.filter((f) => f !== own).flatMap((f) => words(readFileSync(f, 'utf8'))), ...words(rest)]);
     const brandNew = [...used].filter((c) => !elsewhere.has(c));
     expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
@@ -613,7 +625,9 @@ describe('NO NEW CSS — every class the top press, the row and the wallet quest
 
   it('the scan really reads template strings: the conditional tokens of the top press are among the ones it checks', () => {
     const used = new Set(analysed().mine.flatMap(classesIn));
-    for (const token of ['flex-1', 'justify-center', 'shrink-0', 'h-11', 'md:h-10', 'bg-[var(--sys-primary)]', 'w-full', 'space-y-3', 'pt-1']) {
+    // 18/11 (R13e): 'h-11', 'md:h-10' and 'bg-[var(--sys-primary)]' left this list — the top presses are the kit's `Button`, whose
+    // classes live in Button.tsx; section 4 above still reads those three off the drawn buttons.
+    for (const token of ['flex-1', 'justify-center', 'shrink-0', 'w-full', 'space-y-3', 'pt-1']) {
       expect(used.has(token), token).toBe(true);
     }
   });

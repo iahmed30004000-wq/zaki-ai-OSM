@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { StoreBrandField } from './StoreBrandField';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiLoader4Line, RiVerifiedBadgeLine } from '@remixicon/react';
 
 /**
@@ -68,19 +70,19 @@ export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSa
   }
 
   return (
-    <div className="space-y-4 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+    <Card padding="md" className="space-y-4">
       <div>
         <p className="flex items-center gap-1.5 text-sm font-bold text-[var(--sys-heading)]">
           <RiVerifiedBadgeLine className="h-4 w-4 text-[var(--sys-primary)]" />
           هوية المتجر
         </p>
-        <p className="mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           تُكتب هنا مرة واحدة، وتقرؤها صفحات المتجر والبوالص واختيار المتجر.
         </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-medium text-[var(--sys-foreground)]">
+        <label className="block text-note font-medium text-[var(--sys-foreground)]">
           اسم المتجر
           <input
             value={name}
@@ -89,7 +91,7 @@ export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSa
             className="mt-1 block h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-sm focus:border-[var(--sys-primary)] focus:outline-none"
           />
         </label>
-        <label className="block text-xs font-medium text-[var(--sys-foreground)]">
+        <label className="block text-note font-medium text-[var(--sys-foreground)]">
           هاتف الدعم
           <input
             value={phone}
@@ -100,20 +102,15 @@ export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSa
             placeholder="0999 000 000"
             className="mt-1 block h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-left text-sm focus:border-[var(--sys-primary)] focus:outline-none"
           />
-          <span className="mt-1 block text-xs text-[var(--sys-muted)]">يظهر للزبون في المتجر وتذييل الصفحات، ويُطبع على البوليصة.</span>
+          <span className="mt-1 block text-note text-[var(--sys-muted)]">يظهر للزبون في المتجر وتذييل الصفحات، ويُطبع على البوليصة.</span>
         </label>
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={!changed || saving || name.trim().length < 2}
-          className="inline-flex h-11 md:h-10 items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-40"
-        >
+        <Button type="button" onClick={() => void save()} disabled={!changed || saving || name.trim().length < 2}>
           {saving && <RiLoader4Line className="h-4 w-4 animate-spin" />}
           حفظ
-        </button>
-        {msg && <span className={`text-xs ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
+        </Button>
+        {msg && <span className={`text-note ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
       </div>
 
       {/* Saved on upload, not with the form: a file is not a field to
@@ -122,6 +119,6 @@ export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSa
         <StoreBrandField storeId={store.id} kind="logo" value={logo} onChange={(v) => { setLogo(v); onSaved?.(); }} />
         <StoreBrandField storeId={store.id} kind="favicon" value={favicon} onChange={(v) => { setFavicon(v); onSaved?.(); }} />
       </div>
-    </div>
+    </Card>
   );
 }

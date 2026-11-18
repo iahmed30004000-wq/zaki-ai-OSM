@@ -13,7 +13,13 @@ import { StorefrontSettings } from '@/components/settings/StorefrontSettings';
 import { StoreIdentityCard } from '@/components/settings/StoreIdentityCard';
 import { storeTypeLabel } from '@/lib/store-types';
 import { RiAddCircleLine, RiCloseLine, RiDeleteBinLine, RiEarthLine, RiLoader4Line, RiStore2Line } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Switch } from '@/components/ui/Switch';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { useAsk, useConfirm } from '@/components/ui/Confirm';
@@ -189,18 +195,16 @@ export function GeoSettingsScreen() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
-      <PageHeader title="البلدان والمتاجر"
-          description="المتجر يرث كل الإعدادات من بلده."
-          actions={
-            <><button
-          onClick={() => setAdding('country')}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium"
-        >
+    <PageShell
+      title={routeLabel('/settings/geo')}
+      description="المتجر يرث كل الإعدادات من بلده."
+      width="medium"
+      actions={
+        <Button type="button" onClick={() => setAdding('country')}>
           <RiAddCircleLine className="w-4 h-4" /> بلد جديد
-        </button></>
-          }
-        />
+        </Button>
+      }
+    >
 
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
@@ -217,26 +221,29 @@ export function GeoSettingsScreen() {
       )}
 
       {countries.map((c) => (
-        <section key={c.id} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg">
+        <Card key={c.id}>
           <header className="flex items-center gap-3 p-4 border-b border-[var(--sys-border)]">
             <span className="w-10 h-10 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] flex items-center justify-center">
               <RiEarthLine className="w-5 h-5 text-[var(--sys-primary)]" />
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-[var(--sys-heading)]">
-                {c.name} <span className="text-xs text-[var(--sys-muted)]" dir="ltr">{c.code}</span>
+                {c.name} <span className="text-note text-[var(--sys-muted)]" dir="ltr">{c.code}</span>
               </p>
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 {c.currencyCode} · {c.minorUnit} خانات · {c.stores.length} متجر · {c._count.regions} محافظة
                 {!c.isActive && <span className="text-[var(--sys-destructive)]"> · غير مفعّل</span>}
               </p>
             </div>
-            <button
+            <Button
+              type="button"
+              variant="quiet"
+              size="sm"
+              aria-expanded={openCountry === c.id}
               onClick={() => setOpenCountry(openCountry === c.id ? null : c.id)}
-              className="text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
             >
               {openCountry === c.id ? 'إخفاء' : 'الإعدادات'}
-            </button>
+            </Button>
           </header>
 
           {openCountry === c.id && (
@@ -250,42 +257,43 @@ export function GeoSettingsScreen() {
               <TimeField label="بداية الدوام" value={c.workHoursStart} onSave={(v) => saveHours(c, 'workHoursStart', v)} />
               <TimeField label="نهاية الدوام" value={c.workHoursEnd} onSave={(v) => saveHours(c, 'workHoursEnd', v)} />
               <div className="md:col-span-2">
-                <p className="text-xs font-medium text-[var(--sys-foreground)] mb-2">أيام العطلة</p>
+                <p className="text-note font-medium text-[var(--sys-foreground)] mb-2">أيام العطلة</p>
                 <div className="flex flex-wrap gap-2">
                   {DAYS.map((d, i) => {
                     const on = c.weekendDays.includes(i);
                     return (
-                      <button
+                      <Button
                         key={d}
+                        type="button"
+                        size="sm"
+                        variant={on ? 'primary' : 'secondary'}
+                        aria-pressed={on}
                         onClick={() =>
                           patchCountry(c.id, {
                             weekendDays: on ? c.weekendDays.filter((x) => x !== i) : [...c.weekendDays, i],
                           })
                         }
-                        className={`min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg text-xs border ${
-                          on ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]' : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)]'
-                        }`}
                       >
                         {d}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
               </div>
               <TextField label="بادئة رقم الطلب" value={c.orderPrefix} dir="ltr" onSave={(v) => patchCountry(c.id, { orderPrefix: v.toUpperCase() })} />
               <TextField label="المنطقة الزمنية" value={c.timezone} dir="ltr" onSave={(v) => patchCountry(c.id, { timezone: v })} />
-              <label className="flex items-center gap-2 text-sm text-[var(--sys-foreground)]">
-                <input
-                  type="checkbox"
-                  checked={c.allowNegativeStock}
-                  onChange={(e) => patchCountry(c.id, { allowNegativeStock: e.target.checked })}
-                />
-                السماح بالمخزون السالب (يُطبّق عند إنشاء الشحنة)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-[var(--sys-foreground)]">
-                <input type="checkbox" checked={c.isActive} onChange={(e) => patchCountry(c.id, { isActive: e.target.checked })} />
-                البلد مفعّل
-              </label>
+              <Switch
+                id={`negative-stock-${c.id}`}
+                checked={c.allowNegativeStock}
+                onChange={(next) => patchCountry(c.id, { allowNegativeStock: next })}
+                label="السماح بالمخزون السالب (يُطبّق عند إنشاء الشحنة)"
+              />
+              <Switch
+                id={`country-active-${c.id}`}
+                checked={c.isActive}
+                onChange={(next) => patchCountry(c.id, { isActive: next })}
+                label="البلد مفعّل"
+              />
               <div className="md:col-span-2">
                 <Regions countryId={c.id} onChanged={load} />
               </div>
@@ -307,7 +315,7 @@ export function GeoSettingsScreen() {
                     that wraps, so the buttons beside it took the whole line and left it a sliver. */}
                 <div className="flex-1 min-w-[150px]">
                   <p className="text-sm font-medium text-[var(--sys-heading)]">{s.name}</p>
-                  <p className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
+                  <p className="text-note text-[var(--sys-muted-foreground)]" dir="ltr">
                     /{s.slug} · {storeTypeLabel(s.type)}
                     {s.isTest ? ' · منصّة تجريب' : ''}
                   </p>
@@ -315,15 +323,14 @@ export function GeoSettingsScreen() {
                       offer says otherwise; until it had a control every store priced as price + delivery. The exceptions are the
                       owner's (1/11: «أحدد إذا شامل ولا لأ بظبط»): the box on the order form, and an unticked offer on the
                       sales page — and only there. */}
-                  <label className="mt-1 flex items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-                    <input
-                      type="checkbox"
-                      checked={!!s.priceIncludesDelivery}
-                      onChange={(e) => patchStore(s.id, { priceIncludesDelivery: e.target.checked })}
-                    />
-                    السعر المُعلن يشمل التوصيل
-                  </label>
-                  <p className="mt-0.5 max-w-prose text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                  <Checkbox
+                    id={`includes-delivery-${s.id}`}
+                    checked={!!s.priceIncludesDelivery}
+                    onChange={(next) => patchStore(s.id, { priceIncludesDelivery: next })}
+                    label="السعر المُعلن يشمل التوصيل"
+                    aria-describedby={`includes-delivery-${s.id}-said`}
+                  />
+                  <p id={`includes-delivery-${s.id}-said`} className="max-w-prose text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                     شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام وطلبات الأنظمة الخارجية وصفحات البيع. بيغيّر ربحك، لأنو
                     أجرة التوصيل بتنخصم من الإيراد. والاستثناء بإيدك: الطلب اللي بتضيفه يدوي أو بالذكاء أو من شيت (استيراد) بتحدد
                     فيه «شامل» أو لأ بخانة «شامل التوصيل» (مفعّلة افتراضياً). وبصفحة البيع بتفك علامة «السعر شامل التوصيل» عن
@@ -331,26 +338,24 @@ export function GeoSettingsScreen() {
                   </p>
                   <BenchSwitch store={s} mayManage={mayManage} onSaved={load} />
                 </div>
-                <button
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={storefrontFor === s.id ? 'primary' : 'secondary'}
+                  aria-expanded={storefrontFor === s.id}
                   onClick={() => setStorefrontFor((cur) => (cur === s.id ? null : s.id))}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border ${
-                    storefrontFor === s.id
-                      ? 'border-[var(--sys-primary)] text-[var(--sys-primary)] bg-[var(--sys-primary-soft)]'
-                      : 'border-[var(--sys-border)] text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]'
-                  }`}
                 >
                   الهوية والواجهة
-                </button>
-                <button
+                </Button>
+                {/* A paused store keeps its red: until 18/11 the tinted button was the row's only sign that the store is stopped. */}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={s.status === 'ACTIVE' ? 'secondary' : 'danger'}
                   onClick={() => patchStore(s.id, { status: s.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' })}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border ${
-                    s.status === 'ACTIVE'
-                      ? 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)]'
-                      : 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
-                  }`}
                 >
                   {s.status === 'ACTIVE' ? 'إيقاف مؤقت' : 'تفعيل'}
-                </button>
+                </Button>
                 {/* On a line of its own under the row. In the name's column it
                     was a strip one word wide on a phone — the two buttons
                     already leave it little — and a third button in the row
@@ -387,18 +392,15 @@ export function GeoSettingsScreen() {
                   }}
                 />
               ) : (
-                <button
-                  onClick={() => setAdding(c.id)}
-                  className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 w-full flex items-center justify-center gap-2 p-2 rounded-lg border border-dashed border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-                >
+                <Button type="button" variant="secondary" className="w-full" onClick={() => setAdding(c.id)}>
                   <RiAddCircleLine className="w-4 h-4" /> متجر في {c.name}
-                </button>
+                </Button>
               )}
             </li>
           </ul>
-        </section>
+        </Card>
       ))}
-    </div>
+    </PageShell>
   );
 }
 
@@ -418,20 +420,16 @@ function StoreRemoval({ blockers, onDelete }: { blockers: Blocker[] | undefined;
     const first = blockers.slice(0, SHOWN).map((b) => b.text).join(' · ');
     const rest = blockers.length - SHOWN;
     return (
-      <p className="text-xs text-[var(--sys-muted-foreground)]">
+      <p className="text-note text-[var(--sys-muted-foreground)]">
         لا يُحذف — {first}
         {rest > 0 ? ` و${rest} غيرها` : ''}
       </p>
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onDelete}
-      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 text-xs text-[var(--sys-destructive)] hover:underline"
-    >
+    <Button type="button" variant="danger" size="sm" onClick={onDelete}>
       <RiDeleteBinLine className="w-4 h-4" /> حذف المتجر — لا شيء مُدخَل عليه
-    </button>
+    </Button>
   );
 }
 
@@ -497,9 +495,9 @@ function Regions({ countryId, onChanged }: { countryId: string; onChanged?: () =
   };
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3">
-      <p className="text-xs font-medium text-[var(--sys-foreground)] mb-2">المحافظات</p>
-      {error && <p className="text-xs text-[var(--sys-destructive)] mb-2">{error}</p>}
+    <Card plain padding="sm">
+      <p className="text-note font-medium text-[var(--sys-foreground)] mb-2">المحافظات</p>
+      {error && <p className="text-note text-[var(--sys-destructive)] mb-2">{error}</p>}
       <div className="flex flex-wrap gap-1.5 mb-3">
         {(regions ?? []).map((r) => {
           const why = usage?.[r.id];
@@ -507,30 +505,25 @@ function Regions({ countryId, onChanged }: { countryId: string; onChanged?: () =
             <span
               key={r.id}
               title={why && why.length > 0 ? `لا تُحذف — ${why.map((b) => b.text).join(' · ')}` : undefined}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--sys-surface)] border border-[var(--sys-border)] text-xs text-[var(--sys-foreground)]"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[var(--sys-surface)] border border-[var(--sys-border)] text-note text-[var(--sys-foreground)]"
             >
               {r.name}
               {why && why.length === 0 && (
-                <button
-                  type="button"
-                  onClick={() => remove(r)}
-                  aria-label={`حذف المحافظة ${r.name}`}
-                  className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 inline-flex items-center justify-center text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)]"
-                >
+                <IconButton type="button" size="sm" label={`حذف المحافظة ${r.name}`} onClick={() => remove(r)}>
                   <RiCloseLine className="w-4 h-4" />
-                </button>
+                </IconButton>
               )}
             </span>
           );
         })}
         {regions?.length === 0 && (
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
+          <span className="text-note text-[var(--sys-muted-foreground)]">
             لا محافظاتٍ لهذا البلد — وبلا محافظةٍ لا تُحسب أجرةُ توصيلٍ ولا يُقاس أداءُ منطقة. أضِفها من الحقل أدناه.
           </span>
         )}
       </div>
       {usage && (
-        <p className="text-xs text-[var(--sys-muted-foreground)] mb-3">
+        <p className="text-note text-[var(--sys-muted-foreground)] mb-3">
           تظهر علامة الحذف على المحافظة التي لا طلب عليها ولا أجرة توصيل — وحدها تُحذف.
         </p>
       )}
@@ -541,11 +534,11 @@ function Regions({ countryId, onChanged }: { countryId: string; onChanged?: () =
           placeholder="اسم المحافظة"
           className="flex-1 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
         />
-        <button type="submit" className="px-3 h-11 md:h-10 rounded-lg bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] text-xs">
+        <Button type="submit" variant="secondary">
           إضافة
-        </button>
+        </Button>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -583,7 +576,8 @@ function AddCountry({ onCancel, onDone }: { onCancel: () => void; onDone: () => 
   };
 
   return (
-    <form onSubmit={submit} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 grid gap-3 md:grid-cols-4">
+    <Card padding="md">
+    <form onSubmit={submit} className="grid gap-3 md:grid-cols-4">
       {error && <p className="md:col-span-4 text-sm text-[var(--sys-destructive)]">{error}</p>}
       <Input label="الاسم" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
       <Input label="الرمز (حرفان)" value={form.code} onChange={(v) => setForm({ ...form, code: v })} dir="ltr" />
@@ -591,18 +585,15 @@ function AddCountry({ onCancel, onDone }: { onCancel: () => void; onDone: () => 
       <CurrencyPicker value={currency} onChange={setCurrency} className="md:col-span-2" />
 
       <div className="md:col-span-4 flex gap-2">
-        <button
-          type="submit"
-          disabled={busy || !ready}
-          className="px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm disabled:opacity-60"
-        >
+        <Button type="submit" disabled={busy || !ready}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
-        </button>
-        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           إلغاء
-        </button>
+        </Button>
       </div>
     </form>
+    </Card>
   );
 }
 
@@ -642,37 +633,43 @@ function AddStore({
   };
 
   return (
-    <form onSubmit={submit} className="grid gap-3 md:grid-cols-3 p-3 bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg">
+    <Card plain padding="sm">
+    <form onSubmit={submit} className="grid gap-3 md:grid-cols-3">
       {error && <p className="md:col-span-3 text-sm text-[var(--sys-destructive)]">{error}</p>}
       {/* What the store takes from its country, said at the moment it is
           created — not left to be discovered on the first order. The wallet
           is the one exception, and the line says where that is chosen. */}
-      <p className="md:col-span-3 rounded-lg bg-[var(--sys-card)] border border-[var(--sys-border)] px-3 py-2 text-xs text-[var(--sys-foreground)]">
-        العملة: <b>{currencyLabel(currencyCode)}</b> · {minorUnit} خانات عشرية — موروثة من البلد ولا تُغيَّر هنا.
-        <span className="block mt-0.5 text-[var(--sys-muted-foreground)]">
-          عملة المحفظة تُختار منفصلة عند إنشائها من المال ← المحافظ والحركات.
-        </span>
-      </p>
+      <div className="md:col-span-3">
+        <Card plain padding="sm">
+          <p className="text-note text-[var(--sys-foreground)]">
+            العملة: <b>{currencyLabel(currencyCode)}</b> · {minorUnit} خانات عشرية — موروثة من البلد ولا تُغيَّر هنا.
+            <span className="block mt-0.5 text-[var(--sys-muted-foreground)]">
+              عملة المحفظة تُختار منفصلة عند إنشائها من المال ← المحافظ والحركات.
+            </span>
+          </p>
+        </Card>
+      </div>
       <Input label="اسم المتجر" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
       <Input label="المعرّف" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} dir="ltr" />
       {/* New stores are multi-product. Single Product is kept working for
           the shops that already wear it, but it is no longer offered: its
           address shows one landing page, and every new shop is a catalogue. */}
-      <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         النوع: متعدد المنتجات — صفحة رئيسية بالمنتجات.
       </p>
       <div className="md:col-span-3">
         <BenchBox checked={form.isTest} onChange={(isTest) => setForm({ ...form, isTest })} />
       </div>
       <div className="md:col-span-3 flex gap-2">
-        <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm disabled:opacity-60">
+        <Button type="submit" disabled={busy}>
           {busy ? 'جارٍ الحفظ…' : 'حفظ'}
-        </button>
-        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)]">
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           إلغاء
-        </button>
+        </Button>
       </div>
     </form>
+    </Card>
   );
 }
 
@@ -698,13 +695,11 @@ function BenchBox({
   children?: React.ReactNode;
 }) {
   const said = useId();
+  const box = useId();
   return (
     <div>
-      <label className="flex min-h-11 md:min-h-0 items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-        <input type="checkbox" checked={checked} disabled={disabled} aria-describedby={said} onChange={(e) => onChange(e.target.checked)} />
-        منصّة تجريب
-      </label>
-      <p id={said} className="max-w-prose text-xs text-[var(--sys-muted-foreground)]">
+      <Checkbox id={box} checked={checked} disabled={disabled} aria-describedby={said} onChange={(next) => onChange(next)} label="منصّة تجريب" />
+      <p id={said} className="max-w-prose text-note text-[var(--sys-muted-foreground)]">
         طلباتها بتنعمل وبتتأكد متل أي متجر، وبتنحكم بشاشة منصّة التجريب — وما بتنفتح للزوّار أبداً.
       </p>
       {children}
@@ -748,14 +743,14 @@ function BenchSwitch({ store, mayManage, onSaved }: { store: StoreRow; mayManage
     <div className="mt-2">
       <BenchBox checked={isTest} disabled={!mayManage || busy} onChange={change}>
         {orders > 0 && (
-          <p className="max-w-prose text-xs text-[var(--sys-muted-foreground)]">
+          <p className="max-w-prose text-note text-[var(--sys-muted-foreground)]">
             {isTest
               ? `على المتجر ${orders} طلب: إذا شلت العلامة، بترجع طلباته تنعدّ بأرقام الشركة وبتطلع من شاشة المنصّة.`
               : `على المتجر ${orders} طلب: إذا علّمته منصّة تجريب، بتطلع طلباته من أرقام الشركة وبتنعدّ بشاشة المنصّة.`}
           </p>
         )}
         {error && (
-          <p role="alert" className="text-xs text-[var(--sys-destructive)]">
+          <p role="alert" className="text-note text-[var(--sys-destructive)]">
             {error}
           </p>
         )}
@@ -777,7 +772,7 @@ function Input({
 }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -803,7 +798,7 @@ function TextField({
   const [v, setV] = useState(value);
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         value={v}
         dir={dir}
@@ -818,7 +813,7 @@ function TextField({
 function TimeField({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => Promise<boolean> }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         type="time"
         defaultValue={value}
@@ -855,24 +850,28 @@ function CurrencyField({
 
   if (orders > 0) {
     return (
-      <div className="md:col-span-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2 text-xs text-[var(--sys-foreground)]">
-        العملة: <b>{currencyLabel(code)}</b> · {minorUnit} خانات عشرية
-        <span className="ms-2 text-xs text-[var(--sys-muted)]">لا تتغيّر بعد أول طلب — على هذا البلد {orders} طلباً مسجّلاً بها.</span>
+      <div className="md:col-span-2">
+        <Card plain padding="sm">
+          <p className="text-note text-[var(--sys-foreground)]">
+            العملة: <b>{currencyLabel(code)}</b> · {minorUnit} خانات عشرية
+            <span className="ms-2 text-note text-[var(--sys-muted)]">لا تتغيّر بعد أول طلب — على هذا البلد {orders} طلباً مسجّلاً بها.</span>
+          </p>
+        </Card>
       </div>
     );
   }
   return (
     <div className="md:col-span-2 flex flex-wrap items-start gap-2">
       <CurrencyPicker value={draft} onChange={setDraft} className="min-w-[260px] flex-1" />
-      <button
+      <Button
         type="button"
+        className="mt-5"
         disabled={!changed || !currencyChoiceReady(draft)}
         onClick={() => onSave(draft.code.trim().toUpperCase(), draft.minorUnit as number)}
-        className="mt-5 h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-3 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-40"
       >
         حفظ العملة
-      </button>
-      <p className="w-full text-xs text-[var(--sys-muted)]">تُصحَّح حتى أول طلب في هذا البلد، ثم تُقفل.</p>
+      </Button>
+      <p className="w-full text-note text-[var(--sys-muted)]">تُصحَّح حتى أول طلب في هذا البلد، ثم تُقفل.</p>
     </div>
   );
 }

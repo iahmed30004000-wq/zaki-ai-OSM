@@ -15,7 +15,9 @@ import {
   type PreviousRate,
 } from '@/lib/transfer-rate';
 import { minorUnitFor } from '@/lib/currencies';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArrowGoBackLine, RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
 import { useApp } from '@/context/AppContext';
@@ -94,7 +96,7 @@ function EndOfTransfer({ wallet }: { wallet: TransferEnd | null }) {
       <WalletPicture wallet={wallet} size="sm" />
       <span className="min-w-0">
         {wallet.name}
-        {wallet.store && <span className="block text-xs text-[var(--sys-muted)]">{wallet.store.name}</span>}
+        {wallet.store && <span className="block text-note text-[var(--sys-muted)]">{wallet.store.name}</span>}
       </span>
     </span>
   );
@@ -207,7 +209,7 @@ export function TransfersScreen() {
         {[...grouped].flatMap(([country, byStore]) =>
           [...byStore].map(([store, ws]) => (
             <div key={`${country}/${store}`} className="space-y-1">
-              <p className="text-xs text-[var(--sys-muted)]">{`${country} · ${store}`}</p>
+              <p className="text-note text-[var(--sys-muted)]">{`${country} · ${store}`}</p>
               <div className="flex flex-wrap gap-2">
                 {ws.map((w) => (
                   <WalletChip
@@ -298,9 +300,8 @@ export function TransfersScreen() {
   };
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/finance/transfers')} />
-
+    <PageShell title={routeLabel('/finance/transfers')} width="wide">
+      <Card padding="md">
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -349,25 +350,25 @@ export function TransfersScreen() {
             setSaving(false);
           }
         }}
-        className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-3"
+        className="space-y-3"
       >
         <div role="group" aria-label="من محفظة" className="space-y-1">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)]">من محفظة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)]">من محفظة</span>
           {chips('from')}
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={swap}
           disabled={!from || !to}
-          className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm inline-flex items-center gap-2 disabled:opacity-50"
         >
           <RiArrowUpDownLine className="w-4 h-4" />
           عكس الاتجاه
-        </button>
+        </Button>
 
         <div role="group" aria-label="إلى محفظة" className="space-y-1">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)]">إلى محفظة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)]">إلى محفظة</span>
           {chips('to')}
         </div>
 
@@ -377,16 +378,16 @@ export function TransfersScreen() {
             inside the house — so the screen names the one in front of you
             rather than making you pick it first. */}
         {reading && !refusal && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2">
-            <span className="rounded-full bg-[var(--sys-primary)] px-2 py-0.5 text-xs font-semibold text-[var(--sys-primary-foreground)]">
+          <Card plain className="flex flex-wrap items-center gap-2 px-3 py-2">
+            <span className="rounded-full bg-[var(--sys-primary)] px-2 py-0.5 text-note font-semibold text-[var(--sys-primary-foreground)]">
               {reading.label}
             </span>
-            <span className="text-xs text-[var(--sys-foreground)]">{reading.detail}</span>
-          </div>
+            <span className="text-note text-[var(--sys-foreground)]">{reading.detail}</span>
+          </Card>
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
             المبلغ اللي بدك تحوّلو {from ? `(${from.currencyCode})` : ''}
           </span>
           <input
@@ -403,7 +404,7 @@ export function TransfersScreen() {
 
         {crossCurrency && o && (
           <fieldset className="space-y-2">
-            <legend className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">كيف بدك تحدد القيمة؟</legend>
+            <legend className="block text-note font-medium text-[var(--sys-foreground)] mb-1">كيف بدك تحدد القيمة؟</legend>
             <div className="flex flex-wrap gap-2">
               {(['A', 'B', 'C'] as const).map((f) => (
                 <label
@@ -419,7 +420,7 @@ export function TransfersScreen() {
             </div>
 
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
                 {view === 'C' ? `المبلغ المستلم (${to?.currencyCode})` : faceLabel[view]}
               </span>
               <input
@@ -438,42 +439,42 @@ export function TransfersScreen() {
 
         {from && to && (
           <div className="grid gap-2 md:grid-cols-3">
-            <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-              <p className="text-xs text-[var(--sys-muted)]">المحوَّل</p>
+            <Card plain padding="sm">
+              <p className="text-note text-[var(--sys-muted)]">المحوَّل</p>
               <p className="text-sm font-medium tabular-nums">
                 {deal?.amountOut != null ? <Money value={deal.amountOut} currency={from.currencyCode} minorUnit={minorOf(from)} /> : '—'}
               </p>
-            </div>
+            </Card>
             {crossCurrency && (
-              <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-                <p className="text-xs text-[var(--sys-muted)]">السعر اللي بينحفظ</p>
+              <Card plain padding="sm">
+                <p className="text-note text-[var(--sys-muted)]">السعر اللي بينحفظ</p>
                 <p className="text-sm font-medium tabular-nums">
                   {deal?.rate ? `${formatRate(deal.rate.weakPerStrong)} ${weakWord} لكل 1 ${strongWord}` : '—'}
                 </p>
                 {deal?.rate && (
-                  <p className="text-xs text-[var(--sys-muted)] tabular-nums">
+                  <p className="text-note text-[var(--sys-muted)] tabular-nums">
                     {`${formatRate(deal.rate.strongPerWeak)} ${strongWord} لكل 1 ${weakWord}`}
                   </p>
                 )}
-              </div>
+              </Card>
             )}
-            <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-              <p className="text-xs text-[var(--sys-muted)]">المستلم</p>
+            <Card plain padding="sm">
+              <p className="text-note text-[var(--sys-muted)]">المستلم</p>
               <p className="text-sm font-medium tabular-nums">
                 {deal?.amountIn != null && deal.amountIn > 0 ? <Money value={deal.amountIn} currency={to.currencyCode} minorUnit={minorOf(to)} /> : '—'}
               </p>
-            </div>
+            </Card>
           </div>
         )}
 
         {verdict && !verdict.ok && (
-          <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-xs text-[var(--sys-destructive)]">
+          <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-note text-[var(--sys-destructive)]">
             {verdict.error}
           </p>
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الملاحظة (إلزامية)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الملاحظة (إلزامية)</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -490,25 +491,25 @@ export function TransfersScreen() {
         {/* On a phone the button is a line of its own, the width of it. */}
         <div className={phone ? 'flex flex-col gap-2' : 'flex justify-end'}>
           {refusal && (
-            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-xs text-[var(--sys-destructive)]">
+            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-note text-[var(--sys-destructive)]">
               {refusal}
             </p>
           )}
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={saving || !!refusal}
-            className={`h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50 ${
-              phone ? 'w-full justify-center' : ''
-            }`}
+            className={phone ? 'w-full' : undefined}
           >
             {saving ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRepeatLine className="w-4 h-4" />}
             تحويل
-          </button>
+          </Button>
         </div>
       </form>
+      </Card>
 
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <Card plain className="overflow-hidden">
         <h2 className="text-sm font-medium text-[var(--sys-heading)] px-4 py-3 border-b border-[var(--sys-border)]">آخر التحويلات</h2>
         {!rows ? (
           <div className="flex items-center justify-center gap-2 text-[var(--sys-muted-foreground)] text-sm py-12">
@@ -527,7 +528,7 @@ export function TransfersScreen() {
                 ) },
               { key: 'c1', label: "النوع", primary: true,
                 render: (t) => (
-                  <><span className="rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] px-2 py-0.5 text-xs text-[var(--sys-foreground)] whitespace-nowrap">
+                  <><span className="rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] px-2 py-0.5 text-note text-[var(--sys-foreground)] whitespace-nowrap">
                       {t.kindLabel ?? '—'}
                     </span></>
                 ) },
@@ -565,19 +566,21 @@ export function TransfersScreen() {
                   const press =
                     mayCash && state !== 'REVERSED' ? (
                       <span className="block">
-                        <button
+                        <Button
                           type="button"
+                          variant="quiet"
+                          size="sm"
                           onClick={() => setReversing(t)}
-                          className="min-h-11 md:min-h-0 mt-1 text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
+                          className="mt-1"
                         >
                           <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
-                        </button>
+                        </Button>
                       </span>
                     ) : null;
                   if (state === 'ACTIVE') {
                     return (
                       <div className="max-w-[10rem] break-words">
-                        <span className="text-xs text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
+                        <span className="text-note text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
                         {press}
                       </div>
                     );
@@ -588,16 +591,16 @@ export function TransfersScreen() {
                       : 'border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] text-[var(--sys-foreground)]';
                   return (
                     <div className="max-w-[10rem] break-words">
-                      <span className={`rounded-full border px-2 py-0.5 text-xs whitespace-nowrap ${tone}`}>{TRANSFER_STATE_AR[state]}</span>
-                      {t.reversal?.reason && <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {t.reversal.reason}</span>}
+                      <span className={`rounded-full border px-2 py-0.5 text-note whitespace-nowrap ${tone}`}>{TRANSFER_STATE_AR[state]}</span>
+                      {t.reversal?.reason && <span className="block text-note text-[var(--sys-destructive)]">قيد عكسي: {t.reversal.reason}</span>}
                       {t.reversal?.byName && (
-                        <span className="block text-xs text-[var(--sys-muted)]">
+                        <span className="block text-note text-[var(--sys-muted)]">
                           {t.reversal.byName}{t.reversal.at ? ` · ${arDateTime(t.reversal.at)}` : ''}
                         </span>
                       )}
                       {state === 'PARTLY_REVERSED' && (
                         // The way to finish it is said only to who has the press: nobody is pointed at a button they do not have.
-                        <span className="block text-xs text-[var(--sys-muted)]">
+                        <span className="block text-note text-[var(--sys-muted)]">
                           الطرف الآخر لسا قائم{mayCash ? ' — «قيد عكسي» بيكمّل عكسه' : ''}
                         </span>
                       )}
@@ -614,7 +617,7 @@ export function TransfersScreen() {
             }
           />
         )}
-      </div>
+      </Card>
 
       {reversing && (
         <ReverseTransferDialog
@@ -648,6 +651,6 @@ export function TransfersScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
