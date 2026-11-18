@@ -259,28 +259,13 @@
       "textXs": 1
     },
     "src/components/products/FixedCostEditor.tsx": {
-      "rawSurfaces": 1,
       "textXs": 2
     },
-    "src/components/products/ProductAttributes.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 3
-    },
     "src/components/products/ProductHeadline.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 4
+      "textXs": 1
     },
     "src/components/products/ProductOffers.tsx": {
       "rawButtons": 1
-    },
-    "src/components/products/ProductPerformance.tsx": {
-      "textXs": 1
-    },
-    "src/components/products/ProductRecentOrders.tsx": {
-      "textXs": 3
-    },
-    "src/components/products/ProductStock.tsx": {
-      "textXs": 6
     },
     "src/components/scan/ScanButton.tsx": {
       "rawButtons": 3
@@ -395,8 +380,7 @@
       "rawSurfaces": 1
     },
     "src/components/screens/ProductDetailScreen.tsx": {
-      "rawButtons": 7,
-      "textXs": 4
+      "rawButtons": 2
     },
     "src/components/screens/ProductsScreen.tsx": {
       "textXs": 2

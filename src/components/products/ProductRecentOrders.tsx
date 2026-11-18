@@ -81,7 +81,7 @@ export function ProductRecentOrders({ productId }: { productId: string }) {
             // The orders screen opens on the same filter this card is built from, so the two cannot disagree.
             <Link
               href={`/orders?productId=${encodeURIComponent(productId)}`}
-              className="text-xs font-semibold text-[var(--sys-primary)] hover:underline"
+              className="text-note font-semibold text-[var(--sys-primary)] hover:underline"
             >
               كل الطلبات ({answer.total})
             </Link>
@@ -89,8 +89,8 @@ export function ProductRecentOrders({ productId }: { productId: string }) {
         }
       />
       <CardContent className="overflow-x-auto">
-        {read.kind === 'loading' && <p className="text-xs text-[var(--sys-muted-foreground)]">جارٍ القراءة…</p>}
-        {read.kind === 'failed' && <p className="text-xs text-[var(--sys-muted-foreground)]">{read.why}</p>}
+        {read.kind === 'loading' && <p className="text-note text-[var(--sys-muted-foreground)]">جارٍ القراءة…</p>}
+        {read.kind === 'failed' && <p className="text-note text-[var(--sys-muted-foreground)]">{read.why}</p>}
         {answer && (
           <Rows
             rows={answer.orders}

@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { PageShell } from '@/components/ui/PageShell';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -159,63 +161,51 @@ export function ProductDetailScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <button
-              onClick={() => window.history.back()}
-              className="text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] flex items-center space-x-1 rtl:space-x-reverse mb-1.5 cursor-pointer"
-            >
+      {/*
+        THE ONE FRAME (R12b, 18/11): the product's own name is the page's one h1 — the same tag and classes it had, drawn by
+        `PageHeader` — with the code and the status beside it, the two presses at the end of the row, and the two numbers
+        this page is opened for in the row under it.
+      */}
+      <PageShell
+        title={product.name}
+        badge={
+          <>
+            <span className="font-mono text-note font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
+            <Badge variant={productStatusTone(product.status)}>{productStatusAr(product.status)}</Badge>
+            {/* The picture count is said once, in the gallery's own heading — «0 صورة» up here and an empty gallery
+                under it were one fact written twice. */}
+          </>
+        }
+        actions={
+          <>
+            <Button variant="quiet" size="sm" onClick={() => window.history.back()}>
               <RiArrowRightLine className="icon-mirror w-4 h-4" />
               <span>عودة للمنتجات</span>
-            </button>
-            <h1 className="text-xl font-bold text-[var(--sys-heading)]">{product.name}</h1>
-            <div className="flex items-center space-x-2 rtl:space-x-reverse mt-1.5">
-              <span className="font-mono text-xs font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
-              <Badge variant={productStatusTone(product.status)}>{productStatusAr(product.status)}</Badge>
-              {/* The picture count is said once, in the gallery's own heading — «0 صورة» up here and an empty gallery
-                  under it were one fact written twice. */}
-            </div>
-            {/* The two numbers this page is opened for. They are also in
-                the panel far below, from the same endpoint — see
-                ProductHeadline for why they are up here as well. */}
-            <div className="mt-3">
-              <ProductHeadline productId={productId} />
-            </div>
-          </div>
+            </Button>
+            {/*
+              ── THE BUTTON THIS PAGE NEVER HAD ──
 
-          {canManage && (
-            <div className="flex items-center gap-2">
-              {/*
-                ── THE BUTTON THIS PAGE NEVER HAD ──
-
-                «التعديل من داخل صفحة المنتج مش شغال» — it was not broken,
-                it was absent. The page could change images, attributes
-                and offers, and nothing else: not the name, the SKU, the
-                price, the status, the category or the type. The list's
-                own edit modal sends people HERE «للتعديل والتبديل
-                والحذف», so this is where they looked.
-              */}
+              «التعديل من داخل صفحة المنتج مش شغال» — it was not broken,
+              it was absent. The page could change images, attributes
+              and offers, and nothing else: not the name, the SKU, the
+              price, the status, the category or the type. The list's
+              own edit modal sends people HERE «للتعديل والتبديل
+              والحذف», so this is where they looked.
+            */}
+            {canManage && (
               <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                 <RiPencilLine className="w-4 h-4 ml-1.5 rtl:ml-0 rtl:mr-1.5" />
                 تعديل المنتج
               </Button>
-              {/* «رفع صور جديدة» was here AND the gallery asked for the main picture in words: one door for pictures,
-                  and it is the gallery's own (the button in its heading, and the empty gallery itself). */}
-            </div>
-          )}
-
-          {/* The shared form — the same one the list opens, so the two
-              screens cannot disagree about what a product is. */}
-          <ProductEditDialog
-            product={product}
-            open={editOpen}
-            onClose={() => setEditOpen(false)}
-            onSaved={loadProduct}
-          />
-        </div>
-
+            )}
+            {/* «رفع صور جديدة» was here AND the gallery asked for the main picture in words: one door for pictures,
+                and it is the gallery's own (the button in its heading, and the empty gallery itself). */}
+          </>
+        }
+        // The two numbers this page is opened for. They are also in the panel far below, from the same endpoint — see
+        // ProductHeadline for why they are up here as well.
+        toolbar={<ProductHeadline productId={productId} />}
+      >
         {/* Gallery + Info */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Gallery */}
@@ -270,7 +260,7 @@ export function ProductDetailScreen() {
                   </div>
                 )}
                 {primary && (
-                  <span className="absolute top-3 left-3 rtl:left-auto rtl:right-3 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-xs font-bold px-2 py-1 rounded-lg flex items-center space-x-1 rtl:space-x-reverse">
+                  <span className="absolute top-3 left-3 rtl:left-auto rtl:right-3 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-note font-bold px-2 py-1 rounded-lg flex items-center space-x-1 rtl:space-x-reverse">
                     <RiStarLine className="w-4 h-4" />
                     <span>الصورة الرئيسية</span>
                   </span>
@@ -308,22 +298,24 @@ export function ProductDetailScreen() {
                       </button>
                       {canImages && (
                         <div className="absolute inset-0 bg-[var(--sys-sidebar)]/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-1 rtl:space-x-reverse">
-                          <button onClick={() => setPrimary(img.id)} aria-label="تعيين كرئيسية" title="تعيين كرئيسية" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-warning)] hover:bg-[var(--sys-card)] cursor-pointer">
-                            <RiStarLine className="w-4 h-4" />
-                          </button>
+                          {/* The kit's square: 44px on a phone, 32 on a desk. Each press still calls its own handler, and the
+                              promise it returns is dropped as it always was (`void`): the page reloads under itself, no busy state. */}
+                          <IconButton variant="secondary" size="sm" label="تعيين كرئيسية" onClick={() => { void setPrimary(img.id); }}>
+                            <RiStarLine className="w-4 h-4 text-[var(--sys-warning)]" />
+                          </IconButton>
                           {idx > 0 && !img.isPrimary && (
-                            <button onClick={() => moveImage(idx, -1)} aria-label="تحريك يسار" title="تحريك يسار" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-foreground)] hover:bg-[var(--sys-card)] cursor-pointer">
+                            <IconButton variant="secondary" size="sm" label="تحريك يسار" onClick={() => { void moveImage(idx, -1); }}>
                               <RiArrowUpSLine className="w-4 h-4 rotate-[-90deg] rtl:rotate-[270deg]" />
-                            </button>
+                            </IconButton>
                           )}
                           {idx < images.length - 1 && !img.isPrimary && (
-                            <button onClick={() => moveImage(idx, 1)} aria-label="تحريك يمين" title="تحريك يمين" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-foreground)] hover:bg-[var(--sys-card)] cursor-pointer">
+                            <IconButton variant="secondary" size="sm" label="تحريك يمين" onClick={() => { void moveImage(idx, 1); }}>
                               <RiArrowDownSLine className="w-4 h-4 rotate-[-90deg] rtl:rotate-[270deg]" />
-                            </button>
+                            </IconButton>
                           )}
-                          <button onClick={() => deleteImage(img.id)} aria-label="حذف" title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 bg-[var(--sys-card)]/90 rounded-lg text-[var(--sys-destructive)] hover:bg-[var(--sys-card)] cursor-pointer">
-                            <RiDeleteBinLine className="w-4 h-4" />
-                          </button>
+                          <IconButton variant="secondary" size="sm" label="حذف" onClick={() => { void deleteImage(img.id); }}>
+                            <RiDeleteBinLine className="w-4 h-4 text-[var(--sys-destructive)]" />
+                          </IconButton>
                         </div>
                       )}
                     </div>
@@ -356,7 +348,7 @@ export function ProductDetailScreen() {
                 them said nothing.
               */}
               <CardHeader title="وصف المنتج وسعره" />
-              <CardContent className="text-xs space-y-2">
+              <CardContent className="text-note space-y-2">
                 <p className="text-[var(--sys-foreground)]">{product.description || '—'}</p>
                 {/* The base price, alone: «متوسط تكلفة الوحدة» was here as well as in the headline above and in the
                     stock card below — three copies of one figure in three spellings («كلفة» / «تكلفة»). */}
@@ -480,7 +472,16 @@ export function ProductDetailScreen() {
 
         {/* The latest orders on this product — from its own door (this card read `product.orders`, which was never sent). */}
         <ProductRecentOrders productId={productId} />
-      </div>
+      </PageShell>
+
+      {/* The shared form — the same one the list opens, so the two
+          screens cannot disagree about what a product is. */}
+      <ProductEditDialog
+        product={product}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={loadProduct}
+      />
 
       {/* Lightbox */}
       <Modal isOpen={!!lightbox} onClose={() => setLightbox(null)} title="معاينة الصورة" maxWidth="4xl">

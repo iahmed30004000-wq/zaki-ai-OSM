@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { apiJson } from '@/lib/api-client';
 import {
   parseCategoryAttributes,
@@ -131,7 +132,7 @@ export function ProductAttributes({ productId, canManage = true }: { productId: 
 
   return (
     <div className="space-y-4">
-      <p className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="flex items-start gap-1.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         <RiInformationLine className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
           أسئلة فئة «{category.name}». تُضاف وتُحذف للفئة كلّها من «المتجر › البحث والفلاتر»،
@@ -188,21 +189,20 @@ export function ProductAttributes({ productId, canManage = true }: { productId: 
           const picked = Array.isArray(value) ? value : [];
           return (
             <fieldset key={f.key} className="space-y-1.5">
-              <legend className="mb-1.5 text-xs font-medium text-[var(--sys-heading)]">{f.label}</legend>
+              <legend className="mb-1.5 text-note font-medium text-[var(--sys-heading)]">{f.label}</legend>
               <div className="flex flex-wrap gap-3">
-                {f.options.map((o) => (
-                  <label key={o} className="flex items-center gap-1.5 text-xs">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-[var(--sys-primary)]"
-                      checked={picked.includes(o)}
-                      disabled={!canManage}
-                      onChange={(e) =>
-                        set(f.key, e.target.checked ? [...picked, o] : picked.filter((p) => p !== o))
-                      }
-                    />
-                    {o}
-                  </label>
+                {f.options.map((o, i) => (
+                  // An explicit id: the kit falls back to `name`, and an answer's words are no id.
+                  <Checkbox
+                    key={o}
+                    id={`attr-${f.key}-${i}`}
+                    label={o}
+                    checked={picked.includes(o)}
+                    disabled={!canManage}
+                    onChange={(checked) =>
+                      set(f.key, checked ? [...picked, o] : picked.filter((p) => p !== o))
+                    }
+                  />
                 ))}
               </div>
             </fieldset>

@@ -3,6 +3,7 @@
 import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
+import { Card } from '@/components/ui/Card';
 import { RiArchiveLine, RiCoinsLine, RiLoader4Line } from '@remixicon/react';
 
 /**
@@ -53,7 +54,7 @@ export function ProductHeadline({ productId }: { productId: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {!stock ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs text-[var(--sys-muted-foreground)]">
+        <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-note text-[var(--sys-muted-foreground)]">
           <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden /> جارٍ القراءة…
         </span>
       ) : (
@@ -61,22 +62,22 @@ export function ProductHeadline({ productId }: { productId: string }) {
           {/* Available, not on-hand: what is on the shelf minus what is
               already promised to an order is the number anybody deciding
               anything actually needs. */}
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-1.5">
+          <Card plain className="inline-flex items-center gap-1.5 px-3 py-1.5">
             <RiArchiveLine className="h-4 w-4 text-[var(--sys-primary)]" aria-hidden />
-            <span className="text-xs text-[var(--sys-muted-foreground)]">متاح</span>
+            <span className="text-note text-[var(--sys-muted-foreground)]">متاح</span>
             <b className="text-sm tabular-nums text-[var(--sys-heading)]">{stock.available}</b>
             <span className="text-xs text-[var(--sys-muted)]">من {stock.onHand}</span>
-          </span>
+          </Card>
 
           {/* The weighted average of the stock actually on hand — a March
               run at 3.20 and a June one at 3.60 are one product and two
               costs, and the average is what a sale is measured against. */}
           {stock.averageCost !== undefined && (
-          <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-1.5">
+          <Card plain className="inline-flex items-center gap-1.5 px-3 py-1.5">
             <RiCoinsLine className="h-4 w-4 text-[var(--sys-warning)]" aria-hidden />
-            <span className="text-xs text-[var(--sys-muted-foreground)]">متوسط كلفة الوحدة</span>
+            <span className="text-note text-[var(--sys-muted-foreground)]">متوسط كلفة الوحدة</span>
             <b className="text-sm tabular-nums text-[var(--sys-heading)]" dir="ltr">{money(stock.averageCost)}</b>
-          </span>
+          </Card>
           )}
         </>
       )}

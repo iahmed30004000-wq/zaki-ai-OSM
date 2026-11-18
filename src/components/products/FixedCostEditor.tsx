@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
@@ -61,7 +62,7 @@ export function FixedCostEditor({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+    <Card plain padding="sm" className="space-y-2">
       <p className="text-xs font-semibold text-[var(--sys-heading)]">
         {fixedCost !== null ? (
           <>
@@ -131,6 +132,6 @@ export function FixedCostEditor({
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

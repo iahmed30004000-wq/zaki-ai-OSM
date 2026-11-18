@@ -343,7 +343,11 @@ describe('one shape for the top of a screen', () => {
   it('and the product page is no longer the exception', () => {
     const src = readFileSync(join(root, 'src/components/screens/ProductDetailScreen.tsx'), 'utf8');
     expect(src, 'عاد العنوانُ إلى قياسٍ خاصٍّ به').not.toMatch(/<h1[^>]*text-2xl/);
-    expect(src).toMatch(/md:flex-row md:items-start md:justify-between/);
+    // 19/11 (R12b): it read «the screen writes `md:flex-row md:items-start md:justify-between` itself». The page now stands on
+    // `PageShell`, which draws exactly that `PageHeader` (the next test holds its shape) — so the screen no longer writes its own
+    // header row at all, and that is the stronger form of «no longer the exception»: no h1 of its own either.
+    expect(src).toContain('<PageShell');
+    expect(src).not.toMatch(/<h1\b/);
   });
 
   it('and the one component still says the size and the order', () => {
