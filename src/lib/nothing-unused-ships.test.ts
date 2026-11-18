@@ -293,8 +293,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
    */
-  'src/components/ui/Checkbox.tsx:Checkbox':
-    'مربّع الاختيار الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  // `Checkbox` LEFT this list on 18/11 (R11b): «إنشاء شحنة» (`ShipmentsNewScreen`) is the first screen that renders it.
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':

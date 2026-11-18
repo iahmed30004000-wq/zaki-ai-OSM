@@ -29,6 +29,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Rows } from '@/components/ui/Rows';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Money } from '@/components/ui/Money';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -613,9 +614,9 @@ export function ShipmentsNewScreen() {
     ) : (
       <>
         {' — '}
-        <button type="button" onClick={dispatchJustMade} disabled={dispatching === justMade} className="font-bold underline disabled:opacity-50">
+        <Button type="button" variant="quiet" size="sm" onClick={() => { void dispatchJustMade(); }} disabled={dispatching === justMade} className="font-bold underline">
           {sendLabel}
-        </button>
+        </Button>
       </>
     )
   ) : null;
@@ -631,9 +632,9 @@ export function ShipmentsNewScreen() {
       ) : (
         <>
           {' — '}
-          <button type="button" onClick={printJustMade} disabled={printing} className="font-bold underline disabled:opacity-50">
+          <Button type="button" variant="quiet" size="sm" onClick={() => { void printJustMade(); }} disabled={printing} className="font-bold underline">
             {printLabel}
-          </button>
+          </Button>
         </>
       )
     ) : labelsStep ? (
@@ -658,11 +659,11 @@ export function ShipmentsNewScreen() {
    */
   const blocksView = (r: Row, boxed: boolean) => {
     const lines = (
-      <span className="block space-y-1">
+      <div className="space-y-1">
         {r.blocks.map((b) => (
           <span
             key={b.code}
-            className={`text-xs flex items-center gap-1 ${
+            className={`text-note flex items-center gap-1 ${
               b.hard ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-warning)]'
             }`}
           >
@@ -670,20 +671,16 @@ export function ShipmentsNewScreen() {
             {b.hint && <span className="text-[var(--sys-muted-foreground)]"> — {b.hint}</span>}
           </span>
         ))}
+        {/* No `id` and no `name`: `Rows` draws this cell twice (the table and the card, both in the page), so a row's id
+            would be on two boxes. The kit's own `useId` gives each drawing its own, and each label ticks its own box. */}
         {!r.hardBlocked && (
-          <label
-            className={`flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]${boxed ? ' min-h-11 gap-2' : ''}`}
-          >
-            <input
-              type="checkbox"
-              className={boxed ? 'h-5 w-5 accent-[var(--sys-primary)]' : undefined}
-              checked={!!acknowledged[r.id]}
-              onChange={(e) => setAcknowledged({ ...acknowledged, [r.id]: e.target.checked })}
-            />
-            أقرّ بالتنبيه وأتابع
-          </label>
+          <Checkbox
+            checked={!!acknowledged[r.id]}
+            onChange={(next) => setAcknowledged({ ...acknowledged, [r.id]: next })}
+            label="أقرّ بالتنبيه وأتابع"
+          />
         )}
-      </span>
+      </div>
     );
     if (!boxed) return lines;
     return (
@@ -745,13 +742,13 @@ export function ShipmentsNewScreen() {
         {/* On a desk the button is the grid's last cell, where it has always been. On a phone it is in the bar. */}
         {!phone && (
         <div className="self-end">
-          <button
-            onClick={create}
+          <Button
+            onClick={() => { void create(); }}
             disabled={busy || selectedCount === 0}
-            className="w-full h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+            className="w-full"
           >
             {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
-          </button>
+          </Button>
         </div>
         )}
         </div>
@@ -768,19 +765,19 @@ export function ShipmentsNewScreen() {
         the first moment — it is the choice the shipment cannot do without.
       */}
       <BulkBar show={phone && selectedCount > 0}>
-        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+        <span className="me-auto text-sm font-semibold text-[var(--sys-primary)]">
           محدَّد: {selectedCount} طلب
         </span>
         {!filters.courier && (
-          <span className="w-full text-xs text-[var(--sys-muted-foreground)]">اختر شركة الشحن من الأعلى أولاً.</span>
+          <span className="w-full text-note text-[var(--sys-muted-foreground)]">اختر شركة الشحن من الأعلى أولاً.</span>
         )}
-        <button
-          onClick={create}
+        <Button
+          onClick={() => { void create(); }}
           disabled={busy || selectedCount === 0}
-          className="flex-1 md:flex-none h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
+          className="flex-1 md:flex-none"
         >
           {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
-        </button>
+        </Button>
       </BulkBar>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
@@ -808,7 +805,7 @@ export function ShipmentsNewScreen() {
       )}
 
       {offerSend && !shown && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           رحّل أولاً، ثم اطبع: تخرج البوليصة وعليها باركود الشركة بجانب رمزنا. طلب بلا باركود الشركة لا يُطبع.
         </p>
       )}
@@ -822,7 +819,7 @@ export function ShipmentsNewScreen() {
       {exceptions.length > 0 && (
         <section className="bg-[var(--sys-card)] border border-[var(--sys-destructive-border)] rounded-lg p-4">
           <h3 className="text-sm font-bold text-[var(--sys-destructive)] mb-2">طلبات لم تُشحن ({exceptions.length})</h3>
-          <ul className="text-xs text-[var(--sys-foreground)] space-y-1">
+          <ul className="text-sm text-[var(--sys-foreground)] space-y-1">
             {exceptions.map((e) => (
               <li key={e.orderNumber}>
                 {/* The door sends the number without the order's id, so not `OrderRef` — only its copy button. */}
@@ -852,15 +849,14 @@ export function ShipmentsNewScreen() {
           it, and reported the postpone as broken — which it was not.
         */}
         {([['ready', 'جاهزة للشحن'], ['held', 'مؤجَّلة الشحن']] as const).map(([k, label]) => (
-          <button
+          /* Two `Button`s and not the kit's `Segmented`: the held tab's count carries its own sentence on hover («كل المؤجَّل
+             بالمتجر…»), which an option of `Segmented` cannot hold, and the two stay presses (role «button») as they were. */
+          <Button
             key={k}
             type="button"
+            size="sm"
+            variant={view === k ? 'primary' : 'secondary'}
             onClick={() => setView(k)}
-            className={`min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-              view === k
-                ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
-                : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)] hover:border-[var(--sys-primary)]/40'
-            }`}
           >
             {label}
             {k === 'held' && heldCount > 0 && (
@@ -875,12 +871,14 @@ export function ShipmentsNewScreen() {
                 {heldCount}
               </span>
             )}
-          </button>
+          </Button>
         ))}
         {/* The ticked rows of either tab, or — nothing ticked — the whole ready tab, which never carries a postponed order. */}
         {mayExport && (
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => void exportReady()}
             disabled={exporting}
             title={
@@ -892,17 +890,17 @@ export function ShipmentsNewScreen() {
                   ? 'الطلبات المحدَّدة بس بملف CSV — جاهزة أو مؤجَّلة'
                   : 'الطلبات الجاهزة للشحن بالفلاتر الحالية بملف CSV — بلا المؤجَّلة. حدّد طلبات لتنزّلها هي بس'
             }
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40 ms-auto"
+            className="ms-auto"
           >
             {exporting ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiDownload2Line className="w-4 h-4" />}
             {selectedCount > 0
               ? `CSV المحدَّدة (${selectedCount})${filters.courier ? '' : ' · للتوزيع بلا مبلغ'}`
               : 'CSV الجاهزة للشحن'}
-          </button>
+          </Button>
         )}
       </div>
       {fileNote && (
-        <p role="status" className="text-xs text-[var(--sys-muted-foreground)]">
+        <p role="status" className="text-note text-[var(--sys-muted-foreground)]">
           {fileNote}
         </p>
       )}
@@ -970,7 +968,7 @@ export function ShipmentsNewScreen() {
                     <span>
                       <span className="text-[var(--sys-destructive)]">لم تُحدَّد</span>
                       {r.customer.city?.trim() && (
-                        <span className="text-xs text-[var(--sys-muted-foreground)]">
+                        <span className="text-note text-[var(--sys-muted-foreground)]">
                           {' '}
                           · المكتوب: <span dir="auto">{r.customer.city.trim()}</span>
                         </span>
@@ -1018,7 +1016,7 @@ export function ShipmentsNewScreen() {
                       </span>
                     </span>
                   ) : (
-                    <span className="text-xs" dir="ltr">
+                    <span className="text-sm" dir="ltr">
                       {r.cod.subtotal} − {r.cod.discount} + {r.cod.deliveryFee} ={' '}
                       <strong className="tabular-nums">
                         <Money value={r.cod.cod} currency={r.cod.currency} />
@@ -1036,7 +1034,7 @@ export function ShipmentsNewScreen() {
                 hideOnPhone: phone,
                 render: (r) =>
                   r.blocks.length === 0 ? (
-                    <span className="text-xs text-[var(--sys-success)]">جاهز</span>
+                    <span className="text-sm text-[var(--sys-success)]">جاهز</span>
                   ) : (
                     blocksView(r, false)
                   ),
@@ -1055,12 +1053,13 @@ export function ShipmentsNewScreen() {
               */
               const first =
                 view === 'held' ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => void releaseHold(r)}
                     disabled={holding === r.id}
                     title="أعِده إلى قائمة الشحن"
-                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-[var(--sys-border)] text-[var(--sys-success)] transition-colors hover:border-[var(--sys-success)] disabled:opacity-50"
                   >
                     {holding === r.id ? (
                       <RiLoader4Line className="w-4 h-4 animate-spin" />
@@ -1068,14 +1067,15 @@ export function ShipmentsNewScreen() {
                       <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
                     )}
                     أرجِعه
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => setDelaying(r)}
                     disabled={holding === r.id}
                     title="لن يُشحن اليوم — تختار موعداً، وتعود بضاعتُه للبيع حتى ذلك الموعد"
-                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] transition-colors hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)] disabled:opacity-50"
                   >
                     {holding === r.id ? (
                       <RiLoader4Line className="w-4 h-4 animate-spin" />
@@ -1083,7 +1083,7 @@ export function ShipmentsNewScreen() {
                       <RiPauseCircleLine className="w-4 h-4" />
                     )}
                     أجّل
-                  </button>
+                  </Button>
                 );
               /*
                 THE REASON IS READ IN FULL ON A CARD.
@@ -1094,8 +1094,8 @@ export function ShipmentsNewScreen() {
                 <span
                   className={
                     phone
-                      ? 'block text-xs text-[var(--sys-muted)] mt-0.5'
-                      : 'block text-xs text-[var(--sys-muted)] mt-0.5 max-w-[10rem] truncate'
+                      ? 'block text-note text-[var(--sys-muted)] mt-0.5'
+                      : 'block text-note text-[var(--sys-muted)] mt-0.5 max-w-[10rem] truncate'
                   }
                   title={r.shipHoldReason}
                 >
@@ -1107,8 +1107,10 @@ export function ShipmentsNewScreen() {
                   nothing can be learned from. */
               const cancel =
                 view !== 'held' ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => setCancelling(r)}
                     disabled={standingDown === r.id || !!r.standDownBlocked}
                     /* THE VERDICT BELONGS TO THIS CONTROL NOW.
@@ -1120,11 +1122,11 @@ export function ShipmentsNewScreen() {
                        that the box was opened); only a parcel the courier
                        has taken does. */
                     title={r.standDownBlocked?.message ?? 'ألغِ الطلب — تعود بضاعتُه للبيع'}
-                    className={`min-h-11 md:min-h-0 ${phone ? 'justify-center' : 'ms-1'} inline-flex items-center gap-1 rounded-md border border-[var(--sys-border)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)] transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50`}
+                    className={phone ? undefined : 'ms-1'}
                   >
                     <RiCloseCircleLine className="w-4 h-4" aria-hidden />
                     ألغِ
-                  </button>
+                  </Button>
                 ) : null;
               // A phone: the two presses side by side and the same width, 8px apart (they were 4px apart in a
               // no-wrap line, and one of them cancels an order); the reason under both. A desk: the line it always was.
@@ -1224,7 +1226,7 @@ function Select({
 }) {
   return (
     <label className={className}>
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1249,7 +1251,7 @@ function Select({
 function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+      <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">
         بحث
       </span>
       <input
@@ -1276,7 +1278,7 @@ function DateField({
 }) {
   return (
     <label className={className}>
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         type="date"
         value={value}

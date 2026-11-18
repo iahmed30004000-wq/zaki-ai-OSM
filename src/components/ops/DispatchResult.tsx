@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { groupDispatchReasons, type DispatchReasonGroup } from '@/lib/dispatch-reason';
+import { Button } from '@/components/ui/Button';
 
 /**
  * WHAT CAME BACK FROM SENDING A BATCH TO THE COURIER — ONE BOX FOR BOTH SCREENS.
@@ -32,7 +33,7 @@ export function DispatchResult({
     : [];
   return (
     <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 space-y-1">
-      <p className="text-xs font-bold text-[var(--sys-heading)]">
+      <p className="text-sm font-bold text-[var(--sys-heading)]">
         رُحّل {summary.sent}
         {summary.skipped > 0 && ` · تُخطّي ${summary.skipped}`}
         {summary.failed > 0 && ` · فشل ${summary.failed}`}
@@ -42,20 +43,22 @@ export function DispatchResult({
       ))}
       {stuck.length > 0 && onClearSend && (
         <div className="space-y-1">
-          <p className="text-xs text-[var(--sys-muted-foreground)]">سألت الشركة وما عندها طرد لهالطلبات؟</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">سألت الشركة وما عندها طرد لهالطلبات؟</p>
           {stuck.map((o) => (
-            <button
+            <Button
               key={o.orderId}
               type="button"
+              variant="quiet"
+              size="sm"
               onClick={() => onClearSend({ orderId: o.orderId, orderNumber: o.orderNumber })}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs font-medium text-[var(--sys-primary)] underline"
+              className="underline"
             >
               تحقّقتُ مع الشركة — لا طرد عندهم ({o.orderNumber})
-            </button>
+            </Button>
           ))}
         </div>
       )}
-      {summary.outcomes.some((o) => o.ok) && <p className="text-xs text-[var(--sys-success)]">{savedNote}</p>}
+      {summary.outcomes.some((o) => o.ok) && <p className="text-note text-[var(--sys-success)]">{savedNote}</p>}
     </div>
   );
 }
@@ -70,20 +73,22 @@ function ReasonGroup({ group }: { group: DispatchReasonGroup }) {
         customer's door. It is coloured as the warning it is, not left in the grey list where the eye reads it as one
         more failure to retry.
       */}
-      <p className={group.outcomeUnknown ? 'text-xs font-bold text-[var(--sys-warning)]' : 'text-xs text-[var(--sys-muted-foreground)]'}>
+      <p className={group.outcomeUnknown ? 'text-note font-bold text-[var(--sys-warning)]' : 'text-note text-[var(--sys-muted-foreground)]'}>
         {group.count} طلب — {group.reason}
       </p>
-      <button
+      <Button
         type="button"
+        variant="quiet"
+        size="sm"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => setOpen(!open)}
-        className="min-h-11 md:min-h-0 inline-flex items-center text-xs font-medium text-[var(--sys-primary)] underline"
+        className="underline"
       >
         {open ? 'خبّي الطلبات' : `اعرض الطلبات (${group.count})`}
-      </button>
+      </Button>
       {open && (
-        <p id={listId} className="flex flex-wrap gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+        <p id={listId} className="flex flex-wrap gap-1.5 text-note text-[var(--sys-muted-foreground)]">
           {group.orderNumbers.map((n) => (
             <span key={n} className="font-mono" dir="ltr">{n}</span>
           ))}
