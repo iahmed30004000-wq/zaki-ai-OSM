@@ -20,12 +20,14 @@ import { queueConversions } from './conversions/emit';
 import {
   ARRIVED_WITHOUT_REGION_ACTION,
   FROM_ABANDONED_CART_ACTION,
+  VARIANTS_NOT_CHOSEN_ACTION,
   buildPublicOrderSchema,
   mapZodFieldErrors,
   ORDER_VALIDATION_ERROR_BODY,
 } from './landing-order-schema';
 // Plain rules and plain sentences — never `store-theme`: the engine that decides money sees nothing of the look.
 import { blankRequired, type CheckoutRules } from './checkout-words';
+import { parseVariantOptions, resolveUnits, writeLineVariants, type UnitGroup } from './product-variants';
 
 /**
  * TAKING AN ORDER FROM A STRANGER.
@@ -75,6 +77,15 @@ export interface ResolvedLine {
    * sold at the product's base price, which has no offer to reduce.
    */
   offerDiscount: number;
+  /**
+   * THE PIECES, for a product with variants (src/lib/product-variants.ts) — one combination per piece, grouped. Absent
+   * for a product without variants, and for one whose pieces were not sent (`unitsMissing`).
+   */
+  units?: UnitGroup[];
+  /** Σ priceDelta of every piece, already inside `unitPrice` (the pricing rule). Absent without variants. */
+  variantDelta?: number;
+  /** A product with variants ordered without a choice per piece — taken, and flagged for the call. */
+  unitsMissing?: boolean;
 }
 
 /** What a basket asked for, before anything has been priced. */
@@ -83,6 +94,11 @@ export interface ChosenLine {
   /** '' for the product at its base price. */
   offerId: string;
   count: number;
+  /**
+   * One combination id per piece (paid pieces first, then gifts) for a product with variants. Ignored for a product
+   * without variants; absent is allowed (the order is taken and the team asks on the call).
+   */
+  units?: string[];
 }
 
 export type ResolveResult =
@@ -152,14 +168,35 @@ export async function resolvePublicLines(
     const unitsPerPick = offer ? offer.quantity : 1;
     const listTotal = offer ? offer.listPrice ?? offer.price : p.basePrice;
     const unitPrice = offer ? listTotal / offer.quantity : p.basePrice;
-    lines.push({
+    const line: ResolvedLine = {
       product: p,
       offer,
       quantity: unitsPerPick * want.count,
       freeQuantity: (offer ? offer.freeQuantity : 0) * want.count,
       unitPrice,
       offerDiscount: offer ? Math.max(0, listTotal - offer.price) : 0,
-    });
+    };
+
+    /*
+     * THE PIECES OF A PRODUCT WITH VARIANTS (the owner, 2026-11-18 — «THE PRICING RULE» in product-variants.ts).
+     * Every piece's delta, gifts included, is added to the line's price before the offer's reduction: the reduction,
+     * the basket discount and `computeCod` are untouched. A product without options never reaches the database here
+     * and its line is exactly the one written above.
+     */
+    if (parseVariantOptions(p.variantOptions).length > 0) {
+      if (want.units && want.units.length > 0) {
+        const checked = await resolveUnits(db, { companyId, product: p, units: want.units, paid: line.quantity, gift: line.freeQuantity });
+        if (checked && !checked.ok) return { ok: false, fieldErrors: checked.fieldErrors };
+        if (checked?.ok) {
+          line.units = checked.groups;
+          line.variantDelta = checked.delta;
+          line.unitPrice = unitPrice + checked.delta / line.quantity;
+        }
+      } else {
+        line.unitsMissing = true;
+      }
+    }
+    lines.push(line);
   }
 
   /*
@@ -239,7 +276,13 @@ export interface SellingSurface {
    * It was a single product, and everything downstream was single with it
    * although `computeCod` has taken a list of lines all along.
    */
-  products: { id: string; name: string; image: string | null; basePrice: number }[];
+  products: { id: string; name: string; image: string | null; basePrice: number; variantOptions?: string | null }[];
+  /**
+   * THE PIECES OF THE ONE LINE, for a product with variants — one combination id per piece (`ChosenLine.units`).
+   * Set by the standalone landing door only, for its single line; every other door leaves it out and orders exactly
+   * as before (a product with variants is then taken without a choice per piece, flagged for the call).
+   */
+  units?: string[] | null;
   /** The landing page, when the door was one. */
   landingPage: { id: string; name: string; slug: string } | null;
   /** What the order records as its origin. */
@@ -403,7 +446,7 @@ async function takeOrder(
   // and this runs once, when somebody presses «اطلب».
   const chosen = v.items?.length
     ? v.items.map((i) => ({ productId: i.productId, offerId: i.offerId || '', count: i.quantity }))
-    : [{ productId: principalProduct.id, offerId: v.offerId || '', count: 1 }];
+    : [{ productId: principalProduct.id, offerId: v.offerId || '', count: 1, ...(surface.units?.length ? { units: surface.units } : {}) }];
 
   const resolved = await resolvePublicLines(companyId, surface.products, chosen, surface.store.country.minorUnit);
   if (!resolved.ok) {
@@ -693,6 +736,34 @@ async function takeOrder(
       })),
     });
 
+    /*
+     * THE PIECES OF EACH LINE OF A PRODUCT WITH VARIANTS (the owner, 2026-11-18): which combination each piece is, in
+     * the same transaction as the line. A basket of products without variants writes nothing here.
+     */
+    if (lines.some((l) => l.units?.length || l.unitsMissing)) {
+      const written = await tx.orderItem.findMany({ where: { orderId: created.id }, orderBy: { createdAt: 'asc' }, select: { id: true, productId: true } });
+      const used = new Set<string>();
+      for (const l of lines) {
+        const row = written.find((w) => w.productId === l.product.id && !used.has(w.id));
+        if (!row) continue;
+        used.add(row.id);
+        if (l.units?.length) {
+          await writeLineVariants(tx, { companyId, orderId: created.id, orderItemId: row.id, productId: l.product.id, groups: l.units });
+        }
+      }
+      if (lines.some((l) => l.unitsMissing)) {
+        await tx.orderActivity.create({
+          data: {
+            companyId,
+            orderId: created.id,
+            userId: null,
+            action: VARIANTS_NOT_CHOSEN_ACTION,
+            metadata: JSON.stringify({ source: surface.source, products: lines.filter((l) => l.unitsMissing).map((l) => l.product.name) }),
+          },
+        });
+      }
+    }
+
     await tx.customer.update({
       where: { id: customer!.id },
       data: {
@@ -722,6 +793,9 @@ async function takeOrder(
             freeQuantity: l.freeQuantity,
             offer: l.offer ? l.offer.name : null,
             unitPrice: l.unitPrice,
+            ...(l.units?.length
+              ? { pieces: l.units.map((u) => ({ label: u.label, quantity: u.quantity, freeQuantity: u.freeQuantity })), variantDelta: l.variantDelta }
+              : {}),
           })),
           createdBy: 'public visitor',
           // What was typed, when it is not what the customer row already says — so whoever opens the order can see

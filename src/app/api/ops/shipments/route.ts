@@ -122,7 +122,7 @@ export async function GET(req: Request) {
         customer: { select: { id: true, fullName: true, phone: true, city: true, totalOrders: true, address: true } },
         region: { select: { id: true, name: true } },
         // `productId` (and the add-ons' name) is read for the shelf question below, asked of the whole list at once; it is not in the row.
-        items: { select: { productId: true, productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true } },
+        items: { select: { productId: true, productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, reservedQty: true, variantSummary: true } },
         // `reservedQty` of the add-ons too: the door asks about them, so the row must (one select, no query per row).
         addOns: { select: { productId: true, productName: true, quantity: true, price: true, reservedQty: true } },
       },

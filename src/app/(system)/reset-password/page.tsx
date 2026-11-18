@@ -46,7 +46,7 @@ function ResetForm() {
 
   if (!token) {
     return (
-      <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">
+      <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note rounded-lg">
         رابط إعادة التعيين غير صالح — اطلب رابطاً جديداً من صفحة استعادة كلمة المرور.
       </div>
     );
@@ -56,7 +56,7 @@ function ResetForm() {
     <Card className="shadow-raised">
       <CardContent className="p-6 space-y-4">
         {error && (
-          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
+          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
             <RiErrorWarningLine className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -102,7 +102,7 @@ export default function ResetPasswordPage() {
           <ResetForm />
         </Suspense>
 
-        <p className="text-center text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-center text-note text-[var(--sys-muted-foreground)]">
           <Link href="/login" className="text-[var(--sys-primary)] font-semibold hover:underline">
             العودة لتسجيل الدخول
           </Link>

@@ -40,6 +40,7 @@ import {
   prepQuantityChanges, prepShortAr, prepTouched, prepWindow,
 } from '@/lib/prep-edit';
 import { availableStock, reserveOrderLines } from '@/lib/reservation';
+import { carryPieces, piecesOfOrder } from '@/lib/product-variants';
 import { holdReleasedItsStock } from '@/lib/shipment-hold';
 import {
   APPLIED_AR, AppliedMeanwhile, LinesChanged, blockedByStock, changedKeys, columnsDrift, costAfterEdit, costProductIds, linesAreStill,
@@ -312,6 +313,8 @@ export async function GET(
             quantity: true, freeQuantity: true, unitPrice: true,
             discountShare: true, lineTotal: true, reservedQty: true,
             deliveredQty: true, returnedQty: true,
+            // The size and colour of every piece, for a product with variants (null otherwise).
+            variantSummary: true,
           },
         },
         deliveryProvider: { select: { id: true, name: true, code: true } },
@@ -2303,8 +2306,10 @@ export async function PATCH(
          */
         const storedLines = await tx.orderItem.findMany({
           where: { orderId: id },
-          select: { id: true, productId: true, quantity: true, freeQuantity: true, addedById: true, addedStage: true },
+          select: { id: true, productId: true, quantity: true, freeQuantity: true, addedById: true, addedStage: true, variantSummary: true },
         });
+        // The pieces of a product with variants, read before the rows go — carried below to a line that kept its units.
+        const pieces = storedLines.some((s) => s.variantSummary) ? await piecesOfOrder(tx, id) : [];
         /*
          * AN APPROVED REQUEST WRITES THE LINES IT WAS MADE AGAINST — OR NOTHING.
          *
@@ -2349,6 +2354,12 @@ export async function PATCH(
             };
           }),
         });
+        /*
+         * THE PIECES FOLLOW THEIR LINE (product variants, the owner 2026-11-18). A line of a product with variants whose
+         * units did not change keeps the size and colour of every piece; one whose units changed loses them, and the
+         * order's history says the call must ask again. Before the reservation below, so the pieces are what it reads.
+         */
+        if (pieces.length > 0) await carryPieces(tx, { companyId, orderId: id, before: pieces });
         /*
          * THE SHELF FOLLOWS THE QUANTITY — the one reserver, not a second one.
          *

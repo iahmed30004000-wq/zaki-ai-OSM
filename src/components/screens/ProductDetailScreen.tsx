@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { ProductOffers } from '@/components/products/ProductOffers';
 import { ProductStock } from '@/components/products/ProductStock';
 import { ProductAttributes } from '@/components/products/ProductAttributes';
+import { ProductVariants } from '@/components/products/ProductVariants';
 import { ProductHeadline } from '@/components/products/ProductHeadline';
 import { ProductPerformance } from '@/components/products/ProductPerformance';
 import { ProductRecentOrders } from '@/components/products/ProductRecentOrders';
@@ -447,6 +448,19 @@ export function ProductDetailScreen() {
           <CardHeader title="الخصائص" />
           <CardContent>
             <ProductAttributes productId={productId} canManage={!!canManage} />
+          </CardContent>
+        </Card>
+
+        {/* Sizes and colours — each combination with its own price difference and its own stock (the owner, 2026-11-18). */}
+        <Card>
+          <CardHeader title="المقاسات والألوان" />
+          <CardContent>
+            <ProductVariants
+              productId={productId}
+              canManage={!!canManage}
+              canChangePrice={!!canManage && userCan(currentUser, 'products.change_price')}
+              currency={currencyCode}
+            />
           </CardContent>
         </Card>
 

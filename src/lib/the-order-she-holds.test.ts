@@ -370,6 +370,9 @@ const ALLOWED: Record<string, string[]> = {
   'src/app/api/orders/[id]/route.ts': ['GET', 'PATCH'],
   'src/app/api/orders/[id]/timeline/route.ts': ['GET'],
   'src/app/api/orders/[id]/notes/route.ts': ['GET', 'POST'],
+  // Reviewed 18/11 (product variants): the pieces of the order's lines, read in the order window like its timeline —
+  // a pure read of the order she may already open. Its PUT keeps `assertOrderAccess` + `orders.edit`.
+  'src/app/api/orders/[id]/pieces/route.ts': ['GET'],
   'src/app/api/orders/[id]/contact-attempts/route.ts': ['GET', 'POST'],
   'src/app/api/orders/[id]/lock/route.ts': ['POST'],
   'src/app/api/orders/[id]/confirmation/route.ts': ['POST'],

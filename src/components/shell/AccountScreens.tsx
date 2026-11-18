@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { signOut } from '@/lib/sign-out';
 import { RiLockLine, RiLogoutBoxLine, RiMailCheckLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
 
 /** Account-state screens for PENDING / SUSPENDED / DISABLED users. */
 
@@ -29,7 +30,7 @@ export function PendingScreen() {
           description={`تم إنشاء حسابك بنجاح (${currentUser?.email ?? ''}) وهو الآن بانتظار موافقة المدير. سيتم منحك صلاحيات الوصول بعد أن يقوم المدير بتعيين دور حسابك وتنشيطه.`}
         />
 
-        <div className="bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-4 text-xs text-[var(--sys-muted-foreground)] space-y-1">
+        <div className="bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-4 text-note text-[var(--sys-muted-foreground)] space-y-1">
           <p className="flex items-center justify-center space-x-2 rtl:space-x-reverse text-[var(--sys-heading)]">
             <RiMailCheckLine className="w-4 h-4 text-[var(--sys-warning)]" />
             <span>حالتك الحالية: قيد المراجعة (PENDING)</span>
@@ -37,26 +38,28 @@ export function PendingScreen() {
           <p>لن تتمكن من الوصول للطلبات أو العملاء أو المنتجات أو التقارير حتى يتم تنشيط حسابك.</p>
         </div>
 
-        <div className="flex items-center justify-center space-x-3 rtl:space-x-reverse">
-          <button
-            onClick={async () => {
-              setChecking(true);
-              await refreshUser();
-              setChecking(false);
-              window.location.reload();
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {/* `checking` is this screen's own flag (it spins the icon): the press returns nothing, so the kit adds no
+              second lock and the reload still follows the refresh exactly as before. */}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              void (async () => {
+                setChecking(true);
+                await refreshUser();
+                setChecking(false);
+                window.location.reload();
+              })();
             }}
-            className="inline-flex items-center space-x-2 rtl:space-x-reverse px-5 py-2 text-sm font-medium rounded-lg bg-[var(--sys-card)] text-[var(--sys-heading)] border border-[var(--sys-border)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer"
           >
             <RiRefreshLine className={`w-4 h-4 ${checking ? 'animate-spin' : ''}`} />
             <span>تحديث الحالة</span>
-          </button>
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center space-x-2 rtl:space-x-reverse px-5 py-2 text-sm font-medium rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] hover:bg-[var(--sys-destructive)]/85 transition-colors cursor-pointer"
-          >
+          </Button>
+          <Button type="button" variant="danger" onClick={handleLogout}>
             <RiLogoutBoxLine className="icon-mirror w-4 h-4" />
             <span>تسجيل الخروج</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -88,21 +91,15 @@ export function NoAccessScreen() {
           description={`حسابك (${currentUser?.email ?? ''}) فعّال، لكنه لا يملك صلاحية فتح أي شاشة حالياً. اطلب من المدير أن يعيّن لحسابك دوراً، ثم اضغط «تحديث».`}
         />
 
-        <div className="flex items-center justify-center space-x-3 rtl:space-x-reverse">
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center space-x-2 rtl:space-x-reverse px-5 py-2 text-sm font-medium rounded-lg bg-[var(--sys-card)] text-[var(--sys-heading)] border border-[var(--sys-border)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer"
-          >
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button type="button" variant="secondary" onClick={() => window.location.reload()}>
             <RiRefreshLine className="w-4 h-4" />
             <span>تحديث</span>
-          </button>
-          <button
-            onClick={() => signOut('manual')}
-            className="inline-flex items-center space-x-2 rtl:space-x-reverse px-5 py-2 text-sm font-medium rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] hover:bg-[var(--sys-destructive)]/85 transition-colors cursor-pointer"
-          >
+          </Button>
+          <Button type="button" variant="danger" onClick={() => signOut('manual')}>
             <RiLogoutBoxLine className="icon-mirror w-4 h-4" />
             <span>تسجيل الخروج</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>
