@@ -755,11 +755,6 @@
       "rawButtons": 3,
       "textXs": 11
     },
-    "src/components/settings/AdAccountsCard.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 3,
-      "textXs": 27
-    },
     "src/components/settings/AgentCommissionCard.tsx": {
       "rawButtons": 3,
       "rawCheckboxes": 1,
@@ -779,9 +774,7 @@
       "textXs": 14
     },
     "src/components/settings/CustomConversionsCard.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 1,
-      "textXs": 28
+      "rawButtons": 1
     },
     "src/components/settings/IntakeFilterCard.tsx": {
       "rawCheckboxes": 1,
@@ -847,12 +840,6 @@
     "src/components/settings/ThemePicker.tsx": {
       "rawButtons": 2,
       "textXs": 9
-    },
-    "src/components/settings/TrackingPixelsSection.tsx": {
-      "rawButtons": 4,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 1,
-      "textXs": 14
     },
     "src/components/settings/WhatsAppAfterNoAnswerCard.tsx": {
       "textXs": 7

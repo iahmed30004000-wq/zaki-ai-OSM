@@ -1,5 +1,5 @@
 import { guardRoute, requireShellContext } from '@/lib/page-guard';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { TrackingPixelsSection } from '@/components/settings/TrackingPixelsSection';
 import { AdAccountsCard } from '@/components/settings/AdAccountsCard';
@@ -12,12 +12,15 @@ export default async function Page() {
   // silently is how a seller connects an account to the wrong shop.
   const { store } = await requireShellContext();
   return (
-    <div className="space-y-4">
-      {/*
-        A TITLE, because the ⓘ hangs on one. This page drew none — the first card began at the top of the screen — so the only screen of
-        the settings with no name on it was also the only one that could not offer its guide.
-      */}
-      <PageHeader title={routeLabel('/settings/tracking')} description="البكسلات التي تحمّلها صفحاتك، وما يُرسله الخادم بعد الطلب، وحسابات الإعلانات — في مكان واحد." />
+    /*
+      A TITLE, because the ⓘ hangs on one. This page drew none — the first card began at the top of the screen — so the only screen of
+      the settings with no name on it was also the only one that could not offer its guide. 18/11 (R15e): the frame draws it now
+      (`PageShell`, the same `PageHeader` inside, the same name and sentence), at the full width the page always had.
+    */
+    <PageShell
+      title={routeLabel('/settings/tracking')}
+      description="البكسلات التي تحمّلها صفحاتك، وما يُرسله الخادم بعد الطلب، وحسابات الإعلانات — في مكان واحد."
+    >
       <TrackingPixelsSection />
       {/*
         Directly under the pixels, because it is the same thought carried
@@ -36,6 +39,6 @@ export default async function Page() {
         one later, which mostly means not finding it.
       */}
       <AdAccountsCard storeName={store.name} />
-    </div>
+    </PageShell>
   );
 }
