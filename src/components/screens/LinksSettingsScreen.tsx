@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -43,20 +43,19 @@ export function LinksSettingsScreen() {
   const telegram = mayManage('telegram.connect');
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6" dir="rtl">
-      <PageHeader title={routeLabel('/settings/links')} />
+    <PageShell title={routeLabel('/settings/links')} width="narrow">
       {whatsapp && (
-        <section id="whatsapp" aria-label="واتساب">
+        <section id="whatsapp" aria-label="واتساب" className="space-y-6">
           <WhatsAppSettingsScreen embedded />
           <IntegrationFieldsCard group="whatsapp" />
         </section>
       )}
       {telegram && (
-        <section id="telegram" aria-label="تلجرام">
+        <section id="telegram" aria-label="تلجرام" className="space-y-6">
           <TelegramSettingsScreen embedded />
           <IntegrationFieldsCard group="telegram" />
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }

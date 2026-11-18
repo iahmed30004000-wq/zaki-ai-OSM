@@ -1706,14 +1706,15 @@
     "tabs": 0
   },
   "src/components/screens/TelegramSettingsScreen.tsx": {
-    "buttons": 5,
+    "buttons": 3,
     "inputs": 0,
     "columns": 0,
     "cards": 3,
     "modals": 0,
     "icons": 5,
     "links": 2,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/screens/TelegramUpsellMergeDialog.tsx": {
     "buttons": 2,
@@ -1773,7 +1774,7 @@
     "buttons": 2,
     "inputs": 0,
     "columns": 0,
-    "cards": 3,
+    "cards": 5,
     "modals": 0,
     "icons": 8,
     "links": 2,
@@ -2487,14 +2488,15 @@
     "tabs": 0
   },
   "src/components/settings/TelegramSourcesCard.tsx": {
-    "buttons": 6,
+    "buttons": 3,
     "inputs": 4,
     "columns": 7,
     "cards": 1,
     "modals": 1,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 3
   },
   "src/components/settings/ThemePicker.tsx": {
     "buttons": 1,
@@ -2518,7 +2520,7 @@
   },
   "src/components/settings/WhatsAppAfterNoAnswerCard.tsx": {
     "buttons": 1,
-    "inputs": 4,
+    "inputs": 3,
     "columns": 0,
     "cards": 1,
     "modals": 0,

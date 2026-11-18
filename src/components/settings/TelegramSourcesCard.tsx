@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
@@ -135,10 +136,10 @@ export function TelegramSourcesCard({ canManage }: { canManage: boolean }) {
       <CardContent className="p-0">
         {canManage && (
           <div className="flex justify-end px-4 pb-2">
-            <Button size="sm" onClick={() => setAddOpen(true)}><RiAddCircleLine className="ml-1 h-4 w-4" /> إضافة مصدر</Button>
+            <Button type="button" size="sm" onClick={() => setAddOpen(true)}><RiAddCircleLine className="ml-1 h-4 w-4" /> إضافة مصدر</Button>
           </div>
         )}
-        {error && <p className="mx-4 mb-2 rounded-lg bg-[var(--sys-destructive-soft)] px-3 py-2 text-xs text-[var(--sys-destructive)]">{error}</p>}
+        {error && <p className="mx-4 mb-2 rounded-lg bg-[var(--sys-destructive-soft)] px-3 py-2 text-note text-[var(--sys-destructive)]">{error}</p>}
         {sources === null ? (
           <div className="p-4">
             <SkeletonRows rows={3} />
@@ -151,8 +152,8 @@ export function TelegramSourcesCard({ canManage }: { canManage: boolean }) {
               { key: 'c0', label: "المجموعة", primary: true,
                 render: (s) => (
                   <><p className="font-semibold text-[var(--sys-heading)]">{s.chatTitle || 'بدون عنوان'}</p>
-                    <p className="font-mono text-xs text-[var(--sys-muted-foreground)]" dir="ltr">{s.chatId}{s.topicId ? ` • topic ${s.topicId}` : ''}</p>
-                    {s.topicName && <p className="text-xs text-[var(--sys-muted-foreground)]">الموضوع: {s.topicName}</p>}</>
+                    <p className="font-mono text-note text-[var(--sys-muted-foreground)]" dir="ltr">{s.chatId}{s.topicId ? ` • topic ${s.topicId}` : ''}</p>
+                    {s.topicName && <p className="text-note text-[var(--sys-muted-foreground)]">الموضوع: {s.topicName}</p>}</>
                 ) },
               { key: 'c1', label: "المتجر", primary: true,
                 render: (s) => (s.storeName ?? '—') },
@@ -160,7 +161,7 @@ export function TelegramSourcesCard({ canManage }: { canManage: boolean }) {
                 render: (s) => (s.chatType === 'supergroup' ? 'مجموعة فائقة' : s.chatType === 'group' ? 'مجموعة' : 'قناة') },
               { key: 'c3', label: "الحالة",
                 render: (s) => (
-                  <><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.isActive ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]' : 'bg-[var(--sys-surface-strong)] text-[var(--sys-muted-foreground)]'}`}>
+                  <><span className={`rounded-full px-2 py-0.5 text-note font-semibold ${s.isActive ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]' : 'bg-[var(--sys-surface-strong)] text-[var(--sys-muted-foreground)]'}`}>
                       {s.isActive ? 'مفعل' : 'معطل'}
                     </span></>
                 ) },
@@ -171,16 +172,17 @@ export function TelegramSourcesCard({ canManage }: { canManage: boolean }) {
               { key: 'c6', label: "إجراءات",
                 render: (s) => (
                   <><div className="flex items-center justify-end gap-1">
-                        <button disabled={busyId === s.id} onClick={() => void testSource(s)} aria-label="اختبار" title="اختبار" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)]"><RiFlaskLine className="h-4 w-4" /></button>
-                        <button
+                        <IconButton type="button" size="sm" disabled={busyId === s.id} onClick={() => void testSource(s)} label="اختبار"><RiFlaskLine className="h-4 w-4" /></IconButton>
+                        <IconButton
+                          type="button"
+                          size="sm"
                           disabled={busyId === s.id}
                           onClick={() => void act(s, () => crmApi(`/api/telegram/sources/${s.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !s.isActive }) }), 'تعذر التحديث')}
-                          title={s.isActive ? 'تعطيل' : 'تفعيل'}
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)]"
+                          label={s.isActive ? 'تعطيل' : 'تفعيل'}
                         >
                           <RiShutDownLine className="h-4 w-4" />
-                        </button>
-                        <button disabled={busyId === s.id} onClick={() => void deleteSource(s)} aria-label="حذف" title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"><RiDeleteBinLine className="h-4 w-4" /></button>
+                        </IconButton>
+                        <IconButton type="button" size="sm" className="text-[var(--sys-destructive)]" disabled={busyId === s.id} onClick={() => void deleteSource(s)} label="حذف"><RiDeleteBinLine className="h-4 w-4" /></IconButton>
                       </div></>
                 ) },
             ]}
@@ -196,31 +198,19 @@ export function TelegramSourcesCard({ canManage }: { canManage: boolean }) {
 
       <Modal isOpen={addOpen} onClose={() => setAddOpen(false)} title="إضافة مصدر تيليجرام">
         <div className="space-y-4" dir="rtl">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-[var(--sys-heading)]">Chat ID *</label>
-            <Input value={form.chatId} onChange={(e) => setForm({ ...form, chatId: e.target.value })} placeholder="-1001234567890" dir="ltr" className="text-left font-mono" />
+          <Input label="Chat ID *" value={form.chatId} onChange={(e) => setForm({ ...form, chatId: e.target.value })} placeholder="-1001234567890" dir="ltr" className="text-left font-mono" />
+          <Input label="اسم المجموعة" value={form.chatTitle} onChange={(e) => setForm({ ...form, chatTitle: e.target.value })} placeholder="مجموعة طلبات المتجر" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Topic ID (اختياري)" value={form.topicId} onChange={(e) => setForm({ ...form, topicId: e.target.value })} placeholder="فارغ = المجموعة كاملة" dir="ltr" className="text-left font-mono" />
+            <Input label="اسم الموضوع" value={form.topicName} onChange={(e) => setForm({ ...form, topicName: e.target.value })} />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-[var(--sys-heading)]">اسم المجموعة</label>
-            <Input value={form.chatTitle} onChange={(e) => setForm({ ...form, chatTitle: e.target.value })} placeholder="مجموعة طلبات المتجر" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--sys-heading)]">Topic ID (اختياري)</label>
-              <Input value={form.topicId} onChange={(e) => setForm({ ...form, topicId: e.target.value })} placeholder="فارغ = المجموعة كاملة" dir="ltr" className="text-left font-mono" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-[var(--sys-heading)]">اسم الموضوع</label>
-              <Input value={form.topicName} onChange={(e) => setForm({ ...form, topicName: e.target.value })} />
-            </div>
-          </div>
-          {formError && <p className="text-xs text-[var(--sys-destructive)]">{formError}</p>}
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          {formError && <p className="text-note text-[var(--sys-destructive)]">{formError}</p>}
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             تأكد من إضافة البوت إلى المجموعة ومن تفعيل Privacy Mode المناسب. اترك Topic ID فارغًا لربط المجموعة بالكامل.
           </p>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => setAddOpen(false)}>إلغاء</Button>
-            <Button size="sm" disabled={!form.chatId.trim() || saving} onClick={() => void addSource()}>{saving ? 'جارٍ الحفظ...' : 'إضافة'}</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setAddOpen(false)}>إلغاء</Button>
+            <Button type="button" size="sm" disabled={!form.chatId.trim() || saving} onClick={() => void addSource()}>{saving ? 'جارٍ الحفظ...' : 'إضافة'}</Button>
           </div>
         </div>
       </Modal>
