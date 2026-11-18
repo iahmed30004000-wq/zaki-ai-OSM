@@ -90,8 +90,10 @@ const LIT = 'bg-[var(--sys-primary)]';
 
 // ───────────────────────── the arithmetic ─────────────────────────
 
-describe('the menu is fifteen lines', () => {
-  it('— fifty-two screens in the registry, fifteen lines in the menu', () => {
+// 18/11 (R0): the TITLES of this block and of the test below said «fifteen lines» and «fifty-two screens» while the assertions under them
+// said 16 and 53 (15/11, «السلات المهجورة»). Only the words are corrected — not one expectation moved.
+describe('the menu is sixteen lines', () => {
+  it('— fifty-three screens in the registry, sixteen lines in the menu', () => {
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
     expect(ALL_ROUTES).toHaveLength(53);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(16);
@@ -122,7 +124,7 @@ describe('the menu is fifteen lines', () => {
 // ───────────────────────── what the sidebar draws ─────────────────────────
 
 describe('the sidebar', () => {
-  it('draws one line per hub and one per loose screen — fifteen, with no heading to fold', () => {
+  it('draws one line per hub and one per loose screen — sixteen, with no heading to fold', () => {
     const { container } = render(<Sidebar groups={NAV} />);
     const links = menuLinks(container);
     expect(links).toHaveLength(16);
