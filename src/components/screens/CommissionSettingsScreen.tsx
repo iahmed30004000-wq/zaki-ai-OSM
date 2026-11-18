@@ -162,13 +162,6 @@ export function CommissionSettingsScreen() {
         )
       }
     >
-      <Card plain padding="sm">
-        <p className="text-note text-[var(--sys-muted-foreground)]">
-        القاعدة لا تُعدَّل بعد كتابتها: لإنهاء العمل بها حدِّد لها تاريخ انتهاء واكتب قاعدة جديدة من اليوم التالي.
-        العمولة تُحتسب بالقاعدة السارية يوم التسليم، وتصبح مستحقة عند اعتماد كشف التحصيل.
-        </p>
-      </Card>
-
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
 
@@ -181,6 +174,15 @@ export function CommissionSettingsScreen() {
           number fair» has to be asked before the number is read, not after
           somebody has already decided who deserves what. */}
       <FairnessPanel data={fairness} />
+
+      {/* 18/11 (R13h, the arrangement): this paragraph is about the rules, so it sits on top of them and no longer between
+          the title and the running period. The month's figures stay where they were: moving them would move the lines that print them. */}
+      <Card plain padding="sm">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
+        القاعدة لا تُعدَّل بعد كتابتها: لإنهاء العمل بها حدِّد لها تاريخ انتهاء واكتب قاعدة جديدة من اليوم التالي.
+        العمولة تُحتسب بالقاعدة السارية يوم التسليم، وتصبح مستحقة عند اعتماد كشف التحصيل.
+        </p>
+      </Card>
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--sys-border)]">
