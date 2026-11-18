@@ -32,6 +32,7 @@ function cond(value: any, cell: any): boolean {
     else if (op === 'gte') { if (!(cell instanceof Date) || cell < (arg as Date)) return false; }
     else if (op === 'lte') { if (!(cell instanceof Date) || cell > (arg as Date)) return false; }
     else if (op === 'lt') { if (!(cell instanceof Date) || cell >= (arg as Date)) return false; }
+    else if (op === 'gt') { if (!(cell instanceof Date) || cell <= (arg as Date)) return false; }
     else throw new Error(`الفيك ما بيعرف ${op}`);
   }
   return true;
@@ -92,8 +93,10 @@ function sortBy(rows: Row[], orderBy: Row | Row[] | undefined): Row[] {
   });
 }
 
-const { db } = vi.hoisted(() => ({ db: {} as Row }));
+const { db, plan } = vi.hoisted(() => ({ db: {} as Row, plan: { since: null as Date | null } }));
 vi.mock('./db', () => ({ db }));
+// The plan's floor (request C3): off unless a test turns it on.
+vi.mock('./no-answer-cadence-switch', () => ({ cadenceSince: async () => plan.since }));
 Object.assign(db, {
   order: {
     findMany: vi.fn(async ({ where, select, take }: Row) => {
@@ -144,7 +147,19 @@ import {
   NO_ANSWER_RESULTS,
 } from './confirmation-workflow';
 import { businessMinutesBetween } from './business-calendar';
-import { answerRateReport, isStuck, noAnswerBoard, outcomeOf, stuckCutoff } from './no-answer-watch';
+import {
+  ATTEMPT_BUCKETS,
+  REPORT_ROW_CAP,
+  answerRateReport,
+  isStuck,
+  noAnswerBoard,
+  numberingOf,
+  outcomeOf,
+  stuckCutoff,
+  tallyAnswerRate,
+  type AttemptRow,
+} from './no-answer-watch';
+import { cadenceCalOf } from './no-answer-cadence';
 
 /** Sunday to Thursday, 09:00–17:00, Amman — Friday and Saturday off. */
 const CAL = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
@@ -233,6 +248,7 @@ function seed() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  plan.since = null;
   seed();
 });
 
@@ -336,11 +352,14 @@ describe('the answer-rate report, against the hand count', () => {
   });
 
   it('by call number — only rows with an outcome are numbered, after the calls the order had before the range', async () => {
+    // UPDATED 2026-11-18 (request C3): the buckets were «1 · 2 · 3 · 4+»; they are «1 · 2 · 3 · 4 · 5 · 6+» (the plan has five attempts). The same rows, the old «4+» split, nothing dropped.
     expect((await report()).byAttempt.map(triple)).toEqual([
       ['1', 1, 7, 8, 0, 13],
       ['2', 1, 4, 5, 0, 20],
       ['3', 1, 1, 2, 0, 50],
-      ['4+', 0, 0, 0, 0, null],
+      ['4', 0, 0, 0, 0, null],
+      ['5', 0, 0, 0, 0, null],
+      ['6+', 0, 0, 0, 0, null],
     ]);
   });
 
@@ -365,7 +384,10 @@ describe('the call number is the number of the CALL, not of the row', () => {
       ['1', 0, 1, 0],
       ['2', 1, 1, 100],
       ['3', 0, 0, null],
-      ['4+', 0, 0, null],
+      // UPDATED 2026-11-18 (request C3): the buckets were «1 · 2 · 3 · 4+»; they are «1 · 2 · 3 · 4 · 5 · 6+» (the plan has five attempts). The same rows, the old «4+» split, nothing dropped.
+      ['4', 0, 0, null],
+      ['5', 0, 0, null],
+      ['6+', 0, 0, null],
     ]);
     // The two presses are still counted — in the hour table, outside the rate.
     expect(r.total.notACall).toBe(2);
@@ -385,7 +407,10 @@ describe('the call number is the number of the CALL, not of the row', () => {
       ['1', 0, 0],
       ['2', 0, 1],
       ['3', 0, 1],
-      ['4+', 1, 0],
+      // UPDATED 2026-11-18 (request C3): the buckets were «1 · 2 · 3 · 4+»; they are «1 · 2 · 3 · 4 · 5 · 6+» (the plan has five attempts). The same rows, the old «4+» split, nothing dropped.
+      ['4', 1, 0],
+      ['5', 0, 0],
+      ['6+', 0, 0],
     ]);
     expect([r.total.reached, r.total.notReached]).toEqual([1, 2]);
   });
@@ -477,5 +502,150 @@ describe('read only', () => {
       const src = stripComments(readFileSync(join(process.cwd(), file), 'utf8'));
       expect(src, file).not.toMatch(/\.(create|createMany|update|updateMany|upsert|delete|deleteMany|\$executeRaw|\$transaction)\(/);
     }
+  });
+});
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════
+ * REQUEST C3 (18/11) — THE ATTEMPTS NUMBERED 1–5 AND «أكثر من 5», AND UNDER THE PLAN THE ATTEMPT THE ONE COUNTER COUNTED.
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+
+/** main's numbering, copied from `osm/main` before C3 (the call order, «4+» folded) — the reference a range before the floor must equal. */
+function mainByAttempt(rows: AttemptRow[], priorCalls: Map<string, number>): Map<string, [number, number]> {
+  const out = new Map<string, [number, number]>([['1', [0, 0]], ['2', [0, 0]], ['3', [0, 0]], ['4+', [0, 0]]]);
+  const so = new Map(priorCalls);
+  for (const r of [...rows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.attemptNumber - b.attemptNumber)) {
+    const o = outcomeOf(r.result);
+    if (o === 'NOT_A_CALL') continue;
+    const n = (so.get(r.orderId) ?? 0) + 1;
+    so.set(r.orderId, n);
+    const cell = out.get(n >= 4 ? '4+' : String(n))!;
+    cell[o === 'REACHED' ? 0 : 1]++;
+  }
+  return out;
+}
+
+const COUNTRY = { timezone: 'Asia/Amman', weekendDays: [5, 6], workHoursStart: '09:00', workHoursEnd: '17:00' };
+const row = (orderId: string, n: number, result: string, createdAt: Date): AttemptRow => ({ orderId, attemptNumber: n, result, createdAt, nextFollowUpAt: null });
+const pairs = (r: ReturnType<typeof tallyAnswerRate>) => r.byAttempt.map((x) => [x.key, x.reached, x.notReached]);
+
+describe('C3 — the buckets are 1 · 2 · 3 · 4 · 5 · 6+', () => {
+  it('the fifth call is its own row, the sixth is «أكثر من 5», and the rows still sum to the total', () => {
+    const rows = [1, 2, 3, 4, 5, 6, 7].map((n) => row('o', n, n === 5 ? 'ANSWERED' : 'NO_ANSWER', at(15, 9, n)));
+    const r = tallyAnswerRate(rows, new Map(), 'Asia/Amman');
+    expect(ATTEMPT_BUCKETS).toEqual(['1', '2', '3', '4', '5', '6+']);
+    expect(pairs(r)).toEqual([['1', 0, 1], ['2', 0, 1], ['3', 0, 1], ['4', 0, 1], ['5', 1, 0], ['6+', 0, 2]]);
+    const sum = r.byAttempt.reduce((s, x) => s + x.base, 0);
+    expect(sum).toBe(r.total.base);
+  });
+
+  it('NO PLAN — a differential against main: the first three rows equal, and 4 + 5 + 6+ is main’s «4+», on a few hundred random sequences', () => {
+    let seed = 11;
+    const next = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    const results = ['NO_ANSWER', 'BUSY', 'ANSWERED', 'OPENED', 'MESSAGE_SENT', 'CONFIRMED', 'UNREACHABLE'];
+    for (let k = 0; k < 300; k++) {
+      const rows: AttemptRow[] = [];
+      const prior = new Map<string, number>();
+      for (let o = 0; o < 4; o++) {
+        if (next() < 0.3) prior.set(`o${o}`, Math.floor(next() * 4));
+        const n = Math.floor(next() * 9);
+        for (let i = 0; i < n; i++) rows.push(row(`o${o}`, i + 1, results[Math.floor(next() * results.length)], at(15 + Math.floor(next() * 6), 9 + Math.floor(next() * 8), i)));
+      }
+      const now = tallyAnswerRate(rows, prior, 'Asia/Amman');
+      const main = mainByAttempt(rows, prior);
+      const get = (key: string) => now.byAttempt.find((x) => x.key === key)!;
+      for (const key of ['1', '2', '3']) expect([get(key).reached, get(key).notReached]).toEqual(main.get(key));
+      expect([4, 5].map(String).concat('6+').reduce((s, key) => [s[0] + get(key).reached, s[1] + get(key).notReached], [0, 0])).toEqual(main.get('4+'));
+    }
+  });
+
+  it('A FLOOR AFTER THE RANGE numbers exactly as with no plan (the range is entirely before it)', () => {
+    const rows = [row('o', 1, 'NO_ANSWER', at(15, 9)), row('o', 2, 'NO_ANSWER', at(15, 9, 5)), row('o', 3, 'ANSWERED', at(15, 9, 6))];
+    const cal = cadenceCalOf(at(23, 0), COUNTRY);
+    expect(tallyAnswerRate(rows, new Map(), 'Asia/Amman', { cal, priorLines: new Map() })).toEqual(tallyAnswerRate(rows, new Map(), 'Asia/Amman'));
+  });
+});
+
+describe('C3 — under the plan, the attempt the one counter counted', () => {
+  it('an early press does not advance the number; the next real call is numbered right; a reached call is the attempt it was', () => {
+    // Floor Monday the 14th at noon. #1 on the 14th 13:00 (before the range), #2 on Tuesday 10:00, an EARLY press at 11:00 (#3 is due at 12:00),
+    // #3 at 12:05, and an answer on Wednesday 09:00 — the fourth attempt.
+    const prior = [row('q', 1, 'NO_ANSWER', at(14, 13))];
+    const rows = [row('q', 2, 'NO_ANSWER', at(15, 10)), row('q', 3, 'NO_ANSWER', at(15, 11)), row('q', 4, 'NO_ANSWER', at(15, 12, 5)), row('q', 5, 'ANSWERED', at(16, 9))];
+    const cal = cadenceCalOf(at(14, 12), COUNTRY);
+    const r = tallyAnswerRate(rows, new Map([['q', 1]]), 'Asia/Amman', { cal, priorLines: new Map([['q', prior]]) });
+    expect(pairs(r)).toEqual([['1', 0, 0], ['2', 0, 1], ['3', 0, 2], ['4', 1, 0], ['5', 0, 0], ['6+', 0, 0]]);
+    // NEGATIVE: by the call order the answer would have been the fifth.
+    expect(pairs(tallyAnswerRate(rows, new Map([['q', 1]]), 'Asia/Amman'))).toEqual([['1', 0, 0], ['2', 0, 1], ['3', 0, 1], ['4', 0, 1], ['5', 1, 0], ['6+', 0, 0]]);
+  });
+
+  it('NEGATIVE: an early press followed by an answer — the answer is the attempt the early press tried to be, not one more', () => {
+    // #1 Tuesday 10:00 (#2 due 10:30), an EARLY press at 10:10, then the customer answers at 10:15: that answer is attempt 2.
+    const rows = [row('e', 1, 'NO_ANSWER', at(15, 10)), row('e', 2, 'NO_ANSWER', at(15, 10, 10)), row('e', 3, 'ANSWERED', at(15, 10, 15))];
+    const cal = cadenceCalOf(at(14, 12), COUNTRY);
+    expect(pairs(tallyAnswerRate(rows, new Map(), 'Asia/Amman', { cal, priorLines: new Map() })).slice(0, 3)).toEqual([['1', 0, 1], ['2', 1, 1], ['3', 0, 0]]);
+  });
+
+  it('NEGATIVE: the prior plan lines are needed — without them the order starts at one', () => {
+    const rows = [row('q', 2, 'NO_ANSWER', at(15, 10))];
+    const cal = cadenceCalOf(at(14, 12), COUNTRY);
+    expect(pairs(tallyAnswerRate(rows, new Map(), 'Asia/Amman', { cal, priorLines: new Map([['q', [row('q', 1, 'NO_ANSWER', at(14, 13))]]]) }))[1]).toEqual(['2', 0, 1]);
+    expect(pairs(tallyAnswerRate(rows, new Map(), 'Asia/Amman', { cal, priorLines: new Map() }))[0]).toEqual(['1', 0, 1]);
+  });
+
+  it('a range that straddles the floor: the call order before it, the plan from one after it', () => {
+    const rows = [row('s', 1, 'NO_ANSWER', at(15, 10)), row('s', 2, 'NO_ANSWER', at(16, 10)), row('s', 3, 'ANSWERED', at(16, 11))];
+    const cal = cadenceCalOf(at(16, 0), COUNTRY);
+    expect(pairs(tallyAnswerRate(rows, new Map(), 'Asia/Amman', { cal, priorLines: new Map() })).slice(0, 3)).toEqual([['1', 0, 2], ['2', 1, 0], ['3', 0, 0]]);
+  });
+
+  it('the numbering is said: CALLS with no floor or a floor after the range, PLAN before it, SPLIT inside it — by the local day', () => {
+    const [s, e] = [at(15, 0), at(22, 23, 59)];
+    expect(numberingOf(null, s, e, 'Asia/Amman')).toEqual({ mode: 'CALLS', fromDay: null });
+    expect(numberingOf(at(23, 1), s, e, 'Asia/Amman')).toEqual({ mode: 'CALLS', fromDay: null });
+    expect(numberingOf(at(10, 1), s, e, 'Asia/Amman')).toEqual({ mode: 'PLAN', fromDay: '2026-09-10' });
+    // 00:30 in Amman is still the day before in UTC: the day said is Amman's.
+    expect(numberingOf(at(17, 0, 30), s, e, 'Asia/Amman')).toEqual({ mode: 'SPLIT', fromDay: '2026-09-17' });
+  });
+});
+
+describe('C3 — the report reads the plan when it is on, and only then', () => {
+  it('plan on before the range: the prior plan lines are read and the attempts numbered by the plan', async () => {
+    plan.since = at(14, 12);
+    store.orders = [order('q', { claimedById: SARA, confirmationStatus: 'NO_ANSWER' })];
+    store.attempts = [
+      attempt('q', 1, 'NO_ANSWER', at(14, 13)),
+      attempt('q', 2, 'NO_ANSWER', at(15, 10)),
+      attempt('q', 3, 'NO_ANSWER', at(15, 11)),
+      attempt('q', 4, 'NO_ANSWER', at(15, 12, 5)),
+      attempt('q', 5, 'ANSWERED', at(16, 9)),
+    ];
+    const r = await report();
+    expect(r.numbering).toEqual({ mode: 'PLAN', fromDay: '2026-09-14' });
+    expect(r.byAttempt.map(({ key, reached, notReached }) => [key, reached, notReached]).slice(0, 5)).toEqual([['1', 0, 0], ['2', 0, 1], ['3', 0, 2], ['4', 1, 0], ['5', 0, 0]]);
+  });
+
+  it('a prior-plan read that hits its bound says so: the report is «truncated» (review of #361)', async () => {
+    plan.since = at(14, 12);
+    store.orders = [order('q', { claimedById: SARA, confirmationStatus: 'NO_ANSWER' })];
+    store.attempts = [attempt('q', 1, 'NO_ANSWER', at(14, 13)), attempt('q', 2, 'NO_ANSWER', at(15, 10))];
+    const real = db.orderContactAttempt.findMany.getMockImplementation()!;
+    db.orderContactAttempt.findMany.mockImplementation(async (args: Row) =>
+      args.where.createdAt?.gt ? Array.from({ length: REPORT_ROW_CAP }, (_, i) => ({ orderId: 'q', result: 'NO_ANSWER', createdAt: at(14, 13), attemptNumber: i, nextFollowUpAt: null })) : real(args));
+    try {
+      expect((await report()).truncated).toBe(true);
+    } finally {
+      db.orderContactAttempt.findMany.mockImplementation(real);
+    }
+    // NEGATIVE: the same order under the bound is not.
+    expect((await report()).truncated).toBe(false);
+  });
+
+  it('NEGATIVE: plan off — the numbering says CALLS, and the reads are main’s two (no due selected, no third read)', async () => {
+    const r = await report();
+    expect(r.numbering).toEqual({ mode: 'CALLS', fromDay: null });
+    expect(db.orderContactAttempt.findMany).toHaveBeenCalledTimes(1);
+    for (const keys of store.selects) expect(keys).not.toContain('nextFollowUpAt');
   });
 });

@@ -7,9 +7,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiFetch, saidBy } from '@/lib/api-client';
-import type { AgentRow, AnswerRateReport, NoAnswerBoard, RateRow } from '@/lib/no-answer-watch';
+import type { AgentRow, AnswerRateReport, AttemptNumbering, NoAnswerBoard, RateRow } from '@/lib/no-answer-watch';
 import type { MeasureRow } from '@/lib/no-answer-measure';
 import { HeldFlowPanel } from './HeldFlowPanel';
+import { WeeklyMeasures } from './WeeklyMeasures';
 
 /**
  * «لا رد والطلبات المحجوزة» — WHAT EACH AGENT IS SITTING ON, AND WHEN CUSTOMERS PICK UP.
@@ -36,7 +37,14 @@ function lastFourteenDays() {
   return { from: iso(from), to: iso(to) };
 }
 
-const rateText = (r: RateRow) => (r.rate === null ? '—' : `${r.rate}%`);
+/** One sentence under the attempts table: how the range was numbered against the plan's floor (request C3). */
+function numberingWords(n: AttemptNumbering): string {
+  if (n.mode === 'SPLIT') return `من يوم ${n.fromDay} الرقم هو المحاولة اللي انحسبت بجدول المحاولات (الضغطة اللي ما انحسبت ما بتزيدو)، وقبلو بترتيب الاتصالات.`;
+  if (n.mode === 'PLAN') return 'الرقم هو المحاولة اللي انحسبت بجدول المحاولات — الضغطة اللي ما انحسبت ما بتزيدو.';
+  return 'الرقم بترتيب الاتصالات — جدول المحاولات ما كان شغّال بهالمدة.';
+}
+
+const rateText =(r: RateRow) => (r.rate === null ? '—' : `${r.rate}%`);
 
 function rateColumns(first: string, keyLabel: (key: string) => string, withNotACall: boolean) {
   return [
@@ -112,6 +120,9 @@ export function NoAnswerWatch() {
 
   return (
     <div className="space-y-6">
+      {/* «القياس كل أسبوع» (request C3): its own part, above everything; the parts under it never wait for it. */}
+      <WeeklyMeasures />
+
       {/* «حركة الطلبات»: asks for its own part and its own window, so the board below never waits for it and never fails with it. */}
       <HeldFlowPanel />
 
@@ -165,14 +176,15 @@ export function NoAnswerWatch() {
         <Card>
           <CardHeader
             title="حسب رقم المحاولة"
-            subtitle="رقم الاتصال اللي إله نتيجة على الطلب، بترتيب وقته — ضغطة «اتصال» والرسالة ما إلهن رقم. الأول والتاني والتالت والرابع فما فوق، للمدة نفسها"
+            subtitle="رقم الاتصال اللي إله نتيجة على الطلب — ضغطة «اتصال» والرسالة ما إلهن رقم. من المحاولة 1 للمحاولة 5، وأكثر من 5، للمدة نفسها"
           />
           <CardContent className="p-0">
             <Rows
               rows={report.byAttempt}
               keyOf={(r: RateRow) => r.key}
-              columns={rateColumns('المحاولة', (k) => (k === '4+' ? 'الرابعة فما فوق' : `رقم ${k}`), false)}
+              columns={rateColumns('المحاولة', (k) => (k === '6+' ? 'أكثر من 5' : `المحاولة ${k}`), false)}
             />
+            {report.numbering && <p className="px-5 py-3 text-note text-[var(--sys-muted-foreground)]">{numberingWords(report.numbering)}</p>}
           </CardContent>
         </Card>
       )}
