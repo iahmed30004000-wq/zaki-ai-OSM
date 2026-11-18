@@ -240,15 +240,16 @@ export function CouriersScreen() {
   const opened = rows.find((c) => c.id === openId) ?? null;
 
   return (
-    <PageShell title={routeLabel('/settings/couriers')} width="narrow">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-[var(--sys-muted-foreground)]">
-          افتح شركةً لتسعير محافظاتها وضبط حسابها.
-        </p>
+    <PageShell
+      title={routeLabel('/settings/couriers')}
+      width="narrow"
+      description="افتح شركةً لتسعير محافظاتها وضبط حسابها."
+      actions={
         <Button type="button" onClick={() => setAdding(true)}>
           <RiAddCircleLine className="w-4 h-4" /> شركة شحن أو مندوب
         </Button>
-      </div>
+      }
+    >
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 

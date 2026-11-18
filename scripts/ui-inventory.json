@@ -1218,14 +1218,16 @@
     "tabs": 0
   },
   "src/components/screens/CouriersScreen.tsx": {
-    "buttons": 11,
+    "buttons": 6,
     "inputs": 5,
-    "columns": 8,
-    "cards": 0,
+    "columns": 6,
+    "cards": 4,
     "modals": 1,
     "icons": 9,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 4,
+    "switches": 1
   },
   "src/components/screens/CustomersScreen.tsx": {
     "buttons": 4,
@@ -2246,20 +2248,21 @@
     "tabs": 0
   },
   "src/components/settings/CourierCredentials.tsx": {
-    "buttons": 5,
+    "buttons": 4,
     "inputs": 9,
     "columns": 0,
     "cards": 0,
     "modals": 1,
     "icons": 13,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/settings/CourierFees.tsx": {
     "buttons": 6,
     "inputs": 8,
     "columns": 5,
-    "cards": 0,
+    "cards": 3,
     "modals": 2,
     "icons": 4,
     "links": 0,
