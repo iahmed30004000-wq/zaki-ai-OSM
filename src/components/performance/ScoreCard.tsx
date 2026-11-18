@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import type { ScoreResult, ScoredBand } from '@/lib/performance-score';
 import { RiArrowDownCircleLine, RiLoader4Line, RiMedalLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
+import { Card } from '@/components/ui/Card';
 
 /**
  * THE CARD, SPELLED OUT.
@@ -63,8 +64,8 @@ function BandLine({ band, bars }: { band: ScoredBand; bars: CardData['bars'] }) 
   return (
     <li className="py-2">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--sys-foreground)]">{band.ar}</span>
-        <span className="text-xs tabular-nums text-[var(--sys-muted-foreground)]">
+        <span className="text-note font-medium text-[var(--sys-foreground)]">{band.ar}</span>
+        <span className="text-note tabular-nums text-[var(--sys-muted-foreground)]">
           {missing ? (
             'لا يُقاس'
           ) : (
@@ -85,7 +86,7 @@ function BandLine({ band, bars }: { band: ScoredBand; bars: CardData['bars'] }) 
         />
       </div>
       {low && (
-        <p className="mt-1 flex items-center gap-1 text-xs text-[var(--sys-destructive)]">
+        <p className="mt-1 flex items-center gap-1 text-note text-[var(--sys-destructive)]">
           <RiArrowDownCircleLine className="h-4 w-4" /> دون العتبة التي حدّدها المتجر
         </p>
       )}
@@ -110,7 +111,7 @@ export function ScoreCard({ userId }: { userId?: string }) {
   }, [load]);
 
   if (error) {
-    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>;
+    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">{error}</p>;
   }
   if (!data) {
     return (
@@ -123,16 +124,17 @@ export function ScoreCard({ userId }: { userId?: string }) {
   const score = data.score;
 
   return (
-    <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4" dir="rtl">
+    <Card padding="md">
+      <section dir="rtl">
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--sys-border)] pb-3">
         <div>
           <h3 className="text-sm font-bold text-[var(--sys-heading)]">{data.person.name}</h3>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">{PERIOD_AR[data.window.period]}</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">{PERIOD_AR[data.window.period]}</p>
         </div>
         {score?.total !== null && score !== null && (
           <div className="text-left" dir="ltr">
             <span className="text-2xl font-bold tabular-nums text-[var(--sys-primary)]">{score.total}</span>
-            <span className="text-xs text-[var(--sys-muted-foreground)]"> / {score.possible}</span>
+            <span className="text-note text-[var(--sys-muted-foreground)]"> / {score.possible}</span>
           </div>
         )}
       </header>
@@ -140,7 +142,7 @@ export function ScoreCard({ userId }: { userId?: string }) {
       {/* Nothing at all when the sample is too small. A delivery rate out of
           four orders is noise, and noise shown once is believed for a month. */}
       {score === null || score.reason === 'BELOW_MINIMUM' ? (
-        <p className="py-6 text-center text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="py-6 text-center text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           {score === null
             ? 'لا يُقاس هذا الدور بهذا السكور.'
             : `العيّنة ${score.sample} طلباً، والحد الأدنى ${score.minSample}. لا سكور بعد — رقمٌ من عيّنة صغيرة يُصدَّق شهراً كاملاً.`}
@@ -148,7 +150,7 @@ export function ScoreCard({ userId }: { userId?: string }) {
       ) : (
         <>
           {data.rank && (
-            <p className="flex items-center gap-1.5 pt-3 text-xs text-[var(--sys-muted-foreground)]">
+            <p className="flex items-center gap-1.5 pt-3 text-note text-[var(--sys-muted-foreground)]">
               <RiMedalLine className="h-4 w-4 text-[var(--sys-warning)]" />
               ترتيبك <span className="font-semibold tabular-nums text-[var(--sys-heading)]">{data.rank.position}</span> من{' '}
               <span className="tabular-nums">{data.rank.of}</span> في دورك بهذا المتجر
@@ -165,7 +167,7 @@ export function ScoreCard({ userId }: { userId?: string }) {
 
       {data.owed && data.owed.length > 0 && (
         <footer className="mt-3 border-t border-[var(--sys-border)] pt-2">
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             عمولة مستحقة لم تُصرف بعد:{' '}
             {data.owed.map((o) => (
               <span key={o.currencyCode} className="ms-2 font-semibold tabular-nums text-[var(--sys-heading)]" dir="ltr">
@@ -176,10 +178,11 @@ export function ScoreCard({ userId }: { userId?: string }) {
         </footer>
       )}
 
-      <p className="mt-2 text-xs leading-relaxed text-[var(--sys-muted)]">
+      <p className="mt-2 text-note leading-relaxed text-[var(--sys-muted)]">
         الأوزان ثابتة ولا تُعدَّل، ليبقى الرقم قابلاً للمقارنة بين الشهور. القابل للضبط هو العتبات
         وحدها، وهي تلوّن السطر ولا تحرّك النقاط.
       </p>
-    </section>
+      </section>
+    </Card>
   );
 }

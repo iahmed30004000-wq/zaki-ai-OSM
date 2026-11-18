@@ -111,7 +111,7 @@ export function AttributionTable({
           honest behaviour: the thing genuinely does not fit, and pretending
           otherwise costs the comparison it exists to make.
         */}
-        <table className="w-full text-xs">
+        <table className="w-full text-note">
         <thead className="bg-[var(--sys-surface)] border-b border-[var(--sys-border)] text-[var(--sys-muted-foreground)]">
           <tr>
             {HEADS.map((h) => (
@@ -133,7 +133,7 @@ export function AttributionTable({
               <td className="px-4 py-3 whitespace-nowrap">
                 <span className="font-semibold text-[var(--sys-heading)]">{r.name}</span>
                 {r.kind && (
-                  <span className="text-xs text-[var(--sys-muted)] block">{KIND_AR[r.kind] ?? r.kind}</span>
+                  <span className="text-note text-[var(--sys-muted)] block">{KIND_AR[r.kind] ?? r.kind}</span>
                 )}
               </td>
               <Num value={r.brought} />

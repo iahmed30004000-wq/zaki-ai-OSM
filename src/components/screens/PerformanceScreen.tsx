@@ -27,7 +27,8 @@ import { IntelligenceStrip } from '@/components/growth/IntelligenceStrip';
 import { LossPanel } from '@/components/dashboard/LossPanel';
 import { PersonNameLink, ProductNameLink } from '@/components/dashboard/NameLinks';
 import { Money } from '@/components/ui/Money';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Tabs } from '@/components/ui/Tabs';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Rows } from '@/components/ui/Rows';
 import { healthOf, type Health } from '@/lib/health';
@@ -318,8 +319,7 @@ export function PerformanceScreen() {
   // table as if the shop had sold nothing in this window.
   if (refusal && !analytics) {
     return (
-      <div className="space-y-6">
-        <PageHeader title={routeLabel('/growth/performance')} />
+      <PageShell title={routeLabel('/growth/performance')}>
         <Card>
           <CardContent>
             <EmptyState
@@ -329,15 +329,12 @@ export function PerformanceScreen() {
             />
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={routeLabel('/growth/performance')}
+      <PageShell title={routeLabel('/growth/performance')}
             description="ربح كل منتج، وترتيب المنتجات، وأداء الفريق — للمدة المختارة"
             actions={
               <><div className="flex items-center gap-2 flex-wrap gap-y-2">
@@ -353,11 +350,11 @@ export function PerformanceScreen() {
                 beside it. The orders screen exports what its filters match. */}
           </div></>
             }
-          />
+          >
 
         {(canLanding || canScores) && (
-          <div className="flex gap-6 border-b border-[var(--sys-border)] text-sm" role="tablist">
-            {([
+          <Tabs
+            tabs={([
               ['team', 'المنتجات والفريق والقنوات'],
               ...(canScores ? [['scores', 'سكور الموظفين'] as [Tab, string]] : []),
               // The same people as the team table (`team.monitor`): what each agent holds now, and when customers pick up.
@@ -365,21 +362,10 @@ export function PerformanceScreen() {
               // The team leader's end-of-day report (step H2): the same key as the team table, `team.monitor`.
               ...(canScores ? [['eod', 'تقرير نهاية اليوم'] as [Tab, string]] : []),
               ...(canLanding ? [['landing', 'تحليلات صفحات الهبوط'] as [Tab, string]] : []),
-            ] as [Tab, string][]).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={tab === key}
-                onClick={() => pickTab(key)}
-                className={`-mb-px border-b-2 pb-2.5 font-semibold transition-colors ${
-                  tab === key ? 'border-[var(--sys-primary)] text-[var(--sys-primary)]' : 'border-transparent text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+            ] as [Tab, string][]).map(([key, label]) => ({ key, label }))}
+            value={tab}
+            onChange={(key) => pickTab(key as Tab)}
+          />
         )}
 
         {tab === 'eod' && canScores ? (
@@ -482,15 +468,15 @@ export function PerformanceScreen() {
           back, against a bar of 8% good and 15% acceptable.
         */}
         {vitals && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--sys-heading)]">
+          <Card plain className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+            <span className="inline-flex items-center gap-1.5 text-note font-bold text-[var(--sys-heading)]">
               <RiAlertLine className="w-4 h-4 text-[var(--sys-warning)]" aria-hidden />
               الإرجاع في هذه المدة
             </span>
             <span className="text-sm font-black tabular-nums text-[var(--sys-heading)]">
               {vitals.door.returnRate === null ? '—' : `${vitals.door.returnRate}%`}
             </span>
-            <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+            <span className="text-note text-[var(--sys-muted-foreground)] tabular-nums">
               {vitals.door.returned} من {vitals.door.decided} طلب بتَّ فيه الباب
             </span>
             <HealthChip
@@ -498,7 +484,7 @@ export function PerformanceScreen() {
               withWhy
               health={healthOf('returnRate', vitals.door.returnRate, vitals.door.decided)}
             />
-          </div>
+          </Card>
         )}
 
         {/* Section 18: Product Profit Analysis Table */}
@@ -527,7 +513,7 @@ export function PerformanceScreen() {
                   { key: 'c0', label: "المنتج", primary: true,
                     render: (prod: any) => (
                   <><span className="font-bold text-[var(--sys-heading)] block">{prod.name}</span>
-                        <span className="font-mono text-xs text-[var(--sys-muted)]">{prod.sku}</span></>
+                        <span className="font-mono text-note text-[var(--sys-muted)]">{prod.sku}</span></>
                 ) },
                   { key: 'c1', label: "الطلبات", primary: true,
                     render: (prod: any) => (prod.totalOrders) },
@@ -608,7 +594,7 @@ export function PerformanceScreen() {
                   { key: 'c11', label: "هامش الربح",
                     render: (prod: any) => (
                   rowCostStated(prod)
-                    ? <span className="font-bold text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] px-2 py-0.5 rounded-lg text-xs">
+                    ? <span className="font-bold text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] px-2 py-0.5 rounded-lg text-note">
                           {prod.profitMargin}%
                         </span>
                     : <span className="text-[var(--sys-muted)]" title="لا كلفة مسجَّلة لهذا المنتج — الهامش سيكون الإيراد نفسه">—</span>
@@ -723,11 +709,11 @@ export function PerformanceScreen() {
                   only which band is out and why.
                 */}
                 {collection?.level === 'WITHHELD' && (
-                  <p className="mx-5 mb-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
+                  <Card plain padding="sm" className="mx-5 mb-2 text-note text-[var(--sys-muted-foreground)]">
                     <span className="font-semibold text-[var(--sys-heading)]">التحصيل خارج السكور: </span>
                     {collection.ar} لذلك يبقى بند «نسبة التحصيل» بلا نقاط حتى تُسوّى أول شحنة — وكل سكور
                     يُحسب من المجموع الظاهر بجانبه، لا من 100.
-                  </p>
+                  </Card>
                 )}
                 <ul className="divide-y divide-[var(--sys-border)]">
                   {ranked.map((c, i) => (
@@ -739,7 +725,7 @@ export function PerformanceScreen() {
                           «worse», and they are not worse — they are
                           unmeasured.
                         */}
-                        <span className="w-5 text-xs font-black tabular-nums text-[var(--sys-muted)]">
+                        <span className="w-5 text-note font-black tabular-nums text-[var(--sys-muted)]">
                           {c.score.total === null ? '—' : i + 1}
                         </span>
                         <span className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--sys-heading)]">
@@ -752,11 +738,11 @@ export function PerformanceScreen() {
                         </span>
 
                         {c.score.total === null ? (
-                          <span className="ms-auto text-xs text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
+                          <span className="ms-auto text-note text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
                         ) : (
                           <span className="ms-auto inline-flex items-baseline gap-1 tabular-nums">
                             <span className="text-lg font-black text-[var(--sys-heading)]">{c.score.total}</span>
-                            <span className="text-xs text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
+                            <span className="text-note text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
                           </span>
                         )}
                       </div>
@@ -769,7 +755,7 @@ export function PerformanceScreen() {
                       {c.score.total !== null && (
                         <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                           {c.score.bands.map((b) => (
-                            <li key={b.key} className="text-xs text-[var(--sys-muted-foreground)]">
+                            <li key={b.key} className="text-note text-[var(--sys-muted-foreground)]">
                               {b.ar}{' '}
                               <span className="tabular-nums text-[var(--sys-foreground)]">
                                 {b.value === null
@@ -788,7 +774,7 @@ export function PerformanceScreen() {
 
                       {/* The plain counts, so the score can be checked against
                           the parcels it was built from. */}
-                      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sys-muted)] tabular-nums">
+                      <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-note text-[var(--sys-muted)] tabular-nums">
                         <span>{c.metrics.assigned} مُسند</span>
                         <span className="text-[var(--sys-success)]">{c.metrics.delivered} مسلَّم</span>
                         <span className="text-[var(--sys-destructive)]">{c.metrics.returned} مرتجع</span>
@@ -807,8 +793,7 @@ export function PerformanceScreen() {
         </Card>
         </>
         )}
-      </div>
-    </>
+      </PageShell>
   );
 }
 
@@ -842,16 +827,16 @@ function Rank({
 }) {
   const tone = warn ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-primary)]';
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg">
-      <span className={`text-xs font-bold ${tone} inline-flex items-center gap-1.5`}>
+    <Card plain padding="md">
+      <span className={`text-note font-bold ${tone} inline-flex items-center gap-1.5`}>
         {icon}
         {label}
       </span>
       <p className="font-bold text-[var(--sys-heading)] text-sm mt-1.5 line-clamp-1" title={name}>
         {name ? <ProductNameLink id={id} name={name} /> : '—'}
       </p>
-      <p className="text-xs text-[var(--sys-muted-foreground)] font-semibold mt-0.5 tabular-nums">{note}</p>
-    </div>
+      <p className="text-note text-[var(--sys-muted-foreground)] font-semibold mt-0.5 tabular-nums">{note}</p>
+    </Card>
   );
 }
 

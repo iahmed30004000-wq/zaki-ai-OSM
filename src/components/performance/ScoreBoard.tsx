@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { AgentScorecard } from './AgentScorecard';
 import { CommissionPreview } from './CommissionPreview';
+import { Card } from '@/components/ui/Card';
 import type { ScoreResult } from '@/lib/performance-score';
 import { RiLoader4Line } from '@remixicon/react';
 
@@ -78,7 +79,7 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
         <td className="px-3 py-2 font-medium text-[var(--sys-heading)]">{person.name}</td>
         <td className="px-3 py-2">
           {unmeasured ? (
-            <span className="text-xs text-[var(--sys-muted)]">
+            <span className="text-note text-[var(--sys-muted)]">
               العيّنة {s.sample} — الحد الأدنى {s.minSample}
             </span>
           ) : (
@@ -99,7 +100,7 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
                   ((b.key === 'delivery_rate' && b.value < bars.deliveryRate) ||
                     (b.key === 'issues_rate' && b.value > bars.issuesRate));
                 return (
-                  <li key={b.key} className="flex items-baseline justify-between gap-2 text-xs">
+                  <li key={b.key} className="flex items-baseline justify-between gap-2 text-note">
                     <span className={low ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-muted-foreground)]'}>{b.ar}</span>
                     <span className="tabular-nums text-[var(--sys-foreground)]">
                       {b.points === null ? 'لا يُقاس' : `${b.points} من ${b.weight}`}
@@ -132,7 +133,7 @@ export function ScoreBoard() {
   }, [load]);
 
   if (error) {
-    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>;
+    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">{error}</p>;
   }
   if (!data) {
     return (
@@ -144,14 +145,14 @@ export function ScoreBoard() {
 
   return (
     <div className="space-y-3" dir="rtl">
-      <p className="text-xs text-[var(--sys-muted-foreground)]">
+      <p className="text-note text-[var(--sys-muted-foreground)]">
         {PERIOD_AR[data.window.period]} · الأعلى أولاً. لا توجد قائمة معلنة للأسوأ، ولا زرّ يقلب
         الترتيب — السكور أداة قياس، ولوحةُ فشلٍ تجعل الناس تتجنّب المركز الأخير بدل أن ترفع الرقم.
       </p>
 
       {data.roles.map((r) => (
-        <section key={r.role} className="overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
-          <h3 className="border-b border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-xs font-bold text-[var(--sys-foreground)]">
+        <Card plain key={r.role} className="overflow-hidden">
+          <h3 className="border-b border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-note font-bold text-[var(--sys-foreground)]">
             {r.ar}
           </h3>
 {/*
@@ -175,7 +176,7 @@ export function ScoreBoard() {
           otherwise costs the comparison it exists to make.
         */}
         <table className="w-full text-sm">
-            <thead className="text-xs text-[var(--sys-muted)]">
+            <thead className="text-note text-[var(--sys-muted)]">
               <tr>
                 <th className="w-10 px-3 py-1.5 text-right font-medium">#</th>
                 <th className="px-3 py-1.5 text-right font-medium">الموظف</th>
@@ -188,7 +189,7 @@ export function ScoreBoard() {
               ))}
             </tbody>
           </table>
-        </section>
+        </Card>
       ))}
 
       {/* the per-day agent scorecard (step G1): its own door and its own failure — it draws nothing if it cannot be read */}
@@ -197,9 +198,9 @@ export function ScoreBoard() {
       <CommissionPreview />
 
       {data.roles.length === 0 && (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-sm text-[var(--sys-muted-foreground)]">
+        <Card plain padding="lg" className="text-center text-sm text-[var(--sys-muted-foreground)]">
           لا موظفين في الأدوار التي يقيسها هذا السكور بهذا المتجر.
-        </p>
+        </Card>
       )}
     </div>
   );
