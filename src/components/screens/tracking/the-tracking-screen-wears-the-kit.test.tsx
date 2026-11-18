@@ -288,6 +288,31 @@ describe('(b) every press reaches the same handler with the same arguments', () 
     expect(screen.queryByRole('region', { name: 'تقرير الاستلام الجماعي' })).toBeNull();
   });
 
+  it.each([
+    ['desk', false],
+    ['phone', true],
+  ] as const)('«استلم المحدد» (%s) is off while its request is in the air — a second press sends nothing (NEGATIVE)', async (_n, onPhone) => {
+    phone.value = onPhone;
+    let release: () => void = () => undefined;
+    api.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posts.push({ url, body: JSON.parse(String(init.body)) });
+        await new Promise<void>((r) => { release = r; });
+        return answer;
+      }
+      return listAnswer(PAGE());
+    });
+    await draw();
+    fireEvent.click(btn(/حدّد كل اللي الشركة بتقول عنهم/));
+    fireEvent.click(btn(/استلم المحدد \(1\)/));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    const press = btn(/استلم المحدد \(1\)/) as HTMLButtonElement;
+    expect(press.disabled).toBe(true);
+    fireEvent.click(press);
+    expect(posts).toHaveLength(1);
+    release();
+  });
+
   it('«استلمت منه» is off when two companies are ticked (NEGATIVE)', async () => {
     api.mockImplementation(async () =>
       listAnswer([...PAGE(), parcel('owed5', { shippingStatus: 'DELIVERED', late: false, deliveryProvider: { id: 'p2', name: 'أخرى', kind: 'AGENT' } })])
