@@ -242,24 +242,30 @@ describe('the card keeps everything it had', () => {
   it('and the down button still moves a row down — through the shared function', async () => {
     mountCard();
     const rows = await screen.findAllByRole('listitem');
-    const [a, b] = NAV[0].routes;
-    expect(rowsOf()[0].textContent).toContain(a.label);
+    // 18/11 (R6): the first group is «اليوم», one screen — a row cannot move down inside it. The rows are pinned on «الطلبات»
+    // (the second group), counted from where its first row stands.
+    const at = NAV[0].routes.length;
+    const [a, b] = NAV[1].routes;
+    expect(rowsOf()[at].textContent).toContain(a.label);
 
     await act(async () => {
-      fireEvent.click(inRow(rows[0]).getByLabelText(`انزل ${a.label}`));
+      fireEvent.click(inRow(rows[at]).getByLabelText(`انزل ${a.label}`));
     });
 
     const after = rowsOf();
-    expect(after[0].textContent, 'الأول ما نزل').toContain(b.label);
-    expect(after[1].textContent).toContain(a.label);
+    expect(after[at].textContent, 'الأول ما نزل').toContain(b.label);
+    expect(after[at + 1].textContent).toContain(a.label);
   });
 
   it('and saving sends the flat order, with the moved screen where it was put', async () => {
     mountCard();
     const rows = await screen.findAllByRole('listitem');
-    const [a, b] = NAV[0].routes;
+    // 18/11 (R6): the first group is «اليوم», one screen — a row cannot move down inside it. The rows are pinned on «الطلبات»
+    // (the second group), counted from where its first row stands.
+    const at = NAV[0].routes.length;
+    const [a, b] = NAV[1].routes;
     await act(async () => {
-      fireEvent.click(inRow(rows[0]).getByLabelText(`انزل ${a.label}`));
+      fireEvent.click(inRow(rows[at]).getByLabelText(`انزل ${a.label}`));
     });
     await act(async () => {
       fireEvent.click(screen.getByText('احفظ'));
