@@ -79,7 +79,7 @@ const draw = (shape: (g: NavGroup[]) => NavGroup[] = (g) => g) =>
     </Shell>
   );
 
-/** Every fixed pixel width an element was rendered with: `w-[Npx]`, `min-w-[Npx]`, or an inline width. */
+/** Every fixed pixel width an element was rendered with: a width or minimum-width class in px, or an inline width. */
 function fixedWidths(container: HTMLElement): { px: number; where: string }[] {
   const out: { px: number; where: string }[] = [];
   for (const el of Array.from(container.querySelectorAll<HTMLElement>('*'))) {
@@ -202,6 +202,28 @@ describe('the shell’s own words are 14px, and the menu is 240px on a desk', ()
     draw();
     const chip = screen.getByLabelText(/المتجر الحالي/);
     for (const p of Array.from(chip.querySelectorAll('p'))) expect(classOf(p)).toContain('text-sm');
+    // And the name and the role beside the bell.
+    const who = Array.from(screen.getByText('س', { selector: 'header p' }).parentElement!.querySelectorAll('p'));
+    expect(who).toHaveLength(2);
+    for (const p of who) {
+      expect(classOf(p)).toContain('text-sm');
+      expect(classOf(p)).not.toContain('text-xs');
+    }
+  });
+
+  it('the «التالي» link of a road reads at 14px', () => {
+    const found: Element[] = [];
+    for (const path of ['/finance/matching', '/finance/settlements', '/ops/batches', '/ops/prepare', '/ops/tracking']) {
+      here.path = path;
+      const { container } = draw();
+      found.push(...Array.from(container.querySelectorAll('main nav > a')).filter((a) => a.textContent?.startsWith('التالي')));
+      cleanup();
+    }
+    expect(found.length, 'لا رابط «التالي» على أي طريق').toBeGreaterThan(0);
+    for (const a of found) {
+      expect(classOf(a)).toContain('text-sm');
+      expect(classOf(a)).not.toContain('text-xs');
+    }
   });
 
   it('the hub pills read at 14px', () => {

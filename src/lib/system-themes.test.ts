@@ -273,30 +273,56 @@ describe('legible in the theme it lives in', () => {
    * pair, `bg-[var(--sys-primary)]` with its own text colour on the same line (pinned below and in
    * the wordmark test). Names are built from pieces so this file adds no class to the stylesheet.
    */
-  const CONTENT_TOKENS = ['muted-foreground', 'muted', 'heading', 'border', 'primary-soft'].map((n) => `--sys-${n})`);
+  /*
+   * Every palette name that is not the menu's own is a CONTENT token here — `card`, `foreground`,
+   * `surface`, the semantic colours, all of it — read by its exact name, so `border` is not
+   * `sidebar-border`. `primary` and `primary-foreground` are allowed only as the lit row's pair:
+   * every `--sys-primary` on a line must be a `bg-[var(--sys-primary)]` (so the arbitrary-colour form
+   * `text-[color:var(…primary)]` is caught too). The one other exception is the veil laid over the
+   * PAGE behind the phone's open drawer (`bg-[var(--sys-background)]/60`): it is not on the menu.
+   */
+  const CONTENT_TOKENS = new Set(SYS_VARS.filter((n) => !n.startsWith('sidebar') && n !== 'primary-foreground'));
+  const LIT = 'bg-[var(--sys-' + 'primary)]';
+  const VEIL = 'bg-[var(--sys-' + 'background)]/60';
+  function borrowed(code: string): string[] {
+    const offenders: string[] = [];
+    for (const line of code.split('\n')) {
+      const names = [...line.matchAll(/--sys-([a-z0-9-]+)/g)].map((m) => m[1]);
+      const lit = line.split(LIT).length - 1;
+      let primaries = 0;
+      for (const n of names) {
+        if (n === 'primary') primaries += 1;
+        else if (n === 'background' && line.includes(VEIL) && line.includes('fixed inset-0')) continue;
+        else if (CONTENT_TOKENS.has(n as never)) offenders.push(`${n}: ${line.trim().slice(0, 90)}`);
+      }
+      if (primaries > lit) offenders.push(`primary not as the lit fill: ${line.trim().slice(0, 90)}`);
+    }
+    return offenders;
+  }
   const sidebarCode = () =>
     stripComments(readFileSync(join(process.cwd(), 'src/components/shell/Sidebar.tsx'), 'utf8'));
 
   it('and Sidebar.tsx paints from no content token — only the lit row’s own pair', () => {
-    const offenders: string[] = [];
+    expect(borrowed(sidebarCode()), 'القائمة تستعير لوناً من الصفحة').toEqual([]);
     for (const line of sidebarCode().split('\n')) {
-      for (const t of CONTENT_TOKENS) if (line.includes(t)) offenders.push(`${t}: ${line.trim().slice(0, 90)}`);
-      // `primary` may be a background (the lit row, the badge) — never a text or a border colour on the menu.
-      if (/(?:text|border|ring|fill|stroke)-\[var\(--sys-primary\)\]/.test(line)) {
-        offenders.push(`primary as text: ${line.trim().slice(0, 90)}`);
-      }
-      if (line.includes('bg-[var(--sys-primary)]')) {
+      if (line.includes(LIT)) {
         expect(line, 'خلفية اللون المميّز بلا نصّه').toContain('text-[var(--sys-primary-foreground)]');
       }
     }
-    expect(offenders, 'القائمة تستعير لوناً من الصفحة').toEqual([]);
   });
 
-  it('and the guard can tell: one borrowed colour is caught', () => {
-    const planted = `${sidebarCode()}\n<span className="text-[var(--sys-muted-foreground)]" />`;
-    expect(planted.split('\n').some((l) => CONTENT_TOKENS.some((t) => l.includes(t)))).toBe(true);
-    const primaryText = '<span className="text-[var(--sys-primary)]">AI</span>';
-    expect(/(?:text|border|ring|fill|stroke)-\[var\(--sys-primary\)\]/.test(primaryText)).toBe(true);
+  it('and the guard can tell: one borrowed colour, in any form, is caught', () => {
+    // Built from pieces: a whole class written here would be a rule in the first-load sheet.
+    const plant = (cls: string) => borrowed(`${sidebarCode()}\n<span className="${cls}" />`);
+    expect(plant('text-[var(--sys-' + 'muted-foreground)]')).not.toEqual([]);
+    expect(plant('text-[var(--sys-' + 'primary)]')).not.toEqual([]);
+    expect(plant('text-[color:var(--sys-' + 'primary)]')).not.toEqual([]);
+    expect(plant('bg-[var(--sys-' + 'card)]')).not.toEqual([]);
+    expect(plant('text-[var(--sys-' + 'foreground)]')).not.toEqual([]);
+    expect(plant('border-[var(--sys-' + 'border)]')).not.toEqual([]);
+    expect(plant('bg-[var(--sys-' + 'background)]')).not.toEqual([]);
+    // …and the menu's own names are not.
+    expect(plant('border-[var(--sys-' + 'sidebar-border)]')).toEqual([]);
   });
 
   it('and the five measured faults are each painted from a menu token now', () => {
