@@ -21,6 +21,8 @@ import { stripComments } from '@/lib/guard-source';
 
 const { db, requireContext, requirePermission } = vi.hoisted(() => ({
   db: {
+    // B2 (18/11): the shipping doors now ask whether the store is a test bench (`bench-store.ts`); unset, this answers «no».
+    store: { findFirst: vi.fn() },
     orderAddOn: { aggregate: async () => ({ _sum: { reservedQty: 0 } }), findMany: async () => [] },
     orderItem: { findMany: vi.fn(), aggregate: vi.fn() },
     productionBatch: { aggregate: vi.fn() },

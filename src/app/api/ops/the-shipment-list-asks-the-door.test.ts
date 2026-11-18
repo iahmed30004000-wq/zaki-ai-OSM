@@ -10,6 +10,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, requireContext, shipmentBlocks, resolveDeliveryFee } = vi.hoisted(() => ({
   db: {
+    // B2 (18/11): the shipping doors now ask whether the store is a test bench (`bench-store.ts`); unset, this answers «no».
+    store: { findFirst: vi.fn() },
     deliveryProvider: { findFirst: vi.fn() },
     order: { findMany: vi.fn(), count: vi.fn(), update: vi.fn() },
     shippingBatch: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn(), findUnique: vi.fn() },

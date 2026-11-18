@@ -45,6 +45,8 @@ const { db, state, adapterFor, createShipment } = vi.hoisted(() => {
   };
   const ids = (v: unknown): string[] | null => (v && typeof v === 'object' && 'in' in v ? (v as { in: string[] }).in : null);
   const db = {
+    // B2 (18/11): the press now asks whether the store is a test bench (`bench-store.ts`); this one is not.
+    store: { findFirst: vi.fn(async () => null) },
     shippingBatch: {
       findFirst: vi.fn(async () => ({ id: 'b1', batchNumber: 'BATCH-2026-0009', status: 'READY', provider: state.provider })),
     },

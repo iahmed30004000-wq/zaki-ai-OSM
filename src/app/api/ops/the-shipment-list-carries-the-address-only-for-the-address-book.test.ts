@@ -17,7 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, can, held, shipmentBlocks, resolveDeliveryFee } = vi.hoisted(() => ({
-  db: { order: { findMany: vi.fn(), count: vi.fn() } },
+  // B2 (18/11): `store` — the list now asks whether the store is a test bench (`bench-store.ts`); unset, it answers «no».
+  db: { order: { findMany: vi.fn(), count: vi.fn() }, store: { findFirst: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
   held: { keys: new Set<string>() },

@@ -5,6 +5,7 @@ import { courierBelongsToStore } from './scope';
 import { isOutcomeUnknown } from './types';
 import { logAudit } from '../audit';
 import { formatPhoneNumber } from '../phone';
+import { isBenchStore } from '../bench-store';
 
 /**
  * HANDING THE ORDERS TO THE COURIER.
@@ -49,7 +50,9 @@ export interface DispatchOutcome {
     /** The courier account has no address to collect from: nothing of the batch was sent. */
     | 'NO_ORIGIN_ADDRESS'
     /** This order has no address to deliver to. */
-    | 'NO_ADDRESS';
+    | 'NO_ADDRESS'
+    /** A bench order (`test-store.ts`, B2): it stops at confirmation and is never sent to a courier. */
+    | 'TEST_STORE';
   /** With NO_COURIER_CITY: the governorate the courier has no id for yet. */
   regionName?: string | null;
   /**
@@ -260,6 +263,13 @@ export async function dispatchBatch(input: {
 
   const adapter = adapterFor(batch.provider);
 
+  /*
+   * A BENCH SENDS NOTHING TO A COURIER (`test-store.ts`, B2). Its orders stop at confirmation; one that sits on a trolley from
+   * before its store became a bench may still be handed over by hand (history), but no parcel is created for it at the
+   * company. Asked once: the batch is this store's.
+   */
+  const bench = await isBenchStore(db, { companyId: input.companyId, storeId: input.storeId });
+
   const orders = await db.order.findMany({
     where: {
       shippingBatchId: batch.id,
@@ -325,6 +335,11 @@ export async function dispatchBatch(input: {
     // claim below is, because this snapshot was read before the loop.
     if (order.trackingNumber) {
       outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: 'ALREADY_SENT' });
+      continue;
+    }
+    // Before the claim and before any call: a bench order is never a parcel at the company.
+    if (bench) {
+      outcomes.push({ orderId: order.id, orderNumber: order.orderNumber, ok: false, skipped: 'TEST_STORE' });
       continue;
     }
     if (!order.deliveryProviderId) {

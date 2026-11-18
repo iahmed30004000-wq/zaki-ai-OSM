@@ -1,4 +1,5 @@
 import type { DispatchOutcome } from './couriers/dispatch';
+import { BENCH_STOPS_AR } from './test-store';
 
 /**
  * WHY ONE ORDER OF A DISPATCH DID NOT GO, IN WORDS.
@@ -29,6 +30,8 @@ export function dispatchReasonAr(o: Pick<DispatchOutcome, 'skipped' | 'regionNam
       return 'عنوان الانطلاق فاضي بحساب الشركة — اضغط «تغيير الحساب» واكتبه، الشركة بترفض الطرد بدونه';
     case 'NO_ADDRESS':
       return 'الطلب بلا عنوان — اكتب العنوان بالطلب وأعد الترحيل';
+    case 'TEST_STORE':
+      return BENCH_STOPS_AR;
     default:
       return o.error ?? '';
   }

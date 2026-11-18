@@ -104,6 +104,8 @@ const { fake, requireContext, logAudit, notify } = vi.hoisted(() => {
     confirmer: () => null,
     // Whom a returning customer's order is held for (order-reservation.ts): the window reads it, nobody here is named.
     assignee: () => null,
+    // The bench mark (B2, 18/11): the window reads whether the store is a test bench, to word a confirmed order. This one is not.
+    store: () => ({ isTest: false }),
   };
 
   const answers = (who: 'db' | 'tx'): Record<string, Record<string, Answer>> => ({
