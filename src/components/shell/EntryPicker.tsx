@@ -7,6 +7,7 @@ import { storeTypeLabel } from '@/lib/store-types';
 import { CurrencyPicker, currencyChoiceReady, type CurrencyChoice } from '@/components/ui/CurrencyPicker';
 import { RiAddCircleLine, RiEarthLine, RiLoader4Line, RiStore2Line } from '@remixicon/react';
 import { BrandStage } from './BrandStage';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Two explicit steps: country, then store. The server decides what is
@@ -133,11 +134,11 @@ export function EntryPicker() {
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-[var(--sys-heading)]">{c.name}</span>
-                  <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="block text-note text-[var(--sys-muted-foreground)]">
                     {c.currencyCode} · {c.activeStores} متجر نشط
                   </span>
                 </span>
-                <span className="text-xs text-[var(--sys-muted)]" dir="ltr">{c.code}</span>
+                <span className="text-note text-[var(--sys-muted)]" dir="ltr">{c.code}</span>
               </button>
             </li>
           ))}
@@ -188,7 +189,7 @@ export function EntryPicker() {
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-semibold text-[var(--sys-heading)]">{s.name}</span>
-                <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                <span className="block text-note text-[var(--sys-muted-foreground)]">
                   {s.status === 'ACTIVE' ? 'نشط' : 'موقوف'} ·{' '}
                   {storeTypeLabel(s.type)}
                 </span>
@@ -236,9 +237,11 @@ function Screen({
           )}
           {children}
           {onBack && (
-            <button onClick={onBack} className="block mx-auto text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]">
-              تغيير البلد
-            </button>
+            <div className="text-center">
+              <Button type="button" variant="quiet" size="sm" onClick={onBack}>
+                تغيير البلد
+              </Button>
+            </div>
           )}
         </div>
       </BrandStage>
@@ -262,12 +265,9 @@ function AddCountryForm({ open, onOpen, onDone }: { open: boolean; onOpen: () =>
 
   if (!open) {
     return (
-      <button
-        onClick={onOpen}
-        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-      >
+      <Button type="button" variant="secondary" onClick={onOpen} className="w-full border-dashed">
         <RiAddCircleLine className="w-4 h-4" /> إضافة بلد
-      </button>
+      </Button>
     );
   }
 
@@ -302,13 +302,9 @@ function AddCountryForm({ open, onOpen, onDone }: { open: boolean; onOpen: () =>
       <Field label="اسم البلد" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="سوريا" />
       <Field label="الرمز (ISO)" value={form.code} onChange={(v) => setForm({ ...form, code: v })} placeholder="SY" dir="ltr" />
       <CurrencyPicker value={currency} onChange={setCurrency} />
-      <button
-        type="submit"
-        disabled={busy || !currencyChoiceReady(currency)}
-        className="w-full py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-60"
-      >
+      <Button type="submit" disabled={busy || !currencyChoiceReady(currency)} className="w-full">
         {busy ? 'جارٍ الحفظ…' : 'إضافة البلد'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -330,12 +326,9 @@ function AddStoreForm({
 
   if (!open) {
     return (
-      <button
-        onClick={onOpen}
-        className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-      >
+      <Button type="button" variant="secondary" onClick={onOpen} className="w-full border-dashed">
         <RiAddCircleLine className="w-4 h-4" /> إضافة متجر
-      </button>
+      </Button>
     );
   }
 
@@ -368,13 +361,9 @@ function AddStoreForm({
         placeholder="damascus"
         dir="ltr"
       />
-      <button
-        type="submit"
-        disabled={busy}
-        className="w-full py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-60"
-      >
+      <Button type="submit" disabled={busy} className="w-full">
         {busy ? 'جارٍ الحفظ…' : 'إضافة المتجر'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -394,7 +383,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
