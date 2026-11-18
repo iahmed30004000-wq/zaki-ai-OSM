@@ -181,7 +181,7 @@ interface OrderRow {
   createdBy: { id: string; name: string } | null;
   channel: { id: string; name: string } | null;
   customer: { id: string; fullName: string; phone: string; rawPhone: string; city: string; address: string };
-  items: { id: string; productName: string; quantity: number; freeQuantity: number; lineTotal: number }[];
+  items: { id: string; productName: string; quantity: number; freeQuantity: number; lineTotal: number; variantSummary?: string | null }[];
   /** What the customer added after ordering — absent on a response from before this field existed. */
   addOns?: { id: string; productName: string; quantity: number; total: number }[];
   _count: { contactAttempts: number; notes: number };
@@ -1863,6 +1863,8 @@ export function ConfirmationMineScreen() {
                     <li key={it.id}>
                       {it.productName} × {it.quantity}
                       {it.freeQuantity > 0 && ` (+${it.freeQuantity} هدية)`}
+                      {/* The size and colour of every piece — read out on the call (product variants). */}
+                      {it.variantSummary && <span className="font-semibold text-[var(--sys-heading)]"> — {it.variantSummary}</span>}
                     </li>
                   ))}
                   {order.addOns?.map((a) => (
