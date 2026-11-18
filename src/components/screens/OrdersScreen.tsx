@@ -46,7 +46,8 @@ const STATUS_FILTER_LABELS: Record<string, string> = { ...STATE_LABEL_AR, CLOSED
 import { RiAddCircleLine, RiArrowGoBackLine, RiCloseLine, RiDownload2Line, RiEBike2Line, RiMagicLine, RiPrinterLine, RiSearchLine, RiTimerLine, RiTruckLine, RiUploadCloud2Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { arDateTime } from '@/lib/format';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { ImportOrdersDialog } from '@/components/orders/ImportOrdersDialog';
 import { MigrateOrdersDialog } from '@/components/orders/MigrateOrdersDialog';
@@ -624,9 +625,8 @@ export function OrdersScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={t.orders}
+      {/* The one frame of a screen (PageShell): the header, the filters under it, then the content with the page rhythm. */}
+      <PageShell title={routeLabel('/orders')}
             description={phone ? 'كل الطلبات بحالتها ومَن يحملها' : 'كل الطلبات بحالتها ومَن يحملها — الحالة والفلتر يقرآن نفس الشيء'}
             actions={
               <><div className={phone ? 'flex flex-wrap items-center gap-2' : 'flex items-center space-x-2 rtl:space-x-reverse flex-wrap gap-y-2'}>
@@ -691,11 +691,10 @@ export function OrdersScreen() {
             {canCreate && (phone ? null : quickCreate)}
           </div></>
             }
-          />
-
-        {/* One bar, three rows that each answer a different question:
+            filters={
+        /* One bar, three rows that each answer a different question:
             which queue am I in, what am I looking for, and how do I narrow
-            it. The old grid mixed all three into six equal cells. */}
+            it. The old grid mixed all three into six equal cells. */
         <Card plain className="shadow-raised divide-y divide-[var(--sys-border)]">
           {/* RiSearchLine — pressing Enter or the button runs it; it no longer
               fires on every keystroke, which made a long phone number send
@@ -855,6 +854,8 @@ export function OrdersScreen() {
           </div>
           </FilterFold>
         </Card>
+        }
+      >
 
         {/* How many in each state, and what the filtered set adds up to — pressing a chip is the state filter above. */}
         {summary && <OrdersSummary summary={summary} status={status} onStatus={setStatus} currency={currency} />}
@@ -1298,7 +1299,7 @@ export function OrdersScreen() {
             </div>
           </div>
         </Card>
-      </div>
+      </PageShell>
 
       {/* Modals */}
       <CreateOrderModal
