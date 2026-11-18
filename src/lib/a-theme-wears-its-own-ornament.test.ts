@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { COMPOSED, PHOTOGRAPHIC, PIECES, decorCss, photographsOf } from './theme-decoration';
+import { COMPOSED, PHOTOGRAPHIC, PIECES, UNDECORATED, decorCss, photographsOf } from './theme-decoration';
 import { AUTO_DARK, AUTO_LIGHT, AUTO_THEME, SYSTEM_THEMES, themeByKey } from './system-themes';
 import { repoFile, stripComments } from './guard-source';
 
@@ -45,8 +45,12 @@ const css = (key: string, level: 'off' | 'light' | 'full' = 'light') =>
  * for a photographic theme with no strip across the header of the menu («ليل», 23/10/2026), its own
  * mask as well, because that header keeps wearing it.
  */
+// 18/11/2026 (R1): a theme in UNDECORATED («نظيف») owns no file at all — it is silent by design, and
+// a-clean-palette.test.tsx holds the list closed. Was: every theme owned at least `<key>.webp`.
 const filesOf = (key: string): string[] =>
-  PHOTOGRAPHIC[key]
+  UNDECORATED.includes(key)
+    ? []
+    : PHOTOGRAPHIC[key]
     ? [...photographsOf(key), ...(PHOTOGRAPHIC[key].strip ? [] : [`${key}.webp`])]
     : COMPOSED[key]
       ? PIECES.map((piece) => `${key}.${piece}.webp`)
@@ -108,7 +112,7 @@ describe('and it is a mask, so it carries no colour of its own', () => {
      * difference between «every rule» and «one rule» is not watching
      * anything.
      */
-    for (const t of SYSTEM_THEMES.filter((x) => !PHOTOGRAPHIC[x.key])) {
+    for (const t of SYSTEM_THEMES.filter((x) => !PHOTOGRAPHIC[x.key] && !UNDECORATED.includes(x.key))) {
       const out = css(t.key, 'full');
       const std = out.match(/(?<!-)\bmask(?:-size)?:/g)?.length ?? 0;
       const webkit = out.match(/-webkit-mask(?:-size)?:/g)?.length ?? 0;
@@ -149,7 +153,8 @@ describe('and how loud it is was measured, not picked', () => {
     const of = (k: string) => Number(/opacity:([0-9.]+)/.exec(css(k))![1]);
     expect(of('epic')).toBeLessThan(of('cyber'));
     expect(of('day'), 'النهاري أعلى تباين، فلازم يكون أخفت').toBeLessThan(0.2);
-    for (const t of SYSTEM_THEMES) {
+    // 18/11/2026 (R1): the undecorated theme draws no layer, so it has no opacity to be in range.
+    for (const t of SYSTEM_THEMES.filter((x) => !UNDECORATED.includes(x.key))) {
       expect(of(t.key), `${t.key} خارج المدى`).toBeGreaterThan(0);
       expect(of(t.key)).toBeLessThanOrEqual(1);
     }
@@ -358,7 +363,7 @@ describe('and it turns, but only where turning can be seen and is wanted', () =>
   });
 
   it('and the other eight still drift, exactly as they did', () => {
-    for (const t of SYSTEM_THEMES.filter((x) => !COMPOSED[x.key] && !PHOTOGRAPHIC[x.key])) {
+    for (const t of SYSTEM_THEMES.filter((x) => !COMPOSED[x.key] && !PHOTOGRAPHIC[x.key] && !UNDECORATED.includes(x.key))) {
       expect(css(t.key, 'full'), t.key).toContain('@keyframes zk-decor-drift');
     }
   });

@@ -1000,12 +1000,22 @@
     "tabs": 0
   },
   "src/components/screens/BenchScreen.tsx": {
-    "buttons": 0,
+    "buttons": 1,
     "inputs": 0,
-    "columns": 7,
+    "columns": 11,
     "cards": 2,
     "modals": 0,
     "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/BenchTestPanel.tsx": {
+    "buttons": 7,
+    "inputs": 5,
+    "columns": 7,
+    "cards": 0,
+    "modals": 1,
+    "icons": 0,
     "links": 0,
     "tabs": 0
   },
@@ -2769,6 +2779,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/ui/IconButton.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/ui/Input.tsx": {
     "buttons": 1,
     "inputs": 3,
@@ -2874,6 +2894,16 @@
     "inputs": 0,
     "columns": 0,
     "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/ui/StatTile.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 0,
     "links": 0,

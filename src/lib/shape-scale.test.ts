@@ -166,9 +166,16 @@ describe('the height of a control', () => {
     // A thumb first, then the desk.
     expect(src).toMatch(/sm:\s*'h-11 md:h-8/);
     expect(src).toMatch(/md:\s*'h-11 md:h-10/);
-    // `lg` is 48 everywhere: already past the gate, and it is the one
-    // action a screen is for.
-    expect(src).toMatch(/lg:\s*'h-12/);
+    // `lg` is 44 everywhere. 18/11 (R2a): it was `h-12` (48) — «already
+    // past the gate, and the one action a screen is for». The restructure
+    // fixes the kit at three sizes, 32 · 40 · 44, and 44 is the thumb's size
+    // on a phone; on a desk the largest step is therefore the same 44 and
+    // not a fourth height. No call site used `lg`, so nothing moved.
+    expect(src).toMatch(/lg:\s*'h-11 px-5/);
+    expect(src, 'lg رجع ٤٨').not.toMatch(/lg:\s*'h-12/);
+    // The square twins (the icon button) state the same two steps.
+    expect(src).toMatch(/sm:\s*'h-11 w-11 md:h-8 md:w-8/);
+    expect(src).toMatch(/md:\s*'h-11 w-11 md:h-10 md:w-10/);
   });
 
   it('and by the shared field, so a field matches the button beside it', () => {

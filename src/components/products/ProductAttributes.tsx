@@ -213,7 +213,7 @@ export function ProductAttributes({ productId, canManage = true }: { productId: 
       {msg && (
         <p
           role="status"
-          className={`text-sm font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-danger)]'}`}
+          className={`text-sm font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}
         >
           {msg.text}
         </p>
