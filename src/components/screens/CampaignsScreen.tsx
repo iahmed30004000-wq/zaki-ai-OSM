@@ -3,11 +3,15 @@
 import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { StatTile } from '@/components/ui/StatTile';
 import { apiJson } from '@/lib/api-client';
 import { useConfirm } from '@/components/ui/Confirm';
 import { CAMPAIGN_PLATFORMS, CAMPAIGN_STATUSES } from '@/lib/campaigns';
 import { RiAddCircleLine, RiArrowDownCircleLine, RiArrowUpCircleLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiDownloadLine, RiLinksLine, RiLoader4Line, RiMegaphoneLine, RiPencilLine, RiPlugLine, RiRefreshLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -334,22 +338,25 @@ export function CampaignsScreen() {
   const currency = data?.currency ?? '';
 
   return (
-    <div className="space-y-4" dir="rtl">
-      <PageHeader title="الحملات"
+    <div dir="rtl">
+      <PageShell
+          title={routeLabel('/growth/campaigns')}
           description="تكتب ما أنفقت، والباقي محسوب من طلباتك الفعلية."
           actions={
-            <><div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-[var(--sys-border)] p-0.5">
+            <><div className="flex flex-wrap items-center gap-2">
+          {/* Seven periods, so not a `Segmented` (the kit holds 2 to 5): a strip of kit buttons, the chosen one framed. */}
+          <div className="flex flex-wrap rounded-lg border border-[var(--sys-border)] p-0.5" role="group" aria-label="المدة">
             {PERIODS.map((p) => (
-              <button
+              <Button
                 key={p.key}
+                type="button"
+                size="sm"
+                variant={!range.from && period === p.key ? 'secondary' : 'quiet'}
+                aria-pressed={!range.from && period === p.key}
                 onClick={() => { setPeriod(p.key); setRange({ from: '', to: '' }); }}
-                className={`min-h-11 md:min-h-0 inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition ${
-                  !range.from && period === p.key ? 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]' : 'text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]'
-                }`}
               >
                 {p.label}
-              </button>
+              </Button>
             ))}
           </div>
           <DateRange value={range} onChange={setRange} label="من — إلى" />
@@ -381,10 +388,10 @@ export function CampaignsScreen() {
           )}
         </div></>
           }
-        />
+        >
 
       {syncMsg && (
-        <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2 text-xs text-[var(--sys-foreground)]">{syncMsg}</p>
+        <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2 text-sm text-[var(--sys-foreground)]">{syncMsg}</p>
       )}
 
       {/* The shop's whole picture, so nobody adds the column up by hand. */}
@@ -464,6 +471,7 @@ export function CampaignsScreen() {
           onSaved={async (note) => { setCreating(false); setEditing(null); await load(); if (note) setSyncMsg(note); }}
         />
       )}
+      </PageShell>
     </div>
   );
 }
@@ -476,16 +484,11 @@ function roasTone(roas: number | null): 'good' | 'warn' | 'bad' | undefined {
   return 'bad';
 }
 
+/** A figure of the whole shop: the kit's `StatTile`, the tone carried by the figure's own colour. */
 function Stat({ label, value, tone, hint }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad'; hint?: string }) {
   const colour =
     tone === 'good' ? 'text-[var(--sys-success)]' : tone === 'bad' ? 'text-[var(--sys-destructive)]' : tone === 'warn' ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-heading)]';
-  return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-      <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
-      <p className={`mt-0.5 text-base font-bold tabular-nums ${colour}`} dir="ltr">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-[var(--sys-muted)]">{hint}</p>}
-    </div>
-  );
+  return <StatTile label={label} value={<span className={colour}>{value}</span>} caption={hint} />;
 }
 
 function Row({
@@ -496,7 +499,7 @@ function Row({
 }) {
   const tone = roasTone(c.money.roas);
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+    <Card plain padding="sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -523,36 +526,33 @@ function Row({
 
         <div className="flex items-center gap-1">
           {onLink && (
-            <button
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
               onClick={onLink}
               title={c.adAccount ? 'غيّر الربط بميتا' : 'اربطها بحملة في ميتا'}
-              className={`min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition ${
-                c.spendSource === 'SYNCED'
-                  ? 'border-[var(--sys-success-soft)] bg-[var(--sys-success-soft)] text-[var(--sys-success)]'
-                  : 'border-[var(--sys-border)] text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]'
-              }`}
             >
-              <RiPlugLine className="h-4 w-4" />
-              {c.spendSource === 'SYNCED' ? 'تلقائي' : 'اربط'}
-            </button>
+              {/* «تلقائي» keeps its green: the one sign that the spend is no longer typed by hand. */}
+              <span className={`inline-flex items-center gap-1 ${c.spendSource === 'SYNCED' ? 'text-[var(--sys-success)]' : ''}`}>
+                <RiPlugLine className="h-4 w-4" />
+                {c.spendSource === 'SYNCED' ? 'تلقائي' : 'اربط'}
+              </span>
+            </Button>
           )}
-          <button
-            onClick={onCopy}
-            title="انسخ رابط الإعلان"
-            className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2 py-1 text-xs font-semibold text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-          >
+          <Button type="button" size="sm" variant="secondary" onClick={() => { onCopy(); }} title="انسخ رابط الإعلان">
             {copied ? <RiCheckLine className="h-4 w-4 text-[var(--sys-success)]" /> : <RiLinksLine className="h-4 w-4" />}
             {copied ? 'نُسخ' : 'رابط الإعلان'}
-          </button>
+          </Button>
           {onEdit && (
-          <button aria-label="تعديل" onClick={onEdit} title="تعديل" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]">
+          <IconButton type="button" size="sm" label="تعديل" onClick={onEdit}>
             <RiPencilLine className="h-4 w-4" />
-          </button>
+          </IconButton>
           )}
           {onRemove && (
-          <button aria-label="حذف" onClick={onRemove} title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]">
+          <IconButton type="button" size="sm" label="حذف" onClick={() => { onRemove(); }}>
             <RiDeleteBinLine className="h-4 w-4" />
-          </button>
+          </IconButton>
           )}
         </div>
       </div>
@@ -589,7 +589,7 @@ function Row({
       <p className="mt-1.5 truncate font-mono text-xs text-[var(--sys-muted)]" dir="ltr" title={c.link}>
         {c.link}
       </p>
-    </div>
+    </Card>
   );
 }
 
@@ -736,9 +736,9 @@ function Editor({
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-bold text-[var(--sys-heading)]">{campaign ? 'تعديل الحملة' : 'حملة جديدة'}</h2>
-          <button aria-label="إغلاق" onClick={onClose} className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]">
+          <IconButton type="button" size="sm" label="إغلاق" onClick={onClose}>
             <RiCloseLine className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         <div className="space-y-3">
@@ -967,9 +967,9 @@ function LinkDialog({
       >
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-sm font-bold text-[var(--sys-heading)]">اربط «{campaign.name}» بحملة في ميتا</h2>
-          <button aria-label="إغلاق" onClick={onClose} className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]">
+          <IconButton type="button" size="sm" label="إغلاق" onClick={onClose}>
             <RiCloseLine className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
         <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
           بعدها يأتي الإنفاق تلقائياً. الربط بالمعرّف لا بالاسم — فتغيير اسم الحملة في ميتا

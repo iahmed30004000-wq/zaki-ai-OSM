@@ -232,14 +232,15 @@
     "tabs": 0
   },
   "src/components/growth/CampaignsBoard.tsx": {
-    "buttons": 8,
-    "inputs": 7,
+    "buttons": 7,
+    "inputs": 5,
     "columns": 3,
     "cards": 5,
     "modals": 0,
     "icons": 5,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 2
   },
   "src/components/growth/IntelligenceStrip.tsx": {
     "buttons": 0,
@@ -1104,14 +1105,15 @@
     "tabs": 0
   },
   "src/components/screens/CampaignsScreen.tsx": {
-    "buttons": 17,
+    "buttons": 13,
     "inputs": 11,
     "columns": 7,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 21,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 4
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
     "buttons": 6,

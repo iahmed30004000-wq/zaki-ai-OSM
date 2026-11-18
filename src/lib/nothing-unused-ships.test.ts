@@ -298,8 +298,6 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    */
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
-  'src/components/ui/Segmented.tsx:Segmented':
-    'شريط الخيارات المضغوط (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
 
   /*
    * R2a (18/11) — THE TWO COMPONENTS THE KIT GAINED AND NO SCREEN DRAWS YET.
@@ -314,6 +312,8 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * layout, are the first to render it.
    *
    * 18/11 (R10d): `StatTile` left — «العملاء» (`CustomersScreen`) draws its five figures of the book with it.
+   *
+   * 18/11 (R14b): `Segmented` left — «الحملات» (`CampaignsBoard`) draws its three views (بطاقات · جدول · قائمة مختصرة) with it.
    */
 };
 
