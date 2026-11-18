@@ -109,6 +109,14 @@ const classOf = (el: React.ReactElement) => {
   return c;
 };
 
+/** What a page-level card wears and a dense one does not (the theme's corner) — read from the kit, never typed here. */
+const pageOnly = () => {
+  const plain = new Set(classOf(<Card plain>x</Card>).split(" "));
+  const only = classOf(<Card>x</Card>).split(" ").filter((c) => c && !plain.has(c));
+  expect(only.length).toBeGreaterThan(0);
+  return only;
+};
+
 describe('the frame', () => {
   it('draws ONE heading, the name the menu gives the page', async () => {
     await draw();
@@ -198,6 +206,7 @@ describe('the surfaces and presses are the kit’s', () => {
     expect(trait.tagName).toBe('DIV');
     expect(trait.closest('li')).not.toBeNull();
     for (const c of plainBase.split(/\s+/).filter(Boolean)) expect(trait.classList.contains(c), c).toBe(true);
+    for (const c of pageOnly()) expect(trait.classList.contains(c), c).toBe(false);
     expect(trait.textContent).toBe('نوع البشرة: جافّة7 من 9');
   });
 
@@ -225,6 +234,7 @@ describe('the surfaces and presses are the kit’s', () => {
     const dense = classOf(<Card plain padding="sm">x</Card>);
     const verdictBox = within(d).getByText(/انحكم بهالقواعد/).parentElement as HTMLElement;
     for (const c of dense.split(/\s+/).filter(Boolean)) expect(verdictBox.classList.contains(c), c).toBe(true);
+    for (const c of pageOnly()) expect(verdictBox.classList.contains(c), c).toBe(false);
     const quiet = classOf(
       <Button type="button" size="sm" variant="quiet">
         x

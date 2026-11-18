@@ -428,14 +428,6 @@
     "src/components/screens/BatchButtonsHelp.tsx": {
       "textXs": 2
     },
-    "src/components/screens/BenchScreen.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 5
-    },
-    "src/components/screens/BenchTestPanel.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 7
-    },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
       "rawCheckboxes": 1,
