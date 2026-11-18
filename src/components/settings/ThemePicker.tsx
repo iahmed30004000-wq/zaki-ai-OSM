@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { AUTO_DARK, AUTO_LIGHT, AUTO_THEME, THEME_CHOICES, sanitizeTheme, themeByKey } from '@/lib/system-themes';
+import { AUTO_DARK, AUTO_LIGHT, AUTO_THEME, THEME_CHOICES, hasDarkMenuOnLightPage, sanitizeTheme, themeByKey } from '@/lib/system-themes';
 import { DECOR_LEVELS, readDecor, setDecor, type DecorLevel } from '@/lib/theme-decoration';
 import { RiCheckLine, RiPaletteLine } from '@remixicon/react';
 
@@ -146,6 +146,10 @@ export function ThemePicker({ initial }: { initial: string | null | undefined })
                 className="mt-2 flex h-12 items-end gap-1 rounded-lg border p-1.5"
                 style={{ background: theme.vars.background, borderColor: theme.vars.border }}
               >
+                {/* A light page with a dark menu (R1, «نظيف») draws its menu too — first, so in RTL it sits on the right, where the real one is. */}
+                {hasDarkMenuOnLightPage(theme) && (
+                  <span data-swatch-menu className="h-full w-3 rounded-sm" style={{ background: theme.vars.sidebar }} />
+                )}
                 <span
                   className="h-full flex-1 rounded-sm border"
                   style={{ background: theme.vars.card, borderColor: theme.vars.border }}

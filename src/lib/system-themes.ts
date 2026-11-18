@@ -800,7 +800,103 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'shadow-overlay': '0 10px 15px -3px rgb(0 0 0 / 0.76), 0 4px 6px -4px rgb(0 0 0 / 0.58)',
     },
   },
+  /*
+   * ══════════════════════════════════════════════════════════════════════
+   * «نظيف» (`clean`) — THE FOURTEENTH PALETTE, ADDED ON 18/11/2026 (R1).
+   *
+   * LIGHT CONTENT, DARK MENU, ONE COLOUR. The page is a cool off-white, the
+   * cards are white, every divider is a hairline, and the only colour that
+   * means «press this» is the brand's own petrol — the same #1A6382 the
+   * light themes already use, so whoever moves to it later keeps the
+   * accent they know. The menu is the one dark surface (#1B2433): it is a
+   * palette of ITS OWN, because `sidebar` has always been a separate token,
+   * and this is the first light theme to use that on purpose.
+   *
+   * ADD-ONLY. Nothing that exists changes: `DEFAULT_THEME`, `AUTO_LIGHT`,
+   * `AUTO_DARK`, `NEW_STAFF_THEME` and the two colour blocks of system.css
+   * are exactly as they were, and `clean` is not in `SHEET_THEMES` — it is
+   * written by the frame for the person who chose it, like the other eleven.
+   * It is not an automatic pick either: «تلقائي» still resolves to ops/day.
+   *
+   * EVERY PAIR WAS MEASURED BEFORE IT WAS WRITTEN, and no threshold moved:
+   * text on the page 13.7:1 · on the card 14.7:1 · the dim text 5.2:1 on the
+   * dimmest surface it may sit on · the action 6.7:1 · the menu's labels on
+   * the menu 10.0:1 · a field's edge 4.7:1 · the divider 1.26:1 (it stays
+   * under 3 on purpose).
+   *
+   * ⚠️ FOR THE ONE WHO RESTYLES THE MENU (R4): the action colour on the dark
+   * menu measures 2.34:1, so the item you stand on cannot be a plain
+   * `primary` fill there; use the menu's own pair or a lighter wash. The
+   * tokens below are the menu's own so that nothing has to borrow a text
+   * colour for it.
+   * ══════════════════════════════════════════════════════════════════════
+   */
+  {
+    key: 'clean',
+    ar: 'نظيف',
+    note: 'صفحات فاتحة وبطاقات بيضاء وقائمة جانبية داكنة، ولونٌ واحدٌ للفعل — هادئٌ ومريحٌ للقراءة الطويلة.',
+    dark: false,
+    vars: {
+      background: '#F5F7FA',
+      card: '#FFFFFF',
+      surface: '#EDF0F5',
+      'surface-strong': '#E1E6EE',
+      border: '#E1E5EC',
+      'border-strong': '#A9B1BF',
+      heading: '#111827',
+      foreground: '#1F2937',
+      'muted-foreground': '#4B5565',
+      'border-input': '#6B7585',
+      muted: '#5B6575',
+      primary: '#1A6382',
+      'primary-foreground': '#FFFFFF',
+      'primary-hover': '#14526C',
+      'primary-soft': '#E6F0F4',
+      focus: '#1A6382',
+      warning: '#9A5B12',
+      'warning-soft': '#FBF3E4',
+      destructive: '#B42318',
+      'destructive-soft': '#FDEEEC',
+      'destructive-border': '#F0B9B3',
+      success: '#1E7A3A',
+      'success-soft': '#E8F5EC',
+      'chart-1': '#2A8FA3',
+      'chart-2': '#1A6382',
+      'chart-3': '#7A6BC4',
+      'chart-4': '#A8803F',
+      'chart-5': '#6B8394',
+      'chart-6': '#C0527A',
+      sidebar: '#1B2433',
+      'sidebar-foreground': '#C9D0DB',
+      'scrollbar': '#D5DAE2',
+      'scrollbar-hover': '#A3ABB9',
+      'sidebar-scrollbar': '#3A465A',
+      'sidebar-scrollbar-hover': '#5B687E',
+      'shadow-raised': '0 1px 2px rgb(17 24 39 / 0.05), 0 1px 3px rgb(17 24 39 / 0.07)',
+      'shadow-overlay': '0 2px 6px rgb(17 24 39 / 0.07), 0 12px 32px rgb(17 24 39 / 0.14)',
+    },
+  },
 ];
+
+/**
+ * A LIGHT PAGE WITH A DARK MENU — the one shape `dark: boolean` cannot say.
+ *
+ * `dark` describes the CONTENT (and the scheme the browser draws a checkbox
+ * in). A palette like «نظيف» is light there and dark in the menu, so a small
+ * picture of it (the picker's swatch) has to draw the menu too, or it shows
+ * a white page and lies about half the screen. Read from the tokens, not
+ * from a key: the next palette of this shape is covered without an edit.
+ */
+export function hasDarkMenuOnLightPage(theme: SystemTheme): boolean {
+  const lum = (hex: string) => {
+    const ch = (i: number) => {
+      const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * ch(0) + 0.7152 * ch(1) + 0.0722 * ch(2);
+  };
+  return !theme.dark && lum(theme.vars.sidebar) < 0.2;
+}
 
 /**
  * WHAT THE PICKER OFFERS — three palettes and one instruction.
