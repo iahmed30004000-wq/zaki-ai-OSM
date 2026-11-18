@@ -10,6 +10,7 @@ import {
 } from '@remixicon/react';
 import type { NavGroup } from '@/lib/route-registry';
 import { iconFor } from './icons';
+import { IconButton } from '@/components/ui/IconButton';
 import { RAIL_EVENT, railed as storedRail, setRailed } from '@/lib/sidebar-rail';
 import { signOut } from '@/lib/sign-out';
 import { apiJson } from '@/lib/api-client';
@@ -631,14 +632,9 @@ export function CommandPalette({
           {looking && <RiLoader4Line className="w-4 h-4 shrink-0 animate-spin text-[var(--sys-muted)]" aria-hidden />}
           {/* A full-screen sheet covers the backdrop, and a phone has no
               Esc. Without this there is no way back out. */}
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="إغلاق"
-            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 md:hidden -mr-1 p-2 text-[var(--sys-muted-foreground)]"
-          >
+          <IconButton label="إغلاق" className="md:hidden" onClick={onClose}>
             <RiCloseLine className="w-5 h-5" />
-          </button>
+          </IconButton>
         </div>
 
         {/*
@@ -660,10 +656,12 @@ export function CommandPalette({
             aria-label="ملخّص اليوم"
             className="border-b border-[var(--sys-border)] bg-[var(--sys-surface)] px-4 py-3"
           >
-            <p className="pb-2 text-xs font-semibold text-[var(--sys-muted-foreground)]">
+            <p className="pb-2 text-note font-semibold text-[var(--sys-muted-foreground)]">
               {may?.wide ? 'المتجر الآن' : 'عملك الآن'}
             </p>
             <ul className="space-y-1.5">
+              {/* A raw press on purpose (18/11, R17b — R19's allowed list): the whole line is
+                  the control — a figure, a name and its rule — not a button with a label. */}
               {facts.map((fact) => (
                 <li key={fact.key}>
                   <button
@@ -684,7 +682,7 @@ export function CommandPalette({
                       <span className="block truncate text-sm text-[var(--sys-heading)]">{fact.label}</span>
                       {/* The rule, in full. Not truncated: half a rule is
                           worse than none — it reads as a different rule. */}
-                      <span className="block text-xs text-[var(--sys-muted-foreground)]">{fact.rule}</span>
+                      <span className="block text-note text-[var(--sys-muted-foreground)]">{fact.rule}</span>
                     </span>
                     {fact.href && (
                       <RiArrowRightSLine className="icon-mirror w-4 h-4 shrink-0 text-[var(--sys-muted)]" aria-hidden />
@@ -710,7 +708,7 @@ export function CommandPalette({
 
         <ul className="min-h-0 flex-1 overflow-y-auto py-1">
           {rows.length === 0 && (
-            <li className="px-4 py-8 text-center text-xs text-[var(--sys-muted-foreground)]">
+            <li className="px-4 py-8 text-center text-sm text-[var(--sys-muted-foreground)]">
               {query.trim().length < 2
                 ? canSearchRecords
                   ? 'اكتب حرفين على الأقل — أو امسح باركوداً.'
@@ -728,9 +726,11 @@ export function CommandPalette({
             return (
               <React.Fragment key={row.key}>
                 {head && (
-                  <li className="px-4 pb-1 pt-3 text-xs font-semibold text-[var(--sys-muted-foreground)]">{head}</li>
+                  <li className="px-4 pb-1 pt-3 text-note font-semibold text-[var(--sys-muted-foreground)]">{head}</li>
                 )}
                 <li>
+                  {/* A list row, raw on purpose (18/11, R17b — R19's allowed list): the
+                      pointer only moves the lit row; only a click or Enter runs it. */}
                   <button
                     type="button"
                     onMouseEnter={() => setCursor(i)}
@@ -752,7 +752,7 @@ export function CommandPalette({
                           it is not truncated — every other hint is a group
                           name or a role name and fits. */}
                       <span
-                        className={`block text-xs text-[var(--sys-muted-foreground)] ${
+                        className={`block text-note text-[var(--sys-muted-foreground)] ${
                           row.kind === 'count' ? '' : 'truncate'
                         }`}
                       >
@@ -781,7 +781,7 @@ export function CommandPalette({
         {/* Esc and Enter are a desk's vocabulary. On a phone the ✕ above is
             the whole instruction, and a line naming keys that are not there
             is one more thing to read and ignore. */}
-        <p className="hidden md:block border-t border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]">
+        <p className="hidden md:block border-t border-[var(--sys-border)] px-4 py-2 text-note text-[var(--sys-muted-foreground)]">
           ↑ ↓ للتنقّل · Enter للفتح · Esc للإغلاق
         </p>
       </div>
