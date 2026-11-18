@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { StatusChip } from '@/components/ui/StatusChip';
 import { BENCH_STATE_AR, DEFAULT_BENCH_RULES, type BenchRules, type BenchState } from '@/lib/bench-verdict';
@@ -129,18 +130,18 @@ export function BenchTestPanel({
     <Modal isOpen onClose={onClose} title={product.name} subtitle="التيست: الحكم والأرقام والصرف" maxWidth="2xl">
       <div className="space-y-4">
         {/* ── الحكم ── */}
-        <section className="space-y-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
+        <Card plain padding="sm" className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <VerdictChip verdict={product.verdict} />
-            {t.dayIndex !== null && t.dayIndex > 0 && <span className="text-xs text-[var(--sys-muted-foreground)]">اليوم {t.dayIndex} من التيست</span>}
+            {t.dayIndex !== null && t.dayIndex > 0 && <span className="text-note text-[var(--sys-muted-foreground)]">اليوم {t.dayIndex} من التيست</span>}
           </div>
           <p className="text-sm text-[var(--sys-heading)]">{product.verdict.reason}</p>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             انحكم بهالقواعد: الهدف {product.rules.targetCpo} · السقف {product.rules.capSpend} · أول حكم باليوم {product.rules.continueDay} · النجاح من اليوم{' '}
             {product.rules.successDay} · الفشل من {product.rules.failMinOrders} طلب وفوق {product.rules.failMultiplier} × الهدف
             {product.customRules ? '' : ' (الافتراضي)'}.
           </p>
-        </section>
+        </Card>
 
         {/* ── الأرقام ── */}
         <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -155,13 +156,13 @@ export function BenchTestPanel({
             ['الصرف المخطط باليوم', money(product.rules.dailySpend)],
           ].map(([label, value]) => (
             <div key={String(label)} className="min-w-0 rounded-lg border border-[var(--sys-border)] p-2">
-              <dt className="text-xs text-[var(--sys-muted-foreground)]">{label}</dt>
+              <dt className="text-note text-[var(--sys-muted-foreground)]">{label}</dt>
               <dd className="tabular-nums font-semibold text-[var(--sys-heading)]">{value}</dd>
             </div>
           ))}
         </dl>
         {t.ordersBeforeStart > 0 && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             {t.ordersBeforeStart} طلب قبل بداية التيست — معروضين بالجدول وما انحسبوا بالحكم.
           </p>
         )}
@@ -175,7 +176,7 @@ export function BenchTestPanel({
         {/* ── الصرف باليوم ── */}
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-[var(--sys-heading)]">الصرف باليوم</h3>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             الصرف بينكتب بالإيد هلأ، سطر لكل يوم. بعدين ممكن ينقرا من جدول صرف الإعلانات. السطر الغلط ما بينمسح: بيتصحّح أو بيتلغى، وبيضل ظاهر.
           </p>
           <form
@@ -209,7 +210,7 @@ export function BenchTestPanel({
                   <span className="tabular-nums">{e.day}</span>
                   <span className={e.voidedAt ? 'line-through text-[var(--sys-muted)]' : 'font-semibold'}>{money(e.amount)}</span>
                   {e.voidedAt ? (
-                    <span className="text-xs text-[var(--sys-muted)]">ملغى: {e.voidReason}</span>
+                    <span className="text-note text-[var(--sys-muted)]">ملغى: {e.voidReason}</span>
                   ) : edit?.id === e.id ? (
                     <form
                       className="flex w-full flex-wrap items-end gap-2"
@@ -235,16 +236,16 @@ export function BenchTestPanel({
                       <Button type="submit" size="sm" variant={edit.mode === 'void' ? 'danger' : 'primary'}>
                         {edit.mode === 'correct' ? 'احفظ التصحيح' : 'ألغِ السطر'}
                       </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>
+                      <Button type="button" size="sm" variant="quiet" onClick={() => setEdit(null)}>
                         رجوع
                       </Button>
                     </form>
                   ) : (
                     <span className="ms-auto flex gap-1">
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setEdit({ id: e.id, mode: 'correct', value: String(e.amount) })}>
+                      <Button type="button" size="sm" variant="quiet" onClick={() => setEdit({ id: e.id, mode: 'correct', value: String(e.amount) })}>
                         صحّح
                       </Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setEdit({ id: e.id, mode: 'void', value: '' })}>
+                      <Button type="button" size="sm" variant="quiet" onClick={() => setEdit({ id: e.id, mode: 'void', value: '' })}>
                         ألغِ
                       </Button>
                     </span>
@@ -258,7 +259,7 @@ export function BenchTestPanel({
         {/* ── القواعد ── */}
         <section className="space-y-2">
           <h3 className="text-sm font-semibold text-[var(--sys-heading)]">قواعد الحكم لهالمنتج</h3>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             لما تغيّرها، الحكم بينحسب من جديد من نفس الأرقام. «بداية التيست» فاضية = أول يوم انكتب فيه صرف؛ حطّها ليوم جديد لتبلش فترة تانية.
           </p>
           <form
@@ -293,7 +294,7 @@ export function BenchTestPanel({
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               <Button type="submit">احفظ القواعد</Button>
               {product.customRules && (
-                <Button type="button" variant="ghost" onClick={() => void run({ action: 'rules', rules: null })}>
+                <Button type="button" variant="quiet" onClick={() => void run({ action: 'rules', rules: null })}>
                   رجّع الافتراضي
                 </Button>
               )}

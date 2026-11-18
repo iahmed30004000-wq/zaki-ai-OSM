@@ -242,14 +242,15 @@
     "tabs": 0
   },
   "src/components/growth/CampaignsBoard.tsx": {
-    "buttons": 8,
-    "inputs": 7,
+    "buttons": 7,
+    "inputs": 5,
     "columns": 3,
     "cards": 5,
     "modals": 0,
     "icons": 5,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 2
   },
   "src/components/growth/IntelligenceStrip.tsx": {
     "buttons": 0,
@@ -465,7 +466,7 @@
     "buttons": 2,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 0,
     "links": 0,
@@ -1039,7 +1040,7 @@
     "buttons": 2,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 4,
     "modals": 0,
     "icons": 7,
     "links": 1,
@@ -1089,7 +1090,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 11,
-    "cards": 2,
+    "cards": 4,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -1099,7 +1100,7 @@
     "buttons": 7,
     "inputs": 5,
     "columns": 7,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 0,
     "links": 0,
@@ -1116,14 +1117,15 @@
     "tabs": 0
   },
   "src/components/screens/CampaignsScreen.tsx": {
-    "buttons": 17,
+    "buttons": 13,
     "inputs": 11,
     "columns": 7,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 21,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 4
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
     "buttons": 6,
@@ -1199,7 +1201,7 @@
     "buttons": 0,
     "inputs": 0,
     "columns": 5,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 1,
     "links": 0,
@@ -1443,7 +1445,7 @@
     "buttons": 8,
     "inputs": 0,
     "columns": 6,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 7,
     "links": 0,
@@ -1511,13 +1513,14 @@
   },
   "src/components/screens/ShipmentsNewScreen.tsx": {
     "buttons": 11,
-    "inputs": 7,
+    "inputs": 6,
     "columns": 7,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 9,
     "links": 2,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/ShippingBatchesScreen.tsx": {
     "buttons": 14,
@@ -1720,14 +1723,15 @@
     "tabs": 0
   },
   "src/components/screens/UsersScreen.tsx": {
-    "buttons": 11,
+    "buttons": 10,
     "inputs": 5,
     "columns": 9,
-    "cards": 1,
+    "cards": 5,
     "modals": 2,
     "icons": 11,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
     "buttons": 4,
@@ -2054,7 +2058,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -2162,13 +2166,14 @@
   },
   "src/components/screens/users/CreateUserModal.tsx": {
     "buttons": 2,
-    "inputs": 7,
+    "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 2
   },
   "src/components/screens/users/UserAccessSections.tsx": {
     "buttons": 2,

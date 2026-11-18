@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
@@ -76,6 +76,9 @@ interface Payload {
   dna: { sellers: number; minSellers: number; traits: Trait[] | null; whyNot: string | null };
 }
 
+/** The one line a report tab with no window says where the date box would be. */
+const NO_WINDOW_LINE = 'الأرقام هون لحظية — ما بتتبع المدة';
+
 export function BenchScreen() {
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +97,23 @@ export function BenchScreen() {
   const open = data?.results.find((p) => p.id === openId) ?? null;
 
   return (
-    <div className="space-y-4">
-      {/* The heading and its name come from the route registry — one list
-          of screens, so a title cannot drift from the menu entry. What a
-          screen adds is the sentence underneath. */}
-      <PageHeader title={routeLabel('/growth/bench')} description="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام" />
+    /* The heading and its name come from the route registry — one list
+       of screens, so a title cannot drift from the menu entry. What a
+       screen adds is the sentence underneath. 18/11 (R14c): the frame is
+       `PageShell`, which draws that same `PageHeader` with that same title. */
+    <PageShell
+      title={routeLabel('/growth/bench')}
+      description="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام"
+      /*
+        NO DATE BOX, AND IT SAYS SO (18/11, R14c). The four report tabs share
+        one span of days; this door (`/api/growth/bench`) takes none — its
+        figures are as of now. So the row where the other tabs draw the date
+        box carries this one line instead, and the screen neither reads nor
+        writes the shared span: the span the owner picked elsewhere is kept,
+        not silently dropped.
+      */
+      toolbar={<p className="text-note text-[var(--sys-muted-foreground)]">{NO_WINDOW_LINE}</p>}
+    >
 
       {error && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-sm text-[var(--sys-destructive)]">
@@ -130,12 +145,14 @@ export function BenchScreen() {
             screen is whether it is double-counting the business.
           */}
           {data.excluded && (
-            <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
-              <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--sys-heading)]">
-                <RiFlaskLine className="h-4 w-4" /> أرقام هذه الشاشة معزولة:{' '}
-              </span>
-              {data.excluded}
-            </p>
+            <Card plain padding="sm">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--sys-heading)]">
+                  <RiFlaskLine className="h-4 w-4" /> أرقام هذه الشاشة معزولة:{' '}
+                </span>
+                {data.excluded}
+              </p>
+            </Card>
           )}
 
           {/* ── ما يَشترِكُ فيه ما بِعتَه فعلاً ── */}
@@ -154,15 +171,14 @@ export function BenchScreen() {
               ) : (
                 <ul className="flex flex-wrap gap-2">
                   {data.dna.traits.map((t) => (
-                    <li
-                      key={`${t.field}:${t.value}`}
-                      className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-1.5 text-xs"
-                    >
-                      <span className="text-[var(--sys-muted-foreground)]">{t.label}: </span>
-                      <span className="font-semibold text-[var(--sys-heading)]">{t.value}</span>
-                      <span className="ms-1.5 tabular-nums text-[var(--sys-muted)]">
-                        {t.shared} من {t.outOf}
-                      </span>
+                    <li key={`${t.field}:${t.value}`}>
+                      <Card plain className="px-3 py-1.5 text-note">
+                        <span className="text-[var(--sys-muted-foreground)]">{t.label}: </span>
+                        <span className="font-semibold text-[var(--sys-heading)]">{t.value}</span>
+                        <span className="ms-1.5 tabular-nums text-[var(--sys-muted)]">
+                          {t.shared} من {t.outOf}
+                        </span>
+                      </Card>
                     </li>
                   ))}
                 </ul>
@@ -195,7 +211,7 @@ export function BenchScreen() {
                 */
                 alert={(p) => (p.decided > 0 && p.returned > p.delivered ? 'warn' : null)}
                 actions={(p) => (
-                  <Button type="button" size="sm" variant="outline" onClick={() => setOpenId(p.id)}>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setOpenId(p.id)}>
                     الأرقام والصرف
                   </Button>
                 )}
@@ -208,7 +224,7 @@ export function BenchScreen() {
                       <>
                         <span className="font-medium text-[var(--sys-heading)]">{p.name}</span>
                         {p.category && (
-                          <span className="block text-xs text-[var(--sys-muted)]">{p.category}</span>
+                          <span className="block text-note text-[var(--sys-muted)]">{p.category}</span>
                         )}
                       </>
                     ),
@@ -241,7 +257,7 @@ export function BenchScreen() {
                       ) : (
                         <span className="tabular-nums">
                           {p.test.confirmationRate}%
-                          <span className="ms-1 text-xs text-[var(--sys-muted)]">
+                          <span className="ms-1 text-note text-[var(--sys-muted)]">
                             {p.test.confirmed} من {p.test.orders}
                           </span>
                         </span>
@@ -302,7 +318,7 @@ export function BenchScreen() {
                       ) : (
                         <span className="tabular-nums font-semibold text-[var(--sys-heading)]">
                           {p.deliveryRate}%
-                          <span className="ms-1 text-xs font-normal text-[var(--sys-muted)]">
+                          <span className="ms-1 text-note font-normal text-[var(--sys-muted)]">
                             من {p.decided}
                           </span>
                         </span>
@@ -330,6 +346,6 @@ export function BenchScreen() {
           )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
