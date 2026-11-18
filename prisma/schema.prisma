@@ -4288,3 +4288,22 @@ model AdSpendDay {
   @@index([companyId, date, campaignId])
   @@map("ad_spend_days")
 }
+
+/// A CONNECTION SETTING ENTERED ON THE SITE — the bots' tokens, ids and secrets (WhatsApp and Telegram), moved from the server's environment to «الإعدادات ← الربط»
+/// (the owner's rule, 17/11: every connection, token or bot setting is entered from inside the site, never Coolify env).
+///
+/// One row per setting NAME (`key` is the environment variable's own name, so the fallback is the same word). WRITE-ONLY: `valueEncrypted` is sealed with the
+/// application's key (`encryptSecret`) and no endpoint ever returns it, nor writes it to an audit row; only `hint` — its last four characters — comes back, so a person
+/// can tell which one is saved. NOT per company, on purpose: the secrets that verify a webhook (Meta's app secret, Telegram's secret token) have to be known BEFORE the
+/// request says which company it is for, exactly as the environment variables they replace were. A value here wins; with no row the environment variable is read as before.
+model IntegrationSecret {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  valueEncrypted String   @db.Text
+  hint           String
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("integration_secrets")
+}

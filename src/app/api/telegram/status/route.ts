@@ -14,7 +14,7 @@ export async function GET() {
     const { companyId } = await requireCompanyTenant();
     await requirePermission('telegram.view');
 
-    const tokenOk = botConfigured();
+    const tokenOk = await botConfigured();
     let botUsername: string | null = null;
     let botApiOk = false;
     if (tokenOk) {
@@ -48,7 +48,7 @@ export async function GET() {
       botConfigured: tokenOk,
       botApiOk,
       botUsername,
-      webhookSecretConfigured: webhookSecretConfigured(),
+      webhookSecretConfigured: await webhookSecretConfigured(),
       telegramWebhookSet,
       webhookUrl,
       appUrlConfigured: Boolean(appUrl),

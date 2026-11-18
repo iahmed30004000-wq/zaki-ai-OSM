@@ -5,8 +5,8 @@
 import crypto from 'crypto';
 import { getWebhookSecret } from './config';
 
-export function verifyTelegramSecret(secretHeader: string | null): boolean {
-  const secret = getWebhookSecret();
+export async function verifyTelegramSecret(secretHeader: string | null): Promise<boolean> {
+  const secret = await getWebhookSecret();
   if (!secret || !secretHeader) return false;
   const a = Buffer.from(secret);
   const b = Buffer.from(secretHeader);

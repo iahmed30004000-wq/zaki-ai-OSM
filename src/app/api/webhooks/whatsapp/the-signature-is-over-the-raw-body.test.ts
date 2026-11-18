@@ -43,35 +43,35 @@ beforeEach(() => {
 });
 
 describe('verifyMetaSignature', () => {
-  it('accepts an HMAC-SHA256 of the raw body with the app secret', () => {
-    expect(verifyMetaSignature(RAW, sign(RAW))).toBe(true);
+  it('accepts an HMAC-SHA256 of the raw body with the app secret', async () => {
+    expect(await verifyMetaSignature(RAW, sign(RAW))).toBe(true);
   });
 
-  it('refuses a body that differs by one byte', () => {
-    expect(verifyMetaSignature(`${RAW} `, sign(RAW))).toBe(false);
-    expect(verifyMetaSignature(RAW.replace('1', '2'), sign(RAW))).toBe(false);
+  it('refuses a body that differs by one byte', async () => {
+    expect(await verifyMetaSignature(`${RAW} `, sign(RAW))).toBe(false);
+    expect(await verifyMetaSignature(RAW.replace('1', '2'), sign(RAW))).toBe(false);
   });
 
-  it('is computed over the raw text, not over the parsed-and-re-serialised JSON', () => {
+  it('is computed over the raw text, not over the parsed-and-re-serialised JSON', async () => {
     const compact = JSON.stringify(JSON.parse(RAW));
     expect(compact).not.toBe(RAW);
-    expect(verifyMetaSignature(RAW, sign(compact))).toBe(false);
-    expect(verifyMetaSignature(compact, sign(compact))).toBe(true);
+    expect(await verifyMetaSignature(RAW, sign(compact))).toBe(false);
+    expect(await verifyMetaSignature(compact, sign(compact))).toBe(true);
   });
 
-  it('refuses another secret, a missing header, a missing prefix and a short one', () => {
-    expect(verifyMetaSignature(RAW, sign(RAW, 'a-different-secret'))).toBe(false);
-    expect(verifyMetaSignature(RAW, null)).toBe(false);
-    expect(verifyMetaSignature(RAW, '')).toBe(false);
-    expect(verifyMetaSignature(RAW, sign(RAW).slice('sha256='.length))).toBe(false);
-    expect(verifyMetaSignature(RAW, 'sha256=abc')).toBe(false);
-    expect(verifyMetaSignature(RAW, sign(RAW).toUpperCase())).toBe(false);
+  it('refuses another secret, a missing header, a missing prefix and a short one', async () => {
+    expect(await verifyMetaSignature(RAW, sign(RAW, 'a-different-secret'))).toBe(false);
+    expect(await verifyMetaSignature(RAW, null)).toBe(false);
+    expect(await verifyMetaSignature(RAW, '')).toBe(false);
+    expect(await verifyMetaSignature(RAW, sign(RAW).slice('sha256='.length))).toBe(false);
+    expect(await verifyMetaSignature(RAW, 'sha256=abc')).toBe(false);
+    expect(await verifyMetaSignature(RAW, sign(RAW).toUpperCase())).toBe(false);
   });
 
-  it('fails closed with no app secret: a signature made with an empty key is not accepted', () => {
+  it('fails closed with no app secret: a signature made with an empty key is not accepted', async () => {
     delete process.env.WHATSAPP_APP_SECRET;
-    expect(verifyMetaSignature(RAW, sign(RAW, ''))).toBe(false);
-    expect(verifyMetaSignature(RAW, sign(RAW, APP_SECRET))).toBe(false);
+    expect(await verifyMetaSignature(RAW, sign(RAW, ''))).toBe(false);
+    expect(await verifyMetaSignature(RAW, sign(RAW, APP_SECRET))).toBe(false);
   });
 });
 

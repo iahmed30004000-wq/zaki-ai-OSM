@@ -1,5 +1,6 @@
 import { sendMessage } from '../telegram/send';
 import { getAppUrl } from '../telegram/config';
+import { getSetting } from '../integration-settings';
 import { readSystemSetting, updateSystemSetting } from '../system-settings';
 import { ALERT_AFTER_FAILURES } from './runner';
 
@@ -57,13 +58,12 @@ import { ALERT_AFTER_FAILURES } from './runner';
  * rather than pretending. A silent no-op here would be the same fault as
  * the `console.log` it replaces, one layer deeper and harder to find.
  *
- * Read from the environment rather than from the settings table on
- * purpose: the alert must work when the database is the thing that is
- * broken. A chat id stored in a row cannot be read during a database
- * outage, which is precisely when somebody needs to hear from the system.
+ * It is ENTERED ON THE SITE now («الإعدادات ← الربط», `integration-settings.ts`), with the environment variable of the same name as the fallback. The old
+ * reason for reading only the environment — the alert must work when the database is the thing that is broken — is kept: a failed read serves the LAST value
+ * the process knew (remembered 30 s, and kept through an outage) and then the environment, so a saved chat id does not vanish at the one moment it is needed.
  */
-export function alertChatId(): string | null {
-  const id = process.env.TELEGRAM_ALERT_CHAT_ID;
+export async function alertChatId(): Promise<string | null> {
+  const id = await getSetting('TELEGRAM_ALERT_CHAT_ID');
   return id && id.trim() ? id.trim() : null;
 }
 
@@ -246,7 +246,7 @@ export async function alertAboutJob(
   subject: AlertSubject,
   now: Date = new Date()
 ): Promise<AlertOutcome> {
-  const chatId = alertChatId();
+  const chatId = await alertChatId();
   // Checked before the de-duplication read: with nothing configured there
   // is no point paying for a query, and — more importantly — nothing must
   // be written to the "already alerted" log, or the day the owner finally

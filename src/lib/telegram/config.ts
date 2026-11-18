@@ -1,18 +1,16 @@
 /**
- * TELEGRAM CONFIG — server-only env access (mirrors whatsapp/config.ts).
+ * TELEGRAM CONFIG — server-only access (mirrors whatsapp/config.ts).
  * Never imported by client code; never returns the raw token to callers
- * (only booleans / derived non-secret values). Fail closed.
+ * (only booleans / derived non-secret values to anything that reaches a screen). Fail closed.
+ *
+ * The bot token and the webhook secret come from `integration-settings.ts`: what was saved on «الإعدادات ← الربط» wins, and the
+ * environment variable of the same name answers when nothing was saved (PR-C of the media buyer's doors). The base URLs are not secrets and stay in the environment.
  */
+import { getSetting } from '../integration-settings';
 
-export function getBotToken(): string | null {
-  const t = process.env.TELEGRAM_BOT_TOKEN;
-  return t && t.trim() ? t.trim() : null;
-}
+export const getBotToken = (): Promise<string | null> => getSetting('TELEGRAM_BOT_TOKEN');
 
-export function getWebhookSecret(): string | null {
-  const s = process.env.TELEGRAM_WEBHOOK_SECRET;
-  return s && s.trim() ? s.trim() : null;
-}
+export const getWebhookSecret = (): Promise<string | null> => getSetting('TELEGRAM_WEBHOOK_SECRET');
 
 export function getApiBaseUrl(): string {
   const base = process.env.TELEGRAM_API_BASE_URL;
@@ -29,13 +27,13 @@ export function getAppUrl(): string | null {
 }
 
 /** True when the bot token is present (sending + webhook registration possible). */
-export function botConfigured(): boolean {
-  return Boolean(getBotToken());
+export async function botConfigured(): Promise<boolean> {
+  return Boolean(await getBotToken());
 }
 
 /** True when the webhook secret is present (webhook verification possible). */
-export function webhookSecretConfigured(): boolean {
-  return Boolean(getWebhookSecret());
+export async function webhookSecretConfigured(): Promise<boolean> {
+  return Boolean(await getWebhookSecret());
 }
 
 export const WEBHOOK_PATH = '/api/webhooks/telegram';

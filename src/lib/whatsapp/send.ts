@@ -49,11 +49,11 @@ export async function sendOutboundMessage(
   if (!conn || conv.connectionId !== conn.id) {
     return { ok: false, error: 'لم يتم ربط واتساب بعد', status: 400 };
   }
-  if (effectiveStatus(conn) !== 'CONNECTED') {
+  if ((await effectiveStatus(conn)) !== 'CONNECTED') {
     return { ok: false, error: 'الاتصال غير مكتمل', status: 400 };
   }
-  const token = getAccessToken();
-  const phoneNumberId = getPhoneNumberId();
+  const token = await getAccessToken();
+  const phoneNumberId = await getPhoneNumberId();
   if (!token || !phoneNumberId) {
     return { ok: false, error: 'الاتصال غير مكتمل', status: 400 };
   }

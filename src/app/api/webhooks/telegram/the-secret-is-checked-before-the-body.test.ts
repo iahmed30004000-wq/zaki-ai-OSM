@@ -36,22 +36,22 @@ beforeEach(() => {
 });
 
 describe('verifyTelegramSecret', () => {
-  it('accepts the configured secret and nothing else', () => {
-    expect(verifyTelegramSecret(SECRET)).toBe(true);
-    expect(verifyTelegramSecret(`${SECRET}x`)).toBe(false);
-    expect(verifyTelegramSecret(SECRET.slice(0, -1))).toBe(false);
-    expect(verifyTelegramSecret(SECRET.toUpperCase())).toBe(false);
-    expect(verifyTelegramSecret('')).toBe(false);
-    expect(verifyTelegramSecret(null)).toBe(false);
+  it('accepts the configured secret and nothing else', async () => {
+    expect(await verifyTelegramSecret(SECRET)).toBe(true);
+    expect(await verifyTelegramSecret(`${SECRET}x`)).toBe(false);
+    expect(await verifyTelegramSecret(SECRET.slice(0, -1))).toBe(false);
+    expect(await verifyTelegramSecret(SECRET.toUpperCase())).toBe(false);
+    expect(await verifyTelegramSecret('')).toBe(false);
+    expect(await verifyTelegramSecret(null)).toBe(false);
   });
 
-  it('fails closed when no secret is configured, even for an empty header', () => {
+  it('fails closed when no secret is configured, even for an empty header', async () => {
     delete process.env.TELEGRAM_WEBHOOK_SECRET;
-    expect(verifyTelegramSecret('')).toBe(false);
-    expect(verifyTelegramSecret(null)).toBe(false);
-    expect(verifyTelegramSecret('anything')).toBe(false);
+    expect(await verifyTelegramSecret('')).toBe(false);
+    expect(await verifyTelegramSecret(null)).toBe(false);
+    expect(await verifyTelegramSecret('anything')).toBe(false);
     process.env.TELEGRAM_WEBHOOK_SECRET = '   ';
-    expect(verifyTelegramSecret('   ')).toBe(false);
+    expect(await verifyTelegramSecret('   ')).toBe(false);
   });
 });
 

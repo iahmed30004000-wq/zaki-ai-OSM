@@ -101,7 +101,7 @@ export function TelegramSettingsScreen({ embedded = false }: { embedded?: boolea
         )}
 
         <Card>
-          <CardHeader title="حالة البوت" subtitle="تُقرأ الحالة من متغيرات البيئة على السيرفر" />
+          <CardHeader title="حالة البوت" subtitle="تُقرأ الحالة من القيم المحفوظة بالموقع، ومن البيئة كاحتياط" />
           <CardContent>
             {loading ? (
               <p className="text-xs text-[var(--sys-muted-foreground)] py-4">جارٍ التحميل...</p>
@@ -135,7 +135,7 @@ export function TelegramSettingsScreen({ embedded = false }: { embedded?: boolea
 
         {canManage && (
           <Card>
-            <CardHeader title="تسجيل الويبهوك" subtitle="يسجّل رابط الويبهوك لدى تيليجرام باستخدام TELEGRAM_WEBHOOK_SECRET" />
+            <CardHeader title="تسجيل الويبهوك" subtitle="يسجّل رابط الويبهوك لدى تيليجرام باستخدام السرّ السري المحفوظ" />
             <CardContent className="flex items-center justify-between">
               <span className={`text-xs font-semibold ${status?.telegramWebhookSet ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
                 {status?.telegramWebhookSet ? 'الويبهوك مسجل لدى تيليجرام' : 'الويبهوك غير مسجل'}

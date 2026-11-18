@@ -46,7 +46,7 @@ export async function GET() {
     }
     forgetAfterNoAnswer(companyId);
     const [setting, list, conn] = await Promise.all([afterNoAnswer(db, companyId), countries(companyId), getActiveConnection(companyId)]);
-    return NextResponse.json({ setting, countries: list, connected: effectiveStatus(conn) === 'CONNECTED' });
+    return NextResponse.json({ setting, countries: list, connected: (await effectiveStatus(conn)) === 'CONNECTED' });
   } catch (error) {
     return apiErrorResponse(error);
   }

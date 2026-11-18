@@ -103,9 +103,9 @@ export async function POST(req: Request) {
     }
 
     const conn = await getActiveConnection(companyId);
-    const token = getAccessToken();
-    const phoneNumberId = getPhoneNumberId();
-    if (!conn || effectiveStatus(conn) !== 'CONNECTED' || !token || !phoneNumberId) {
+    const token = await getAccessToken();
+    const phoneNumberId = await getPhoneNumberId();
+    if (!conn || (await effectiveStatus(conn)) !== 'CONNECTED' || !token || !phoneNumberId) {
       return refuse(409, 'رقم الشركة مش موصول لهلأ — ابعتي من واتسابك.', 'NOT_CONNECTED');
     }
 

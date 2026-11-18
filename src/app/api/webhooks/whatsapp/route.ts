@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  const expected = getVerifyToken();
+  const expected = await getVerifyToken();
   if (mode === 'subscribe' && expected && token) {
     // Timing-safe comparison without exposing which half failed
     const a = Buffer.from(expected);
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Bad request' }, { status: 400 });
   }
 
-  if (!verifyMetaSignature(raw, req.headers.get('x-hub-signature-256'))) {
+  if (!await verifyMetaSignature(raw, req.headers.get('x-hub-signature-256'))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
