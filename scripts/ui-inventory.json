@@ -71,14 +71,15 @@
     "tabs": 0
   },
   "src/components/ai/AiDock.tsx": {
-    "buttons": 6,
+    "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 8,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 4
   },
   "src/components/apps/SystemTokensPanel.tsx": {
     "buttons": 5,
@@ -1167,6 +1168,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/ConfirmationRulesScreen.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
     "links": 0,
     "tabs": 0
   },
@@ -2451,14 +2462,15 @@
     "tabs": 0
   },
   "src/components/shell/CommandPalette.tsx": {
-    "buttons": 3,
+    "buttons": 2,
     "inputs": 1,
     "columns": 5,
     "cards": 0,
     "modals": 0,
     "icons": 5,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/shell/EditingStoreBar.tsx": {
     "buttons": 0,

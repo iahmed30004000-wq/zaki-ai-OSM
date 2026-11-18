@@ -35,6 +35,7 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 }));
 
 import { PullPanel, useQueue, type QueueResponse } from './PullPanel';
+import { offModeRule } from '@/lib/pull-plan-words';
 
 /** The owner’s screenshot, in parts: 5 new + 417 returned = 422, with 67 more waiting on a date. */
 const POOL: QueueResponse = {
@@ -46,6 +47,8 @@ const POOL: QueueResponse = {
   owned: { total: 0, withoutAttempt: 0 },
   caps: { withoutAttempt: 40, total: 5 },
   leadDays: 2,
+  // 18/11 (C1 review): the sentence under the card is the server’s now (`offModeRule`, the rule’s own constants) — the same words the panel used to type.
+  waitingRule: offModeRule(2, 90),
   canPull: true,
   refusal: null,
   autoReleased: 0,

@@ -140,7 +140,9 @@ const CLAIM_REASON_AR: Record<string, string> = {
   // and reads `PLAN_RETURNED_WORDS_AR` below (`claimReasonWords`) — the rule that wrote the line decides, never the switch at read time.
   [NO_ANSWER_RETURNED_REASON]: 'رجع للطابور فوراً بعد «لا يرد» — بيجهز بعد 3 ساعات دوام',
   [DATE_RETURNED_REASON]: 'رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد',
-  [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور',
+  // No figure in this one (18/11): the limit is 30 working minutes or 20 with «أولوية الطابور», and the line does not carry which one the release used — a label that names today's would tell a reader of an
+  // older line something that was not true when it was written (the same ruling as RV1413 above). The NOTICE she got at the time said the figure (`idleWhy`).
+  [IDLE_RETURNED_REASON]: 'تحرير تلقائي — مرّت مهلة الخمول وما انسجّلت عليه أي محاولة، ورجع للطابور',
   LOCK_EXPIRED: 'انتهت مدة القفل',
   REASSIGNED: 'إعادة إسناد',
 };

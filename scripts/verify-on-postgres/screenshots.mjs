@@ -16,7 +16,7 @@
  *   mine      «طلباتي» of the Syria agent of the ON company        /confirmation/mine           marker SY-HELD-NEW|SY-HELD-RETRY
  *   mine-off  «طلباتي» of the OFF company's agent                  /confirmation/mine           marker OFF-HELD-NEW
  *   mine-jo   «طلباتي» of the Jordan agent (ON company)            /confirmation/mine           marker JO-HELD-NEW
- *   settings  the key's card, as the ON company's admin            /settings/system             marker «إثبات المكالمات وجدول المحاولات»
+ *   settings  the key's card, as the ON company's admin            /confirmation/rules            marker «إثبات المكالمات وجدول المحاولات»
  *   timeline  the order window of SY-CLOSED-TODAY, as the admin    /orders?highlight=<id>       marker SY-CLOSED-TODAY
  *
  *   KIT_PASSWORD=… node scripts/verify-on-postgres/screenshots.mjs --out <folder> [--pages mine,settings,timeline] [--base-url http://127.0.0.1:3100]
@@ -55,7 +55,7 @@ const PRESETS = {
   'mine-off': { who: 'agentOff', country: 'SY', route: '/confirmation/mine', marker: 'OFF-HELD-NEW' },
   'mine-jo': { who: 'agent2On', country: 'JO', route: '/confirmation/mine', marker: 'JO-HELD-NEW' },
   // `scroll`: the text to bring into the middle of the picture before it is taken (the card is far below the top of a long settings page).
-  settings: { who: 'adminOn', country: 'SY', route: '/settings/system', marker: 'إثبات المكالمات وجدول المحاولات', scroll: 'إثبات المكالمات وجدول المحاولات' },
+  settings: { who: 'adminOn', country: 'SY', route: '/confirmation/rules', marker: 'إثبات المكالمات وجدول المحاولات', scroll: 'إثبات المكالمات وجدول المحاولات' },
   timeline: { who: 'adminOn', country: 'SY', route: () => `/orders?highlight=${orderId('SY-CLOSED-TODAY')}`, marker: 'SY-CLOSED-TODAY' },
 };
 const wanted = (args.pages || 'mine,settings,timeline').split(',').map((s) => s.trim()).filter(Boolean);

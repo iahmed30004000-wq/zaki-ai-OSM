@@ -30,7 +30,7 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 }));
 
 import { PullPanel, useQueue, type QueueResponse } from './PullPanel';
-import { planWords } from '@/lib/pull-plan-words';
+import { offModeRule, planWords } from '@/lib/pull-plan-words';
 
 const FOUR = { fresh: 5, promise: 4, retry: 100, rest: 313 };
 const BASE: QueueResponse = {
@@ -125,6 +125,8 @@ describe('the plan is on: the server’s four, in the pull’s order', () => {
 describe('the plan is off (no `waitingPlan`): exactly the old words — the pin', () => {
   beforeEach(() => {
     delete pool.waitingPlan;
+    // 18/11 (C1 review): the sentence comes from the server now (`offModeRule`, the rule's own constants) — the panel prints it; the words are the same, pinned below.
+    pool.waitingRule = offModeRule(2, 90);
     pool.waitingDue = 3;
     pool.waiting = 425;
   });

@@ -35,7 +35,7 @@ describe('navigation contract', () => {
     ]);
   });
 
-  it('lists 53 unique routes', () => {
+  it('lists 54 unique routes', () => {
     // 52 until /ops/labels was folded into the shipping batches screen:
     // printing, the sizes and the courier CSV all live where the batch is.
     // 59 with the store section's seven screens, all live. 60 with
@@ -87,8 +87,10 @@ describe('navigation contract', () => {
     //
     // 53 with `/abandoned-carts` (15/11): the carts Zaki pages sends (contract oms-lp.v1 §9), a loose line beside
     // the orders on the same key (`orders.view`).
-    expect(paths).toHaveLength(53);
-    expect(new Set(paths).size).toBe(53);
+    //
+    // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(54);
+    expect(new Set(paths).size).toBe(54);
   });
 
   it('the store section is its own group, and reads as one', () => {

@@ -404,6 +404,36 @@ describe('the picker', () => {
     await act(async () => release());
   });
 
+  it('a store tile posts {countryId, storeId} once, and locks while the choice is in the air', async () => {
+    let release: () => void = () => undefined;
+    const ctx = {
+      ...CONTEXT,
+      next: 'PICK_STORE',
+      selection: { countryId: 'c1', storeId: null },
+      stores: [{ id: 's1', name: 'متجر أول', slug: 's1', logo: null, status: 'ACTIVE', type: 'GENERAL' }],
+    };
+    apiJson.mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') await new Promise<void>((r) => (release = r));
+      return url === '/api/context' && !init ? ctx : {};
+    });
+    render(<EntryPicker />);
+    const tile = (await screen.findByText('متجر أول')).closest('button') as HTMLButtonElement;
+    expect(tile.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(tile);
+    });
+    expect(tile.disabled, 'المتجر بقي مفتوحاً أثناء الاختيار').toBe(true);
+    await act(async () => {
+      fireEvent.click(tile);
+    });
+    const posts = apiJson.mock.calls.filter(([, i]) => i?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0][0]).toBe('/api/context');
+    expect(JSON.parse(String(posts[0][1]?.body))).toEqual({ countryId: 'c1', storeId: 's1' });
+    await act(async () => release());
+    expect(replace).toHaveBeenCalledWith('/');
+  });
+
   it('«إضافة بلد» opens the form, and its submit is the kit button', async () => {
     apiJson.mockResolvedValue(CONTEXT);
     render(<EntryPicker />);

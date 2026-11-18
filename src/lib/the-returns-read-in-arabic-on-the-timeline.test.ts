@@ -117,10 +117,13 @@ describe('on the timeline', () => {
     expect(event.detail).toBe('رجع للطابور بعد ما انحدد موعد — بيجهز بالموعد');
   });
 
-  it('the idle release: the same “automatic” words as the other releases, with its thirty working minutes', async () => {
+  it('the idle release: the same “automatic” words as the other releases, and NO figure — the limit is 30 or 20 and the line does not say which the release used (18/11, finding #9)', async () => {
     const event = await said(IDLE_RETURNED_REASON);
     expect(event).toMatchObject({ actorName: 'النظام', actorId: null });
-    expect(event.detail).toBe('تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور');
+    // 18/11 (C1): was «تحرير تلقائي — مرّت 30 دقيقة عمل وما انسجّلت عليه أي محاولة، ورجع للطابور». The 30 was typed, and the release uses 20 with «أولوية الطابور» on — a line written then would read 30 forever.
+    // The line carries no figure now (as the rounds' release already did, RV1413); the notice she got said the real one (`idleWhy`).
+    expect(event.detail).toBe('تحرير تلقائي — مرّت مهلة الخمول وما انسجّلت عليه أي محاولة، ورجع للطابور');
+    expect(event.detail).not.toMatch(/\d/);
   });
 
   it.each([[undefined], [PLAN_MARKED]])('no English code ever reaches the page, and the three are told apart (metadata %o)', async (metadata) => {

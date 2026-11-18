@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
+import { offModeRule } from '@/lib/pull-plan-words';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -220,6 +221,8 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     postponePreferredTime: null,
     postponeCount: 0,
     noAnswerCount: 1,
+    // 18/11 (C1 review): the hint beside «لا يرد» is written by the server now (`noAnswerHint`); the desk prints it and counts nothing. Same words as the base rule always said.
+    noAnswerHint: 'متبقٍ 2 محاولات قبل الإغلاق التلقائي',
     source: 'Manual',
     moderatorId: 'm1',
     moderator: { id: 'm1', name: 'سارة' },
@@ -240,7 +243,8 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     closedToday: [],
     confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
   });
-  const POOL = { waiting: 5, owned: { total: 3, withoutAttempt: 2 }, caps: { withoutAttempt: 3, total: 10 }, leadDays: 2, canPull: true, refusal: null, autoReleased: 0, orders: null };
+  // 18/11 (C1 review): the sentence under the pull card is the server’s now (`waitingRule`, `offModeRule` — the same words the panel used to type).
+  const POOL = { waiting: 5, owned: { total: 3, withoutAttempt: 2 }, caps: { withoutAttempt: 3, total: 10 }, leadDays: 2, waitingRule: offModeRule(2, 90), canPull: true, refusal: null, autoReleased: 0, orders: null };
 
   beforeEach(() => {
     user.current = {

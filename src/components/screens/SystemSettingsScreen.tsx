@@ -7,15 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { PerformanceSettingsCard } from '@/components/settings/PerformanceSettingsCard';
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
 import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
-import { NoAnswerRoundsCard } from '@/components/settings/NoAnswerRoundsCard';
-import { NoAnswerReturnsCard } from '@/components/settings/NoAnswerReturnsCard';
 import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCard';
-import { CallProofCard } from '@/components/settings/CallProofCard';
-import { IntakeFilterCard } from '@/components/settings/IntakeFilterCard';
-import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
-import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
-import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
-import { QueueModesCard } from '@/components/settings/QueueModesCard';
 import { PartnersCard } from '@/components/settings/PartnersCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -151,22 +143,13 @@ export function SystemSettingsScreen() {
           lives. */}
       <PostOrderOfferCard />
 
-      {/* «نظام الجولات (تجريبي)» — how «لا يرد» counts and when an unanswered order goes back to the queue. Off by default. */}
-      <NoAnswerRoundsCard />
-
-      {/* «الطلب يرجع للطابور فوراً (تجريبي)» — «لا يرد» or a date takes the order out of her hand at once. Needs the rounds on. Off by default. */}
-      <NoAnswerReturnsCard />
-
+      {/*
+        THE EIGHT CONFIRMATION-RULE CARDS ARE NOT HERE ANY MORE (18/11, request C1): «نظام الجولات» · «الطلب يرجع للطابور فوراً» · «إثبات المكالمات وجدول المحاولات» ·
+        «فلتر الاستقبال» · «أولوية الطابور» · «الاسترجاع اليومي» · «ليدز الصفحات» · «ساعات وضعَي الطابور» moved, unchanged, to «قواعد مركز التأكيد» (`/confirmation/rules`), inside the
+        confirmation hub, under a box that says the rule in one reading. What stays on this screen is what belongs to the company as a whole.
+      */}
       {/* «تسوية السطور النظيفة عند الاعتماد (تجريبي)» — the approval also settles every clean line; a line still a question holds only its own order. Off by default. */}
       <PerLineSettlementCard />
-
-      {/* «إثبات المكالمات وجدول المحاولات (تجريبي)» — «لا يرد» opens only after a logged «اتصال» press thirty seconds old; later the five-attempt close and the two-day schedule. Off by default. */}
-      <CallProofCard />
-      <IntakeFilterCard />
-      <QueuePriorityCard />
-      <WinbackV2Card />
-      <LeadsV2Card />
-      <QueueModesCard />
 
       {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
       <PartnersCard />

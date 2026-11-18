@@ -66,7 +66,8 @@ describe('the guard contract names only routes that are pages', () => {
     const src = repoFile('src/lib/confirmation-queue.ts');
     const caps = src.match(/CLAIM_CAPS = \{ withoutAttempt: (\d+), total: (\d+) \}/)!;
     const pace = src.match(/PULL_PACE = \{ perHour: (\d+)/)!;
-    const hand = src.match(/RETURNS_MODE = \{ handLimit: (\d+)/)!;
+    // 18/11 (C1): `RETURNS_MODE` is defined in `returns-mode.ts` (a file with no imports, so the release notice can say it without dragging a rules module into the desk's bundle); `confirmation-queue.ts` re-exports it.
+    const hand = repoFile('src/lib/returns-mode.ts').match(/RETURNS_MODE = \{ handLimit: (\d+)/)!;
     const release = src.match(/AUTO_RELEASE_BUSINESS_MINUTES = (\d+)/)!;
     expect(doc).toContain(`${caps[1]} owned with no attempt, ${caps[2]} owned in`);
     expect(doc).toContain(`at most ${pace[1]} pulls in any rolling hour`);

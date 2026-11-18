@@ -26,7 +26,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 type Row = Record<string, any>;
 
 const { world, sw, rsw } = vi.hoisted(() => ({
-  world: { orders: [] as Row[], history: [] as Row[], notices: [] as Row[], clock: new Date() },
+  world: { orders: [] as Row[], history: [] as Row[], notices: [] as Row[], clock: new Date(), settings: '{}' },
   sw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
   rsw: { value: { enabled: false, enabledAt: null } as { enabled: boolean; enabledAt: Date | null } },
 }));
@@ -103,6 +103,8 @@ vi.mock('./db', () => {
       }),
       findMany: vi.fn(async () => []),
     },
+    // `Company.settings` — only «أولوية الطابور» is read from it here (`returnsLimits`, for the idle notice's figure); empty = every switch off, as the missing table was before.
+    company: { findUnique: vi.fn(async () => ({ settings: world.settings })) },
     notification: { createMany: vi.fn(async ({ data }: Row) => void world.notices.push(...(data as Row[]))) },
     orderStatusLog: { create: vi.fn(async () => undefined) },
     orderActivity: { create: vi.fn(async () => undefined) },
@@ -125,7 +127,10 @@ import {
   releaseStaleClaims,
   readReturnsMode,
 } from './confirmation-queue';
-import { IDLE_RETURNED_REASON } from './no-answer-returns';
+import { IDLE_RETURNED_REASON, returnsMode } from './no-answer-returns';
+import { workClock } from './no-answer-rounds';
+import { QUEUE_PRIORITY_LIMITS } from './queue-priority';
+import { forgetQueuePrioritySwitch } from './queue-priority-switch';
 import { zonedTimeToInstant } from './business-calendar';
 import { db } from './db';
 
@@ -160,6 +165,8 @@ beforeEach(() => {
   world.orders = [];
   world.history = [];
   world.notices = [];
+  world.settings = '{}';
+  forgetQueuePrioritySwitch();
   world.clock = NOW;
   sw.value = ON;
   rsw.value = ON;
@@ -215,6 +222,37 @@ describe('1 · thirty working minutes with nothing logged: the order goes back',
     expect(world.orders.find((r) => r.id === twin.id)).toMatchObject({ assignedToId: null, assignedAt: null });
     // Another customer’s order named for her stays named for her.
     expect(other.assignedToId).toBe('sara');
+  });
+});
+
+describe('1a · the notice says the limit the release USED (18/11, C1 — finding #9 of the rules map)', () => {
+  // The notice used to say «30 دقيقة عمل» whatever the release used; with «أولوية الطابور» on the idle limit is 20 (`returnsLimits`), and the notice asks that same function for its figure.
+  const PRIORITY_ON = JSON.stringify({ queuePriority: { enabled: true, enabledAt: '2026-11-17T00:00:00.000Z' } });
+
+  it('a release with «أولوية الطابور» on (idle 20) tells her 20 — not 30', async () => {
+    world.settings = PRIORITY_ON;
+    const o = held(21, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const mode = returnsMode(NOW, workClock(JO), QUEUE_PRIORITY_LIMITS.idleBusinessMinutes);
+    expect(await releaseIdleReturns(db as never, scope, mode)).toBe(1);
+    expect(world.notices).toHaveLength(1);
+    expect(world.notices[0].message).toBe(`رجع ${o.orderNumber} للطابور: ما انسجّلت عليه أي محاولة خلال 20 دقيقة عمل`);
+    expect(world.notices[0].message).not.toContain('30');
+  });
+
+  it('with it off the same release at 31 minutes tells her 30, and 21 minutes is not idle yet', async () => {
+    const early = held(21, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const o = held(31, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const mode = returnsMode(NOW, workClock(JO), 30);
+    expect(await releaseIdleReturns(db as never, scope, mode)).toBe(1);
+    expect(early.claimedById).toBe('sara');
+    expect(world.notices[0].message).toBe(`رجع ${o.orderNumber} للطابور: ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل`);
+  });
+
+  it('a read of the switch that fails is «off»: the default’s 30, never a made-up number', async () => {
+    (db as unknown as { company: { findUnique: ReturnType<typeof vi.fn> } }).company.findUnique.mockRejectedValueOnce(new Error('db down'));
+    const o = held(31, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    expect(await releaseIdleReturns(db as never, scope, returnsMode(NOW, workClock(JO), 30))).toBe(1);
+    expect(world.notices[0].message).toBe(`رجع ${o.orderNumber} للطابور: ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل`);
   });
 });
 
