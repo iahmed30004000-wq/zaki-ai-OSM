@@ -109,7 +109,7 @@ export function DelayShipmentDialog({
     <Modal isOpen onClose={onClose} title={`${orderNumber} لن يُشحن اليوم`}>
       <div className="space-y-3">
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+          <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">
             إلى متى؟
           </span>
           <input
@@ -142,13 +142,13 @@ export function DelayShipmentDialog({
               );
             })}
           </span>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
+          <span className="block text-note text-[var(--sys-muted)] mt-1">
             الموعد إلزاميّ — بلا موعدٍ يختفي الطلبُ ولا يُعيده شيء.
           </span>
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+          <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">
             السبب <span className="text-[var(--sys-muted)]">(اختياري)</span>
           </span>
           <input
@@ -163,12 +163,12 @@ export function DelayShipmentDialog({
             held during a postponement, so a long one no longer freezes
             stock — the risk moved to the other side, and it is stated. */}
         {longWait && (
-          <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-3 py-2">
+          <p className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-3 py-2">
             {days} يوماً مدّةٌ طويلة — البضاعةُ تعود للبيع خلالها، وقد لا تجدها يوم الموعد.
           </p>
         )}
 
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)] pt-1">
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)] pt-1">
           يبقى الطلبُ مؤكَّداً ويعود إلى قائمة الشحن في الموعد وحدَه — وبضاعتُه تعود للبيع الآن،
           فتُحجَز من جديد حين تُبنى الشحنةُ فعلاً.
         </p>
@@ -184,7 +184,7 @@ export function DelayShipmentDialog({
             <b className="block text-sm text-[var(--sys-heading)]">
               {busy ? 'جارٍ التأجيل…' : 'أجِّل شحنَه إلى هذا الموعد'}
             </b>
-            <span className="block text-xs text-[var(--sys-muted-foreground)]">
+            <span className="block text-note text-[var(--sys-muted-foreground)]">
               تجده في تبويب «مؤجَّلة الشحن» حتى الموعد.
             </span>
           </span>

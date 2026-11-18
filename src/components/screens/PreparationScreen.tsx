@@ -8,7 +8,7 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { useApp } from '@/context/AppContext';
 import { PickingAssistant } from '@/components/screens/ops/PickingAssistant';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArchiveDrawerLine, RiArrowDownSLine, RiArrowLeftSLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPrinterLine } from '@remixicon/react';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
@@ -16,6 +16,7 @@ import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@
 import { useTell } from '@/components/ui/Confirm';
 import { Rows } from '@/components/ui/Rows';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
@@ -138,15 +139,15 @@ export function PreparationScreen() {
   }
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/ops/preparation')} />
+    // 18/11 (R11a): the one frame of a screen. `medium` is the max-w-4xl it had; the header is the same PageHeader with the same name.
+    <PageShell title={routeLabel('/ops/preparation')} width="medium">
       {/* A phone: the three figures share one row of equal boxes and the stock rule is a line of its own under them
           (two boxes on one row and the third beside a sentence was a ragged wrap). A desk: the row it has always been. */}
       <div className={phone ? 'grid grid-cols-3 gap-2 text-sm' : 'flex flex-wrap gap-3 text-sm'}>
         <Kpi label="منتجات للتجهيز" value={data.totals.products} />
         <Kpi label="طلبات" value={data.totals.orders} />
         <Kpi label="نواقص" value={data.totals.shortages} danger={data.totals.shortages > 0} />
-        <span className={phone ? 'col-span-full text-xs text-[var(--sys-muted-foreground)]' : 'text-xs text-[var(--sys-muted-foreground)] self-center'}>
+        <span className={phone ? 'col-span-full text-note text-[var(--sys-muted-foreground)]' : 'text-note text-[var(--sys-muted-foreground)] self-center'}>
           {data.allowNegativeStock ? 'المخزون السالب مسموح مع تنبيه' : 'المخزون السالب ممنوع — النقص يمنع الشحن'}
         </span>
       </div>
@@ -160,7 +161,10 @@ export function PreparationScreen() {
         <MissionDone why={data.benchNote ?? "لا توجد طلبات مؤكدة بانتظار التجهيز."} />
       ) : (
         data.groups.map((g) => (
-        <section key={g.productId} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+        // 18/11 (R11a): the group is a page-level block, so it is the kit's `Card` (its theme ornament included). The press that
+        // folds it is a whole-row press and stays a raw button on purpose (the brief's button map), as does the icon tile inside it:
+        // a `Card` is a div and a div cannot sit inside a button.
+        <Card key={g.productId} className="overflow-hidden">
           <button
             onClick={() => setClosed((c) => ({ ...c, [g.productId]: !c[g.productId] }))}
             className="w-full flex items-center gap-3 p-4 text-right hover:bg-[var(--sys-surface)]"
@@ -170,7 +174,7 @@ export function PreparationScreen() {
             </span>
             <span className="flex-1 min-w-0">
               <span className={phone ? 'block text-sm font-semibold text-[var(--sys-heading)]' : 'block text-sm font-semibold text-[var(--sys-heading)] truncate'}>{g.productName}</span>
-              <span className="block text-xs text-[var(--sys-muted-foreground)]">
+              <span className="block text-note text-[var(--sys-muted-foreground)]">
                 {g.orders} طلب · مطلوب {g.required} · متاح {g.available}
                 {g.shortage > 0 && <span className="text-[var(--sys-destructive)]"> · نقص {g.shortage}</span>}
               </span>
@@ -198,11 +202,11 @@ export function PreparationScreen() {
                     ? (l) =>
                         l.pendingChangeRequestId && (
                           <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] p-2.5">
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-warning)]">
+                            <span className="flex items-center gap-1.5 text-note font-semibold text-[var(--sys-warning)]">
                               <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-warning)] animate-pulse" aria-hidden />
                               طلب تعديل بانتظار البتّ
                             </span>
-                            <Button size="sm" variant="outline" onClick={() => setReviewing(l.pendingChangeRequestId!)}>
+                            <Button size="sm" variant="secondary" onClick={() => setReviewing(l.pendingChangeRequestId!)}>
                               راجعه
                             </Button>
                           </div>
@@ -266,14 +270,14 @@ export function PreparationScreen() {
                     mayOpenOrder || mayCancel ? (
                       <span className="grid w-full grid-cols-2 gap-2">
                         {mayOpenOrder && (
-                          <Button size="sm" variant="outline" onClick={() => setOpenOrderId(l.orderId)}>
+                          <Button size="sm" variant="secondary" onClick={() => setOpenOrderId(l.orderId)}>
                             افتح الطلب
                           </Button>
                         )}
                         {mayCancel && (
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="secondary"
                             className="text-[var(--sys-destructive)]"
                             onClick={() => setCancelling({ id: l.orderId, orderNumber: l.orderNumber })}
                           >
@@ -284,50 +288,67 @@ export function PreparationScreen() {
                     ) : null
                   ) : (
                   <span className="flex items-center gap-1 whitespace-nowrap">
+                    {/*
+                      18/11 (R11a): the three icons are the kit's square `Button` (quiet, 32px on a desk and 44px on a phone, as
+                      before), not `IconButton`: `IconButton` makes its name its tooltip too, and these tooltips say more than
+                      the name («— ما لم تكن بوليصته قد طُبعت», «— يعود المحجوز…»). The names and the tooltips are the ones they were.
+                    */}
                     {mayOpenOrder && (
-                      <button
+                      <Button
                         type="button"
+                        variant="quiet"
+                        size="sm"
+                        square
                         onClick={() => setOpenOrderId(l.orderId)}
                         title="افتح الطلب وعدّله — ما لم تكن بوليصته قد طُبعت"
                         aria-label="افتح الطلب"
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)]"
                       >
-                        <RiPencilLine className="w-4 h-4" />
-                      </button>
+                        <RiPencilLine className="w-4 h-4" aria-hidden />
+                      </Button>
                     )}
                     {mayPrint && (
-                      <button
+                      <Button
                         type="button"
-                        onClick={() => void printOne(l.orderId)}
+                        variant="quiet"
+                        size="sm"
+                        square
+                        onClick={() => { void printOne(l.orderId); }}
                         disabled={printing === l.orderId}
                         title="اطبع بوليصة هذا الطلب"
                         aria-label="اطبع البوليصة"
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)] disabled:opacity-40"
                       >
-                        <RiPrinterLine className="w-4 h-4" />
-                      </button>
+                        <RiPrinterLine className="w-4 h-4" aria-hidden />
+                      </Button>
                     )}
                     {mayCancel && (
-                      <button
+                      <Button
                         type="button"
+                        variant="quiet"
+                        size="sm"
+                        square
                         onClick={() => setCancelling({ id: l.orderId, orderNumber: l.orderNumber })}
                         title="ألغِ الطلب — يعود المحجوز من بضاعته إلى المخزون"
                         aria-label="ألغِ الطلب"
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 p-1 rounded-lg text-[var(--sys-muted)] hover:text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"
                       >
-                        <RiCloseCircleLine className="w-4 h-4" />
-                      </button>
+                        <RiCloseCircleLine className="w-4 h-4 text-[var(--sys-destructive)]" aria-hidden />
+                      </Button>
                     )}
+                    {/* The warning chip is the frame around a quiet kit button: the chip's own fill and edge, the kit's press. */}
                     {l.pendingChangeRequestId && (
-                      <button
-                        type="button"
-                        onClick={() => setReviewing(l.pendingChangeRequestId!)}
-                        title="طلب تعديل بانتظار البتّ — راجعه قبل التغليف"
-                        className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] text-xs font-semibold text-[var(--sys-warning)] hover:border-[var(--sys-warning)]"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-warning)] animate-pulse" aria-hidden />
-                        طلب تعديل
-                      </button>
+                      <span className="inline-flex rounded-md border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)]">
+                        <Button
+                          type="button"
+                          variant="quiet"
+                          size="sm"
+                          onClick={() => setReviewing(l.pendingChangeRequestId!)}
+                          title="طلب تعديل بانتظار البتّ — راجعه قبل التغليف"
+                          // Its words are inside two spans, so the kit would take the tooltip as its name: the name is said.
+                          aria-label="طلب تعديل"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-warning)] animate-pulse" aria-hidden />
+                          <span className="font-semibold text-[var(--sys-warning)]">طلب تعديل</span>
+                        </Button>
+                      </span>
                     )}
                   </span>
                   )
@@ -335,7 +356,7 @@ export function PreparationScreen() {
               />
             </div>
           )}
-        </section>
+        </Card>
         ))
       )}
 
@@ -391,14 +412,14 @@ export function PreparationScreen() {
           onDecided={load}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
 function Kpi({ label, value, danger }: { label: string; value: number; danger?: boolean }) {
   return (
     <div className={`px-4 py-2 rounded-lg border ${danger ? 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)]' : 'bg-[var(--sys-card)] border-[var(--sys-border)]'}`}>
-      <p className="text-xs text-[var(--sys-muted-foreground)]">{label}</p>
+      <p className="text-note text-[var(--sys-muted-foreground)]">{label}</p>
       <p className={`text-lg font-bold tabular-nums ${danger ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-heading)]'}`}>{value}</p>
     </div>
   );
