@@ -1,11 +1,11 @@
 {
   "totals": {
     "rawButtons": 678,
-    "rawCheckboxes": 76,
-    "rawSurfaces": 348,
+    "rawCheckboxes": 77,
+    "rawSurfaces": 349,
     "rawDatePickers": 16,
     "screenTitle": 27,
-    "textXs": 2648
+    "textXs": 2660
   },
   "files": {
     "src/app/(system)/(shell)/settings/tracking/page.tsx": {
@@ -462,7 +462,11 @@
     "src/components/screens/BenchScreen.tsx": {
       "rawSurfaces": 2,
       "screenTitle": 1,
-      "textXs": 4
+      "textXs": 5
+    },
+    "src/components/screens/BenchTestPanel.tsx": {
+      "rawSurfaces": 1,
+      "textXs": 7
     },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
@@ -547,9 +551,9 @@
     },
     "src/components/screens/GeoSettingsScreen.tsx": {
       "rawButtons": 14,
-      "rawCheckboxes": 3,
+      "rawCheckboxes": 4,
       "rawSurfaces": 8,
-      "textXs": 27
+      "textXs": 31
     },
     "src/components/screens/InstalledAppsScreen.tsx": {
       "rawButtons": 2,
