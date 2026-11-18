@@ -382,11 +382,6 @@
       "rawSurfaces": 3,
       "textXs": 23
     },
-    "src/components/screens/ChannelsScreen.tsx": {
-      "rawButtons": 8,
-      "rawSurfaces": 2,
-      "textXs": 15
-    },
     "src/components/screens/CommissionSettingsScreen.tsx": {
       "rawButtons": 12,
       "rawSurfaces": 4,

@@ -1138,14 +1138,16 @@
     "tabs": 0
   },
   "src/components/screens/ChannelsScreen.tsx": {
-    "buttons": 8,
+    "buttons": 3,
     "inputs": 4,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 6,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 4,
+    "switches": 1
   },
   "src/components/screens/CommissionSettingsScreen.tsx": {
     "buttons": 12,

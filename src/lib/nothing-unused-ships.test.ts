@@ -296,8 +296,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * 18/11 (R17a): `Checkbox` LEFT the list — «تذكرني» on the login page and «لا تطلب الرمز على هذا الجهاز» on the
    * second step are the first screens that draw it. The old line said «no screen draws it yet»; that is no longer true.
    */
-  'src/components/ui/Switch.tsx:Switch':
-    'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  // `Switch` LEFT this list on 18/11 (R15d): «قنوات الطلبات» draws it for each channel's on/off.
   // `Segmented` LEFT this list on 18/11 (R10e): «صندوق الواتساب» draws it for «مفتوحة / مغلقة».
 
   /*
