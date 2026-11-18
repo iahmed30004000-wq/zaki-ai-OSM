@@ -345,7 +345,9 @@ describe('the doors — one query, the same visibility, the same customer-data t
 
   it('«أكّدتها» reads the goods in the page query itself (the select is shared by all four lists)', () => {
     const s = mineSrc();
-    expect(s).toContain('items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true } }');
+    // `variantSummary` (product variants, the owner 2026-11-18): the size and colour of every piece, read on the call.
+    // A column of the line itself — still the one page query, no join and no query per row.
+    expect(s).toContain('items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true, variantSummary: true } }');
     expect(s).toContain('addOns: { select: { id: true, productName: true, quantity: true, total: true } }');
     expect(s).toContain('region: { select: { name: true } }');
     expect(s).toContain('select: { ...ORDER_SELECT, changeRequests');
@@ -355,7 +357,8 @@ describe('the doors — one query, the same visibility, the same customer-data t
 
   it('«المؤجلة» reads them in the page query too, bounded by the page', () => {
     const s = postponedSrc();
-    expect(s).toContain('items: { select: { id: true, productName: true, quantity: true, freeQuantity: true } }');
+    // `variantSummary`: the pieces' size and colour, a column of the line (product variants, 2026-11-18).
+    expect(s).toContain('items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, variantSummary: true } }');
     expect(s).toContain('addOns: { select: { id: true, productName: true, quantity: true } }');
     expect(s).toContain('region: { select: { name: true } }');
     expect(s).toContain('customer: { select: { id: true, fullName: true, phone: true, city: true, address: true } }');

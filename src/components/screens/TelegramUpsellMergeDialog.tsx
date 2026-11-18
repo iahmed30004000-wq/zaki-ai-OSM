@@ -103,7 +103,7 @@ export function TelegramUpsellMergeDialog({ canManage, onClose, onApplied }: { c
       label: 'الإجراء',
       wide: true,
       render: (r) => (
-        <span className={r.kind === 'review' ? 'text-xs text-[var(--sys-muted-foreground)]' : 'text-xs font-semibold text-[var(--sys-primary)]'}>{r.action}</span>
+        <span className={r.kind === 'review' ? 'text-note text-[var(--sys-muted-foreground)]' : 'text-note font-semibold text-[var(--sys-primary)]'}>{r.action}</span>
       ),
     },
   ];
@@ -117,7 +117,7 @@ export function TelegramUpsellMergeDialog({ canManage, onClose, onApplied }: { c
           </p>
         )}
         {rows === null && !error ? (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">عم نجرّب…</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">عم نجرّب…</p>
         ) : (
           rows && (
             <Rows

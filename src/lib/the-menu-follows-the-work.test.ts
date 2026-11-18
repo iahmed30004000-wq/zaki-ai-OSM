@@ -152,7 +152,8 @@ describe('operations sit with the work, and configuration sits in settings', () 
     // The pairing the contract already had, which the AI was the exception to.
     // 18/11 (R6): was their own group, «المحادثات» (`chats`). A conversation that arrives is somebody who wants to order, so the
     // inboxes are the last two tabs of «الطلبات» (`main`).
-    expect(pathsOf('main')).toEqual(['/orders', '/abandoned-carts', '/customers', '/growth/telegram/orders', '/growth/whatsapp/inbox']);
+    // 18/11 (landing chat inbox): and the landing pages' chat assistant, «رسائل اللاندينج», as the last tab beside them (contract oms-lp.v1 §11).
+    expect(pathsOf('main')).toEqual(['/orders', '/abandoned-carts', '/customers', '/growth/telegram/orders', '/growth/whatsapp/inbox', '/growth/landing-chats']);
     // …and the setup is ONE page now, «الربط», with a card for each (owner, 24/10).
     expect(pathsOf('admin')).toContain('/settings/links');
     expect(pathsOf('admin')).not.toContain('/settings/whatsapp');
@@ -220,8 +221,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     const paths = ALL_ROUTES.map((r) => r.path);
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(54);
-    expect(new Set(paths).size).toBe(54);
+    // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the last tab of «الطلبات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). Not one address moved.
+    expect(paths).toHaveLength(55);
+    expect(new Set(paths).size).toBe(55);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);
