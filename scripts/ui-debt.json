@@ -657,10 +657,6 @@
       "rawSurfaces": 3,
       "textXs": 74
     },
-    "src/components/screens/UsersScreen.tsx": {
-      "rawSurfaces": 4,
-      "textXs": 23
-    },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
       "rawButtons": 1,
       "textXs": 9
@@ -861,11 +857,6 @@
     "src/components/screens/tracking/WriteOffDialog.tsx": {
       "rawButtons": 2,
       "textXs": 3
-    },
-    "src/components/screens/users/CreateUserModal.tsx": {
-      "rawCheckboxes": 2,
-      "rawSurfaces": 2,
-      "textXs": 13
     },
     "src/components/screens/users/UserAccessSections.tsx": {
       "rawCheckboxes": 2,
