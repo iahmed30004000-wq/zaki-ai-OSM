@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { ON_THE_COMPANY } from '@/lib/shortfall';
 
 /**
@@ -53,7 +55,8 @@ export function ShortfallPeopleDialog({
         <p className="text-sm text-[var(--sys-foreground)]">{sentence}</p>
         <ul className="space-y-2">
           {lines.map((l) => (
-            <li key={l.matchId} className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+            <li key={l.matchId}>
+              <Card plain padding="sm" className="text-note space-y-1">
               <p className="text-[var(--sys-foreground)]">
                 {l.orderNumber} — الفرق <Money value={l.amount} currency={l.currencyCode} />
               </p>
@@ -68,21 +71,22 @@ export function ShortfallPeopleDialog({
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              </Card>
             </li>
           ))}
         </ul>
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             رجوع
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             disabled={busy || !complete}
             onClick={() => onConfirm(people)}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             اعتمد
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

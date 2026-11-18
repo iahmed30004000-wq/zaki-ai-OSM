@@ -64,7 +64,9 @@ describe('the sentence written at the door', () => {
 describe('and the third control settles nothing', () => {
   it('exists beside the delivery and the transfer', () => {
     const src = screen();
-    expect(src, 'لا زرّ للملاحظة').toMatch(/onClick=\{\(\) => void addNote\(o\)\}/);
+    // 18/11 (R11d): the note is the kit's `Button` now, so the press is wrapped in a block — `onClick={() => void addNote(o)}`
+    // became `onClick={() => { void addNote(o); }}` (the screen keeps its own busy flag, `noting`). The same handler, the same row.
+    expect(src, 'لا زرّ للملاحظة').toMatch(/onClick=\{\(\) => \{ void addNote\(o\); \}\}/);
     expect(src).toContain('تحويل');
     // The door's own answers, beside it. They were one «تسجيل التسليم»
     // that opened a line list; they are «استلم», «رفض / ملغى» and the
