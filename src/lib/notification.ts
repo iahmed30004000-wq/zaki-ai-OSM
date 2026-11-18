@@ -31,7 +31,9 @@ export type NotificationType =
   | 'PERFORMANCE'
   | 'POSTPONED_DUE'
   | 'RETURNS_NOT_RECEIVED'
-  | 'CLOSING_DUE';
+  | 'CLOSING_DUE'
+  // «رسائل اللاندينج»: a new landing conversation, or a customer writing again since the staff last read it.
+  | 'LANDING_CHAT';
 
 /**
  * The first of these screens the recipient may open, or null.

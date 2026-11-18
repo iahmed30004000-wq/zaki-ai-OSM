@@ -46,28 +46,28 @@ export default function ForgotPasswordPage() {
         <Card className="shadow-raised">
           <CardContent className="p-6 space-y-4">
             {error && (
-              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
+              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
                 <RiErrorWarningLine className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             {success && (
-              <div className="p-3 bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-xs rounded-lg space-y-2">
+              <div className="p-3 bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-note rounded-lg space-y-2">
                 <p className="flex items-center space-x-2 rtl:space-x-reverse">
                   <RiShieldCheckLine className="w-4 h-4 shrink-0" />
                   <span>{success}</span>
                 </p>
                 {devToken && (
-                  <div className="bg-[var(--sys-surface)] rounded-lg p-2.5 border border-[var(--sys-border)]">
-                    <p className="text-xs text-[var(--sys-muted-foreground)] mb-1">وضع التطوير — رابط إعادة التعيين:</p>
+                  <Card plain padding="sm">
+                    <p className="text-note text-[var(--sys-muted-foreground)] mb-1">وضع التطوير — رابط إعادة التعيين:</p>
                     <Link
                       href={`/reset-password?token=${devToken}`}
-                      className="text-[var(--sys-primary)] font-mono text-xs break-all hover:underline"
+                      className="text-[var(--sys-primary)] font-mono text-note break-all hover:underline"
                     >
                       /reset-password?token={devToken.slice(0, 20)}...
                     </Link>
-                  </div>
+                  </Card>
                 )}
               </div>
             )}
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-center text-note text-[var(--sys-muted-foreground)]">
           <Link href="/login" className="text-[var(--sys-primary)] font-semibold hover:underline">
             العودة لتسجيل الدخول
           </Link>

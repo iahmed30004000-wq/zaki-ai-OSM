@@ -3,6 +3,7 @@ import type { db as prismaDb } from './db';
 import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
 import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
+import { drawDownVariants, restoreVariants } from './product-variants';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -152,7 +153,7 @@ export async function consumeOrderStock(
       storeId: true,
       source: true,
       items: {
-        select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true },
+        select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true, variantSummary: true },
       },
       // The add-ons the customer accepted after ordering leave in the same parcel — see the loop below.
       addOns: { select: { productId: true, productName: true, quantity: true } },
@@ -251,6 +252,13 @@ export async function consumeOrderStock(
       });
     }
   }
+
+  /*
+   * AND EACH CHOSEN PIECE LEAVES ITS OWN COMBINATION'S COUNT (product variants, the owner 2026-11-18). The batches above
+   * stay the product's ledger and its cost; this only says which size in which colour left. Asked only when a line
+   * carries pieces — an order of products without variants reads nothing more.
+   */
+  if (order.items.some((i) => i.variantSummary)) await drawDownVariants(tx, input.orderId);
 
   // The reservation has served its purpose: the units are gone, not held.
   await tx.orderItem.updateMany({
@@ -481,7 +489,7 @@ export async function restoreOrderStock(
        * and were never sellable again by the store that lost them.
        */
       storeId: true,
-      items: { select: { productId: true, quantity: true, freeQuantity: true } },
+      items: { select: { productId: true, quantity: true, freeQuantity: true, variantSummary: true } },
       // Counted back in after the lines: they left in the same parcel (`consumeOrderStock`).
       addOns: { select: { productId: true, quantity: true } },
       // Read from the order for the same reason `consumeOrderStock` reads it:
@@ -578,6 +586,9 @@ export async function restoreOrderStock(
         createdById: input.userId ?? null,
       },
     });
+
+    // The pieces come back onto the combinations they left (product variants — `restoreVariants`).
+    if ('variantSummary' in line && line.variantSummary) await restoreVariants(tx, { orderId: input.orderId, productId: line.productId, take });
 
     restored += take;
   }
