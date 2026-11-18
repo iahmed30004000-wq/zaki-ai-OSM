@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { RiCheckLine, RiEarthLine, RiLoader4Line, RiPhoneLine } from '@remixicon/react';
 
 /**
@@ -99,10 +100,10 @@ export function UserGeoAccessSection({ userId, canEdit }: { userId: string; canE
   return (
     <Card>
       <CardContent className="p-5">
-        <h3 className="mb-1 flex items-center gap-1.5 text-xs font-black text-[var(--sys-foreground)]">
+        <h3 className="mb-1 flex items-center gap-1.5 text-note font-black text-[var(--sys-foreground)]">
           <RiEarthLine className="h-4 w-4" /> البلدان والمتاجر
         </h3>
-        <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mb-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           البلد وحده يفتح كل متاجره؛ اختيار متاجر بعينها يحصره فيها. ومن يملك صلاحية إدارة البلدان والمتاجر
           يدخل الكل مهما اخترت هنا.
         </p>
@@ -116,25 +117,32 @@ export function UserGeoAccessSection({ userId, canEdit }: { userId: string; canE
               const allStores = on && !c.stores.some((s) => picked.storeIds.has(s.id));
               return (
                 <div key={c.id} className={`rounded-lg border p-2.5 ${on ? 'border-[var(--sys-success-soft)] bg-[var(--sys-success-soft)]' : 'border-[var(--sys-border)]'}`}>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--sys-heading)]">
-                    <input type="checkbox" checked={on} disabled={!canEdit} onChange={() => toggleCountry(c)} />
-                    {c.name}
-                    {allStores && c.stores.length > 0 && (
-                      <span className="rounded-full bg-[var(--sys-success-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--sys-success)]">كل متاجره</span>
-                    )}
-                  </label>
+                  {/* The ids carry the person, the country and the store: two employees' pages never share a box. */}
+                  <Checkbox
+                    id={`geo-${userId}-country-${c.id}`}
+                    checked={on}
+                    disabled={!canEdit}
+                    onChange={() => toggleCountry(c)}
+                    label={
+                      <span className="flex items-center gap-2 font-bold">
+                        {c.name}
+                        {allStores && c.stores.length > 0 && (
+                          <span className="rounded-full bg-[var(--sys-success-soft)] px-2 py-0.5 text-note font-semibold text-[var(--sys-success)]">كل متاجره</span>
+                        )}
+                      </span>
+                    }
+                  />
                   {c.stores.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 ps-6">
                       {c.stores.map((s) => (
-                        <label key={s.id} className="flex items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-                          <input
-                            type="checkbox"
-                            checked={picked.storeIds.has(s.id)}
-                            disabled={!canEdit}
-                            onChange={() => toggleStore(c, s.id)}
-                          />
-                          {s.name}
-                        </label>
+                        <Checkbox
+                          key={s.id}
+                          id={`geo-${userId}-store-${s.id}`}
+                          checked={picked.storeIds.has(s.id)}
+                          disabled={!canEdit}
+                          onChange={() => toggleStore(c, s.id)}
+                          label={s.name}
+                        />
                       ))}
                     </div>
                   )}
@@ -150,10 +158,10 @@ export function UserGeoAccessSection({ userId, canEdit }: { userId: string; canE
               {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
               احفظ الوصول
             </Button>
-            {msg && <span className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
+            {msg && <span className={`text-note font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
           </div>
         )}
-        {!canEdit && msg && <p className="mt-2 text-xs text-[var(--sys-destructive)]">{msg.text}</p>}
+        {!canEdit && msg && <p className="mt-2 text-note text-[var(--sys-destructive)]">{msg.text}</p>}
       </CardContent>
     </Card>
   );
@@ -188,7 +196,7 @@ export function UserPhoneField({ userId, initial, canEdit }: { userId: string; i
 
   return (
     <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-      <p className="flex items-center gap-1 text-xs text-[var(--sys-muted)]"><RiPhoneLine className="h-4 w-4" /> الهاتف</p>
+      <p className="flex items-center gap-1 text-note text-[var(--sys-muted)]"><RiPhoneLine className="h-4 w-4" /> الهاتف</p>
       {canEdit ? (
         <div className="mt-1 flex items-center gap-1.5">
           <input
@@ -197,7 +205,7 @@ export function UserPhoneField({ userId, initial, canEdit }: { userId: string; i
             dir="ltr"
             placeholder="—"
             aria-label="هاتف الموظف"
-            className="h-11 md:h-8 min-w-0 flex-1 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs font-bold text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
+            className="h-11 md:h-8 min-w-0 flex-1 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note font-bold text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
           />
           <Button size="sm" variant="outline" onClick={save} disabled={busy || phone.trim() === saved.trim()}>
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : 'حفظ'}
@@ -206,7 +214,7 @@ export function UserPhoneField({ userId, initial, canEdit }: { userId: string; i
       ) : (
         <p className="font-bold text-[var(--sys-heading)]" dir="ltr">{saved || '—'}</p>
       )}
-      {msg && <p className={`mt-1 text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>}
+      {msg && <p className={`mt-1 text-note font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>}
     </div>
   );
 }
