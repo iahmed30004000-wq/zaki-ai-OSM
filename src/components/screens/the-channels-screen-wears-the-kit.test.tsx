@@ -208,6 +208,8 @@ describe('the channels screen on the kit', () => {
     expect(name.value).toBe('صفحة الكريم');
     expect((screen.getByLabelText('المنصة') as HTMLSelectElement).value).toBe('TIKTOK');
     fireEvent.change(name, { target: { value: ' صفحة الكريم ٢ ' } });
+    // the edited platform is the one sent, not the one the row had
+    fireEvent.change(screen.getByLabelText('المنصة'), { target: { value: 'INSTAGRAM' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'احفظ التعديل' }));
     });
@@ -215,7 +217,7 @@ describe('the channels screen on the kit', () => {
     expect(writes()[0]).toEqual({
       url: '/api/settings/channels/ch-on',
       method: 'PATCH',
-      body: JSON.stringify({ name: 'صفحة الكريم ٢', kind: 'TIKTOK' }),
+      body: JSON.stringify({ name: 'صفحة الكريم ٢', kind: 'INSTAGRAM' }),
     });
   });
 
