@@ -85,10 +85,12 @@ describe('the campaigns board', () => {
 
   it('three views — cards, table, short list', () => {
     draw();
-    fireEvent.click(screen.getByRole('button', { name: 'جدول' }));
+    // 18/11 (R14b): the three views became the kit's `Segmented` — a choice of one, so each is a radio, not a button.
+    // was: getByRole('button', { name: 'جدول' }) / ({ name: 'قائمة مختصرة' }); now: getByRole('radio', …). Same three words, same effect.
+    fireEvent.click(screen.getByRole('radio', { name: 'جدول' }));
     expect(screen.queryAllByTestId('card')).toHaveLength(0);
     expect(screen.getByText('كلفة الواصل')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'قائمة مختصرة' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'قائمة مختصرة' }));
     const row = screen.getAllByTitle('ندبات').at(-1)!.parentElement!;
     expect(row.textContent).toMatch(/40.*USD · 0× · 0$/);
   });
