@@ -74,10 +74,9 @@
       "textXs": 14
     },
     "src/components/growth/CampaignsBoard.tsx": {
-      "rawButtons": 8,
-      "rawCheckboxes": 2,
+      "rawButtons": 1,
       "rawSurfaces": 4,
-      "textXs": 15
+      "textXs": 7
     },
     "src/components/growth/ChannelScores.tsx": {
       "rawSurfaces": 2,
@@ -422,10 +421,10 @@
       "textXs": 13
     },
     "src/components/screens/CampaignsScreen.tsx": {
-      "rawButtons": 8,
-      "rawSurfaces": 3,
+      "rawButtons": 1,
+      "rawSurfaces": 1,
       "rawDatePickers": 2,
-      "textXs": 29
+      "textXs": 23
     },
     "src/components/screens/ChangeRequestsScreen.tsx": {
       "rawButtons": 6,
