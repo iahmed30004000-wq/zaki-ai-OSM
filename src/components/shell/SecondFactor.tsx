@@ -4,6 +4,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { RiFingerprintLine, RiLoader4Line, RiShieldKeyholeLine } from '@remixicon/react';
 import { passkeySupported, signWithPasskey } from '@/lib/passkey-browser';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * THE SECOND STEP OF SIGNING IN.
@@ -179,28 +182,31 @@ function VerifyStep({
         */
         <p
           data-testid="asked-because"
-          className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-2.5 text-xs leading-relaxed text-[var(--sys-warning)]"
+          className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-2.5 text-note leading-relaxed text-[var(--sys-warning)]"
         >
           طُلب الرمز هذه المرة لأنَّ كلمة مرور خاطئة جُرِّبت على هذا الحساب خلال الربع ساعة الماضية — جهازك ما زال موثوقاً.
         </p>
       )}
 
       {askedBecause === 're-enrolled' && (
-        <p
-          data-testid="asked-because"
-          className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]"
-        >
-          أُعيد ضبط التحقّق الثنائيّ، فسقطت ثقة كل الأجهزة. اكتب الرمز مرّة واحدة ليُوثَّق هذا الجهاز من جديد.
-        </p>
+        <Card plain padding="sm" className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p data-testid="asked-because">
+            أُعيد ضبط التحقّق الثنائيّ، فسقطت ثقة كل الأجهزة. اكتب الرمز مرّة واحدة ليُوثَّق هذا الجهاز من جديد.
+          </p>
+        </Card>
       )}
 
       {offer && (
         <>
-          <button
+          {/* `busy` is this step's own lock (the code and the finger share it): the press returns nothing, so the kit
+              does not add a second one. */}
+          <Button
             type="button"
-            onClick={() => void withFinger()}
+            onClick={() => {
+              void withFinger();
+            }}
             disabled={busy}
-            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--sys-primary)] px-4 py-2.5 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+            className="w-full"
           >
             {busy ? (
               <RiLoader4Line className="h-5 w-5 animate-spin" />
@@ -208,13 +214,13 @@ function VerifyStep({
               <RiFingerprintLine className="h-5 w-5" aria-hidden />
             )}
             ادخل ببصمتك
-          </button>
-          <p className="text-center text-xs text-[var(--sys-muted-foreground)]">أو اكتب الرمز</p>
+          </Button>
+          <p className="text-center text-note text-[var(--sys-muted-foreground)]">أو اكتب الرمز</p>
         </>
       )}
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">الرمز</span>
+        <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">الرمز</span>
         <input
           autoFocus
           value={code}
@@ -234,22 +240,21 @@ function VerifyStep({
         Said on the box itself, because a person agreeing to «remember this
         device» deserves to know exactly what they are agreeing to.
       */}
-      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center">
-          <input
-            type="checkbox"
-            checked={trustDevice}
-            onChange={(e) => setTrustDevice(e.target.checked)}
-            className="h-4 w-4 rounded-sm border-[var(--sys-border-input)] bg-[var(--sys-card)] accent-[var(--sys-primary)]"
-          />
-        </span>
-        <span className="text-xs leading-relaxed text-[var(--sys-foreground)]">
-          لا تطلب الرمز على هذا الجهاز لمدة {trustDays} يوماً
-          <span className="mt-0.5 block text-[var(--sys-muted-foreground)]">
-            كلمة المرور تبقى مطلوبة في كل مرة، والرمز يُطلب فوراً إن حدث نشاط غير معتاد أو أُعيد ضبط التحقّق.
-          </span>
-        </span>
-      </label>
+      <Card plain padding="sm">
+        <Checkbox
+          id="second-factor-trust"
+          checked={trustDevice}
+          onChange={(on) => setTrustDevice(on)}
+          label={
+            <span className="block text-note leading-relaxed text-[var(--sys-foreground)]">
+              لا تطلب الرمز على هذا الجهاز لمدة {trustDays} يوماً
+              <span className="mt-0.5 block text-[var(--sys-muted-foreground)]">
+                كلمة المرور تبقى مطلوبة في كل مرة، والرمز يُطلب فوراً إن حدث نشاط غير معتاد أو أُعيد ضبط التحقّق.
+              </span>
+            </span>
+          }
+        />
+      </Card>
 
       {error && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-sm text-[var(--sys-destructive)]">
@@ -257,16 +262,12 @@ function VerifyStep({
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={busy || code.trim().length < 6}
-        className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-      >
+      <Button type="submit" disabled={busy || code.trim().length < 6} className="w-full">
         {busy ? <RiLoader4Line className="mx-auto h-5 w-5 animate-spin" aria-hidden /> : 'تحقّق وادخل'}
-      </button>
-      <button type="button" onClick={onCancel} className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]">
+      </Button>
+      <Button type="button" variant="quiet" size="sm" onClick={onCancel} className="w-full">
         رجوع
-      </button>
+      </Button>
     </form>
   );
 }
@@ -340,19 +341,18 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
           <span className="font-bold">احفظ هذه الرموز الآن.</span> تُعرض مرّةً واحدةً ولا يمكن عرضها ثانيةً —
           فهي مخزَّنةٌ مشفّرةً كما تُخزَّن كلمةُ المرور. كلُّ رمزٍ يُستعمل مرّةً، وهو طريقُك للدخول إن ضاع الهاتف.
         </p>
-        <ul className="grid grid-cols-2 gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-          {codes.map((c) => (
-            <li key={c} className="text-center text-sm font-semibold tabular-nums text-[var(--sys-heading)]" dir="ltr">
-              {c}
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={onCancel}
-          className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-sm font-medium text-[var(--sys-primary-foreground)]"
-        >
+        <Card plain padding="sm">
+          <ul className="grid grid-cols-2 gap-2">
+            {codes.map((c) => (
+              <li key={c} className="text-center text-sm font-semibold tabular-nums text-[var(--sys-heading)]" dir="ltr">
+                {c}
+              </li>
+            ))}
+          </ul>
+        </Card>
+        <Button type="button" onClick={onCancel} className="w-full">
           حفظتُها — إلى تسجيل الدخول
-        </button>
+        </Button>
       </div>
     );
   }
@@ -370,7 +370,7 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
           تفعيل التحقّق بخطوتين يحتاج رمزاً يعطيك إياه المدير. اطلبه منه واكتبه هنا.
         </p>
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">رمز التفعيل</span>
+          <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">رمز التفعيل</span>
           <input
             autoFocus
             value={enrolCode}
@@ -387,16 +387,12 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
             {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy || enrolCode.trim().length < 8}
-          className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-        >
+        <Button type="submit" disabled={busy || enrolCode.trim().length < 8} className="w-full">
           {busy ? <RiLoader4Line className="mx-auto h-5 w-5 animate-spin" aria-hidden /> : 'تابع'}
-        </button>
-        <button type="button" onClick={onCancel} className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]">
+        </Button>
+        <Button type="button" variant="quiet" size="sm" onClick={onCancel} className="w-full">
           رجوع
-        </button>
+        </Button>
       </form>
     );
   }
@@ -420,7 +416,7 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
               className="rounded-lg"
             />
           </div>
-          <details className="text-xs text-[var(--sys-muted-foreground)]">
+          <details className="text-note text-[var(--sys-muted-foreground)]">
             <summary className="cursor-pointer">لا تستطيع المسح؟ أدخل المفتاح يدويّاً</summary>
             <p className="mt-2 break-all rounded-lg bg-[var(--sys-surface)] p-2 font-mono text-[var(--sys-heading)]" dir="ltr">
               {setup.secret}
@@ -433,7 +429,7 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
       )}
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">الرمز من التطبيق</span>
+        <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">الرمز من التطبيق</span>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
@@ -453,16 +449,12 @@ function EnrolStep({ challenge, email, onCancel }: { challenge: string; email: s
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={busy || !setup || code.trim().length < 6}
-        className="h-11 w-full rounded-lg bg-[var(--sys-primary)] text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-      >
+      <Button type="submit" disabled={busy || !setup || code.trim().length < 6} className="w-full">
         {busy ? <RiLoader4Line className="mx-auto h-5 w-5 animate-spin" aria-hidden /> : 'فعّل التحقّق الثنائيّ'}
-      </button>
-      <button type="button" onClick={onCancel} className="h-11 w-full text-xs text-[var(--sys-muted-foreground)]">
+      </Button>
+      <Button type="button" variant="quiet" size="sm" onClick={onCancel} className="w-full">
         رجوع
-      </button>
+      </Button>
     </form>
   );
 }

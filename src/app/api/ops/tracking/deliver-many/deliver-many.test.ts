@@ -281,7 +281,9 @@ function makeWorld() {
         id, companyId: 'c1', storeId: 's1', orderNumber: `ORD-${id.slice(-3)}`, shippingStatus: 'SHIPPED',
         deliveredAt: null, returnedAt: null, customerId: `cu-${id}`, deliveryProviderId: 'dp1',
         deliveryFee: 3, priceIncludesDelivery: false, settlementStatus: 'NOT_APPLICABLE', source: 'Manual', version: 1,
-        items: [{ id: `${id}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 0, unitPrice: 10, discountShare: 0, lineTotal: 20, deliveredQty: null, returnedQty: null, reservedQty: 2 }],
+        // `variantSummary` (product variants, 2026-11-18): the delivery reads it to know whether a line's pieces leave
+        // their combinations' counts too. Null — a product without variants — draws down exactly as before.
+        items: [{ id: `${id}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 0, unitPrice: 10, discountShare: 0, lineTotal: 20, deliveredQty: null, returnedQty: null, variantSummary: null, reservedQty: 2 }],
         addOns: [], returnReceipt: null, store: { country: { minorUnit: 2 } },
         ...over,
       });
@@ -875,7 +877,7 @@ describe('a second press records nothing twice', () => {
 
 describe('the goods leave the shelf exactly as the single door takes them', () => {
   it('gift units leave too: 2 paid + 1 gift = 3 units on the ledger line, and the lines say 3 taken', async () => {
-    w.add(A, { items: [{ id: `${A}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 10, discountShare: 0, lineTotal: 20, deliveredQty: null, returnedQty: null, reservedQty: 3 }] });
+    w.add(A, { items: [{ id: `${A}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 10, discountShare: 0, lineTotal: 20, deliveredQty: null, returnedQty: null, variantSummary: null, reservedQty: 3 }] });
     w.say(A, 'DELIVERED_TO_RECIPIENT');
     await press([A]);
     expect(w.order(A).items[0]).toMatchObject({ deliveredQty: 3, returnedQty: 0 });
@@ -915,8 +917,8 @@ describe('what it writes IS what the single «استلم» writes (outcome ALL) 
     world.add(A, {
       deliveryFee: 2.5,
       items: [
-        { id: `${A}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 10, discountShare: 4, lineTotal: 16, deliveredQty: null, returnedQty: null, reservedQty: 3 },
-        { id: `${A}-i2`, productId: 'p1', productName: 'قطرة', quantity: 1, freeQuantity: 0, unitPrice: 30, discountShare: 0, lineTotal: 30, deliveredQty: null, returnedQty: null, reservedQty: 1 },
+        { id: `${A}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 1, unitPrice: 10, discountShare: 4, lineTotal: 16, deliveredQty: null, returnedQty: null, variantSummary: null, reservedQty: 3 },
+        { id: `${A}-i2`, productId: 'p1', productName: 'قطرة', quantity: 1, freeQuantity: 0, unitPrice: 30, discountShare: 0, lineTotal: 30, deliveredQty: null, returnedQty: null, variantSummary: null, reservedQty: 1 },
       ],
       addOns: [{ productId: 'p1', productName: 'هدية', quantity: 1, price: 5 }],
     });

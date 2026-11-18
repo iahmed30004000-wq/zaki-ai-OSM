@@ -4,7 +4,7 @@ import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/d
 import { quoteLandingOrder } from '@/lib/v1/landing-door';
 
 /**
- * GET /api/v1/landing/quote?productId=&offerId=&city=
+ * GET /api/v1/landing/quote?productId=&offerId=&city=&units=
  *
  * What the customer will pay, before they press «اطلب». A GET because it
  * writes nothing, and a city is not a customer's detail. A refusal is the
@@ -28,6 +28,12 @@ export async function GET(req: Request) {
       productId: productId.slice(0, 64),
       offerId: (params.get('offerId') ?? '').slice(0, 64),
       city: city.slice(0, 120),
+      // One combination id per piece for a product with variants (oms-lp.v1 §10); absent or blank is the base offer.
+      units: (params.get('units') ?? '')
+        .split(',')
+        .map((u) => u.trim().slice(0, 64))
+        .filter(Boolean)
+        .slice(0, 200),
     });
     if (!result.ok) return NextResponse.json(result.body, { status: result.status, headers: { 'X-Request-Id': requestId } });
     return v1Ok(requestId, result.quote);
