@@ -42,7 +42,7 @@ import { MenuOrderCard } from '@/components/settings/MenuOrderCard';
 import { RoleMenuPanel } from '@/components/settings/RoleMenuPanel';
 import { PermissionsScreen } from '@/components/screens/PermissionsScreen';
 import { mobileNav } from '@/lib/mobile-nav';
-import { EMPTY_LAYOUT, reorderGroups, reorderSlots, reorderWithinGroup, type NavLayout } from '@/lib/nav-arrangement';
+import { applyArrangement, cleanLayout, EMPTY_LAYOUT, reorderGroups, reorderSlots, reorderWithinGroup, resolveLayout, type NavLayout } from '@/lib/nav-arrangement';
 import { ALL_ROUTES, NAV, findRoute } from '@/lib/route-registry';
 import { repoFile, stripComments } from '@/lib/guard-source';
 
@@ -805,7 +805,7 @@ describe('the owner, setting a role’s base — the groups and the four, for ev
     expect(screen.getByText(/^هاي خانات أساس الدور/)).toBeTruthy();
   });
 
-  it('and saving writes to the ROLE, with both lists and the pins folded — not to the owner’s own row', async () => {
+  it('and saving writes to the ROLE, with both lists and its pins kept — not to the owner’s own row', async () => {
     await mountRole({ paths: AGENT_PATHS, roleBase: { 'role-mod': ROLE_BASE } });
     await groupDown('ops');
     await until(() => expect(groupOrder().slice(0, 2)).toEqual(['main', 'ops']));
@@ -814,7 +814,29 @@ describe('the owner, setting a role’s base — the groups and the four, for ev
     expect(url).toBe('/api/nav/arrangement?roleId=role-mod');
     expect(body.groups).toEqual(['main', 'ops', 'confirmation', 'finance', 'admin']);
     expect(body.slots).toEqual(['/ops/tracking', '/orders', '/ops/preparation', '/confirmation/queue']);
-    expect(body.pinned).toEqual([]);
+    // CHANGED 18/11 (R7 review, last round): was toEqual([]) — a role's base keeps its pins (its members draw them).
+    expect(body.pinned).toEqual(['/orders']);
+  });
+
+  /*
+   * 18/11 (R7 review, last round): the role's base KEEPS its pins on a save. A member with a row of their own (an order,
+   * no pins) draws the base's pins through `resolveLayout`; a save that posted the base's pins empty would reorder that
+   * member's menu the moment the owner pressed «احفظ», with nothing changed.
+   */
+  it('and a role save with NO edits keeps the base’s pins — and a member’s menu draws the same after it', async () => {
+    const base: NavLayout = { ...EMPTY_LAYOUT, pinned: ['/finance/wallets'] };
+    const member: NavLayout = { ...EMPTY_LAYOUT, order: ['/finance/profit', '/finance/wallets'] };
+    await mountRole({ roleBase: { 'role-mod': base } });
+    const { url, body } = await save();
+    expect(url).toBe('/api/nav/arrangement?roleId=role-mod');
+    expect(body.pinned).toEqual(['/finance/wallets']);
+    const keys = NAV.map((g) => g.key);
+    const draw = (l: NavLayout) => applyArrangement(NAV, l).map((g) => [g.key, g.routes.map((r) => r.path)]);
+    const before = draw(resolveLayout(base, member));
+    const after = draw(resolveLayout(cleanLayout(body, ALL_PATHS, keys), member));
+    expect(after).toEqual(before);
+    const finance = after.find(([k]) => k === 'finance')![1] as string[];
+    expect(finance.indexOf('/finance/wallets'), 'المحافظ نزلت تحت الأرباح').toBeLessThan(finance.indexOf('/finance/profit'));
   });
 
   it('and a role base with nothing chosen is saved as «no opinion», not as the system’s four frozen into it', async () => {

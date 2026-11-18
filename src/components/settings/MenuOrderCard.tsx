@@ -170,6 +170,12 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
       setLayout(r.layout);
       // What is on screen IS the base — it is being edited, not showing through.
       setInherited({ groups: false, slots: false });
+      /*
+       * 18/11 (R7 review): a role's base KEEPS its pins on a save. Its members who have a row of their own with no pins
+       * of their own draw the base's pins (`resolveLayout`); folding them away here would reorder those members' menus
+       * the moment the owner pressed «احفظ», even with nothing changed.
+       */
+      setKeepOwnPins(true);
     })()
       .catch((e) => alive && setError(e instanceof Error ? e.message : 'تعذّر القراءة'))
       .finally(() => alive && setLoading(false));
