@@ -303,15 +303,20 @@ describe('«إنشاء شحنة» on the kit — every press reaches the same ha
     }
   });
 
-  it('«أرجِعه» on the held tab posts the release of its own order', async () => {
-    await draw();
-    fireEvent.click(screen.getByRole('button', { name: /مؤجَّلة الشحن/ }));
-    await waitFor(() => expect(document.querySelector('tbody')!.textContent).toContain('ORD-H'), WAIT);
-    const tr = document.querySelector('tbody tr') as HTMLElement;
-    await act(async () => {
-      fireEvent.click(within(tr).getByRole('button', { name: /أرجِعه/ }));
-    });
-    expect(JSON.parse(posts('/api/ops/shipments/hold')[0][1].body)).toEqual({ orderId: 'H', release: true });
+  it('«أرجِعه» on the held tab posts the release of its own order — the second row’s, not the first', async () => {
+    HELD.push(row('K', { shipHoldUntil: '2026-12-02T09:00:00.000Z' }));
+    try {
+      await draw();
+      fireEvent.click(screen.getByRole('button', { name: /مؤجَّلة الشحن/ }));
+      await waitFor(() => expect(document.querySelector('tbody')!.textContent).toContain('ORD-K'), WAIT);
+      const tr = [...document.querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('ORD-K'))! as HTMLElement;
+      await act(async () => {
+        fireEvent.click(within(tr).getByRole('button', { name: /أرجِعه/ }));
+      });
+      expect(JSON.parse(posts('/api/ops/shipments/hold')[0][1].body)).toEqual({ orderId: 'K', release: true });
+    } finally {
+      HELD.pop();
+    }
   });
 
   const ship = async () => {
