@@ -23,6 +23,7 @@ import { editsNow } from '@/lib/edit-confirmed-window';
 import { ShippingSection } from '@/components/orders/ShippingSection';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
+import { OrderPieces } from '@/components/orders/OrderPieces';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { CustomerHistoryModal } from '@/components/orders/CustomerHistory';
@@ -703,6 +704,17 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             currency={currency}
             canEdit={order.lockedById === currentUser?.id && lockActive}
             onAcquireLock={handleEnterEditMode}
+            onSaved={async () => {
+              if (order?.id) await loadOrder(order.id);
+              onRefresh();
+            }}
+          />
+
+          {/* The size and colour of every piece, for products with variants — nothing for any other order. */}
+          <OrderPieces
+            key={`${order.id}:${order.version ?? ''}`}
+            orderId={order.id}
+            canEdit={userCan(currentUser, 'orders.edit')}
             onSaved={async () => {
               if (order?.id) await loadOrder(order.id);
               onRefresh();

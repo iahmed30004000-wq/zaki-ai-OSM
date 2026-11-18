@@ -20,6 +20,8 @@ export interface PreparationLine {
   quantity: number;
   freeQuantity: number;
   reservedQty: number;
+  /** The size and colour of every piece of this line (product variants), or null. */
+  variantSummary?: string | null;
   confirmationStatus: string;
   shippingStatus: string;
 }
@@ -62,6 +64,7 @@ export async function preparationGroups(tx: Tx, scope: { companyId: string; stor
       quantity: true,
       freeQuantity: true,
       reservedQty: true,
+      variantSummary: true,
       order: {
         select: {
           id: true, orderNumber: true, confirmationStatus: true, shippingStatus: true,
@@ -99,6 +102,7 @@ export async function preparationGroups(tx: Tx, scope: { companyId: string; stor
       quantity: item.quantity,
       freeQuantity: item.freeQuantity,
       reservedQty: item.reservedQty,
+      variantSummary: item.variantSummary ?? null,
       confirmationStatus: item.order.confirmationStatus,
       shippingStatus: item.order.shippingStatus,
     });

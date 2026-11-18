@@ -14,7 +14,8 @@ import { emitAppEvent } from '../apps/events';
 import { queueConversions } from '../conversions/emit';
 import { logAudit } from '../audit';
 import { notify } from '../notify';
-import { CITY_REFUSED, landingOrderFigures, lineUntouched, rewriteLandingOffer, type Refusal } from './landing-door';
+import { CITY_REFUSED, landingOrderFigures, lineUntouched, rewriteLandingOffer, unitsRefusal, unitsSchema, type Refusal } from './landing-door';
+import { parseVariantOptions, readVariantsView, unitsOfGroups } from '../product-variants';
 import { V1_CODE, V1Fault } from './door';
 
 /**
@@ -72,7 +73,8 @@ const token = z.string().min(20).max(2048);
 export const chatTokenSchema = z.object({ token });
 export const chatCancelSchema = z.object({ token, reason: z.string().max(500).optional().nullable() });
 export const chatAddressSchema = z.object({ token, city: z.string().max(120), address: z.string().max(500) });
-export const chatOfferSchema = z.object({ token, offerId: z.string().min(1).max(64) });
+// `units`: the pieces of a product with variants (oms-lp.v1 §10). With the order's own offer, only the pieces change.
+export const chatOfferSchema = z.object({ token, offerId: z.string().min(1).max(64), units: unitsSchema });
 export const chatFollowUpSchema = z.object({
   token,
   kind: z.enum(['callback', 'human']),
@@ -114,7 +116,20 @@ const CHAT_SELECT = {
   store: { select: { name: true, countryId: true } },
   offer: { select: { id: true, name: true } },
   customer: { select: { fullName: true, phone: true, rawPhone: true, address: true, city: true } },
-  items: { select: { productId: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true }, orderBy: { createdAt: 'asc' } },
+  items: {
+    select: {
+      productId: true,
+      productName: true,
+      quantity: true,
+      freeQuantity: true,
+      lineTotal: true,
+      // The pieces of a product with variants, in the order they were chosen (oms-lp.v1 §10).
+      variantSummary: true,
+      variants: { select: { variantId: true, label: true, quantity: true, freeQuantity: true }, orderBy: { createdAt: 'asc' } },
+    },
+    orderBy: { createdAt: 'asc' },
+  },
+  product: { select: { id: true, variantOptions: true, storeId: true } },
 } as const;
 type ChatRow = Prisma.OrderGetPayload<{ select: typeof CHAT_SELECT }>;
 
@@ -175,9 +190,12 @@ async function viewOf(companyId: string, o: ChatRow) {
         quantity: i.quantity,
         freeQuantity: i.freeQuantity,
         price: Number(i.lineTotal),
+        units: unitsOfGroups(i.variants ?? []),
       };
     }),
     offers: figures.offers,
+    // The product's options and combinations, so the chat can offer a change of size or colour; null without.
+    variants: o.product ? await readVariantsView(db, companyId, o.product, false) : null,
     total: Number(o.totalAmount),
     cod: figures.cod,
     deliveryFee: figures.deliveryFee,
@@ -292,6 +310,10 @@ export async function confirmFromChat(
   }
   // No governorate, no yes (the agent's door asks the same, of everyone).
   if (needsRegionFirst(o)) return refuse(409, 'نحتاج المحافظة قبل تأكيد الطلب — سيتواصل معك فريقنا', 'REGION_REQUIRED');
+  // No size and colour per piece, no yes (oms-lp.v1 §10): the chat names them with …/offer first.
+  if (parseVariantOptions(o.product?.variantOptions).length > 0 && o.items.some((i) => i.productId === o.productId && !i.variantSummary)) {
+    return refuse(409, 'نحتاج اختيار المقاس واللون لكل قطعة قبل تأكيد الطلب', 'UNITS_REQUIRED');
+  }
 
   const actor = await bookkeepingActor(companyId);
   const country = o.countryId
@@ -549,8 +571,9 @@ export async function changeOfferFromChat(
   const o = found.order;
   if (!orderEditable(o)) return NOT_EDITABLE();
 
-  // The offer it already has: nothing to write.
-  if (o.offerId === input.offerId) {
+  // The offer it already has, and no new pieces named: nothing to write.
+  const units = (input.units ?? []).map((u) => u.variantId);
+  if (o.offerId === input.offerId && units.length === 0) {
     const order = await viewOf(companyId, o);
     return { ok: true, body: { order } };
   }
@@ -567,9 +590,12 @@ export async function changeOfferFromChat(
       by: CHAT_ACTOR_AR,
       source: CHAT_ACTOR_AR,
     },
-    now
+    now,
+    units
   );
   if (!result.ok) {
+    const aboutPieces = unitsRefusal(result);
+    if (aboutPieces) return aboutPieces;
     if (result.reason === 'OFFER_GONE') return refuse(404, 'هذا العرض غير متاح لهذا المنتج', 'OFFER_NOT_FOUND');
     if (result.reason === 'ALREADY_ADDED') return MOVED_ON();
     return NOT_EDITABLE();
