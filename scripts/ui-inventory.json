@@ -252,6 +252,16 @@
     "tabs": 0,
     "checkboxes": 2
   },
+  "src/components/growth/ChannelScores.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 2,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/growth/IntelligenceStrip.tsx": {
     "buttons": 0,
     "inputs": 0,
@@ -787,7 +797,7 @@
     "tabs": 0
   },
   "src/components/performance/AgentScorecard.tsx": {
-    "buttons": 1,
+    "buttons": 0,
     "inputs": 0,
     "columns": 11,
     "cards": 1,
@@ -857,10 +867,10 @@
     "tabs": 0
   },
   "src/components/performance/ScoreBoard.tsx": {
-    "buttons": 0,
+    "buttons": 1,
     "inputs": 0,
     "columns": 3,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 1,
     "links": 0,
@@ -870,16 +880,26 @@
     "buttons": 0,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 3,
     "links": 0,
     "tabs": 0
   },
-  "src/components/performance/TeamPerformanceTable.tsx": {
+  "src/components/performance/TeamMemberDrawer.tsx": {
     "buttons": 0,
     "inputs": 0,
-    "columns": 15,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/performance/TeamPerformanceTable.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 28,
     "cards": 0,
     "modals": 0,
     "icons": 3,
@@ -1445,14 +1465,14 @@
     "tabs": 0
   },
   "src/components/screens/PerformanceScreen.tsx": {
-    "buttons": 1,
+    "buttons": 0,
     "inputs": 0,
     "columns": 12,
-    "cards": 8,
+    "cards": 11,
     "modals": 0,
     "icons": 9,
     "links": 2,
-    "tabs": 1
+    "tabs": 0
   },
   "src/components/screens/PermissionsScreen.tsx": {
     "buttons": 16,

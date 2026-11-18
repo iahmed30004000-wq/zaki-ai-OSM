@@ -59,7 +59,10 @@ describe('the scorecard', () => {
   it('the only buttons choose the grain, and asking for the week asks the door for it', async () => {
     render(<AgentScorecard />);
     await screen.findAllByText('سارة');
-    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['يومي', 'أسبوعي']);
+    // UPDATED 2026-11-18 (R14a1, the shape): it read «the only BUTTONS are يومي and أسبوعي» — the pair is now the kit's `Segmented`, so the
+    // two are radios of one group. Still the only controls: no button at all, and exactly these two choices.
+    expect(screen.queryAllByRole('button')).toEqual([]);
+    expect(screen.getAllByRole('radio').map((b) => b.textContent)).toEqual(['يومي', 'أسبوعي']);
     expect(api).toHaveBeenLastCalledWith('/api/performance/scorecard?grain=day');
     fireEvent.click(screen.getByText('أسبوعي'));
     await waitFor(() => expect(api).toHaveBeenLastCalledWith('/api/performance/scorecard?grain=week'));

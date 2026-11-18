@@ -75,10 +75,6 @@
       "rawSurfaces": 4,
       "textXs": 7
     },
-    "src/components/growth/ChannelScores.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 11
-    },
     "src/components/growth/IntelligenceStrip.tsx": {
       "rawSurfaces": 1,
       "textXs": 3
@@ -235,13 +231,6 @@
     "src/components/orders/TwinConfirmedDialog.tsx": {
       "textXs": 1
     },
-    "src/components/performance/AgentScorecard.tsx": {
-      "rawButtons": 1,
-      "textXs": 4
-    },
-    "src/components/performance/AttributionTable.tsx": {
-      "textXs": 2
-    },
     "src/components/performance/CommissionPreview.tsx": {
       "textXs": 2
     },
@@ -261,17 +250,6 @@
     "src/components/performance/NoAnswerWatch.tsx": {
       "rawSurfaces": 1,
       "textXs": 4
-    },
-    "src/components/performance/ScoreBoard.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 6
-    },
-    "src/components/performance/ScoreCard.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 10
-    },
-    "src/components/performance/TeamPerformanceTable.tsx": {
-      "textXs": 5
     },
     "src/components/production/BatchCostDialog.tsx": {
       "rawButtons": 2,
@@ -411,11 +389,6 @@
       "rawButtons": 7,
       "rawSurfaces": 2,
       "textXs": 17
-    },
-    "src/components/screens/PerformanceScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 3,
-      "textXs": 12
     },
     "src/components/screens/PermissionsScreen.tsx": {
       "rawButtons": 4,

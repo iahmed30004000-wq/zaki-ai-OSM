@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Money } from '@/components/ui/Money';
 import { HealthChip } from '@/components/ui/HealthChip';
+import { Card } from '@/components/ui/Card';
 import { healthOf } from '@/lib/health';
 import type { ChannelScore } from '@/lib/channel-score';
 import type { Trust } from '@/lib/cod-vitals';
@@ -57,6 +58,9 @@ interface ChannelPerf {
   whyNoScore: string | null;
 }
 
+/** The window of `/api/settings/channels/performance`, which takes none from the screen. */
+const CHANNEL_WINDOW_LINE = 'آخر 90 يوم — ما بتتبع المدة المختارة فوق.';
+
 interface ShopSpread {
   orders: number;
   delivered: number;
@@ -91,12 +95,14 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
   const graded = rows.filter((c) => c.score.total !== null);
 
   return (
-    <div className="space-y-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+    <Card padding="md" className="space-y-3">
       <div>
         <h2 className="text-sm font-bold text-[var(--sys-heading)]">سكور القنوات — أيّها يوصِّل فعلاً</h2>
-        <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">
+        <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
           ليس الأكثر طلباً — الأكثر وصولاً. قناة تجلب 100 طلب يرجع منها 40 أسوأ من واحدة تجلب 30 كلها تُسلَّم.
         </p>
+        {/* Its door takes no window (it asks `period: 'all'`, which the server bounds to ninety days) — said beside it (R14a1, 18/11). */}
+        <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">{CHANNEL_WINDOW_LINE}</p>
       </div>
 
       {/*
@@ -110,10 +116,10 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
         score's denominator.
       */}
       {shop.collection.level === 'WITHHELD' && (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]">
+        <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
           <span className="font-semibold text-[var(--sys-heading)]">التحصيل خارج السكور: </span>
           {shop.collection.ar} لذلك يُحسب كل سكور من 85 لا من 100، وبند «نسبة التحصيل» يبقى بلا نقاط حتى تُطابَق أول كشف.
-        </p>
+        </Card>
       )}
 
       {rows.length === 0 ? (
@@ -128,18 +134,18 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
                 {/* The rank is only drawn for a door that has one. Numbering
                     the ungraded ones 5, 6, 7 would read as «worse», and they
                     are not worse — they are unmeasured. */}
-                <span className="w-5 text-xs font-black tabular-nums text-[var(--sys-muted)]">
+                <span className="w-5 text-note font-black tabular-nums text-[var(--sys-muted)]">
                   {c.score.total === null ? '—' : i + 1}
                 </span>
                 <span className="text-sm font-bold text-[var(--sys-heading)]">{c.name}</span>
-                <span className="text-xs text-[var(--sys-muted)]">{KIND_AR[c.kind ?? 'OTHER'] ?? c.kind}</span>
+                <span className="text-note text-[var(--sys-muted)]">{KIND_AR[c.kind ?? 'OTHER'] ?? c.kind}</span>
 
                 {c.score.total === null ? (
-                  <span className="ms-auto text-xs text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
+                  <span className="ms-auto text-note text-[var(--sys-muted-foreground)]">{c.whyNoScore}</span>
                 ) : (
                   <span className="ms-auto inline-flex items-baseline gap-1 tabular-nums">
                     <span className="text-lg font-black text-[var(--sys-heading)]">{c.score.total}</span>
-                    <span className="text-xs text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
+                    <span className="text-note text-[var(--sys-muted-foreground)]">من {c.score.possible}</span>
                   </span>
                 )}
               </div>
@@ -152,7 +158,7 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
               {c.score.total !== null && (
                 <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
                   {c.score.bands.map((b) => (
-                    <li key={b.key} className="text-xs text-[var(--sys-muted-foreground)]">
+                    <li key={b.key} className="text-note text-[var(--sys-muted-foreground)]">
                       {b.ar}{' '}
                       <span className="tabular-nums text-[var(--sys-foreground)]">
                         {b.value === null ? 'لم يُقَس' : null}
@@ -169,7 +175,7 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
 
               {/* The plain counts under the bands, so the score can be checked
                   against the orders it was built from. */}
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--sys-muted)] tabular-nums">
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-note text-[var(--sys-muted)] tabular-nums">
                 <span>{c.brought} طلب</span>
                 <span>{c.delivered} مسلَّم</span>
                 <span>{c.returned} مرتجع من {c.doorDecided} بتَّ فيه الباب</span>
@@ -193,11 +199,11 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
             <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
               <span className="w-5" />
               <span className="text-sm font-bold text-[var(--sys-muted-foreground)]">بلا قناة</span>
-              <span className="text-xs text-[var(--sys-muted)] tabular-nums">
+              <span className="text-note text-[var(--sys-muted)] tabular-nums">
                 {shop.withoutChannel} طلب من {shop.orders}
                 {shop.withoutChannelShare !== null ? ` · ${shop.withoutChannelShare}%` : ''}
               </span>
-              <span className="ms-auto text-xs text-[var(--sys-muted-foreground)]">
+              <span className="ms-auto text-note text-[var(--sys-muted-foreground)]">
                 لا سكور — الطلب لم يُنسب لباب، وهذه نسبة تُسدّ عند الإدخال لا هنا.
               </span>
             </li>
@@ -206,11 +212,11 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
       )}
 
       {graded.length > 0 && graded.length < rows.length && (
-        <p className="text-xs text-[var(--sys-muted)]">
+        <p className="text-note text-[var(--sys-muted)]">
           {graded.length} من {rows.length} قناة عليها ما يكفي للحكم — البقية تُقاس حين تكبر، لا الآن.
         </p>
       )}
-    </div>
+    </Card>
   );
 }
 
