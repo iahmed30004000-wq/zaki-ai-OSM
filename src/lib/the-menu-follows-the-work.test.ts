@@ -146,7 +146,8 @@ describe('operations sit with the work, and configuration sits in settings', () 
   it('and the WhatsApp and Telegram pairing is the same shape: inbox here, setup there', () => {
     // The pairing the contract already had, which the AI was the exception to.
     // The inboxes are their own group, «المحادثات», since the menu was folded.
-    expect(pathsOf('chats')).toEqual(['/growth/whatsapp/inbox', '/growth/telegram/orders']);
+    // 18/11: and the landing pages' chat assistant, «رسائل اللاندينج», as their third tab (contract oms-lp.v1 §11).
+    expect(pathsOf('chats')).toEqual(['/growth/whatsapp/inbox', '/growth/telegram/orders', '/growth/landing-chats']);
     // …and the setup is ONE page now, «الربط», with a card for each (owner, 24/10).
     expect(pathsOf('settings')).toContain('/settings/links');
     expect(pathsOf('settings')).not.toContain('/settings/whatsapp');
@@ -206,8 +207,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     const paths = ALL_ROUTES.map((r) => r.path);
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(54);
-    expect(new Set(paths).size).toBe(54);
+    // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the third tab of «المحادثات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). One more screen, no more line (it is a tab of an existing hub). Not one address moved.
+    expect(paths).toHaveLength(55);
+    expect(new Set(paths).size).toBe(55);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

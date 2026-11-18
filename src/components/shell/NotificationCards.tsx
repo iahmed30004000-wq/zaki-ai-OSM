@@ -32,6 +32,7 @@ const TONE: Record<string, string> = {
   POSTPONED_DUE: 'border-s-[var(--sys-warning)]',
   RETURNS_NOT_RECEIVED: 'border-s-[var(--sys-destructive)]',
   SYSTEM_ALERT: 'border-s-[var(--sys-muted)]',
+  LANDING_CHAT: 'border-s-[var(--sys-primary)]',
 };
 
 export function NotificationCards() {

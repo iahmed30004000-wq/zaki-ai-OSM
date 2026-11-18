@@ -43,7 +43,7 @@ Rules:
 ## Navigation — eleven groups, drawn as sixteen lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **54 pages in 11 groups**; the menu draws them as **16 lines**.
+is its contract. It holds **55 pages in 11 groups**; the menu draws them as **16 lines**.
 
 How a group is drawn is `NavGroup.hub`, and it is a statement about the MENU only — it never
 changes what a page is, who may open it, or where it lives:
@@ -141,10 +141,11 @@ statement or by hand), match, close the day.
 منصّة التجريب             /growth/bench
 ```
 
-**8. المحادثات** — tabs; the two inboxes. Somebody who wrote to us is not a growth question.
+**8. المحادثات** — tabs; the three inboxes. Somebody who wrote to us is not a growth question.
 ```
 صندوق الواتساب            /growth/whatsapp/inbox
 طلبات تلجرام              /growth/telegram/orders
+رسائل اللاندينج           /growth/landing-chats
 ```
 
 **9. واجهة المتجر** — loose; how the shop LOOKS and what it SAYS. Another agent owns this code.
@@ -231,6 +232,7 @@ asks the same keys again.
 | `/growth/intelligence` · `/growth/bench` | growth.intelligence |
 | `/assistant` | ai.use |
 | `/growth/whatsapp/inbox` · `/growth/telegram/orders` | whatsapp.view · telegram.view |
+| `/growth/landing-chats` | whatsapp.view |
 | `/store` | storefront.view · storefront.manage · geo.manage |
 | `/store/landing-pages` | landing_pages.view |
 | `/settings` | geo.view · settings.view · commission.view · whatsapp.manage · telegram.connect · apps.view |

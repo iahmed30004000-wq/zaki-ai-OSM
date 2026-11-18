@@ -74,6 +74,7 @@ model Company {
   partners              Partner[]
   abandonedCarts        AbandonedCart[]
   abandonedCartEvents   AbandonedCartActivity[]
+  landingChatThreads    LandingChatThread[]
 
   @@map("companies")
 }
@@ -4306,4 +4307,67 @@ model IntegrationSecret {
   updatedAt      DateTime @updatedAt
 
   @@map("integration_secrets")
+}
+
+// ─── «رسائل اللاندينج» — the landing chat inbox (contract oms-lp.v1 §11) ───
+// Zaki pages relays every conversation of its landing/store chat assistant here, message by message, from the first one.
+// A thread is one Zaki pages chat session (externalId = its session id), upserted per company. Staff answer from the
+// inbox; the first staff reply pauses the bot for that thread until somebody presses «رجّع للبوت». The pause lives HERE
+// (the source of truth) and Zaki pages mirrors it by reading `GET /chat/updates`.
+model LandingChatThread {
+  id                 String    @id @default(uuid())
+  companyId          String
+  externalId         String // Zaki pages' chat session id
+  mode               String    @default("confirm") // confirm (after an order) | intake (a store page taking the order)
+  pageId             String?
+  pageSlug           String?
+  pageName           String?
+  pageUrl            String?
+  productId          String?
+  productName        String?
+  orderNumber        String?
+  orderId            String?
+  customerName       String?
+  customerPhone      String?
+  botPaused          Boolean   @default(false)
+  botPausedAt        DateTime?
+  botPausedById      String?
+  unreadCount        Int       @default(0)
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  company  Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  messages LandingChatMessage[]
+
+  @@unique([companyId, externalId])
+  @@index([companyId, lastMessageAt])
+  @@map("landing_chat_threads")
+}
+
+// One line of a landing thread. `seq` is the company-wide reading order Zaki pages follows (`GET /chat/updates?after=`).
+// direction: CUSTOMER · BOT (Zaki pages' assistant) · STAFF (a reply from this inbox) · EVENT (BOT_PAUSED / BOT_RESUMED).
+// externalId = Zaki pages' own message id, unique per thread: a relay sent twice writes nothing twice.
+model LandingChatMessage {
+  id         String   @id @default(uuid())
+  seq        BigInt   @default(autoincrement())
+  companyId  String
+  threadId   String
+  externalId String?
+  direction  String
+  text       String?
+  event      String?
+  authorId   String?
+  authorName String?
+  sentAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  thread LandingChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([seq])
+  @@unique([threadId, externalId])
+  @@index([companyId, seq])
+  @@index([threadId, seq])
+  @@map("landing_chat_messages")
 }

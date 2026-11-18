@@ -217,7 +217,7 @@ describe('the drawer follows the groups', () => {
   });
 
   it('and a group with every screen hidden is not drawn, wherever it was put', async () => {
-    server.arrangement = arranged({ groups: ['chats', 'main'], hidden: ['/growth/whatsapp/inbox', '/growth/telegram/orders'] });
+    server.arrangement = arranged({ groups: ['chats', 'main'], hidden: ['/growth/whatsapp/inbox', '/growth/telegram/orders', '/growth/landing-chats'] });
     const { container } = render(await layoutProps());
     expect(drawerLines(container)).not.toContain('المحادثات');
     expect(drawerLines(container)[0]).toBe('لوحة التحكم');
