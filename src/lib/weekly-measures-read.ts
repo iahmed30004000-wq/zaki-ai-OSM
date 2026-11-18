@@ -60,26 +60,25 @@ async function computeWeekly(a: {
 }): Promise<WeeklyMeasures> {
   const { companyId, storeId, calendar, window, caps } = a;
   const inWindow = { gte: window.start, lt: window.end };
-  const createdIn = { storeId, createdAt: inWindow };
 
   const [created, duplicates, firstCalls, callLines, claims, attempts, decisions, confirmed, report] = await Promise.all([
     // 1, 2 · the orders created in the window.
     db.order.findMany({
-      where: { companyId, ...createdIn },
+      where: { companyId, storeId, createdAt: inWindow },
       select: { id: true, createdAt: true, confirmedAt: true, rejectionReason: true },
       orderBy: { createdAt: 'asc' },
       take: caps.rows,
     }),
     // 2 · of them, those the intake filter marked duplicate.
     db.orderActivity.findMany({
-      where: { companyId, action: INTAKE_DUPLICATE_ACTION, order: createdIn },
+      where: { companyId, action: INTAKE_DUPLICATE_ACTION, order: { storeId, createdAt: inWindow } },
       select: { orderId: true },
       take: caps.rows,
     }),
     // 1 · the first call outcome of each order created in the window (whenever it came).
     db.orderContactAttempt.groupBy({
       by: ['orderId'],
-      where: { companyId, result: { in: [...CALL_RESULTS] }, order: createdIn },
+      where: { companyId, result: { in: [...CALL_RESULTS] }, order: { storeId, createdAt: inWindow } },
       _min: { createdAt: true },
       orderBy: { orderId: 'asc' },
       take: caps.rows,

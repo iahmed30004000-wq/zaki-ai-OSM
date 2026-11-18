@@ -149,6 +149,7 @@ import {
 import { businessMinutesBetween } from './business-calendar';
 import {
   ATTEMPT_BUCKETS,
+  REPORT_ROW_CAP,
   answerRateReport,
   isStuck,
   noAnswerBoard,
@@ -623,6 +624,22 @@ describe('C3 — the report reads the plan when it is on, and only then', () => 
     const r = await report();
     expect(r.numbering).toEqual({ mode: 'PLAN', fromDay: '2026-09-14' });
     expect(r.byAttempt.map(({ key, reached, notReached }) => [key, reached, notReached]).slice(0, 5)).toEqual([['1', 0, 0], ['2', 0, 1], ['3', 0, 2], ['4', 1, 0], ['5', 0, 0]]);
+  });
+
+  it('a prior-plan read that hits its bound says so: the report is «truncated» (review of #361)', async () => {
+    plan.since = at(14, 12);
+    store.orders = [order('q', { claimedById: SARA, confirmationStatus: 'NO_ANSWER' })];
+    store.attempts = [attempt('q', 1, 'NO_ANSWER', at(14, 13)), attempt('q', 2, 'NO_ANSWER', at(15, 10))];
+    const real = db.orderContactAttempt.findMany.getMockImplementation()!;
+    db.orderContactAttempt.findMany.mockImplementation(async (args: Row) =>
+      args.where.createdAt?.gt ? Array.from({ length: REPORT_ROW_CAP }, (_, i) => ({ orderId: 'q', result: 'NO_ANSWER', createdAt: at(14, 13), attemptNumber: i, nextFollowUpAt: null })) : real(args));
+    try {
+      expect((await report()).truncated).toBe(true);
+    } finally {
+      db.orderContactAttempt.findMany.mockImplementation(real);
+    }
+    // NEGATIVE: the same order under the bound is not.
+    expect((await report()).truncated).toBe(false);
   });
 
   it('NEGATIVE: plan off — the numbering says CALLS, and the reads are main’s two (no due selected, no third read)', async () => {

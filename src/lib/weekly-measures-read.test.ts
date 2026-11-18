@@ -79,6 +79,12 @@ const sorted = (rows: Row[], orderBy: Row | Row[] | undefined) => {
 
 const { db, laneOf } = vi.hoisted(() => ({ db: {} as Row, laneOf: { now: (): boolean => false } }));
 vi.mock('./db', () => ({ db }));
+// The report's own bound (review of #361): the real report, with its `truncated` forced when a test says so.
+const { reportCut } = vi.hoisted(() => ({ reportCut: { on: false } }));
+vi.mock('./no-answer-watch', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./no-answer-watch')>();
+  return { ...real, answerRateReport: async (...a: Parameters<typeof real.answerRateReport>) => ({ ...(await real.answerRateReport(...a)), ...(reportCut.on ? { truncated: true } : {}) }) };
+});
 
 const ATTEMPT_KEYS = ['companyId', 'orderId', 'createdAt', 'result'];
 function table(rows: () => Row[], keys: string[]) {
@@ -257,6 +263,16 @@ describe('a reader that hits its bound says so', () => {
     const r = await read({ caps: { rows: 2 } });
     expect(r.weekly.truncated).toBe(true);
     expect(r.weekly.figures.truncated).toBe(true);
+  });
+
+  it('the report’s own bound (the fifth attempt’s base) makes the card say «حد أدنى» too', async () => {
+    reportCut.on = true;
+    try {
+      const r = await read();
+      expect(r.weekly.truncated).toBe(true);
+    } finally {
+      reportCut.on = false;
+    }
   });
 
   it('NEGATIVE: under the bound, nothing is said', async () => {
