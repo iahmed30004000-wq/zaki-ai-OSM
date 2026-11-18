@@ -177,6 +177,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   // old → new (30/10, قلم التجهيز): 2 → 4. The third (and, after the reviews of #116, a fourth: the add-on count that refuses a quantity on an order carrying one) is the packing table's read of THIS order's lines (`orderId` + `companyId`) to rebuild a quantity's money from the stored piece price.
   // old → new (30/10, الأعمدة لا تفارق الأسطر): 4 → 6. The fifth and sixth are the single-line shorthand's read of THIS order's lines and add-ons (`orderId` + `companyId`), to refuse moving the goods of an order that has lines and to refuse writing over columns that already disagree with them.
   'app/api/orders/[id]/route.ts': { reason: 'مقيَّد بـ orderId واحد — إضافاتُ طلبٍ بعينه وسطورُه (بوابة السعر وقلم التجهيز وفحص الاختصار)', sites: 6 },
+  // new (18/11, المقاسات والألوان): سطورُ طلبٍ واحد وُجد بهالمتجر أصلاً (orderId + companyId) لعرض قطعها — قراءةٌ صرفة.
+  'app/api/orders/[id]/pieces/route.ts': { reason: 'مقيَّد بـ orderId واحد — سطورُ طلبٍ بعينه وقطعُها (المقاس واللون)', sites: 1 },
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   // new (15/11, السلات المهجورة): «له طلب» — the orders of the customers whose phones are on the carts shown (`customerId: { in }`), to mark a cart whose visitor already ordered. A read of named persons, not a store figure.
