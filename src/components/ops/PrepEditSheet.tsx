@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { RiAddCircleLine, RiLoader4Line, RiSubtractLine } from '@remixicon/react';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { useRegions } from '@/hooks/useRegions';
 
@@ -40,7 +42,7 @@ const inputClass =
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">{label}</span>
+      <span className="block text-sm font-medium text-[var(--sys-muted-foreground)] mb-1">{label}</span>
       {children}
     </label>
   );
@@ -115,20 +117,13 @@ export function PrepEditSheet({
       maxWidth="md"
       footer={
         <div className="flex gap-2">
-          <button
-            onClick={() => void save()}
-            disabled={busy}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
-          >
+          <Button type="button" size="sm" onClick={() => { void save(); }} disabled={busy}>
             {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}
             احفظ التعديل
-          </button>
-          <button
-            onClick={onClose}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
-          >
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={onClose}>
             إلغاء
-          </button>
+          </Button>
         </div>
       }
     >
@@ -160,20 +155,19 @@ export function PrepEditSheet({
 
         {order.items.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-[var(--sys-muted-foreground)]">الكمية — السعر يبقى كما هو للقطعة</p>
+            <p className="text-sm font-medium text-[var(--sys-muted-foreground)]">الكمية — السعر يبقى كما هو للقطعة</p>
             {order.items.map((l, i) => (
               <div key={`${l.productId}-${i}`} className="flex flex-wrap items-center gap-2">
                 <span className="text-sm text-[var(--sys-heading)] flex-1 min-w-[120px]">{l.productName}</span>
                 <div className="flex items-center gap-1">
-                  <button
+                  <IconButton
                     type="button"
+                    variant="secondary"
                     onClick={() => setQuantities(quantities.map((q, j) => (j === i ? Math.max(1, q - 1) : q)))}
-                    aria-label="أنقص الكمية"
-                    title="أنقص الكمية"
-                    className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
+                    label="أنقص الكمية"
                   >
-                    <RiSubtractLine className="w-4 h-4 mx-auto" />
-                  </button>
+                    <RiSubtractLine className="w-4 h-4" />
+                  </IconButton>
                   <input
                     type="number" min={1} dir="ltr"
                     aria-label={`كمية ${l.productName}`}
@@ -181,15 +175,14 @@ export function PrepEditSheet({
                     onChange={(e) => setQuantities(quantities.map((q, j) => (j === i ? Math.max(1, Number(e.target.value) || 1) : q)))}
                     className={`${inputClass} w-16 text-center`}
                   />
-                  <button
+                  <IconButton
                     type="button"
+                    variant="secondary"
                     onClick={() => setQuantities(quantities.map((q, j) => (j === i ? q + 1 : q)))}
-                    aria-label="زد الكمية"
-                    title="زد الكمية"
-                    className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] disabled:opacity-40"
+                    label="زد الكمية"
                   >
-                    <RiAddCircleLine className="w-4 h-4 mx-auto" />
-                  </button>
+                    <RiAddCircleLine className="w-4 h-4" />
+                  </IconButton>
                 </div>
               </div>
             ))}
@@ -197,7 +190,7 @@ export function PrepEditSheet({
         )}
 
         {error && (
-          <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+          <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
             {error}
           </p>
         )}

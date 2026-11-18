@@ -331,7 +331,9 @@ describe('6 · on a phone', () => {
     render(<ShippingBatchesScreen />);
     const b = await button();
 
-    expect(b.className).toContain('min-h-11');
+    // 18/11 (R11c): was `toContain('min-h-11')` — the hand-drawn press set a minimum of 44px. It is the kit's `Button` now,
+    // whose small size is a fixed 44px on a phone (`h-11`, 32px from `md`): the claim (44px high on a phone) is unchanged.
+    expect(b.className.split(' ')).toContain('h-11');
     expect(b.className).toContain('w-full');
     // The group of presses that move the batch on: this one alone now — «أنهِ الدفعة بعد التسوية» is gone (5/11).
     const group = b.parentElement as HTMLElement;
@@ -346,7 +348,9 @@ describe('6 · on a phone', () => {
     render(<ShippingBatchesScreen />);
     const b = await button();
     expect(b.className).not.toContain('w-full');
-    expect(b.className).toContain('md:min-h-0');
+    // 18/11 (R11c): was `toContain('md:min-h-0')` (the hand-drawn press dropped its phone minimum on a desk). The kit's small
+    // `Button` says the same with a desk height of its own (`md:h-8`): a desk row, not a thumb's height.
+    expect(b.className.split(' ')).toContain('md:h-8');
     expect((b.parentElement as HTMLElement).className).toContain('flex-wrap');
     const row = Array.from((b.parentElement as HTMLElement).querySelectorAll('button')).map((x) => x.textContent?.trim());
     expect(row).toContain('خرج للتوصيل لكل الدفعة (158)');

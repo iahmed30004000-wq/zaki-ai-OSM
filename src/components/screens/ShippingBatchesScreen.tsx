@@ -21,6 +21,7 @@ import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { BatchButtonsHelp, LEAVE_PRESSES } from '@/components/screens/BatchButtonsHelp';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCan } from '@/hooks/useCan';
@@ -655,24 +656,23 @@ export function ShippingBatchesScreen() {
           // Only a batch closed before the press was removed (5/11) is «مُنتهية»; with none, the chip is not drawn.
           ...(counts.CLOSED > 0 ? ([['CLOSED', `مُنتهية (${counts.CLOSED})`]] as const) : []),
         ] as const).map(([key, label]) => (
-          <button
+          <Button
             key={key}
+            type="button"
+            size="sm"
+            variant={filter === key ? 'primary' : 'secondary'}
             onClick={() => setFilter(key as typeof filter)}
-            className={`min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors${phone ? ' shrink-0 whitespace-nowrap' : ''} ${
-              filter === key
-                ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
-                : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)] hover:border-[var(--sys-primary)]/40'
-            }`}
+            className={phone ? 'shrink-0 whitespace-nowrap' : undefined}
           >
             {label}
-          </button>
+          </Button>
         ))}
         {/* The paper every «طباعة بوالص الدفعة» below will use. */}
         {!phone && <LabelSizePicker compact className="ms-auto flex items-center" />}
       </div>
       {phone && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-[var(--sys-muted-foreground)]">مقاس البوليصة</span>
+          <span className="text-note text-[var(--sys-muted-foreground)]">مقاس البوليصة</span>
           <LabelSizePicker compact className="flex flex-wrap items-center gap-2" />
         </div>
       )}
@@ -704,62 +704,76 @@ export function ShippingBatchesScreen() {
               THE EIGHT PRESSES OF ONE BATCH, drawn once. A desk lays them in one wrapping row, in this order; a phone
               lays them out by weight (see below). The words, the doors, the titles and the disabled rules are the same.
             */
-            const wide = phone ? ' w-full justify-center' : '';
-            const BTN = `min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40${wide}`;
+            const wide = phone ? 'w-full' : undefined;
             const printBtn = (
-              <button
-                onClick={() => printBatch(b)}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void printBatch(b); }}
                 disabled={busy === b.id || b._count.orders === 0}
-                className={BTN}
+                className={wide}
               >
                 {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiPrinterLine className="w-4 h-4" />}
                 طباعة بوالص الدفعة
-              </button>
+              </Button>
             );
             const verifyBtn = (
-              <button
-                onClick={() => void openVerify(b)}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void openVerify(b); }}
                 disabled={busy === b.id || b._count.orders === 0}
                 title="امسح كل طرد قبل تسليمه — يقول لك إن كان من هذه الدفعة"
-                className={BTN}
+                className={wide}
               >
                 <RiQrScan2Line className="w-4 h-4" />
                 تحقّق من الطرود
-              </button>
+              </Button>
             );
             const pdfBtn = (
-              <button
-                onClick={() => printBatch(b, 'pdf')}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void printBatch(b, 'pdf'); }}
                 disabled={busy === b.id || b._count.orders === 0}
                 title="نفس البوالص كملف PDF — الحفظ لا يعلّم الطلبات مطبوعة"
-                className={BTN}
+                className={wide}
               >
                 <RiDownload2Line className="w-4 h-4" />
                 PDF
-              </button>
+              </Button>
             );
             const csvBtn = (
-              <button
-                onClick={() => printBatch(b, 'csv')}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void printBatch(b, 'csv'); }}
                 disabled={busy === b.id || b._count.orders === 0}
                 title="ملف للرفع الجماعي عند شركات الشحن التي تقبله بدل الورق"
-                className={BTN}
+                className={wide}
               >
                 <RiDownload2Line className="w-4 h-4" />
                 CSV
-              </button>
+              </Button>
             );
             /* Every order of the batch, barcode or not: the sheet for making the parcels at the courier's portal. */
             const xlsxBtn = mayExport ? (
-              <button
-                onClick={() => void exportBatch(b)}
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void exportBatch(b); }}
                 disabled={busy === b.id || b._count.orders === 0}
                 title="كل طلبات الدفعة في ملف إكسل، بباركود الشركة أو بدونه — لإنشاء الطرود عند الشركة يدوياً"
-                className={BTN}
+                className={wide}
               >
                 {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiFileExcel2Line className="w-4 h-4" />}
                 إكسل
-              </button>
+              </Button>
             ) : null;
             /* RiSendPlaneLine the orders to the courier and take their barcodes.
                Separate from marking the batch handed over: one is a
@@ -773,43 +787,49 @@ export function ShippingBatchesScreen() {
                and the barcode is typed in when they hand one over. */
             const dispatchBtn =
               b.status === 'READY' && b.provider?.apiEnabled ? (
-                <button
-                  onClick={() => dispatch(b)}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { void dispatch(b); }}
                   disabled={busy === b.id || b._count.orders === 0}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-primary)] text-[var(--sys-primary)] font-medium inline-flex items-center gap-1.5 disabled:opacity-40${wide}`}
+                  className={wide}
                 >
                   {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiBarcodeLine className="w-4 h-4" />}
                   {progress?.batchId === b.id && progress.total > 0
                     ? `جارٍ الترحيل… ${progress.done} من ${progress.total}`
                     : 'رحّل إلى الشركة واجلب الباركود'}
-                </button>
+                </Button>
               ) : null;
             /* «لصق الباركودات» (RV165): a batch handed over before the dispatch, or a manual courier's, gets its barcodes as a
                pasted list «رقم الطلب, الباركود» — checked first, then written. Any state, once the batch has parcels. */
             const pasteBtn =
               mayShip && b._count.orders > 0 ? (
-                <button
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setPasting(b)}
                   disabled={busy === b.id}
                   title="الصق «رقم الطلب, الباركود» سطر لكل طلب — بتتحقّق أول وبعدين بتكتب"
-                  className={BTN}
+                  className={wide}
                 >
                   <RiClipboardLine className="w-4 h-4" />
                   لصق الباركودات
-                </button>
+                </Button>
               ) : null;
             const manualTitle = 'هذه الشركة غير مربوطة بنظامها — البوليصة تُطبع من عندنا والباركود يُدخَل يدوياً عند استلامه.';
             const manualNote =
               b.status === 'READY' && b.provider && !b.provider.apiEnabled ? (
                 phone ? (
-                  <p title={manualTitle} className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
+                  <p title={manualTitle} className="flex items-center gap-1 text-note text-[var(--sys-muted-foreground)]">
                     <RiBarcodeLine className="h-4 w-4" />
                     يدوية — اطبع البوالص
                   </p>
                 ) : (
                   <span
                     title={manualTitle}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-2.5 py-1.5 text-xs text-[var(--sys-muted-foreground)]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-2.5 py-1.5 text-note text-[var(--sys-muted-foreground)]"
                   >
                     <RiBarcodeLine className="h-4 w-4" />
                     يدوية — اطبع البوالص
@@ -822,47 +842,53 @@ export function ShippingBatchesScreen() {
             const emptyNote = emptyOpen ? (
               <div
                 role="status"
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs text-[var(--sys-muted-foreground)]"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-sm text-[var(--sys-muted-foreground)]"
               >
                 <p className="min-w-0 flex-1">
                   الدفعة فاضية — بتتعبّى بأول شحنة{b.provider ? ` لـ${b.provider.name}` : ''}. وإذا ما بدك إياها، احذفها.
                 </p>
                 {mayMove && (
-                  <button
-                    onClick={() => void removeEmpty(b)}
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => { void removeEmpty(b); }}
                     disabled={busy === b.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)] disabled:opacity-50"
                   >
                     احذف الدفعة
-                  </button>
+                  </Button>
                 )}
               </div>
             ) : null;
             const shipBtn =
               b.status === 'READY' && !emptyOpen ? (
-                <button
-                  onClick={() => (phone ? void confirmShip(b) : setStatus(b, 'SHIPPED'))}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => { if (phone) void confirmShip(b); else void setStatus(b, 'SHIPPED'); }}
                   disabled={busy === b.id}
                   title="بعد هالضغطة ما بيصير تلغي ولا تؤجّل طرداً من الدفعة — يصير طلب تغيير يُبلَّغ للشركة"
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium inline-flex items-center gap-1.5 disabled:opacity-50${wide}`}
+                  className={wide}
                 >
                   <RiSendPlaneLine className="icon-mirror w-4 h-4" />
                   إغلاق الشحنة — سُلّمت للشركة
-                </button>
+                </Button>
               ) : null;
             /* The stage after the handover: the driver took the batch. Drawn for whoever holds both keys, on any batch that has
                parcels still at «مشحون», with how many on its face; the press asks once and answers with the counts (below). */
             const outBtn =
               mayDepart && (b.shippedCount ?? 0) > 0 ? (
-                <button
-                  onClick={() => void confirmOut(b)}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => { void confirmOut(b); }}
                   disabled={busy === b.id}
                   title="بعد ما ياخد السائق الدفعة: كل طرودها اللي حالتها «مشحون» بتصير «خرج للتوصيل» بضغطة وحدة"
-                  className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium gap-1.5 disabled:opacity-50${wide}`}
+                  className={wide}
                 >
                   {busy === b.id ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRouteLine className="w-4 h-4" />}
                   خرج للتوصيل لكل الدفعة ({b.shippedCount})
-                </button>
+                </Button>
               ) : null;
             /* The list of the batch's parcels opens on every batch that has any; only an OPEN trolley (still ready) offers the ways off
                it. The help under the card reads these two same facts, not a copy of them. */
@@ -875,10 +901,10 @@ export function ShippingBatchesScreen() {
               <li key={b.id} className="p-4 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-[var(--sys-heading)] text-sm" dir="ltr">{b.batchNumber}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-md border ${tone.cls}`}>{tone.ar}</span>
+                  <span className={`text-note px-2 py-0.5 rounded-md border ${tone.cls}`}>{tone.ar}</span>
 
                   {b.provider && (
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="inline-flex items-center gap-1 text-sm text-[var(--sys-muted-foreground)]">
                       {b.provider.kind === 'AGENT' ? (
                         <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" />
                       ) : (
@@ -888,36 +914,38 @@ export function ShippingBatchesScreen() {
                     </span>
                   )}
 
-                  <span className="text-xs text-[var(--sys-muted)] tabular-nums">
+                  <span className="text-note text-[var(--sys-muted)] tabular-nums">
                     {b._count.orders} طلب
                   </span>
 
-                  <span className="ms-auto text-xs text-[var(--sys-muted)]">
+                  <span className="ms-auto text-note text-[var(--sys-muted)]">
                     {b.shippedAt ? `سُلّمت ${arDateShort(b.shippedAt)}` : `أُنشئت ${arDateShort(b.createdAt)}`}
                     {b.creator?.name && ` · ${b.creator.name}`}
                   </span>
                 </div>
 
-                {b.notes && <p className="text-xs text-[var(--sys-muted-foreground)]">{b.notes}</p>}
+                {b.notes && <p className="text-sm text-[var(--sys-muted-foreground)]">{b.notes}</p>}
 
                 {/* Every batch with parcels opens its list — to search it (3/11). Only an OPEN trolley offers the ways off it. */}
                 {hasParcels && (
-                  <button
-                    onClick={() => void toggleParcels(b)}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => { void toggleParcels(b); }}
                     disabled={busy === b.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
                   >
                     {parcels?.batchId === b.id
                       ? 'أخفِ الطرود'
                       : openTrolley
                         ? 'طرود الدفعة وتفاصيلها — ألغِ أو أجّل قبل التسليم'
                         : 'طرود الدفعة — ابحث عن طلب'}
-                  </button>
+                  </Button>
                 )}
 
                 {parcels?.batchId === b.id && (
                   <label className="block">
-                    <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ابحث داخل الدفعة</span>
+                    <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">ابحث داخل الدفعة</span>
                     <input
                       type="search"
                       value={parcelQuery}
@@ -934,7 +962,7 @@ export function ShippingBatchesScreen() {
                 )}
 
                 {parcels?.batchId === b.id && parcels.q && (
-                  <p role="status" className="text-xs text-[var(--sys-muted-foreground)]">
+                  <p role="status" className="text-note text-[var(--sys-muted-foreground)]">
                     {parcels.rows.length === 0
                       ? `ما في طلب بهالدفعة بيطابق «${parcels.q}»`
                       : `${parcels.rows.length} من ${parcels.total ?? b._count.orders} بيطابقوا «${parcels.q}»`}
@@ -945,12 +973,12 @@ export function ShippingBatchesScreen() {
                   <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)]">
                     {parcels.rows.map((o) => (
                       <li key={o.id} className="flex flex-wrap items-center gap-2 p-2">
-                        <OrderRef id={o.id} number={o.orderNumber} className="font-bold text-[var(--sys-heading)] text-xs" />
+                        <OrderRef id={o.id} number={o.orderNumber} className="font-bold text-[var(--sys-heading)] text-sm" />
                         {o.customer?.fullName && (
-                          <span className="text-xs text-[var(--sys-muted-foreground)]">{o.customer.fullName}</span>
+                          <span className="text-sm text-[var(--sys-muted-foreground)]">{o.customer.fullName}</span>
                         )}
                         {o.trackingNumber && (
-                          <span className="text-xs text-[var(--sys-muted)]" dir="ltr">{o.trackingNumber}</span>
+                          <span className="text-note text-[var(--sys-muted)]" dir="ltr">{o.trackingNumber}</span>
                         )}
                         {/*
                           WHO IT GOES TO, WHERE, WHAT IS IN IT, WHAT IS COLLECTED — beside the parcel, so the person at
@@ -958,14 +986,14 @@ export function ShippingBatchesScreen() {
                           there only when the server sent one (the address-book key, or the packing table's pen).
                         */}
                         {(o.customer?.phone || o.region?.name || o.customer?.city) && (
-                          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">
+                          <p className="w-full text-sm text-[var(--sys-muted-foreground)]">
                             {o.customer?.phone && <span dir="ltr">{o.customer.phone}</span>}
                             {o.customer?.phone && (o.region?.name || o.customer?.city) && ' · '}
                             {o.region?.name ?? o.customer?.city}
                           </p>
                         )}
                         {((o.items?.length ?? 0) > 0 || o.totalAmount != null) && (
-                          <p className="w-full text-xs text-[var(--sys-muted-foreground)]">
+                          <p className="w-full text-sm text-[var(--sys-muted-foreground)]">
                             {(o.items ?? [])
                               .map((l) =>
                                 withPieces(`${l.productName} × ${l.quantity}${l.freeQuantity ? ` + ${l.freeQuantity} هدية` : ''}`, l.variantSummary)
@@ -976,26 +1004,31 @@ export function ShippingBatchesScreen() {
                           </p>
                         )}
                         {parcels.canEdit && o.version != null && (
-                          <button
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => setEditing({ batchId: b.id, parcel: o })}
                             disabled={busy === o.id}
-                            className={`min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40${phone ? ' w-full justify-center' : ''}`}
+                            className={wide}
                           >
                             <RiPencilLine className="w-4 h-4" />
                             عدّل
-                          </button>
+                          </Button>
                         )}
                         {openTrolley && (
                         <span className={phone ? 'grid w-full grid-cols-3 gap-2' : 'ms-auto flex flex-wrap gap-1.5'}>
                           {LEAVE_PRESSES.map(([how, label]) => (
-                            <button
+                            <Button
                               key={how}
-                              onClick={() => void leave(b.id, o, how)}
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => { void leave(b.id, o, how); }}
                               disabled={busy === o.id}
-                              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] disabled:opacity-40"
                             >
                               {label}
-                            </button>
+                            </Button>
                           ))}
                         </span>
                         )}
@@ -1015,7 +1048,7 @@ export function ShippingBatchesScreen() {
                 {departed?.batchId === b.id && (
                   <div
                     role="status"
-                    className={`rounded-lg border p-3 text-xs space-y-1 ${
+                    className={`rounded-lg border p-3 text-sm space-y-1 ${
                       departed.summary.failed > 0
                         ? 'border-[var(--sys-warning)]/60 bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]'
                         : departed.summary.moved > 0
