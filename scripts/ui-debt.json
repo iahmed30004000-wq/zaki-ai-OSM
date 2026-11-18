@@ -733,10 +733,7 @@
       "textXs": 4
     },
     "src/components/screens/finance/ClosingScreen.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 4,
-      "rawDatePickers": 1,
-      "textXs": 11
+      "rawDatePickers": 1
     },
     "src/components/screens/finance/CollectionScreen.tsx": {
       "rawButtons": 18,
