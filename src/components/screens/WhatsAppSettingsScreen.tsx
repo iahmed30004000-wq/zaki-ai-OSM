@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi } from '@/lib/screen-api';
 import { RiCheckboxCircleLine, RiCloseCircleLine, RiErrorWarningLine, RiRefreshLine, RiShieldFlashLine } from '@remixicon/react';
@@ -68,10 +69,10 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
     return (
       <>
         <div className="p-8">
-          <div className="max-w-md mx-auto mt-20 text-center p-8 bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)]">
+          <Card className="max-w-md mx-auto mt-20 text-center p-8">
             <RiShieldFlashLine className="w-6 h-6 mx-auto text-[var(--sys-primary)]" />
             <h2 className="mt-4 font-bold text-[var(--sys-heading)]">ليس لديك صلاحية لإدارة واتساب</h2>
-          </div>
+          </Card>
         </div>
       </>
     );
@@ -97,9 +98,9 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-base font-bold text-[var(--sys-heading)]">واتساب</h2>
-              <p className="text-xs text-[var(--sys-muted-foreground)]">ربط رقم WhatsApp Business واحد مشترك لكل الموظفين</p>
+              <p className="text-note text-[var(--sys-muted-foreground)]">ربط رقم WhatsApp Business واحد مشترك لكل الموظفين</p>
             </div>
-            <Link href="/growth/whatsapp/inbox" className="text-xs font-semibold text-[var(--sys-primary)] hover:underline">
+            <Link href="/growth/whatsapp/inbox" className="text-note font-semibold text-[var(--sys-primary)] hover:underline">
               صندوق الواتساب
             </Link>
           </div>
@@ -107,7 +108,7 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
         <PageHeader title="إعدادات واتساب"
             description="ربط رقم WhatsApp Business واحد مشترك لكل الموظفين"
             actions={
-              <><Link href="/growth/whatsapp/inbox" className="text-xs font-semibold text-[var(--sys-primary)] hover:underline">
+              <><Link href="/growth/whatsapp/inbox" className="text-note font-semibold text-[var(--sys-primary)] hover:underline">
             العودة للصندوق
           </Link></>
             }
@@ -115,15 +116,15 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
         )}
 
         {/* Status */}
-        <div className={`p-4 rounded-lg border flex items-center gap-3 ${status === 'CONNECTED' ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success-soft)]' : 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]'}`}>
+        <div className={`p-4 rounded-lg border flex flex-wrap items-center gap-3 ${status === 'CONNECTED' ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success-soft)]' : 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]'}`}>
           <span className={`w-3 h-3 rounded-full ${status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <p className={`font-bold text-sm ${status === 'CONNECTED' ? 'text-[var(--sys-success)]' : 'text-[var(--sys-warning)]'}`}>
               {/* The dot above IS the light. Two coloured circles and a word
                   for one state is the state said three times. */}
               {status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
             </p>
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               {status === 'CONNECTED'
                 ? 'الاتصال بواتساب يعمل عبر WhatsApp Business Cloud API'
                 : conn?.envConfigured
@@ -131,22 +132,20 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
                   : 'أكمل متغيرات البيئة في الخادم ثم اضغط إعادة الاتصال'}
             </p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => runAction('test')} disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-xs font-semibold text-[var(--sys-heading)] hover:bg-[var(--sys-surface)] disabled:opacity-50">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={() => { void runAction('test'); }} disabled={busy !== null}>
               {busy === 'test' ? <RiRefreshLine className="w-4 h-4 animate-spin" /> : <RiCheckboxCircleLine className="w-4 h-4" />}
               اختبار الاتصال
-            </button>
-            <button onClick={() => runAction('reconnect')} disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-semibold hover:opacity-90 disabled:opacity-50">
+            </Button>
+            <Button type="button" size="sm" onClick={() => { void runAction('reconnect'); }} disabled={busy !== null}>
               {busy === 'reconnect' ? <RiRefreshLine className="w-4 h-4 animate-spin" /> : <RiRefreshLine className="w-4 h-4" />}
               إعادة الاتصال
-            </button>
+            </Button>
           </div>
         </div>
 
         {message && (
-          <div className={`p-3 rounded-lg text-xs flex items-center gap-2 ${message.type === 'success' ? 'bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)]' : 'bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'}`}>
+          <div className={`p-3 rounded-lg text-note flex items-center gap-2 ${message.type === 'success' ? 'bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)]' : 'bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'}`}>
             {message.type === 'success' ? <RiCheckboxCircleLine className="w-4 h-4" /> : <RiCloseCircleLine className="w-4 h-4" />}
             {message.text}
           </div>
@@ -159,9 +158,9 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
         <Card>
           <CardContent className="p-0 divide-y divide-[var(--sys-surface-strong)]">
             {rows.map((r) => (
-              <div key={r.label} className="flex items-center justify-between px-5 py-3">
-                <span className="text-xs text-[var(--sys-muted-foreground)]">{r.label}</span>
-                <span className="text-xs font-semibold text-[var(--sys-heading)] text-left">{r.value}</span>
+              <div key={r.label} className="flex items-center justify-between gap-3 px-5 py-3">
+                <span className="text-note text-[var(--sys-muted-foreground)]">{r.label}</span>
+                <span className="min-w-0 break-words text-note font-semibold text-[var(--sys-heading)] text-left">{r.value}</span>
               </div>
             ))}
           </CardContent>
@@ -179,18 +178,18 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
               ['WHATSAPP_APP_SECRET', 'App Secret من إعدادات تطبيق Meta'],
               ['WHATSAPP_ENCRYPTION_KEY', 'مفتاح تشفير (32 حرفًا على الأقل)'],
             ].map(([k, desc]) => (
-              <div key={k} className="flex items-center gap-2 text-xs">
+              <div key={k} className="flex flex-wrap items-center gap-2 text-note">
                 <code className="px-2 py-1 rounded-lg bg-[var(--sys-surface-strong)] text-[var(--sys-heading)] font-semibold" dir="ltr">{k}</code>
                 <span className="text-[var(--sys-muted-foreground)]">{desc}</span>
               </div>
             ))}
-            <div className="mt-3 p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)] flex gap-2">
+            <Card plain className="mt-3 p-3 text-note text-[var(--sys-muted-foreground)] flex gap-2">
               <RiErrorWarningLine className="w-4 h-4 shrink-0 text-[var(--sys-primary)]" />
-              <span>
+              <span className="min-w-0">
                 القيم بتنحفظ مشفّرة من بطاقة «القيم المطلوبة» تحت، ولا بتنعرض بعد الحفظ (بس آخر 4 خانات). بعد إدخالها: اضغط [إعادة الاتصال]، ثم سجّل رابط الويبهوك في تطبيق Meta:
-                <code className="mx-1 px-1.5 py-0.5 rounded-lg bg-[var(--sys-surface-strong)]" dir="ltr">/api/webhooks/whatsapp</code>
+                <code className="mx-1 px-1.5 py-0.5 rounded-lg bg-[var(--sys-surface-strong)] break-all" dir="ltr">/api/webhooks/whatsapp</code>
               </span>
-            </div>
+            </Card>
           </CardContent>
         </Card>
       </div>

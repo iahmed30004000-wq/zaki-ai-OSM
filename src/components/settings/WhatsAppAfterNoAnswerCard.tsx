@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Segmented } from '@/components/ui/Segmented';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { useCan } from '@/hooks/useCan';
@@ -94,42 +95,34 @@ export function WhatsAppAfterNoAnswerCard() {
       />
       <CardContent className="space-y-4">
         {!view.connected && (
-          <p role="status" className="text-xs text-[var(--sys-warning)]">
+          <p role="status" className="text-note text-[var(--sys-warning)]">
             رقم الشركة مش موصول لهلأ — لحد ما ينوصل، كل رسالة بتطلع من واتساب الموظفة حتى لو اخترت «من رقم الشركة».
           </p>
         )}
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           ميتا ما بتوصّل رسائل الشركات لأرقام سوريا — خلّي سوريا على واتساب الموظفة لحد ما توصل رسالة تجربة.
         </p>
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           زر «ابعت من رقم الشركة» بيظهر بس للي معه صلاحية «إرسال رسائل واتساب» — الباقيين بيضلّوا يبعتوا من واتسابهم.
         </p>
 
         {view.countries.length === 0 ? (
-          <p className="text-xs text-[var(--sys-muted)]">ما في دول مسجّلة للشركة.</p>
+          <p className="text-note text-[var(--sys-muted)]">ما في دول مسجّلة للشركة.</p>
         ) : (
           <div className="space-y-3">
             {view.countries.map((c) => (
               <fieldset key={c.dialCode} className="space-y-1">
-                <legend className="text-sm font-semibold text-[var(--sys-heading)]">
+                <legend id={`wa-route-${c.dialCode}`} className="text-sm font-semibold text-[var(--sys-heading)]">
                   {c.name} <span dir="ltr">+{c.dialCode}</span>
                 </legend>
-                <div className="flex flex-wrap gap-4">
-                  {ROUTES.map((r) => (
-                    <label key={r.value} className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
-                      <input
-                        type="radio"
-                        name={`wa-route-${c.dialCode}`}
-                        value={r.value}
-                        checked={routeOf(c.dialCode) === r.value}
-                        disabled={!canManage || busy}
-                        onChange={() => setDraft({ ...draft, byDialCode: { ...draft.byDialCode, [c.dialCode]: r.value } })}
-                        className="h-5 w-5 accent-[var(--sys-primary)]"
-                      />
-                      {r.label}
-                    </label>
-                  ))}
-                </div>
+                <Segmented
+                  size="sm"
+                  aria-labelledby={`wa-route-${c.dialCode}`}
+                  options={ROUTES}
+                  value={routeOf(c.dialCode)}
+                  disabled={!canManage || busy}
+                  onChange={(value) => setDraft({ ...draft, byDialCode: { ...draft.byDialCode, [c.dialCode]: value as Route } })}
+                />
               </fieldset>
             ))}
           </div>
@@ -159,7 +152,7 @@ export function WhatsAppAfterNoAnswerCard() {
           onChange={(e) => setDraft({ ...draft, templateParams: e.target.value as Params })}
         />
         {anyCompany && !draft.templateName.trim() && (
-          <p className="text-xs text-[var(--sys-warning)]">بلا اسم قالب ما بينبعت شي من رقم الشركة.</p>
+          <p className="text-note text-[var(--sys-warning)]">بلا اسم قالب ما بينبعت شي من رقم الشركة.</p>
         )}
 
         {canManage ? (
@@ -167,7 +160,7 @@ export function WhatsAppAfterNoAnswerCard() {
             احفظ
           </Button>
         ) : (
-          <p className="text-xs text-[var(--sys-muted)]">بيغيّره بس صاحب صلاحية «إعدادات النظام الحسّاسة».</p>
+          <p className="text-note text-[var(--sys-muted)]">بيغيّره بس صاحب صلاحية «إعدادات النظام الحسّاسة».</p>
         )}
       </CardContent>
     </Card>
