@@ -477,7 +477,8 @@ describe('NO NEW CSS — the draw form is made of classes the product already sh
     const own = join(root, 'components/screens/finance/WalletsScreen.tsx');
     const src = readFileSync(own, 'utf8');
     const from = src.indexOf('{/* «سحب شريك»: what the draw is worth');
-    const to = src.indexOf('<span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البند</span>');
+    // 18/11 (R13e): the kind box's label is `text-note` now (the kit's caption size; it was `text-xs`) — the anchor follows it.
+    const to = src.indexOf('<span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البند</span>');
     expect(from, 'the draw fields moved: update this test').toBeGreaterThan(0);
     expect(to).toBeGreaterThan(from);
     const used = new Set(classesOf(src.slice(from, to)));
