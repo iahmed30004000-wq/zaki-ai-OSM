@@ -9,6 +9,7 @@ import { standingStoreId } from '@/lib/geo-context';
 import { blockersSentence, storeBlockers } from '@/lib/geo-removal';
 import { validateDomain, forgetHost, dashboardHosts } from '@/lib/landing-domain';
 import { refusalToOpen } from '@/lib/storefront-rules';
+import { BENCH_STORE_CANNOT_OPEN_AR, BENCH_STORE_IS_OPEN_AR, LAST_REAL_STORE_AR, isBenchCheckViolation, realStoresHere } from '@/lib/test-store';
 
 /**
  *   PATCH  /api/geo/stores/:id (geo.manage). countryId is immutable.
@@ -63,6 +64,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       landingPageId: type === 'SINGLE_PRODUCT' ? before.landingPageId : null,
     };
     const live = parsed.data.storefrontEnabled ?? before.storefrontEnabled;
+
+    // ── The switch «منصّة تجريب», as it would be after this save ──
+    // A bench is never open to visitors. The database holds that with a CHECK
+    // (`stores_test_bench_is_not_public`), and a CHECK answers a form with a generic
+    // save error — so the two questions are asked HERE, in words, and the CHECK
+    // stays the last line. Closing the storefront in the same save is allowed.
+    const bench = parsed.data.isTest ?? before.isTest;
+    if (bench && live) {
+      return NextResponse.json(
+        {
+          error: parsed.data.storefrontEnabled === true ? BENCH_STORE_CANNOT_OPEN_AR : BENCH_STORE_IS_OPEN_AR,
+          code: parsed.data.storefrontEnabled === true ? 'BENCH_CANNOT_OPEN' : 'BENCH_STORE_IS_OPEN',
+        },
+        { status: 409 }
+      );
+    }
+    // The company keeps at least one real store: the bench learns from real
+    // ones (its DNA panel) and every report is about them.
+    if (parsed.data.isTest === true && !before.isTest) {
+      const otherReal = await db.store.count({ where: { companyId, id: { not: id }, ...realStoresHere() } });
+      if (otherReal === 0) return NextResponse.json({ error: LAST_REAL_STORE_AR, code: 'LAST_REAL_STORE' }, { status: 409 });
+    }
     // The same rule as the Single Product screen — checked whenever this save
     // is what makes an open storefront (opened, re-typed, or un-paused).
     // Closing or pausing is always allowed.
@@ -74,7 +97,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
     }
 
-    const store = await db.store.update({ where: { id }, data });
+    let store;
+    try {
+      store = await db.store.update({ where: { id }, data });
+    } catch (error) {
+      // A save that raced past the two questions above (the storefront opened
+      // between them and this write): the CHECK refused it, and the person
+      // reads the same sentence either way.
+      if (isBenchCheckViolation(error)) {
+        return NextResponse.json({ error: BENCH_STORE_IS_OPEN_AR, code: 'BENCH_STORE_IS_OPEN' }, { status: 409 });
+      }
+      throw error;
+    }
     await logAudit({
       companyId,
       userId: user.id,

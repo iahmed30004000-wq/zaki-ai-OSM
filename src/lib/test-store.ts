@@ -105,3 +105,25 @@ export function benchExcludedAr(benchOrders: number): string | null {
   if (benchOrders <= 0) return null;
   return `لا يشمل ${benchOrders} طلباً على منصّة التجريب — أرقامها خارج كل حسبة.`;
 }
+
+/**
+ * THE THREE REFUSALS AROUND THE SWITCH «منصّة تجريب» — sentences, not codes.
+ *
+ * A store that is a bench is never open to visitors: the database holds that
+ * with a CHECK (`stores_test_bench_is_not_public`), but a CHECK answers a form
+ * with a generic save error. The doors ask first and say it in these words,
+ * so the CHECK stays the last line and never the sentence anybody reads.
+ */
+export const BENCH_STORE_IS_OPEN_AR = 'المتجر مفتوح للزوّار — سكّر واجهة المتجر أول، المنصّة ما بتنفتح للزوّار';
+export const BENCH_STORE_CANNOT_OPEN_AR = 'هذا المتجر منصّة تجريب — ما بتنفتح للزوّار. شيل علامة «منصّة تجريب» أول إذا بدك تفتحه';
+export const LAST_REAL_STORE_AR =
+  'هذا متجرك الحقيقي الوحيد — المنصّة بتنعمل من متجر زيادة. أنشئ متجراً جديداً وعلّم عليه «منصّة تجريب»';
+
+/** The database's own name for the rule, so a race that gets past the two questions above is still said in Arabic. */
+export const BENCH_CHECK_NAME = 'stores_test_bench_is_not_public';
+
+/** True when a database error is that CHECK firing (Prisma puts the constraint's name in the message). */
+export function isBenchCheckViolation(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  return text.includes(BENCH_CHECK_NAME);
+}
