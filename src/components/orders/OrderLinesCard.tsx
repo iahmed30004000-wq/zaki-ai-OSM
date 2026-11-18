@@ -37,6 +37,8 @@ interface Line {
   id: string;
   productId: string;
   productName: string;
+  /** The size and colour of every piece, for a product with variants. */
+  variantSummary?: string | null;
   quantity: number;
   freeQuantity: number;
   unitPrice: number;
@@ -438,6 +440,11 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
             />
             <div className="min-w-0 flex-1">
               <p className={`text-sm font-medium text-[var(--sys-heading)] ${phone ? 'line-clamp-2' : 'truncate'}`}>{line.productName}</p>
+              {line.variantSummary && (
+                <p className="text-sm font-semibold text-[var(--sys-heading)] break-words" dir="auto">
+                  القطع: {line.variantSummary}
+                </p>
+              )}
               <p className="text-xs text-[var(--sys-muted)] tabular-nums" dir="ltr">
                 {line.quantity} × {amount(line.unitPrice, currency)}
                 {line.freeQuantity > 0 && ` + ${line.freeQuantity} هدية`}
