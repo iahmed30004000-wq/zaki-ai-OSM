@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Card } from '@/components/ui/Card';
 import { DismissButton } from '@/components/ui/DismissButton';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -298,7 +299,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
     return (
       <Modal isOpen={isOpen} onClose={onClose} title={t.orders} maxWidth="md">
         <div className="py-6 text-center space-y-4" dir={isRtl ? 'rtl' : 'ltr'}>
-          <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-3 py-2.5 inline-block">
+          <p className="text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-3 py-2.5 inline-block">
             {loadError}
           </p>
           <div className="flex justify-center gap-2">
@@ -430,11 +431,11 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               visible without hunting for it.
             */}
             {order.confirmationStatus === 'CONFIRMED' && mayRequestChange && (
-              <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
-                <h4 className="text-xs font-black text-[var(--sys-foreground)]">
+              <Card plain padding="md" className="space-y-2">
+                <h4 className="text-sm font-black text-[var(--sys-foreground)]">
                   {windowOpen ? 'تعديل هذا الطلب' : 'طلبٌ على هذا الطلب'}
                 </h4>
-                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                <p className="text-note text-[var(--sys-muted-foreground)]">
                   {frozenOnTrolley
                     ? ON_TROLLEY_AR
                     : windowOpen
@@ -444,15 +445,11 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                         : 'الطلب مؤكَّد وللقراءة فقط — تعديلُه أو إلغاؤه أو تأجيلُه يمرّ بقرار.'}
                 </p>
                 {!frozenOnTrolley && (
-                  <button
-                    type="button"
-                    onClick={() => setAskOpen(true)}
-                    className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-                  >
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setAskOpen(true)}>
                     تعديل · إلغاء · تأجيل
-                  </button>
+                  </Button>
                 )}
-              </div>
+              </Card>
             )}
 
             {/*
@@ -467,12 +464,12 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             {mayRecordCalls && order?.id && userCan(currentUser, 'insights.view') && <ShapeRiskPanel orderId={order.id} />}
 
             {mayRecordCalls && pullNotice && (
-              <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-1">
-                <h4 className="text-xs font-black text-[var(--sys-foreground)]">الطلب مو بين يديك</h4>
-                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <Card plain padding="md" className="space-y-1">
+                <h4 className="text-sm font-black text-[var(--sys-foreground)]">الطلب مو بين يديك</h4>
+                <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                   {pullNotice.text}
                 </p>
-              </div>
+              </Card>
             )}
             {mayRecordCalls && !pullNotice && (
             <ConfirmationActions
@@ -551,7 +548,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           <span className="hidden sm:inline">{ar ? 'الطلب التالي' : 'Next Order'}</span>
         </Button>
 
-        <span className="text-xs text-[var(--sys-muted)] font-medium">
+        <span className="text-note text-[var(--sys-muted)] font-medium">
           {navLoading || loading ? (ar ? 'جارٍ التحميل…' : 'Loading…') : ''}
         </span>
 
@@ -574,7 +571,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
       {/* Action feedback (status update / call log) */}
       {actionFeedback && (
         <div
-          className={`mb-4 rounded-lg border p-2.5 text-xs flex items-center justify-between gap-2 ${
+          className={`mb-4 rounded-lg border p-2.5 text-note flex items-center justify-between gap-2 ${
             actionFeedback.type === 'success'
               ? 'border-[var(--sys-success)]/60 bg-[var(--sys-success-soft)] text-[var(--sys-success)]'
               : 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
@@ -604,13 +601,13 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
           {/* The state, and the facts that travel with it. No button: the
               edit lock is taken by whichever card you actually edit, and a
               standalone "تعديل" here neither advanced nor stopped anything. */}
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3 shadow-raised">
+          <Card plain className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="text-xs font-semibold text-[var(--sys-muted)]">حالة الطلب</span>
+              <span className="text-note font-semibold text-[var(--sys-muted)]">حالة الطلب</span>
               <OrderStateBadge state={order.state} testStore={order.testStore} />
 
               {order.deliveryProvider && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] text-xs font-semibold text-[var(--sys-muted-foreground)]">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] text-note font-semibold text-[var(--sys-muted-foreground)]">
                   {order.deliveryProvider.kind === 'AGENT' ? (
                     <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" />
                   ) : (
@@ -620,13 +617,13 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                 </span>
               )}
               {order.trackingNumber && (
-                <span className="px-2.5 py-1 rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] text-xs font-mono text-[var(--sys-muted-foreground)]" dir="ltr">
+                <span className="px-2.5 py-1 rounded-full border border-[var(--sys-border)] bg-[var(--sys-surface)] text-note font-mono text-[var(--sys-muted-foreground)]" dir="ltr">
                   {order.trackingNumber}
                 </span>
               )}
               {order.settlementStatus && order.settlementStatus !== 'NOT_APPLICABLE' && (
                 <span
-                  className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${
+                  className={`px-2.5 py-1 rounded-full border text-note font-semibold ${
                     order.settlementStatus === 'SETTLED'
                       ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success)]/40 text-[var(--sys-success)]'
                       : 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/40 text-[var(--sys-warning)]'
@@ -654,7 +651,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                       <span
                         key={k}
                         title={order.closing.why}
-                        className={`px-2.5 py-1 rounded-full border text-xs font-semibold ${
+                        className={`px-2.5 py-1 rounded-full border text-note font-semibold ${
                           order.closing[k] === 'DONE'
                             ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success)]/40 text-[var(--sys-success)]'
                             : 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/40 text-[var(--sys-warning)]'
@@ -667,22 +664,22 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               )}
 
               {editingLockedByOther && (
-                <span className="ms-auto text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1 inline-flex items-center gap-1.5">
+                <span className="ms-auto text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1 inline-flex items-center gap-1.5">
                   <RiLockLine className="w-4 h-4" />
                   {t.editingBy} {lockHolderName}
                 </span>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* The figure to read aloud on the call, where the call is — the full summary is further down, as before. */}
           {phone && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3 shadow-raised">
-              <span className="text-xs font-bold text-[var(--sys-muted-foreground)]">المحصَّل عند الباب</span>
+            <Card plain className="flex items-center justify-between gap-2 px-4 py-3">
+              <span className="text-note font-bold text-[var(--sys-muted-foreground)]">المحصَّل عند الباب</span>
               <span className="font-black text-[var(--sys-heading)] text-sm" dir="ltr">
                 {money(cod?.cod ?? order.totalAmount)}
               </span>
-            </div>
+            </Card>
           )}
 
           <CustomerCard
@@ -749,8 +746,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
         {/* ─── Right column ─── */}
         <div className="space-y-5">
           {/* Financial overview */}
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
-            <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
+          <Card plain padding="md" className="space-y-3">
+            <h4 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-2">
               <RiMoneyDollarCircleLine className="w-4 h-4 text-[var(--sys-destructive)]" />
               الملخص المالي
             </h4>
@@ -762,8 +759,8 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                 size="md"
               />
               <div className="min-w-0">
-                <p className="text-xs text-[var(--sys-muted)]">المنتج</p>
-                <p className="text-xs font-bold text-[var(--sys-heading)] line-clamp-2">
+                <p className="text-note text-[var(--sys-muted)]">المنتج</p>
+                <p className="text-note font-bold text-[var(--sys-heading)] line-clamp-2">
                   {order.productNameSnapshot || order.product?.name}
                 </p>
               </div>
@@ -883,14 +880,14 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {/* Where the order came from. Editable, because the numbers are
               counted per channel and an order filed under the wrong one is a
               wrong number rather than a wrong label. */}
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-2">
+          <Card plain padding="md" className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
+              <h4 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-2">
                 <RiUserFollowLine className="w-4 h-4 text-[var(--sys-primary)]" />
                 جهة الطلب
               </h4>
@@ -900,13 +897,10 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                   server refuses it either way; hiding it just stops a button
                   that would only ever fail. */}
               {mayChangeChannel && (
-                <button
-                  onClick={() => { setChannelOpen((v) => !v); setChannelDraft(order.channelId ?? ''); }}
-                  className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-                >
+                <Button variant="secondary" size="sm" onClick={() => { setChannelOpen((v) => !v); setChannelDraft(order.channelId ?? ''); }}>
                   <RiPencilLine className="w-4 h-4" />
                   {channelOpen ? 'إغلاق' : 'تعديل'}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -922,13 +916,10 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                <button
-                  onClick={saveChannel}
-                  className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium"
-                >
+                <Button variant="primary" size="sm" onClick={saveChannel}>
                   حفظ القناة
-                </button>
-                <p className="text-xs text-[var(--sys-muted)]">
+                </Button>
+                <p className="text-note text-[var(--sys-muted)]">
                   القنوات تُدار من الإعدادات ← قنوات الطلبات.
                 </p>
               </div>
@@ -936,35 +927,32 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
               <>
                 <p className="text-sm font-bold text-[var(--sys-heading)]">{order.source || '—'}</p>
                 {order.moderator?.name && (
-                  <p className="text-xs text-[var(--sys-muted)]">أدخله: {order.moderator.name}</p>
+                  <p className="text-note text-[var(--sys-muted)]">أدخله: {order.moderator.name}</p>
                 )}
                 {phone &&
                   originFacts.slice(1).map((fact) => (
-                    <p key={fact} className="text-xs text-[var(--sys-muted)]" dir="auto">
+                    <p key={fact} className="text-note text-[var(--sys-muted)]" dir="auto">
                       {fact}
                     </p>
                   ))}
               </>
             )}
-          </div>
+          </Card>
 
           {/* Timeline — merged from every event table (src/lib/order-timeline.ts),
               not just the activity log, so it always matches the state above. */}
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised">
-            <h4 className="text-xs font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-2">
+          <Card plain padding="md">
+            <h4 className="text-sm font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-2">
               <RiTimerLine className="w-4 h-4 text-[var(--sys-muted)]" />
               سجل الأحداث ({timeline.length})
               {timeline.length > 5 && (
-                <button
-                  onClick={() => setTimelineExpanded((v) => !v)}
-                  className="ms-auto text-xs font-medium text-[var(--sys-primary)] hover:underline"
-                >
+                <Button variant="quiet" size="sm" className="ms-auto" onClick={() => setTimelineExpanded((v) => !v)}>
                   {timelineExpanded ? 'إظهار الأحدث فقط' : `إظهار الكل (${timeline.length})`}
-                </button>
+                </Button>
               )}
             </h4>
 
-            <div className="relative border-s-2 border-[var(--sys-border)] ms-2.5 space-y-4 text-xs">
+            <div className="relative border-s-2 border-[var(--sys-border)] ms-2.5 space-y-4 text-note">
               {/* Every order is created, so an empty timeline is not a
                   quiet order — it is a record whose events did not reach
                   the log. Saying «لا أحداث» invites somebody to shrug. */}
@@ -978,14 +966,14 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
                   <span className="absolute -start-[7px] top-1 w-2.5 h-2.5 rounded-full bg-[var(--sys-destructive)] border-2 border-[var(--sys-card)]" />
                   <p className="font-bold text-[var(--sys-foreground)]">{event.title}</p>
                   {event.detail && <p className="text-[var(--sys-muted-foreground)] mt-0.5 break-words">{event.detail}</p>}
-                  <p className="text-xs text-[var(--sys-muted)] mt-0.5">
+                  <p className="text-note text-[var(--sys-muted)] mt-0.5">
                     {arDateShort(event.at)}
                     {event.actorName ? ` — ${event.actorName}` : ''}
                   </p>
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         </div>
       </div>
 

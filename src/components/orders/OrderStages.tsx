@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Card } from '@/components/ui/Card';
 import { arDateShort } from '@/lib/format';
 import { humanMinutes, type Stage } from '@/lib/order-stages';
 import { RiCheckLine, RiSubtractLine } from '@remixicon/react';
@@ -23,8 +24,8 @@ export function OrderStages({ stages }: { stages: Stage[] }) {
   const withFacts = stages.filter((s) => s.status !== 'PENDING' && (s.who || s.facts.length > 0));
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised">
-      <h4 className="text-xs font-black text-[var(--sys-foreground)] mb-4">مسار الطلب</h4>
+    <Card plain padding="md">
+      <h4 className="text-sm font-black text-[var(--sys-foreground)] mb-4">مسار الطلب</h4>
 
       {/* The steps. The connecting line sits behind them so it never pushes
           a label out of its place. */}
@@ -50,7 +51,7 @@ export function OrderStages({ stages }: { stages: Stage[] }) {
 
               <div className="relative flex flex-col items-center gap-1.5">
                 <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold z-10 ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-note font-bold z-10 ${
                     current
                       ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] ring-4 ring-[var(--sys-primary)]/15'
                       : done
@@ -64,14 +65,14 @@ export function OrderStages({ stages }: { stages: Stage[] }) {
                 </span>
 
                 <span
-                  className={`text-xs font-bold text-center leading-tight ${
+                  className={`text-note font-bold text-center leading-tight ${
                     current ? 'text-[var(--sys-primary)]' : done ? 'text-[var(--sys-heading)]' : 'text-[var(--sys-muted)]'
                   }`}
                 >
                   {stage.title}
                 </span>
 
-                <span className="text-xs text-[var(--sys-muted)] text-center leading-tight">
+                <span className="text-note text-[var(--sys-muted)] text-center leading-tight">
                   {stage.at ? arDateShort(stage.at) : skipped ? 'لم يمر بها' : '—'}
                   {stage.minutes !== null && (
                     <span className={`block ${stage.ongoing ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted)]'}`}>
@@ -89,7 +90,7 @@ export function OrderStages({ stages }: { stages: Stage[] }) {
       {withFacts.length > 0 && (
         <div className="mt-4 pt-3 border-t border-[var(--sys-border)] space-y-1.5">
           {withFacts.map((stage) => (
-            <p key={stage.key} className="text-xs text-[var(--sys-muted-foreground)] flex flex-wrap gap-x-1.5">
+            <p key={stage.key} className="text-note text-[var(--sys-muted-foreground)] flex flex-wrap gap-x-1.5">
               <span
                 className={`font-bold shrink-0 ${
                   stage.status === 'CURRENT' ? 'text-[var(--sys-primary)]' : 'text-[var(--sys-foreground)]'
@@ -116,6 +117,6 @@ export function OrderStages({ stages }: { stages: Stage[] }) {
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

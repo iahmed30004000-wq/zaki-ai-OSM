@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { arDateShort } from '@/lib/format';
 import { RiArrowLeftRightLine, RiLoader4Line, RiUserFollowLine, RiUserUnfollowLine } from '@remixicon/react';
@@ -142,17 +144,17 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
     'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)]';
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
+    <Card plain padding="md" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <RiUserFollowLine className="w-4 h-4 text-[var(--sys-primary)] shrink-0" />
           {holder ? (
             <p className="text-sm text-[var(--sys-heading)]">
-              <span className="text-[var(--sys-muted-foreground)] text-xs">بين يدي </span>
+              <span className="text-[var(--sys-muted-foreground)] text-note">بين يدي </span>
               <span className="font-bold">{holder.name}</span>
-              {heldByMe && <span className="text-xs text-[var(--sys-success)]"> (أنت)</span>}
+              {heldByMe && <span className="text-note text-[var(--sys-success)]"> (أنت)</span>}
               {order.claimedAt && (
-                <span className="text-xs text-[var(--sys-muted)]"> · منذ {arDateShort(order.claimedAt)}</span>
+                <span className="text-note text-[var(--sys-muted)]"> · منذ {arDateShort(order.claimedAt)}</span>
               )}
             </p>
           ) : (
@@ -160,7 +162,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
               <p className="text-sm text-[var(--sys-muted-foreground)]">
                 لم يستلمه أحد بعد — <span className="font-bold text-[var(--sys-heading)]">تابع لـ{order.reservedFor.name}</span>
                 {order.reservedFor.hoursLeft !== undefined && (
-                  <span className="text-xs text-[var(--sys-muted)]">
+                  <span className="text-note text-[var(--sys-muted)]">
                     {' '}· هي اللي تسحبه، وبيصير عاماً بعد {order.reservedFor.hoursLeft} ساعة
                   </span>
                 )}
@@ -183,44 +185,39 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
         {((holder && (mayRelease || mayTransfer)) || mayOverride) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {mayOverride && (
-              <button
-                onClick={() => { setOpen(open === 'take' ? null : 'take'); }}
-                className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-              >
+              <Button variant="secondary" size="sm" onClick={() => { setOpen(open === 'take' ? null : 'take'); }}>
                 <RiUserFollowLine className="w-4 h-4" />
                 استلمه أنا
-              </button>
+              </Button>
             )}
             {/* A decided order is given back to no queue: both release doors refuse it past the confirmation desk (claim/route.ts). */}
             {holder && mayRelease && !decided && (
-            <button
-              onClick={() => { setOpen(open === 'release' ? null : 'release'); }}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] inline-flex items-center gap-1.5"
-            >
+            <Button variant="secondary" size="sm" onClick={() => { setOpen(open === 'release' ? null : 'release'); }}>
               <RiUserUnfollowLine className="w-4 h-4" />
               سحبه منه
-            </button>
+            </Button>
             )}
             {holder && mayTransfer && (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => { setOpen(open === 'transfer' ? null : 'transfer'); }}
               disabled={candidates.length === 0}
               title={candidates.length === 0 ? (anyAgent ? 'لا يوجد موظف تأكيد يقدر يشتغل على الطلب' : 'لا يوجد زميل بنفس الرتبة') : undefined}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5 disabled:opacity-40"
             >
               <RiArrowLeftRightLine className="icon-mirror w-4 h-4" />
               تحويل لزميل
-            </button>
+            </Button>
             )}
           </div>
         )}
       </div>
 
       {open && (
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-2">
+        <Card plain padding="sm" className="space-y-2">
           {open === 'transfer' && (
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">
+              <span className="block text-note font-medium text-[var(--sys-muted-foreground)] mb-1">
                 {anyAgent ? 'يُحوَّل إلى (موظفو التأكيد)' : 'يُحوَّل إلى (زملاء بنفس الرتبة فقط)'}
               </span>
               <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={inputClass}>
@@ -233,7 +230,7 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
           )}
 
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">
+            <span className="block text-note font-medium text-[var(--sys-muted-foreground)] mb-1">
               السبب {open === 'release' ? '(لماذا يُسحب منه)' : open === 'take' ? '(لماذا تستلمه أنت)' : ''}
             </span>
             <input
@@ -247,23 +244,16 @@ export function OrderResponsibility({ order, currentUserId, onChanged }: Props) 
 
 
           <div className="flex gap-2">
-            <button
-              onClick={() => run(open)}
-              disabled={busy}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
-            >
+            <Button variant="primary" size="sm" onClick={() => { void run(open); }} disabled={busy}>
               {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}
               {open === 'release' ? 'أعِده للطابور' : open === 'take' ? 'استلمه' : 'حوّل الطلب'}
-            </button>
-            <button
-              onClick={() => { setOpen(null); }}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]"
-            >
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => { setOpen(null); }}>
               إلغاء
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
-    </div>
+    </Card>
   );
 }

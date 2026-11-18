@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/Card';
 import { RiArrowLeftLine, RiLoader4Line } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { HealthChip } from '@/components/ui/HealthChip';
@@ -79,7 +80,7 @@ export function ShapeRiskPanel({ orderId }: { orderId: string }) {
 
   if (loading) {
     return (
-      <p className="flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)]">
+      <p className="flex items-center gap-1.5 text-note text-[var(--sys-muted-foreground)]">
         <RiLoader4Line className="h-4 w-4 animate-spin" />
         يقيس احتمال الإرجاع…
       </p>
@@ -92,22 +93,22 @@ export function ShapeRiskPanel({ orderId }: { orderId: string }) {
     : { tone: 'unknown', label: 'لا يكفي', why: data.why };
 
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-2">
+    <Card plain padding="sm" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-xs font-black text-[var(--sys-heading)]">
+        <h4 className="text-sm font-black text-[var(--sys-heading)]">
           احتمال الإرجاع لهذا الشكل من الطلبات
         </h4>
         <HealthChip health={health} />
       </div>
 
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{data.why}</p>
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">{data.why}</p>
 
       {data.drivers.length > 0 && (
         <ul className="space-y-1">
           {data.drivers.map((d) => (
             <li
               key={d.dimension}
-              className={`text-xs leading-relaxed ${
+              className={`text-note leading-relaxed ${
                 d.points > 0 ? 'text-[var(--sys-destructive)]' : 'text-[var(--sys-success)]'
               }`}
             >
@@ -120,9 +121,9 @@ export function ShapeRiskPanel({ orderId }: { orderId: string }) {
       {/* THE PART SHE CAN ACT ON, phrased as the change and its worth. */}
       {data.levers.length > 0 && (
         <div className="space-y-1 rounded-lg bg-[var(--sys-primary-soft)] p-2">
-          <p className="text-xs font-semibold text-[var(--sys-primary)]">ما زال بوسعك تغييره الآن:</p>
+          <p className="text-note font-semibold text-[var(--sys-primary)]">ما زال بوسعك تغييره الآن:</p>
           {data.levers.map((l) => (
-            <p key={`${l.dimension}-${l.to}`} className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--sys-primary)]">
+            <p key={`${l.dimension}-${l.to}`} className="flex items-start gap-1.5 text-note leading-relaxed text-[var(--sys-primary)]">
               <RiArrowLeftLine className="icon-mirror mt-0.5 h-4 w-4 shrink-0" />
               <span>
                 {l.why} — أقلّ بـ{l.points} نقطة
@@ -137,14 +138,14 @@ export function ShapeRiskPanel({ orderId }: { orderId: string }) {
         because the largest number in the courier's file is the one this
         product cannot see: شام كاش did not come back once in 195 parcels.
       */}
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         {data.paymentUnmeasured.why} — {data.paymentUnmeasured.measuredElsewhere}
       </p>
 
-      <p className="text-xs text-[var(--sys-muted)]">
+      <p className="text-note text-[var(--sys-muted)]">
         محسوب من طلبات متجرك المنتهية: {data.shopShipments} شحنة. لا نموذجَ ذكاءٍ يُستدعى — كلُّ رقم
         معدود، وكلُّ سطرٍ يذكر عيّنته.
       </p>
-    </div>
+    </Card>
   );
 }

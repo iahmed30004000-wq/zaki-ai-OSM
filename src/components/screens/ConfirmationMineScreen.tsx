@@ -2194,6 +2194,7 @@ export function ConfirmationMineScreen() {
           postponeCount={dialog.order.postponeCount}
           busy={busyId === dialog.order.id}
           noAnswerLock={proofOn ? proofLock(dialog.order).text : null}
+          planOn={!!data?.cadenceOn}
           onClose={() => setDialog(null)}
           onSubmit={(value) => submitPostpone(dialog.order, value)}
         />

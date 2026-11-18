@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/Card';
 import { DismissButton } from '@/components/ui/DismissButton';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea, Select } from '@/components/ui/Input';
@@ -46,24 +47,24 @@ const SHIPPING_STATE: Record<string, { ar: string; en: string; cls: string }> = 
 
 
 /** Next allowed transitions per current status (mirrors backend map for UX only) */
-const NEXT_ACTIONS: Record<string, { to: string; labelAr: string; labelEn: string; cls: string }[]> = {
+const NEXT_ACTIONS: Record<string, { to: string; labelAr: string; labelEn: string }[]> = {
   // NOT_READY offers nothing here on purpose. An order becomes ready to ship
   // in the preparation screen, where the stock is actually reserved against
   // its lines; a button here only ever produced "الشحن يتطلب طلباً مؤكداً".
   NOT_READY: [],
-  READY_FOR_SHIPPING: [{ to: 'PACKING', labelAr: 'بدء التغليف', labelEn: 'Start Packing', cls: 'border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]' }],
-  PACKING: [{ to: 'READY_FOR_PICKUP', labelAr: 'جاهز للاستلام', labelEn: 'Ready for Pickup', cls: 'border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]' }],
-  READY_FOR_PICKUP: [{ to: 'SHIPPED', labelAr: 'تم الشحن', labelEn: 'Shipped', cls: 'border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]' }],
-  SHIPPED: [{ to: 'OUT_FOR_DELIVERY', labelAr: 'خرج للتوصيل', labelEn: 'Out for Delivery', cls: 'border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)]' }],
+  READY_FOR_SHIPPING: [{ to: 'PACKING', labelAr: 'بدء التغليف', labelEn: 'Start Packing' }],
+  PACKING: [{ to: 'READY_FOR_PICKUP', labelAr: 'جاهز للاستلام', labelEn: 'Ready for Pickup' }],
+  READY_FOR_PICKUP: [{ to: 'SHIPPED', labelAr: 'تم الشحن', labelEn: 'Shipped' }],
+  SHIPPED: [{ to: 'OUT_FOR_DELIVERY', labelAr: 'خرج للتوصيل', labelEn: 'Out for Delivery' }],
   OUT_FOR_DELIVERY: [
-    { to: 'DELIVERED', labelAr: 'تم التسليم', labelEn: 'Delivered', cls: 'border-[var(--sys-success)]/60 text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)]' },
-    { to: 'FAILED_DELIVERY', labelAr: 'فشل التوصيل', labelEn: 'Failed', cls: 'border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]' },
+    { to: 'DELIVERED', labelAr: 'تم التسليم', labelEn: 'Delivered' },
+    { to: 'FAILED_DELIVERY', labelAr: 'فشل التوصيل', labelEn: 'Failed' },
   ],
   FAILED_DELIVERY: [
-    { to: 'RETURN_REQUESTED', labelAr: 'طلب إرجاع', labelEn: 'Return', cls: 'border-[var(--sys-warning)]/60 text-[var(--sys-warning)] hover:bg-[var(--sys-warning-soft)]' },
-    { to: 'SHIPPED', labelAr: 'إعادة شحن', labelEn: 'Reship', cls: 'border-[var(--sys-border-strong)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)]' },
+    { to: 'RETURN_REQUESTED', labelAr: 'طلب إرجاع', labelEn: 'Return' },
+    { to: 'SHIPPED', labelAr: 'إعادة شحن', labelEn: 'Reship' },
   ],
-  RETURN_REQUESTED: [{ to: 'RETURNED', labelAr: 'تم الإرجاع', labelEn: 'Returned', cls: 'border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]' }],
+  RETURN_REQUESTED: [{ to: 'RETURNED', labelAr: 'تم الإرجاع', labelEn: 'Returned' }],
 };
 
 interface ShippingSectionProps {
@@ -221,20 +222,20 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
   const actions = NEXT_ACTIONS[order?.shippingStatus] ?? [];
 
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 shadow-raised" dir={isRtl ? 'rtl' : 'ltr'}>
+    <Card plain padding="md"><div dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
+        <h4 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-2">
           <RiTruckLine className="w-4 h-4 text-[var(--sys-destructive)]" />
           {ar ? 'الشحن والتوصيل' : 'Shipping & Delivery'}
         </h4>
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border-2 text-xs font-bold ${st.cls}`}>
+        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border-2 text-note font-bold ${st.cls}`}>
           {ar ? st.ar : st.en}
         </span>
       </div>
 
       {/* Info grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs mb-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-note mb-3">
         <Info label={ar ? 'شركة التوصيل' : 'Provider'} value={order.deliveryProvider?.name || (ar ? 'غير معيّنة' : 'None')} />
         <Info label={ar ? 'رقم التتبع' : 'Tracking #'} value={order.trackingNumber || '—'} mono />
         <Info label={ar ? 'دفعة الشحن' : 'Batch'} value={order.shippingBatch?.batchNumber || '—'} mono />
@@ -254,7 +255,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
 
       {/* Failure/return reasons */}
       {order.shippingStatus === 'FAILED_DELIVERY' && order.deliveryFailureReason && (
-        <p className="mb-3 text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+        <p className="mb-3 text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
           <RiCloseCircleLine className="me-1 inline-block h-4 w-4 align-text-bottom" aria-hidden />
           {ar ? 'سبب الفشل:' : 'Failure reason:'}{' '}
           {(FAILURE_REASONS as any)[order.deliveryFailureReason]?.[ar ? 'ar' : 'en'] ?? order.deliveryFailureReason}
@@ -262,7 +263,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
         </p>
       )}
       {order.returnReason && ['RETURN_REQUESTED', 'RETURNED'].includes(order.shippingStatus) && (
-        <p className="mb-3 text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">
+        <p className="mb-3 text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">
           <RiArrowGoBackLine className="icon-mirror me-1 inline-block h-4 w-4 align-text-bottom" aria-hidden />
           {ar ? 'سبب الإرجاع:' : 'Return reason:'}{' '}
           {(RETURN_REASONS as any)[order.returnReason]?.[ar ? 'ar' : 'en'] ?? order.returnReason}
@@ -270,17 +271,19 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
       )}
 
       {!canEdit && (
-        <p className="mb-3 text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg px-2.5 py-2">
+        <Card plain className="mb-3 text-note text-[var(--sys-muted-foreground)] px-2.5 py-2">
           الشحن والتوصيل للعرض فقط — تحريكه من صلاحية فريق الشحن.
-        </p>
+        </Card>
       )}
 
       {/* Quick transition actions (backend validates everything) */}
       {canEdit && !terminal && actions.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
           {actions.map((a) => (
-            <button
+            <Button
               key={a.to}
+              variant={a.to === 'DELIVERED' ? 'primary' : a.to === 'FAILED_DELIVERY' || a.to === 'RETURNED' ? 'danger' : 'secondary'}
+              size="sm"
               onClick={() => {
                 setNote('');
                 if (a.to === 'FAILED_DELIVERY') { setOpenForm('fail'); return; }
@@ -288,14 +291,15 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
                 transition(a.to);
               }}
               disabled={actionLoading !== null}
-              className={`min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition-colors cursor-pointer disabled:opacity-50 ${a.cls}`}
             >
               {a.to === 'DELIVERED' ? <RiArchiveDrawerLine className="w-4 h-4" /> : a.to === 'FAILED_DELIVERY' ? <RiCloseCircleLine className="w-4 h-4" /> : a.to === 'RETURNED' || a.to === 'RETURN_REQUESTED' ? <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> : <RiShipLine className="w-4 h-4" />}
               {ar ? a.labelAr : a.labelEn}
-            </button>
+            </Button>
           ))}
           {canTrack && (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               /*
                * A STORED ZERO IS A VALUE, NOT A BLANK.
                *
@@ -312,17 +316,16 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
                */
               onClick={() => { setTrackingNumber(order.trackingNumber || ''); setDeliveryFee(order.deliveryFee == null ? '' : String(order.deliveryFee)); setFeeReason(''); setOpenForm('tracking'); }}
               disabled={actionLoading !== null}
-              className="min-h-11 md:min-h-0 inline-flex items-center inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 border-[var(--sys-border-strong)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] transition-colors cursor-pointer disabled:opacity-50"
             >
               <RiNumbersLine className="w-4 h-4" />{ar ? 'رقم التتبع' : 'Tracking'}
-            </button>
+            </Button>
           )}
         </div>
       )}
 
       {/* Feedback */}
       {feedback && (
-        <div className={`mb-3 rounded-lg border p-2.5 text-xs flex items-center justify-between gap-2 ${
+        <div className={`mb-3 rounded-lg border p-2.5 text-note flex items-center justify-between gap-2 ${
           feedback.type === 'success' ? 'border-[var(--sys-success)]/60 bg-[var(--sys-success-soft)] text-[var(--sys-success)]' : 'border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)]'
         }`}>
           <span>{feedback.text}</span>
@@ -332,7 +335,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
 
       {/* Inline load error (providers / attempts) */}
       {listError && (
-        <div className="mb-3 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] p-2.5 text-xs flex items-center justify-between gap-2">
+        <div className="mb-3 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] p-2.5 text-note flex items-center justify-between gap-2">
           <span>{listError}</span>
           <DismissButton onClick={() => setListError(null)} />
         </div>
@@ -341,29 +344,30 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
       {/* Delivery attempts (append-only history) */}
       <div className="border-t border-[var(--sys-border)] pt-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-bold text-[var(--sys-muted)] flex items-center gap-1.5">
+          <p className="text-note font-bold text-[var(--sys-muted)] flex items-center gap-1.5">
             <RiHistoryLine className="w-4 h-4" />
             {ar ? 'سجل الشحن والتوصيل' : 'Shipping & Delivery Timeline'}
             {loading && <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-[var(--sys-destructive)]" />}
           </p>
           {canEdit && ['SHIPPED', 'OUT_FOR_DELIVERY'].includes(order?.shippingStatus) && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => { setNote(''); setAttemptResult(''); setOpenForm('attempt'); }}
               disabled={actionLoading !== null}
-              className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border-strong)] px-3 py-1.5 text-xs font-bold text-[var(--sys-foreground)] transition-colors cursor-pointer hover:bg-[var(--sys-surface)] disabled:opacity-50"
             >
               <RiTimerLine className="w-4 h-4" />
               {ar ? 'تسجيل محاولة' : 'Log an attempt'}
-            </button>
+            </Button>
           )}
         </div>
         {attempts.length === 0 ? (
-          <p className="text-xs text-[var(--sys-muted)] py-1.5">{ar ? 'لا محاولات توصيل بعد.' : 'No delivery attempts yet.'}</p>
+          <p className="text-note text-[var(--sys-muted)] py-1.5">{ar ? 'لا محاولات توصيل بعد.' : 'No delivery attempts yet.'}</p>
         ) : (
           <div className="space-y-1.5">
             {attempts.map((att: any) => (
-              <div key={att.id} className={`p-2 rounded-lg border text-xs ${
+              <div key={att.id} className={`p-2 rounded-lg border text-note ${
                 att.result === 'DELIVERED' ? 'bg-[var(--sys-success-soft)]/60 border-[var(--sys-success)]/40' : att.result === 'FAILED' ? 'bg-[var(--sys-destructive-soft)]/60 border-[var(--sys-destructive-border)]' : 'bg-[var(--sys-surface)] border-[var(--sys-border)]'
               }`}>
                 <div className="flex items-center justify-between flex-wrap gap-1">
@@ -398,7 +402,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
       */}
       <Modal isOpen={openForm === 'attempt'} onClose={() => setOpenForm(null)} title={ar ? 'تسجيل محاولة توصيل' : 'Log a Delivery Attempt'} maxWidth="md">
         <div className="space-y-3" dir={isRtl ? 'rtl' : 'ltr'}>
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             {ar
               ? 'للمحاولة التي لم تُنهِ الطلب — يبقى الطلب خارجاً للتوصيل. إن فشل التوصيل نهائياً فاستخدم «فشل التوصيل».'
               : 'For an attempt that did not end the order — it stays out for delivery. If the delivery failed for good, use «Failed».'}
@@ -586,7 +590,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
           </div>
         </div>
       </Modal>
-    </div>
+    </div></Card>
   );
 }
 
