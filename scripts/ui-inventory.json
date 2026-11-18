@@ -1280,14 +1280,17 @@
     "tabs": 0
   },
   "src/components/screens/GeoSettingsScreen.tsx": {
-    "buttons": 14,
-    "inputs": 12,
+    "buttons": 13,
+    "inputs": 8,
     "columns": 0,
-    "cards": 0,
+    "cards": 6,
     "modals": 0,
     "icons": 7,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 2,
+    "switches": 2
   },
   "src/components/screens/InstalledAppsScreen.tsx": {
     "buttons": 2,
@@ -2430,20 +2433,21 @@
     "tabs": 0
   },
   "src/components/settings/StoreBrandField.tsx": {
-    "buttons": 2,
+    "buttons": 1,
     "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 0,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/settings/StoreIdentityCard.tsx": {
     "buttons": 1,
     "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -2453,7 +2457,7 @@
     "buttons": 0,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 4,
     "links": 6,

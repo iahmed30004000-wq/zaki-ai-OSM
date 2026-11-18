@@ -158,7 +158,9 @@ describe('a store that already holds orders says what the switch changes — bef
   it('an ordinary store: the orders leave the company’s figures and are counted on the bench screen', async () => {
     stores = [store({ _count: { orders: 12 } })];
     await draw();
-    const text = (box().closest('div')!.textContent ?? '').replace(/\s+/g, ' ');
+    // 18/11 (R15b, the screen on the kit): was «box().closest('div')». The box is the kit's Checkbox now and its own wrapper is
+    // the nearest div (the box and its words only), so the sentence about the orders is looked for on the store's row.
+    const text = (box().closest('li')!.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).toContain('على المتجر 12 طلب');
     expect(text).toContain('بتطلع طلباته من أرقام الشركة');
     expect(text).toContain('بتنعدّ بشاشة المنصّة');
@@ -171,7 +173,8 @@ describe('a store that already holds orders says what the switch changes — bef
   it('a bench: the reverse', async () => {
     stores = [store({ isTest: true, _count: { orders: 3 } })];
     await draw();
-    const text = (box().closest('div')!.textContent ?? '').replace(/\s+/g, ' ');
+    // 18/11 (R15b): the store's row, as above.
+    const text = (box().closest('li')!.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).toContain('على المتجر 3 طلب');
     expect(text).toContain('بترجع طلباته تنعدّ بأرقام الشركة');
     expect(text).not.toContain('بتطلع طلباته من أرقام الشركة');
@@ -179,7 +182,8 @@ describe('a store that already holds orders says what the switch changes — bef
 
   it('NEGATIVE: a store with no orders says nothing about them', async () => {
     await draw();
-    expect((box().closest('div')!.textContent ?? '')).not.toContain('على المتجر');
+    // 18/11 (R15b): the whole store row, as above — wider than the old div, so this NEGATIVE is stricter.
+    expect((box().closest('li')!.textContent ?? '')).not.toContain('على المتجر');
   });
 });
 

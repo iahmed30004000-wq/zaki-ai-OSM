@@ -70,7 +70,10 @@ describe('the checkbox under a store', () => {
   it('is followed by what turning it on covers, in the owner’s order: the doors, the profit, who may say otherwise', async () => {
     await draw();
     const checkbox = screen.getByRole('checkbox', { name: /السعر المُعلن يشمل التوصيل/ });
-    const sentence = checkbox.closest('div')!.querySelector('p.leading-relaxed');
+    // 18/11 (R15b, the screen on the kit): was «checkbox.closest('div')!.querySelector('p.leading-relaxed')». The box is the kit's
+    // Checkbox now and its own wrapper is the nearest div, so the sentence is found the way a screen reader finds it: the box is
+    // DESCRIBED by it (aria-describedby). Stronger than before: a sentence drawn nearby but not tied to the box fails here.
+    const sentence = document.getElementById(checkbox.getAttribute('aria-describedby') ?? '');
     expect(sentence, 'the help sentence is not drawn under the checkbox').toBeTruthy();
     const text = (sentence!.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).toContain('إذا كل طلباتك توصيلها مجاني');
@@ -93,7 +96,8 @@ describe('the checkbox under a store', () => {
     // for a sheet; and an unticked offer is heard on the sales page ONLY, not at Telegram or the systems door.
     await draw();
     const checkbox = screen.getByRole('checkbox', { name: /السعر المُعلن يشمل التوصيل/ });
-    const text = (checkbox.closest('div')!.querySelector('p.leading-relaxed')!.textContent ?? '').replace(/\s+/g, ' ');
+    // 18/11 (R15b): through aria-describedby, as above.
+    const text = (document.getElementById(checkbox.getAttribute('aria-describedby') ?? '')!.textContent ?? '').replace(/\s+/g, ' ');
     expect(text).not.toMatch(/بيشمل[^.]*الشيتات/);
     expect(text).not.toContain('كلمتهم بتغلب');
   });

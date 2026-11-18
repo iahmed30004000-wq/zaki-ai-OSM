@@ -404,10 +404,7 @@
       "textXs": 21
     },
     "src/components/screens/GeoSettingsScreen.tsx": {
-      "rawButtons": 14,
-      "rawCheckboxes": 4,
-      "rawSurfaces": 8,
-      "textXs": 31
+      "rawSurfaces": 2
     },
     "src/components/screens/InstalledAppsScreen.tsx": {
       "rawButtons": 2,
@@ -848,18 +845,8 @@
       "rawCheckboxes": 1,
       "textXs": 3
     },
-    "src/components/settings/StoreBrandField.tsx": {
-      "rawButtons": 2,
-      "textXs": 3
-    },
-    "src/components/settings/StoreIdentityCard.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 6
-    },
     "src/components/settings/StorefrontSettings.tsx": {
-      "rawSurfaces": 4,
-      "textXs": 8
+      "rawSurfaces": 2
     },
     "src/components/settings/TelegramSourcesCard.tsx": {
       "rawButtons": 3,
