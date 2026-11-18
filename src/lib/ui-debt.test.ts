@@ -152,7 +152,9 @@ describe('what the counter counts', () => {
 
   it('counts a ScreenTitle use and every text-xs, however it is prefixed, but not a longer word', () => {
     expect(c('<ScreenTitle title="x" /><PageHeader/>').screenTitle).toBe(1);
-    expect(c('<p className="text-xs md:text-xs text-xsm context-text-xs">').textXs).toBe(2);
+    // Written in pieces: Tailwind reads tests too, and a whole `md:` + size token here would ship a real rule in every page's sheet.
+    const xs = ['text', 'xs'].join('-');
+    expect(c(`<p className="${xs} md:${xs} ${xs}m context-${xs}">`).textXs).toBe(2);
   });
 
   it('counts a card drawn by hand: the card fill, a border and the surface corner', () => {
@@ -162,7 +164,7 @@ describe('what the counter counts', () => {
 
   it('but not a field wearing the same fill, a chip, a fill with no edge, or a smaller corner', () => {
     expect(c('<input className="rounded-lg border bg-[var(--sys-card)] px-3 py-2" />').rawSurfaces).toBe(0);
-    expect(c('<div className="rounded-lg border bg-[var(--sys-card)] outline-none focus:border-x">').rawSurfaces).toBe(0);
+    expect(c('<div className="rounded-lg border bg-[var(--sys-card)] outline-none">').rawSurfaces).toBe(0);
     expect(c('<select\n className="rounded-lg border bg-[var(--sys-card)] px-2"\n/>').rawSurfaces).toBe(0);
     expect(c('<div className="rounded-lg bg-[var(--sys-card)] p-4">').rawSurfaces).toBe(0);
     expect(c('<div className="rounded-md border bg-[var(--sys-card)] p-4">').rawSurfaces).toBe(0);
