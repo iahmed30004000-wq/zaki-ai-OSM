@@ -164,7 +164,7 @@ describe('the real dialog: `planOn` false draws exactly what the prop left out d
     const base = { open: true, orderNumber: 'SY-26-1001', postponeCount: 0, noAnswerLock: null, onClose: () => undefined, onSubmit: () => undefined };
     const drawn = (extra: { planOn?: boolean }) => {
       const { unmount } = render(<real.PostponeDialog {...base} {...extra} />);
-      const html = document.body.innerHTML.replace(/_r_[0-9a-z]+_|:r[0-9a-z]+:/g, 'ID');
+      const html = document.querySelector('[role="dialog"]')!.outerHTML.replace(/_r_[0-9a-z]+_|:r[0-9a-z]+:/g, 'ID');
       const offered = [...document.querySelectorAll('option')].map((o) => o.getAttribute('value'));
       unmount();
       return { html, offered };
