@@ -10,9 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *  · One audit row, with the before and the after; every door hears the change at once in this process.
  *  · It does nothing without «نظام الجولات»: GET says whether the rounds are on, PUT refuses «on» while they are off (409 in Arabic,
  *    nothing stored, no audit row) — «off» is always allowed.
+ *
+ * UPDATED 2026-11-18 (request C2, decision 7): the door used to TURN the switch (the bullets above about PUT). Its card left «قواعد مركز التأكيد» — the one rule replaced
+ * it — so PUT now refuses EVERY write, on or off, with 409 `RULE_RETIRED` after asking the same key, and writes NOTHING (no switch, no date, no audit row; «ROUNDS_OFF»
+ * is gone with it). GET is as it was. The library's save (`saveReturnsSwitch`, engine code that leaves with C4) is still held below, called directly.
  */
 
-const { store, requirePermission, logAudit, db, rounds } = vi.hoisted(() => {
+const { store, requirePermission, logAudit, db, rounds, updates } = vi.hoisted(() => {
   const store = { doc: {} as Record<string, unknown>, failRead: false };
   const db = {
     company: {
@@ -27,6 +31,7 @@ const { store, requirePermission, logAudit, db, rounds } = vi.hoisted(() => {
     requirePermission: vi.fn(async (_key: string) => undefined),
     logAudit: vi.fn(),
     db,
+    updates: vi.fn(),
     rounds: { value: { enabled: true, enabledAt: new Date('2026-11-01T06:00:00.000Z') } as { enabled: boolean; enabledAt: Date | null } },
   };
 });
@@ -39,6 +44,7 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) })
 vi.mock('@/lib/no-answer-rounds-switch', () => ({ roundsSwitch: async () => rounds.value }));
 vi.mock('@/lib/company-settings', () => ({
   updateCompanySettings: async (_c: string, key: string, change: (cur: unknown) => unknown) => {
+    updates(key);
     const next = change(store.doc[key]);
     store.doc[key] = next;
     return next;
@@ -46,10 +52,12 @@ vi.mock('@/lib/company-settings', () => ({
 }));
 
 import { GET, PUT } from './route';
-import { forgetReturnsSwitch, parseReturnsSwitch, returnsSwitch } from '@/lib/no-answer-returns-switch';
+import { forgetReturnsSwitch, parseReturnsSwitch, returnsSwitch, saveReturnsSwitch } from '@/lib/no-answer-returns-switch';
+import { RETIRED_SWITCH_AR, RETIRED_SWITCH_CODE } from '@/lib/retired-switch';
 
-const put = (body: unknown) =>
-  PUT(new Request('http://localhost/x', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+/** The library's save, as the door used to call it (C2: the door no longer does). Answers what the door answered then. */
+const save = async (enabled: boolean) => ({ returns: await saveReturnsSwitch('c1', enabled) });
+const iso = (sw: { enabled: boolean; enabledAt: Date | null }) => ({ enabled: sw.enabled, enabledAt: sw.enabledAt ? sw.enabledAt.toISOString() : null });
 const STORED = { enabled: true, enabledAt: '2026-11-01T06:00:00.000Z' };
 
 beforeEach(() => {
@@ -72,75 +80,53 @@ describe('the switch', () => {
     expect(requirePermission).toHaveBeenCalledWith('settings.view');
   });
 
-  it('turning it on is the sensitive-settings key, and stores the moment by the server clock', async () => {
-    const res = await put({ enabled: true });
+  it('PUT takes no more writes (C2): every body is refused 409 in Arabic, after the same key as before', async () => {
+    for (let i = 0; i < 3; i++) {
+      const res = await PUT();
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.code).toBe(RETIRED_SWITCH_CODE);
+      expect(data.errorAr).toBe(RETIRED_SWITCH_AR);
+      expect(/[A-Za-z]/.test(data.errorAr)).toBe(false);
+      expect(data.code).not.toBe('ROUNDS_OFF');
+    }
     expect(requirePermission).toHaveBeenCalledWith('settings.manage');
-    const data = await res.json();
-    expect(data.returns.enabled).toBe(true);
-    expect(Date.now() - new Date(data.returns.enabledAt).getTime()).toBeLessThan(5_000);
-    // Only its own key: the win-back rule and the rounds’ switch beside it are untouched.
-    expect(store.doc.winback).toEqual({ coolingDays: 14 });
-    expect(store.doc.noAnswerRounds).toEqual(STORED);
-    expect(store.doc.noAnswerReturns).toEqual({ enabled: true, enabledAt: data.returns.enabledAt });
   });
 
-  it('writes ONE audit row, with the before and the after', async () => {
-    const res = await put({ enabled: true });
-    const data = await res.json();
-    expect(logAudit).toHaveBeenCalledTimes(1);
-    expect(logAudit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        companyId: 'c1', userId: 'owner', action: 'NO_ANSWER_RETURNS_SWITCHED', entity: 'Company', entityId: 'c1',
-        previousData: { enabled: false, enabledAt: null },
-        newData: { enabled: true, enabledAt: data.returns.enabledAt },
-      })
-    );
+  it('PUT writes NOTHING, the rounds on or off: the stored values are exactly what they were, no settings write, no audit row', async () => {
+    for (const roundsValue of [{ enabled: true, enabledAt: new Date(STORED.enabledAt) }, { enabled: false, enabledAt: null }]) {
+      rounds.value = roundsValue;
+      for (const stored of [STORED, { enabled: false, enabledAt: null }, undefined]) {
+        store.doc = { winback: { coolingDays: 14 }, noAnswerRounds: STORED, ...(stored ? { noAnswerReturns: stored } : {}) };
+        const before = JSON.stringify(store.doc);
+        await PUT();
+        expect(JSON.stringify(store.doc)).toBe(before);
+      }
+    }
+    expect(updates).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
+
+  it('the library\'s save stores the moment by the server clock and leaves the other keys alone', async () => {
+    const data = iso((await save(true)).returns);
+    expect(data.enabled).toBe(true);
+    expect(Date.now() - new Date(data.enabledAt!).getTime()).toBeLessThan(5_000);
+    expect(store.doc.winback).toEqual({ coolingDays: 14 });
+    expect(store.doc.noAnswerRounds).toEqual(STORED);
+    expect(store.doc.noAnswerReturns).toEqual(data);
   });
 
   it('a second «on» keeps the first moment', async () => {
     store.doc.noAnswerReturns = { enabled: true, enabledAt: '2026-11-02T06:00:00.000Z' };
-    expect((await (await put({ enabled: true })).json()).returns.enabledAt).toBe('2026-11-02T06:00:00.000Z');
+    expect(iso((await save(true)).returns).enabledAt).toBe('2026-11-02T06:00:00.000Z');
   });
 
   it('off clears it — the next «on» is a new start — and every door hears it at once in this process', async () => {
     store.doc.noAnswerReturns = { enabled: true, enabledAt: '2026-11-02T06:00:00.000Z' };
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(true);
-    await put({ enabled: false });
+    await save(false);
     expect(store.doc.noAnswerReturns).toEqual({ enabled: false, enabledAt: null });
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false);
-  });
-
-  it('a body that is not a plain yes or no is refused in Arabic, and nothing is stored', async () => {
-    for (const body of [{}, { enabled: 'yes' }, { enabled: true, enabledAt: '2020-01-01' }, null]) {
-      const res = await put(body);
-      expect(res.status).toBe(400);
-      expect((await res.json()).errorAr).toMatch(/نعم أو لا/);
-    }
-    expect(store.doc.noAnswerReturns).toBeUndefined();
-    expect(logAudit).not.toHaveBeenCalled();
-  });
-});
-
-describe('it needs «نظام الجولات»', () => {
-  it('«on» while the rounds are off is refused in Arabic (409), nothing is stored, no audit row', async () => {
-    rounds.value = { enabled: false, enabledAt: null };
-    const res = await put({ enabled: true });
-    expect(res.status).toBe(409);
-    const data = await res.json();
-    expect(data.code).toBe('ROUNDS_OFF');
-    expect(data.errorAr).toBe('لازم «نظام الجولات» يكون شغّال أول — هالمفتاح ما بيشتغل إلا معه.');
-    expect(/[A-Za-z]/.test(data.errorAr)).toBe(false);
-    expect(store.doc.noAnswerReturns).toBeUndefined();
-    expect(logAudit).not.toHaveBeenCalled();
-  });
-
-  it('«off» is always allowed — also when the rounds are off, and it says so', async () => {
-    rounds.value = { enabled: false, enabledAt: null };
-    store.doc.noAnswerReturns = STORED;
-    const res = await put({ enabled: false });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ returns: { enabled: false, enabledAt: null }, roundsOn: false });
-    expect(store.doc.noAnswerReturns).toEqual({ enabled: false, enabledAt: null });
   });
 });
 
@@ -191,7 +177,7 @@ describe('what is stored is read strictly', () => {
 describe('what this process remembers never outlives a save', () => {
   it('turning it ON: the very next read — inside the cache’s seconds — is ON, and costs no second look at the database', async () => {
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false); // this process remembers: off
-    await put({ enabled: true });
+    await save(true);
     const looked = db.company.findUnique.mock.calls.length;
     const now = await returnsSwitch(db as never, 'c1');
     expect(now.enabled).toBe(true);
@@ -203,19 +189,10 @@ describe('what this process remembers never outlives a save', () => {
   it('turning it OFF, after it was on: the next read is OFF at once, the same way', async () => {
     store.doc.noAnswerReturns = STORED;
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(true);
-    await put({ enabled: false });
+    await save(false);
     const looked = db.company.findUnique.mock.calls.length;
     expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false);
     expect(db.company.findUnique.mock.calls.length).toBe(looked);
-  });
-
-  it('the audit row’s “before” is what is STORED, not what this process remembered a moment ago', async () => {
-    expect((await returnsSwitch(db as never, 'c1')).enabled).toBe(false); // remembered: off
-    store.doc.noAnswerReturns = STORED; // another instance turned it on meanwhile
-    await put({ enabled: false });
-    expect(logAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ previousData: { enabled: true, enabledAt: STORED.enabledAt }, newData: { enabled: false, enabledAt: null } })
-    );
   });
 
   it('the settings page shows what is STORED, not what this process remembered a moment ago', async () => {

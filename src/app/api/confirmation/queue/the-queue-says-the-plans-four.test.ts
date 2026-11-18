@@ -45,8 +45,11 @@ vi.mock('@/lib/confirmation-queue', async (orig) => ({
 import { GET } from './route';
 import { offModeRule, planWords, planRule, returnsModeRule } from '@/lib/pull-plan-words';
 import { RETURNS_MODE } from '@/lib/confirmation-queue';
+import { QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 
-const PLAN_RULE = planRule(RETURNS_MODE.idleBusinessMinutes);
+// UPDATED 2026-11-18 (request C2, decision 4): under the plan the idle figure is the one rule set's 20 working minutes WHATEVER «أولوية الطابور» says (`returnsLimits`) —
+// it was `RETURNS_MODE.idleBusinessMinutes` (30) with that key off. The legacy mode's sentence below still reads 30 (the plan off).
+const PLAN_RULE = planRule(QUEUE_PRIORITY_LIMITS.idleBusinessMinutes);
 
 const COUNTRY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
 const SINCE = new Date('2026-11-10T08:00:00.000Z');
@@ -92,15 +95,16 @@ describe('ON — the plan’s counter, in the server’s words', () => {
     expect(body.waitingPlan.parts.map((p: { label: string }) => p.label)).toEqual(['جديد', 'وعد وصل', 'إعادة حان موعدها', 'الباقي']);
     expect(body.waitingPlan.parts.map((p: { value: number }) => p.value)).toEqual([5, 4, 100, 316]);
     expect(body.waitingPlan.rule).toBe(PLAN_RULE);
-    expect(body.waitingPlan).toEqual(planWords({ fresh: 5, promise: 4, retry: 100, rest: 316 }, RETURNS_MODE.idleBusinessMinutes));
+    expect(body.waitingPlan).toEqual(planWords({ fresh: 5, promise: 4, retry: 100, rest: 316 }, QUEUE_PRIORITY_LIMITS.idleBusinessMinutes));
     // The sentence names the same four, in the same order, and no longer the two-day lead of the old order.
     const order = ['الجديد', 'الوعد', 'الإعادة', 'الباقي'].map((w) => PLAN_RULE.indexOf(w));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(PLAN_RULE).not.toContain('المؤجّل');
-    // Ruling 36 (16/11): the idle figure is the setting's own, not a number written in the sentence — today «30 دقيقة دوام», never «90».
-    expect(PLAN_RULE).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
-    expect(RETURNS_MODE.idleBusinessMinutes).toBe(30);
+    // Ruling 36 (16/11): the idle figure is the setting's own, not a number written in the sentence — under the plan «20 دقيقة دوام» (C2), never «90», never the old 30.
+    expect(PLAN_RULE).toContain(`${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام`);
+    expect(QUEUE_PRIORITY_LIMITS.idleBusinessMinutes).toBe(20);
+    expect(PLAN_RULE).not.toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة`);
     expect(PLAN_RULE).not.toContain('90');
     expect(planRule(45)).toContain('45 دقيقة دوام');
   });
@@ -127,10 +131,12 @@ describe('ON — the plan’s counter, in the server’s words', () => {
     expect(queue.waitingByPlan.mock.calls[0][3]).toBeUndefined();
   });
 
-  it('the rest of the answer is untouched: the date line, the cap of five of the mode, canPull', async () => {
+  // UPDATED 2026-11-18 (request C2, decision 4): «the cap of five of the mode» — under the plan the hand is the one rule set's 3 whatever «أولوية الطابور» says.
+  it('the rest of the answer is untouched: the date line, canPull — and the cap is the plan’s three (C2), not the legacy mode’s five', async () => {
     const body = await read();
     expect(body).toMatchObject({ waitingOnADate: 67, canPull: true, refusal: null, orders: null });
-    expect(body.caps.total).toBe(5);
+    expect(body.caps.total).toBe(QUEUE_PRIORITY_LIMITS.handLimit);
+    expect(body.caps.total).toBe(3);
   });
 });
 

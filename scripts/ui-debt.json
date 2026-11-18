@@ -977,14 +977,6 @@
       "rawSurfaces": 1,
       "textXs": 13
     },
-    "src/components/settings/NoAnswerReturnsCard.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 3
-    },
-    "src/components/settings/NoAnswerRoundsCard.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 2
-    },
     "src/components/settings/PartnersCard.tsx": {
       "rawCheckboxes": 1,
       "textXs": 8

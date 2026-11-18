@@ -29,14 +29,14 @@ export const releaseClaims: JobDefinition = {
       const rounds = await roundsSwitch(db, store.companyId);
       const count = await db.$transaction((tx) => releaseStaleClaims(tx, scope, cal, now, { rounds: ROUNDS_OFF }));
       released += count;
-      // ON: the rounds release in a transaction of its own, so a pass that runs out of time cannot roll back the one above.
-      if (roundsOn(rounds)) {
-        released += await db.$transaction((tx) => releaseNoAnswerRounds(tx, scope, cal, now, { rounds }));
-      } else if (await cadenceSince(db, store.companyId)) {
-        // The five-attempt cadence (step B) brings «الطلب يرجع للطابور فوراً» with it, so ITS idle release runs without «نظام الجولات» — in a transaction of its own, like the rounds'.
-        // The cadence is asked FIRST: with it off nothing else is read and no second transaction opens.
+      // REQUEST C2 (18/11): the plan is asked FIRST. With «إثبات المكالمات وجدول المحاولات» on, ONLY its idle release runs — the rounds' three releases do not, even with
+      // «نظام الجولات» stored on (the mode handed in carries `cadence`, so `releaseNoAnswerRounds` never reaches `releaseByRounds`). In a transaction of its own, as before.
+      if (await cadenceSince(db, store.companyId)) {
         const returns = await readReturnsMode(db, store.companyId, { now, calendar: () => cal, rounds });
         released += await db.$transaction((tx) => releaseNoAnswerRounds(tx, scope, cal, now, { rounds, returns }));
+      } else if (roundsOn(rounds)) {
+        // The plan off, the rounds on: the rounds release in a transaction of its own, so a pass that runs out of time cannot roll back the one above — as on main.
+        released += await db.$transaction((tx) => releaseNoAnswerRounds(tx, scope, cal, now, { rounds }));
       }
     }
     return { processed: released, detail: released ? `حُرِّر ${released} طلباً` : 'لا طلبات متأخرة' };
