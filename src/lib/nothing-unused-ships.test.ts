@@ -312,8 +312,8 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    *
    * 18/11 (R17b): `IconButton` left — the assistant's bubble and the search palette, both in the shell
    * layout, are the first to render it.
-   * 18/11 (R9): `StatTile` left — the seven state tiles that moved from the dashboard to the performance board are the first
-   * to render it.
+   *
+   * 18/11 (R10d): `StatTile` left — «العملاء» (`CustomersScreen`) draws its five figures of the book with it.
    */
 };
 

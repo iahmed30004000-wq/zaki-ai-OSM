@@ -68,7 +68,8 @@ describe('the names', () => {
 
   // 18/11 (R9): was «the dashboard draws them» over DashboardScreen's ranking card and leaderboard. «اليوم» kept three figures, one
   // list and one chart; the leaderboard MOVED to the performance board, and the ranking card was that board's four headlines a
-  // second time — so the links went onto the headlines (`Rank`) instead. «الأكثر رفضاً» is the board's «مرفوض على الهاتف» column.
+  // second time — so the links went onto the headlines (`Rank`) instead. «الأكثر رفضاً» (ranked by RATE — rejected ÷ total, `analytics.ts`) is not a headline there; its
+  // two inputs per product are the board's «الطلبات» and «مرفوض على الهاتف» columns.
   it('the performance board draws them — each headline hands over its product’s id, and the team rows the person’s', () => {
     const src = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
     expect(src).toContain('<ProductNameLink id={id} name={name} />');
