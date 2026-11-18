@@ -263,16 +263,23 @@ describe('the sources', () => {
     }
   });
 
-  it('the frame is one PageShell named from the registry, and the leads lane line is untouched', () => {
+  // 18/11 (R10c): this said «the leads lane line is untouched» and pinned the line of the lane alone. R10c moved the lane to
+  // «زبائن ما كمّلوا»: the line is now the choice between the one-line link there and the lane itself (for a supervisor who may not
+  // open that screen). The new line is pinned the same way.
+  it('the frame is one PageShell named from the registry, and the leads line is the link-or-lane choice of R10c', () => {
     const src = stripComments(raw('ConfirmationFollowUpScreen.tsx'));
     expect(src.match(/<PageShell\b/g)).toHaveLength(1);
     expect(src).toContain(`<PageShell title={routeLabel('/confirmation/follow-up')} width="wide">`);
     expect(src).not.toMatch(/<PageHeader\b/);
-    expect(raw('ConfirmationFollowUpScreen.tsx').split('\n')).toContain('      <LeadsLane />');
+    expect(raw('ConfirmationFollowUpScreen.tsx').split('\n')).toContain("      {mayOpen('/abandoned-carts') ? <LeadsMoved /> : <LeadsLane />}");
   });
 
-  it('the leads lane is drawn ABOVE the tabs (R10c moves it; until then its place is unchanged)', () => {
+  // 18/11 (R10c): this said «R10c moves it; until then its place is unchanged». R10c came: the lane where it is still drawn, and the
+  // link that replaces it, both stand ABOVE the tabs.
+  it('the leads lane, or the link to where it went, is drawn ABOVE the tabs', () => {
     const src = stripComments(raw('ConfirmationFollowUpScreen.tsx'));
+    expect(src.indexOf('<LeadsMoved />')).toBeGreaterThan(-1);
+    expect(src.indexOf('<LeadsMoved />')).toBeLessThan(src.indexOf('<Tabs '));
     const lane = src.indexOf('<LeadsLane />');
     const tabs = src.indexOf('<Tabs ');
     expect(lane).toBeGreaterThan(-1);

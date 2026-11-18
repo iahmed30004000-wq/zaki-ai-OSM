@@ -1040,13 +1040,14 @@
   },
   "src/components/screens/AbandonedCartsScreen.tsx": {
     "buttons": 3,
-    "inputs": 2,
-    "columns": 12,
+    "inputs": 1,
+    "columns": 15,
     "cards": 0,
     "modals": 0,
     "icons": 2,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "switches": 1
   },
   "src/components/screens/AgentCustodyScreen.tsx": {
     "buttons": 2,
@@ -1177,7 +1178,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
-    "links": 0,
+    "links": 1,
     "tabs": 0
   },
   "src/components/screens/ConfirmationIssuesScreen.tsx": {

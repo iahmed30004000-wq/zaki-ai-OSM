@@ -50,6 +50,11 @@ vi.mock('@/components/screens/WinbackScreen', () => ({
   ),
 }));
 
+// 18/11 (R10c): the lane is a stand-in here — this file asks WHERE it is drawn, the lane's own test asks what it draws.
+vi.mock('@/components/screens/LeadsLane', () => ({
+  LeadsLane: () => <div data-testid="leads-lane" />,
+}));
+
 import { ConfirmationFollowUpScreen } from './ConfirmationFollowUpScreen';
 
 beforeEach(() => {
@@ -90,6 +95,29 @@ describe('«المتابعة» — the screen', () => {
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['مؤجلة']);
     expect(screen.getByTestId('postponed-list')).toBeTruthy();
     expect(screen.queryByTestId('winback-list')).toBeNull();
+  });
+});
+
+/*
+ * 18/11 (R10c): «ليدز الصفحات» stood above these tabs. It is now the third tab of «زبائن ما كمّلوا» (`/abandoned-carts`), so the
+ * line above the tabs points there — for whoever may open that screen (`orders.view`). A supervisor who may not keeps the lane
+ * right here, so nobody loses the leads. Both branches are below.
+ */
+describe('«ليدز الصفحات» — moved, and nobody loses it', () => {
+  it('a supervisor who may open «زبائن ما كمّلوا» gets ONE line pointing at its leads tab, and no lane here', () => {
+    user.current = { ...user.current, permissions: ['confirmation.supervise', 'orders.view'] };
+    render(<ConfirmationFollowUpScreen />);
+    const link = screen.getByRole('link', { name: /ليدز الصفحات صارت/ });
+    expect(link.getAttribute('href')).toBe('/abandoned-carts?tab=leads');
+    expect(link.textContent).toContain(`«${findRoute('/abandoned-carts')!.label}»`);
+    expect(findRoute('/abandoned-carts')!.label).toBe('زبائن ما كمّلوا');
+    expect(screen.queryByTestId('leads-lane')).toBeNull();
+  });
+
+  it('NEGATIVE: a supervisor WITHOUT `orders.view` keeps the lane here, and is not sent to a screen that would refuse him', () => {
+    render(<ConfirmationFollowUpScreen />);
+    expect(screen.getByTestId('leads-lane')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /ليدز الصفحات صارت/ })).toBeNull();
   });
 });
 

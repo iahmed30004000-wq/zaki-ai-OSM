@@ -2,9 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { RiExternalLinkLine, RiRefreshLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Input } from '@/components/ui/Input';
+import { Switch } from '@/components/ui/Switch';
+import { routeLabel } from '@/lib/route-registry';
+import { LeadsLane } from '@/components/screens/LeadsLane';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Tabs } from '@/components/ui/Tabs';
@@ -30,7 +35,16 @@ import {
 } from '@/components/carts/cart-parts';
 
 /**
- * «السلات المهجورة» — THE VISITORS WHO LEFT A NAME AND A PHONE ON A LANDING PAGE AND NO ORDER.
+ * «زبائن ما كمّلوا» (was «السلات المهجورة», R10c 18/11) — THE VISITORS WHO LEFT A NAME AND A PHONE AND NO ORDER, from both
+ * places that keep them, as three tabs of one screen:
+ *
+ *   · «جديدة» — the NEW carts (`status=NEW`), where the day starts;
+ *   · «كل السلات» — every cart, narrowed to ONE status by a picker (the door filters one status, never a set);
+ *   · «ليدز الصفحات» — the pages' lead lane (`LeadsLane`, its own door `/api/confirmation/leads`), drawn only for who
+ *     holds `confirmation.pull` or `confirmation.supervise`, the door's own rule.
+ *
+ * Both data sources and both doors stay as they were (decided 18/11); only where they are drawn changed. `?tab=new|all|leads`
+ * opens a tab, so «المتابعة» can send its supervisors here.
  *
  * Zaki pages sends each one fifteen minutes after the visitor went quiet (contract oms-lp.v1 §9); the team works them
  * like orders: a call, a WhatsApp message with the product already in it, «ما رد» that counts the attempts, a status,
@@ -64,7 +78,9 @@ const read = (body: unknown): PagedRead<CartRow, Extra> => {
   };
 };
 
-const TABS = [{ key: 'all', label: 'الكل' }, ...CART_STATUSES.map((s) => ({ key: s, label: CART_STATUS_AR[s].label }))];
+type Tab = 'new' | 'all' | 'leads';
+const TAB_KEYS: readonly Tab[] = ['new', 'all', 'leads'];
+const NEW_STATUS = CART_STATUSES[0];
 
 const RANGES = [
   { value: '', label: 'كل الأوقات' },
@@ -84,7 +100,15 @@ export function AbandonedCartsScreen() {
 }
 
 function AbandonedCartsList() {
-  const [tab, setTab] = useState<string>('NEW');
+  const { currentUser } = useApp();
+  // The lead lane's door asks `confirmation.pull`, or else `confirmation.supervise`: the tab is drawn only for who it answers.
+  const mayLeads = userCan(currentUser, 'confirmation.pull') || userCan(currentUser, 'confirmation.supervise');
+  const asked = useSearchParams().get('tab');
+  const [tab, setTab] = useState<Tab>(() =>
+    TAB_KEYS.includes(asked as Tab) && (asked !== 'leads' || mayLeads) ? (asked as Tab) : 'new'
+  );
+  // «كل السلات»: ONE status or none — the door filters a single status.
+  const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');
   const [range, setRange] = useState('');
   const [productId, setProductId] = useState('');
@@ -95,7 +119,7 @@ function AbandonedCartsList() {
   const list = usePagedList<CartRow, Extra>({
     url: '/api/abandoned-carts',
     params: {
-      status: tab === 'all' ? undefined : tab,
+      status: tab === 'all' ? status || undefined : NEW_STATUS,
       q: search.trim() || undefined,
       range: range || undefined,
       productId: productId || undefined,
@@ -122,7 +146,22 @@ function AbandonedCartsList() {
   const dialCode = extra?.dialCode ?? null;
   const conversion = useCartConversion(() => list.reload());
 
+  const facts = extra?.facts;
   const filters: ToolbarFilter[] = [
+    ...(tab === 'all'
+      ? [
+          {
+            key: 'status',
+            label: 'الحالة',
+            value: status,
+            options: [
+              { value: '', label: 'كل الحالات' },
+              ...CART_STATUSES.map((s) => ({ value: s, label: facts ? `${CART_STATUS_AR[s].label} (${facts[s] ?? 0})` : CART_STATUS_AR[s].label })),
+            ],
+            onChange: setStatus,
+          },
+        ]
+      : []),
     { key: 'range', label: 'التاريخ', value: range, options: RANGES, onChange: setRange },
     {
       key: 'product',
@@ -144,8 +183,9 @@ function AbandonedCartsList() {
       onChange: setAssignee,
     },
   ];
-  const activeCount = [search.trim(), range, productId, assignee].filter(Boolean).length;
+  const activeCount = [tab === 'all' ? status : '', search.trim(), range, productId, assignee].filter(Boolean).length;
   const reset = () => {
+    setStatus('');
     setSearch('');
     setRange('');
     setProductId('');
@@ -157,7 +197,7 @@ function AbandonedCartsList() {
       key: 'lastSeenAt',
       label: 'آخر نشاط',
       primary: true,
-      render: (c) => <span className="tabular-nums text-xs">{arDateTime(c.lastSeenAt)}</span>,
+      render: (c) => <span className="tabular-nums text-note">{arDateTime(c.lastSeenAt)}</span>,
     },
     {
       key: 'customer',
@@ -169,7 +209,7 @@ function AbandonedCartsList() {
             {c.customerName || 'بلا اسم'}
           </Link>
           <HasOrderMark cart={c} />
-          {c.hasOrder && <OrderRef id={c.hasOrder.id} number={c.hasOrder.orderNumber} className="font-mono text-xs text-[var(--sys-primary)]" />}
+          {c.hasOrder && <OrderRef id={c.hasOrder.id} number={c.hasOrder.orderNumber} className="font-mono text-note text-[var(--sys-primary)]" />}
         </div>
       ),
     },
@@ -195,8 +235,8 @@ function AbandonedCartsList() {
       render: (c) => (
         <div className="space-y-1">
           <CartStatusChip status={c.status} />
-          {c.order && <OrderRef id={c.order.id} number={c.order.orderNumber} className="block font-mono text-xs text-[var(--sys-primary)]" />}
-          {c.nextFollowUpAt && <p className="text-xs text-[var(--sys-muted-foreground)]">متابعة: {arDateTime(c.nextFollowUpAt)}</p>}
+          {c.order && <OrderRef id={c.order.id} number={c.order.orderNumber} className="block font-mono text-note text-[var(--sys-primary)]" />}
+          {c.nextFollowUpAt && <p className="text-note text-[var(--sys-muted-foreground)]">متابعة: {arDateTime(c.nextFollowUpAt)}</p>}
         </div>
       ),
     },
@@ -218,72 +258,87 @@ function AbandonedCartsList() {
   const empty =
     activeCount > 0 ? (
       <EmptyState title="ما في سلات بهالفلاتر" why="جرّب فلتر تاني، أو امسح البحث." action={{ label: 'امسح الفلاتر', onClick: reset }} />
-    ) : tab === 'NEW' ? (
-      <EmptyState title="ما في سلات جديدة" why="كل سلة وصلت انشغل عليها. السلة بتوصل من صفحات الهبوط بعد ربع ساعة من آخر حركة للزائر." action={{ label: 'اعرض الكل', onClick: () => setTab('all') }} />
+    ) : tab === 'new' ? (
+      <EmptyState title="ما في سلات جديدة" why="كل سلة وصلت انشغل عليها. السلة بتوصل من صفحات الهبوط بعد ربع ساعة من آخر حركة للزائر." action={{ label: 'اعرض كل السلات', onClick: () => setTab('all') }} />
     ) : (
       <EmptyState title="ما في سلات هون" why="السلة المهجورة زائر كتب اسمه ورقم صالح بصفحة هبوط وما طلب خلال 15 دقيقة." />
     );
 
+  const tabs = [
+    { key: 'new', label: CART_STATUS_AR[NEW_STATUS].label, count: facts?.[NEW_STATUS] },
+    { key: 'all', label: 'كل السلات', count: facts?.all },
+    ...(mayLeads ? [{ key: 'leads', label: 'ليدز الصفحات' }] : []),
+  ];
+
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto" dir="rtl">
-      <PageHeader
-        title="السلات المهجورة"
-        description="زوار كتبوا اسمهم ورقمهم بصفحة الهبوط وما كملوا الطلب. اتصل فيهم أو ابعتلهم واتساب، وحوّل السلة لطلب."
-        actions={
+    <PageShell
+      title={routeLabel('/abandoned-carts')}
+      description="زوار كتبوا اسمهم ورقمهم وما كملوا الطلب: سلات صفحات الهبوط وليدز الصفحات. اتصل فيهم أو ابعتلهم واتساب، وحوّل لطلب."
+      width="wide"
+      actions={
+        tab !== 'leads' && (
           <Button variant="ghost" size="sm" onClick={() => void list.reload()}>
             <RiRefreshLine className="w-4 h-4 ml-1" /> تحديث
           </Button>
-        }
-      />
+        )
+      }
+    >
+      <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />
 
-      {retention !== null && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
-          السلات «غير مهتم» و«رقم غير صالح» و«طلب لحاله» بتنحذف بعد {retention} يوم من آخر تعديل.
-          {may.settings && <RetentionEditor days={retention} onSaved={setRetention} />}
-        </p>
-      )}
-
-      {autoConvert !== null && (
-        <AutoConvertSwitch on={autoConvert} mayEdit={may.settings} onSaved={(on) => { setAutoConvert(on); void list.reload(); }} />
-      )}
-
-      <Tabs tabs={TABS.map((t) => ({ ...t, count: extra?.facts?.[t.key] }))} value={tab} onChange={setTab} />
-
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        placeholder="بحث برقم الهاتف أو الاسم…"
-        filters={filters}
-        activeCount={activeCount}
-        onReset={reset}
-      />
-
-      {list.error && (
-        <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
-          {list.error}
-        </p>
-      )}
-
-      {extra === undefined ? (
-        !list.error && <SkeletonRows rows={5} />
-      ) : (
-        <Rows
-          rows={rows}
-          keyOf={(c) => c.id}
-          columns={columns}
-          alert={(c) => (c.hasOrder ? 'warn' : null)}
-          notice={(c) => (c.hasOrder ? <p className="text-xs text-[var(--sys-warning)]">نفس الرقم طلب نفس المنتج هالأسبوع — لا تتصل قبل ما تشوف الطلب.</p> : null)}
-          actions={actions}
-          empty={empty}
+      {tab === 'leads' ? (
+        <LeadsLane
+          empty={<EmptyState title="ما في ليدز هلق" why="الليد زائر ترك اسمه ورقمه بصفحة وما طلب. إذا ليدز الصفحات موقوفة من الإعدادات ما بيطلع شي هون." />}
         />
-      )}
+      ) : (
+        <>
+          {retention !== null && (
+            <div className="text-note text-[var(--sys-muted-foreground)]">
+              السلات «غير مهتم» و«رقم غير صالح» و«طلب لحاله» بتنحذف بعد {retention} يوم من آخر تعديل.
+              {may.settings && <RetentionEditor days={retention} onSaved={setRetention} />}
+            </div>
+          )}
 
-      {pagination.total > 0 && (
-        <Pager page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} shown={rows.length} noun="سلة" loading={list.loading} onPage={list.goTo} />
+          {autoConvert !== null && (
+            <AutoConvertSwitch on={autoConvert} mayEdit={may.settings} onSaved={(on) => { setAutoConvert(on); void list.reload(); }} />
+          )}
+
+          <ListToolbar
+            search={search}
+            onSearch={setSearch}
+            placeholder="بحث برقم الهاتف أو الاسم…"
+            filters={filters}
+            activeCount={activeCount}
+            onReset={reset}
+          />
+
+          {list.error && (
+            <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
+              {list.error}
+            </p>
+          )}
+
+          {extra === undefined ? (
+            !list.error && <SkeletonRows rows={5} />
+          ) : (
+            <Rows
+              rows={rows}
+              keyOf={(c) => c.id}
+              columns={columns}
+              alert={(c) => (c.hasOrder ? 'warn' : null)}
+              notice={(c) => (c.hasOrder ? <p className="text-note text-[var(--sys-warning)]">نفس الرقم طلب نفس المنتج هالأسبوع — لا تتصل قبل ما تشوف الطلب.</p> : null)}
+              actions={actions}
+              empty={empty}
+            />
+          )}
+
+          {pagination.total > 0 && (
+            <Pager page={pagination.page} totalPages={pagination.totalPages} total={pagination.total} shown={rows.length} noun="سلة" loading={list.loading} onPage={list.goTo} />
+          )}
+        </>
       )}
 
       {conversion.modal}
-    </div>
+    </PageShell>
   );
 }
 
@@ -292,10 +347,9 @@ function AbandonedCartsList() {
  * sees the carts reads which way it is; whoever may edit the system's settings flips it.
  */
 function AutoConvertSwitch({ on, mayEdit, onSaved }: { on: boolean; mayEdit: boolean; onSaved: (on: boolean) => void }) {
-  const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
+  // The kit's switch waits for this promise (spinner, one request at a time); a refusal is said in words below it.
   const flip = async (next: boolean) => {
-    setBusy(true);
     setSaid(null);
     try {
       const r = await apiJson<{ autoConvert: boolean }>('/api/abandoned-carts/settings', {
@@ -307,22 +361,23 @@ function AutoConvertSwitch({ on, mayEdit, onSaved }: { on: boolean; mayEdit: boo
       setSaid('انحفظت');
     } catch (e) {
       setSaid(e instanceof Error ? e.message : 'ما انحفظت');
-    } finally {
-      setBusy(false);
     }
   };
   return (
-    <div className="text-xs text-[var(--sys-muted-foreground)] space-y-1">
-      <label className="inline-flex items-center gap-2">
-        <input type="checkbox" checked={on} disabled={!mayEdit || busy} onChange={(e) => void flip(e.target.checked)} />
-        <span className="font-semibold text-[var(--sys-heading)]">حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا</span>
-        {said && <span>{said}</span>}
-      </label>
-      <p>
-        {on
-          ? 'السلة اللي فيها اسم ورقم بتصير طلب جديد بطابور التأكيد، بدون عنوان — أكّد العنوان والمحافظة مع الزبون. السلة اللي فيها رقم بس بتضل هون.'
-          : 'موقوف: كل السلات بتضل هون لحتى حدا يحوّلها باليد.'}
-      </p>
+    <div className="text-note text-[var(--sys-muted-foreground)] space-y-1">
+      <Switch
+        id="cart-auto-convert"
+        checked={on}
+        disabled={!mayEdit}
+        onChange={flip}
+        label="حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا"
+        hint={
+          on
+            ? 'السلة اللي فيها اسم ورقم بتصير طلب جديد بطابور التأكيد، بدون عنوان — أكّد العنوان والمحافظة مع الزبون. السلة اللي فيها رقم بس بتضل هون.'
+            : 'موقوف: كل السلات بتضل هون لحتى حدا يحوّلها باليد.'
+        }
+      />
+      {said && <p>{said}</p>}
     </div>
   );
 }
@@ -350,19 +405,22 @@ function RetentionEditor({ days, onSaved }: { days: number; onSaved: (days: numb
     }
   };
   return (
-    <span className="ms-2 inline-flex items-center gap-1">
-      <input
-        type="number"
-        inputMode="numeric"
-        aria-label="مدة الحفظ بالأيام"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-16 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-1 py-0.5 text-xs tabular-nums"
-      />
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()}>
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <div className="w-24">
+        <Input
+          id="cart-retention-days"
+          type="number"
+          inputMode="numeric"
+          aria-label="مدة الحفظ بالأيام"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="tabular-nums"
+        />
+      </div>
+      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void save()}>
         احفظ المدة
       </Button>
       {said && <span>{said}</span>}
-    </span>
+    </div>
   );
 }
