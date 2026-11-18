@@ -390,11 +390,6 @@
       "rawDatePickers": 1,
       "textXs": 42
     },
-    "src/components/screens/ConfirmationPostponedScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/CouriersScreen.tsx": {
       "rawButtons": 11,
       "rawSurfaces": 4,
@@ -592,14 +587,8 @@
       "rawSurfaces": 2,
       "textXs": 11
     },
-    "src/components/screens/WinbackDaily.tsx": {
-      "rawButtons": 1,
-      "textXs": 3
-    },
     "src/components/screens/WinbackScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 3,
-      "textXs": 11
+      "textXs": 2
     },
     "src/components/screens/ai/AiSpendCapCard.tsx": {
       "rawSurfaces": 1,

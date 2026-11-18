@@ -5,6 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { routeLabel } from '@/lib/route-registry';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
@@ -236,28 +238,26 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
     <div className="space-y-4">
       {embedded ? (
         // Inside «المتابعة»: the page already has its title, so only the sentence under it stays.
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{explain}</p>
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">{explain}</p>
       ) : (
         <PageHeader title={routeLabel('/confirmation/follow-up')} description={explain} />
       )}
 
       {/* THE RULE, VISIBLE. Otherwise the screen looks arbitrary — and, beside it, the way to change it. */}
-      <section className="flex flex-wrap items-start gap-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xs font-semibold text-[var(--sys-heading)]">القاعدة</h2>
-          <p className="mt-1 text-xs leading-6 text-[var(--sys-muted-foreground)]">{ruleSentence(rule, { planOn })}</p>
-        </div>
-        {canEditRule && (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-          >
-            <RiSettings3Line className="w-4 h-4" aria-hidden />
-            عدّل القاعدة
-          </button>
-        )}
-      </section>
+      <Card plain padding="sm">
+        <section className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-note font-semibold text-[var(--sys-heading)]">القاعدة</h2>
+            <p className="mt-1 text-note leading-6 text-[var(--sys-muted-foreground)]">{ruleSentence(rule, { planOn })}</p>
+          </div>
+          {canEditRule && (
+            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <RiSettings3Line className="w-4 h-4" aria-hidden />
+              عدّل القاعدة
+            </Button>
+          )}
+        </section>
+      </Card>
       {canEditRule && (
         <WinbackRuleDialog
           rule={rule}
@@ -289,7 +289,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
       )}
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+        <Card plain>
           {activeCount > 0 ? (
             <EmptyState
               title="لا طلبات بهذه الشروط"
@@ -306,20 +306,18 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
               }
             />
           )}
-        </div>
+        </Card>
       ) : (
         rows.map((r) => (
-          <article
-            key={r.id}
-            className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-3"
-          >
+          <Card key={r.id} plain padding="md">
+          <article className="space-y-3">
             <header className="flex flex-wrap items-center gap-2">
               <OrderRef id={r.id} number={r.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
-              <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
+              <span className="text-note px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
                 {r.returnLabel ?? reasonAr(r.rejectionReason)}
               </span>
               {/* A return is dated by the desk's receipt — the day its cooling counts from — not by a cancellation it never had. */}
-              <span className="mr-auto text-xs text-[var(--sys-muted-foreground)]">
+              <span className="mr-auto text-note text-[var(--sys-muted-foreground)]">
                 {r.returnLabel
                   ? r.returnReceivedAt
                     ? `استلمه المستودع ${day(r.returnReceivedAt)}`
@@ -344,7 +342,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
               )}
             </p>
             {r.rejectionNote && (
-              <p className="text-xs text-[var(--sys-foreground)] bg-[var(--sys-surface)] rounded-lg px-3 py-2">
+              <p className="text-note text-[var(--sys-foreground)] bg-[var(--sys-surface)] rounded-lg px-3 py-2">
                 {r.rejectionNote}
               </p>
             )}
@@ -353,18 +351,19 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
               {r.verdict.eligible ? (
                 <>
                   {canOffer && (
-                  <button
-                    onClick={() => void offer(r)}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      void offer(r);
+                    }}
                     disabled={offering === r.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
+                    loading={offering === r.id}
                   >
-                    {offering === r.id ? (
-                      <RiLoader4Line className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <RiPhoneLine className="w-4 h-4" aria-hidden />
-                    )}
+                    <RiPhoneLine className="w-4 h-4" aria-hidden />
                     اعرضه من جديد
-                  </button>
+                  </Button>
                   )}
                   <span className="inline-flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
                     <RiPriceTag3Line className="w-4 h-4" aria-hidden />
@@ -373,13 +372,14 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
                 </>
               ) : (
                 /* No button, and the sentence that put it here — the rule, taught row by row. */
-                <span className="text-xs text-[var(--sys-muted-foreground)]">
+                <span className="text-note text-[var(--sys-muted-foreground)]">
                   {r.verdict.reason}
                   {r.verdict.code === 'COOLING' && r.verdict.dueAt ? ` — يصير جاهزاً ${day(r.verdict.dueAt)}` : ''}
                 </span>
               )}
             </footer>
           </article>
+          </Card>
         ))
       )}
 
