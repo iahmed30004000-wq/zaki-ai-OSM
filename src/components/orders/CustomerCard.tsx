@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { useRegions } from '@/hooks/useRegions';
@@ -233,27 +235,21 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
     'w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm focus:outline-none focus:border-[var(--sys-primary)]';
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
+    <Card plain padding="md" className="space-y-3">
       <div className={phone ? 'flex flex-wrap items-center justify-between gap-2' : 'flex items-center justify-between gap-2'}>
-        <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
+        <h4 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-2">
           <RiUserLine className="w-4 h-4 text-[var(--sys-primary)]" />
           معلومات العميل
         </h4>
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={onOpenHistory}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-          >
+          <Button variant="secondary" size="sm" onClick={onOpenHistory}>
             <RiHistoryLine className="w-4 h-4" />
             طلبات سابقة ({previous})
-          </button>
-          <button
-            onClick={openForm}
-            className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-          >
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => { void openForm(); }}>
             <RiPencilLine className="w-4 h-4" />
             {open ? 'إغلاق' : 'تعديل'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -264,12 +260,12 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
         did not work, and the person presses «تعديل» again.
       */}
       {notice && (
-        <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">
+        <p className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">
           {notice}
         </p>
       )}
       {done && (
-        <p role="status" className="text-xs text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
+        <p role="status" className="text-note text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
           {done}
         </p>
       )}
@@ -293,7 +289,7 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
             empty chat, and one line in the contact log per press.
           */}
           <div className="sm:col-span-2 flex items-center gap-2">
-            <span className="text-xs text-[var(--sys-muted)]">تواصل</span>
+            <span className="text-note text-[var(--sys-muted)]">تواصل</span>
             <ContactButtons
               phone={order.customer.rawPhone || order.customer.phone}
               orderId={order.id}
@@ -328,8 +324,8 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
             <Row label="المحافظة" value={order.region?.name ?? '—'} />
           ) : (
             <div>
-              <dt className="text-xs text-[var(--sys-muted)]">المحافظة</dt>
-              <dd className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-md px-2 py-0.5 inline-block font-medium">
+              <dt className="text-note text-[var(--sys-muted)]">المحافظة</dt>
+              <dd className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-md px-2 py-0.5 inline-block font-medium">
                 لم تُحدَّد — لا يمكن حساب أجرة التوصيل
                 {order.customer.city ? ` · المكتوب: ${order.customer.city}` : ''}
               </dd>
@@ -366,31 +362,27 @@ export function CustomerCard({ order, canEdit, dialCode, onAcquireLock, onSaved,
             </div>
           </div>
 
-          {error && <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">{error}</p>}
+          {error && <p className="text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">{error}</p>}
 
           <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={busy}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
-            >
+            <Button variant="primary" size="sm" onClick={() => { void save(); }} disabled={busy}>
               {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}
               حفظ بيانات العميل
-            </button>
-            <button onClick={() => setOpen(false)} className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]">
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
               إلغاء
-            </button>
+            </Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function Row({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
   return (
     <div>
-      <dt className="text-xs text-[var(--sys-muted)]">{label}</dt>
+      <dt className="text-note text-[var(--sys-muted)]">{label}</dt>
       <dd className="text-[var(--sys-heading)] font-medium" dir={ltr ? 'ltr' : undefined}>{value}</dd>
     </div>
   );
@@ -399,7 +391,7 @@ function Row({ label, value, ltr }: { label: string; value: string; ltr?: boolea
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">{label}</span>
+      <span className="block text-note font-medium text-[var(--sys-muted-foreground)] mb-1">{label}</span>
       {children}
     </label>
   );

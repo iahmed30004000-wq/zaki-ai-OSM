@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { amount, type Currency } from '@/lib/format';
 import { useConfirm } from '@/components/ui/Confirm';
 import { useToast } from '@/components/ui/Toast';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * «شامل التوصيل» ON AN ORDER THAT ALREADY EXISTS — the box from the order form, still there until the parcel leaves.
@@ -105,22 +106,14 @@ export function DeliveryIncludedBox({
   }
 
   return (
-    <label className="flex min-h-11 md:min-h-0 items-start gap-2 text-xs text-[var(--sys-foreground)]">
-      <input
-        type="checkbox"
-        checked={included}
-        disabled={busy}
-        onChange={(e) => void change(e.target.checked)}
-        className="mt-0.5"
-      />
-      <span>
-        <span className="font-semibold">شامل التوصيل</span>
-        <span className="block text-[var(--sys-muted-foreground)]">
-          {included
+    <Checkbox
+      checked={included}
+      disabled={busy}
+      onChange={(next) => void change(next)}
+      label={<span className="font-semibold">شامل التوصيل</span>}
+      hint={included
             ? 'الزبون بيدفع سعر الطلب بس، وأجرة التوصيل على المتجر.'
             : 'بينضاف توصيل على الزبون لما تنعمل الشحنة.'}
-        </span>
-      </span>
-    </label>
+    />
   );
 }

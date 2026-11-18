@@ -37,22 +37,22 @@ export function IntakeNotice({ orderId }: { orderId: string }) {
     <div role="alert" className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3">
       {data.duplicateOf && (
         <>
-          <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--sys-warning)]">
+          <p className="flex items-center gap-1.5 text-note font-bold text-[var(--sys-warning)]">
             <RiErrorWarningLine className="h-4 w-4" aria-hidden />
             طلب مكرر محتمل
           </p>
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             نفس الزبون طلب نفس المنتج خلال {data.windowHours} ساعة: #{data.duplicateOf}. اسأله: هل هو طلب ثانٍ فعلاً أم الطلب نفسه؟
           </p>
         </>
       )}
       {data.suspectNumber && (
         <>
-          <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--sys-warning)]">
+          <p className="flex items-center gap-1.5 text-note font-bold text-[var(--sys-warning)]">
             <RiErrorWarningLine className="h-4 w-4" aria-hidden />
             رقم مشكوك
           </p>
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             الرقم ما بيطابق شكل أرقام بلد المتجر. تأكد منه مع الزبون قبل ما تتصل.
           </p>
         </>
