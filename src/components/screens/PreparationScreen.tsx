@@ -8,7 +8,7 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { useApp } from '@/context/AppContext';
 import { PickingAssistant } from '@/components/screens/ops/PickingAssistant';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArchiveDrawerLine, RiArrowDownSLine, RiArrowLeftSLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPrinterLine } from '@remixicon/react';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
@@ -139,8 +139,8 @@ export function PreparationScreen() {
   }
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/ops/preparation')} />
+    // 18/11 (R11a): the one frame of a screen. `medium` is the max-w-4xl it had; the header is the same PageHeader with the same name.
+    <PageShell title={routeLabel('/ops/preparation')} width="medium">
       {/* A phone: the three figures share one row of equal boxes and the stock rule is a line of its own under them
           (two boxes on one row and the third beside a sentence was a ragged wrap). A desk: the row it has always been. */}
       <div className={phone ? 'grid grid-cols-3 gap-2 text-sm' : 'flex flex-wrap gap-3 text-sm'}>
@@ -342,6 +342,8 @@ export function PreparationScreen() {
                           size="sm"
                           onClick={() => setReviewing(l.pendingChangeRequestId!)}
                           title="طلب تعديل بانتظار البتّ — راجعه قبل التغليف"
+                          // Its words are inside two spans, so the kit would take the tooltip as its name: the name is said.
+                          aria-label="طلب تعديل"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-warning)] animate-pulse" aria-hidden />
                           <span className="font-semibold text-[var(--sys-warning)]">طلب تعديل</span>
@@ -410,7 +412,7 @@ export function PreparationScreen() {
           onDecided={load}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 

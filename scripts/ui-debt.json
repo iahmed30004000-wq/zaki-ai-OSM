@@ -578,9 +578,8 @@
       "textXs": 30
     },
     "src/components/screens/PreparationScreen.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 2,
-      "textXs": 6
+      "rawButtons": 1,
+      "rawSurfaces": 1
     },
     "src/components/screens/ProductDetailScreen.tsx": {
       "rawButtons": 7,
@@ -849,11 +848,6 @@
       "rawSurfaces": 5,
       "rawDatePickers": 2,
       "textXs": 51
-    },
-    "src/components/screens/ops/PickingAssistant.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
     },
     "src/components/screens/tracking/BulkDeliverReport.tsx": {
       "rawButtons": 1,
