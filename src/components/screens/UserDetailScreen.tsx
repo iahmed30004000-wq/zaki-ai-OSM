@@ -27,6 +27,8 @@ import {
 } from '@/lib/permission-catalog';
 import { planOverride, removalBlock, type PlanRow } from '@/lib/override-plan';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { UserGeoAccessSection, UserPhoneField } from '@/components/screens/users/UserAccessSections';
@@ -236,7 +238,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
       <>
         <div className="space-y-4 text-center py-16" dir={isRtl ? 'rtl' : 'ltr'}>
           <p className="text-sm text-[var(--sys-destructive)]">{error || (ar ? 'المستخدم غير موجود' : 'User not found')}</p>
-          <Button variant="outline" size="sm" onClick={() => router.push('/admin/users')}>
+          <Button variant="secondary" size="sm" onClick={() => router.push('/admin/users')}>
             {ar ? 'عودة للموظفين' : 'Back to Employees'}
           </Button>
         </div>
@@ -290,7 +292,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
     <>
       <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="flex items-center justify-between gap-3">
-          <Button variant="outline" size="sm" onClick={() => router.push('/admin/users')}>
+          <Button variant="secondary" size="sm" onClick={() => router.push('/admin/users')}>
             <RiArrowRightLine className="icon-mirror w-4 h-4" />
             {ar ? 'عودة للموظفين' : 'Back to Employees'}
           </Button>
@@ -306,24 +308,24 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
               <PageHeader title={user.name}
           description={`<RiMailLine className="w-4 h-4" /> ${user.email}`}
         />
-              <span className={`text-xs font-bold rounded-full border-2 px-3 py-1 ${statusCls[user.status] || ''}`}>
+              <span className={`text-note font-bold rounded-full border-2 px-3 py-1 ${statusCls[user.status] || ''}`}>
                 {user.status}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mt-5 text-sm">
               <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-                <p className="text-xs text-[var(--sys-muted)] flex items-center gap-1"><RiShieldCheckLine className="w-4 h-4" />{ar ? 'الرتبة' : 'Role'}</p>
+                <p className="text-note text-[var(--sys-muted)] flex items-center gap-1"><RiShieldCheckLine className="w-4 h-4" />{ar ? 'الرتبة' : 'Role'}</p>
                 <p className="font-bold text-[var(--sys-heading)]">{user.role}</p>
               </div>
               <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-                <p className="text-xs text-[var(--sys-muted)] flex items-center gap-1"><RiTimerLine className="w-4 h-4" />{ar ? 'آخر دخول' : 'Last Login'}</p>
+                <p className="text-note text-[var(--sys-muted)] flex items-center gap-1"><RiTimerLine className="w-4 h-4" />{ar ? 'آخر دخول' : 'Last Login'}</p>
                 <p className="font-bold text-[var(--sys-heading)]">
                   {arDateTime(user.lastLoginAt)}
                 </p>
               </div>
               <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-                <p className="text-xs text-[var(--sys-muted)]">{ar ? 'تاريخ التسجيل' : 'Created'}</p>
+                <p className="text-note text-[var(--sys-muted)]">{ar ? 'تاريخ التسجيل' : 'Created'}</p>
                 <p className="font-bold text-[var(--sys-heading)]">{arDate(user.createdAt)}</p>
               </div>
               {userId && <UserPhoneField userId={userId} initial={user.phone ?? null} canEdit={userCan(currentUser, 'users.edit')} />}
@@ -418,7 +420,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
         {maySetPassword(currentUser as never, user.id).ok && userCan(currentUser, 'users.edit') && (
           <Card>
             <CardContent className="p-5 space-y-3">
-              <h3 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
+              <h3 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
                 <RiKey2Line className="w-4 h-4" />
                 كلمة السرّ
               </h3>
@@ -426,7 +428,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
               {/* Icons, not emoji: `one-icon-family.test.ts` refuses a
                   glyph the operating system draws, because it is a
                   different typeface on every phone. */}
-              <div className="rounded-lg bg-[var(--sys-warning-soft)] px-3 py-2 text-xs leading-relaxed text-[var(--sys-warning)]">
+              <div className="rounded-lg bg-[var(--sys-warning-soft)] px-3 py-2 text-sm leading-relaxed text-[var(--sys-warning)]">
                 <p className="flex items-start gap-1.5">
                   <RiAlertLine className="mt-0.5 h-4 w-4 shrink-0" />
                   كلمة السرّ الحاليّة ما بتنعرض — النظام ما بيخزّنها.
@@ -439,27 +441,28 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
 
               {shownPassword ? (
                 <div className="space-y-2 rounded-lg border border-[var(--sys-success-soft)] bg-[var(--sys-success-soft)] p-3">
-                  <p className="text-xs font-black text-[var(--sys-success)]">انسخها هلأ — ما رح تنعرض مرّة تانية</p>
+                  <p className="text-sm font-black text-[var(--sys-success)]">انسخها هلأ — ما رح تنعرض مرّة تانية</p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 select-all rounded-lg bg-[var(--sys-card)] px-3 py-2 text-sm font-bold tracking-wide" dir="ltr">
                       {shownPassword}
                     </code>
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => { void navigator.clipboard?.writeText(shownPassword); setCopied(true); }}
-                      className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-bold hover:border-[var(--sys-primary)]"
                     >
                       {copied ? 'اننسخت' : 'انسخ'}
-                    </button>
+                    </Button>
                   </div>
-                  <p className="text-xs leading-relaxed text-[var(--sys-success)]">
+                  <p className="text-sm leading-relaxed text-[var(--sys-success)]">
                     وكلّ جلساته المفتوحة انقفلت — رح يدخل بهاي الكلمة.
                   </p>
                 </div>
               ) : (
                 <>
                   <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">كلمة سرّ جديدة</span>
+                    <span className="mb-1 block text-sm font-semibold text-[var(--sys-foreground)]">كلمة سرّ جديدة</span>
                     <input
                       type="text"
                       dir="ltr"
@@ -473,7 +476,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
                     {PASSWORD_RULES.map((r) => {
                       const met = typedPassword.length > 0 && r.test(typedPassword);
                       return (
-                        <li key={r.key} className={`flex items-center gap-1 text-xs ${met ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
+                        <li key={r.key} className={`flex items-center gap-1 text-sm ${met ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
                           <RiCheckLine className={`h-4 w-4 shrink-0 ${met ? '' : 'opacity-40'}`} />
                           {r.ar}
                         </li>
@@ -481,28 +484,30 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
                     })}
                   </ul>
                   {passwordErr && (
-                    <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-xs text-[var(--sys-destructive)]">
+                    <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 py-2 text-sm text-[var(--sys-destructive)]">
                       {passwordErr}
                     </p>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
+                      size="sm"
                       disabled={settingPassword || passwordProblems(typedPassword).length > 0}
                       onClick={() => void setPassword(false)}
-                      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50"
                     >
                       {settingPassword ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiKey2Line className="w-4 h-4" />}
                       غيّر كلمة السرّ
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       disabled={settingPassword}
                       onClick={() => void setPassword(true)}
-                      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium hover:border-[var(--sys-primary)] disabled:opacity-50"
                     >
                       ولّد واحدة
-                    </button>
+                    </Button>
                   </div>
                 </>
               )}
@@ -513,42 +518,43 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
         {!user.totpEnabledAt && (
           <Card>
             <CardContent className="p-5 space-y-1">
-              <h3 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
+              <h3 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
                 <RiShieldKeyholeLine className="w-4 h-4" />
                 التحقّق بخطوتين
               </h3>
-              <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">
+              <p className="text-sm font-semibold text-[var(--sys-muted-foreground)]">
                 {twoFactorRequired ? 'بانتظار أوّل دخول' : 'غير مطلوب'}
               </p>
-              <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                 {twoFactorRequired
                   ? 'كلّ حساب صار عليه تحقّق بخطوتين. هذا الموظّف رح يُطلَب منه يسجّله أوّل مرّة يدخل فيها بكلمة السرّ — لازم يكون منزّل تطبيق Google Authenticator على جواله.'
                   : 'التحقّق بخطوتين غير مطلوب على أي حساب الآن، فيدخل هذا الموظّف بكلمة السرّ وحدها.'}
               </p>
               {mayIssueEnrolCode(currentUser as never, user.id).ok && (
                 <>
-                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                  <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                     إن كان الرمز مطلوباً عند التفعيل، أعطِ الموظّف رمز تفعيل يكتبه عند أوّل دخول. الرمز لمرّة واحدة.
                   </p>
                   {twoFaMsg && !twoFaMsg.ok && (
-                    <p className="rounded-lg px-3 py-2 text-xs font-medium bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]">
+                    <p className="rounded-lg px-3 py-2 text-sm font-medium bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]">
                       {twoFaMsg.text}
                     </p>
                   )}
                   {enrolCode && (
-                    <p className="rounded-lg px-3 py-2 text-xs font-medium bg-[var(--sys-success-soft)] text-[var(--sys-success)]">
+                    <p className="rounded-lg px-3 py-2 text-sm font-medium bg-[var(--sys-success-soft)] text-[var(--sys-success)]">
                       رمز التفعيل: <span dir="ltr" className="font-semibold tabular-nums">{enrolCode.code}</span> — يصلح {enrolCode.hours} ساعة ولمرّة واحدة، ولا يظهر مرّة ثانية. أعطه للموظّف الآن.
                     </p>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     disabled={issuingCode}
                     onClick={() => void issueEnrolCode()}
-                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] disabled:opacity-50"
                   >
                     {issuingCode ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiKey2Line className="w-4 h-4" />}
                     أصدر رمز تفعيل
-                  </button>
+                  </Button>
                 </>
               )}
             </CardContent>
@@ -558,18 +564,18 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
         {mayResetTwoFactor(currentUser as never, user.id).ok && user.totpEnabledAt && (
           <Card>
             <CardContent className="p-5 space-y-2">
-              <h3 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
+              <h3 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
                 <RiShieldKeyholeLine className="w-4 h-4" />
                 التحقّق بخطوتين
               </h3>
-              <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                 {twoFactorRequired
                   ? 'مسجَّلٌ على جهاز هذا الموظّف. إن فقد هاتفه، تُعيد الضبطَ فيُطلب منه تسجيلُه من جديد عند الدخول القادم — ولا يدخل أحدٌ بلا تحقّق.'
                   : 'مسجَّلٌ على جهاز هذا الموظّف، لكنّ التحقّق بخطوتين غير مطلوب عند الدخول الآن — فيدخل بكلمة السرّ وحدها.'}
               </p>
               {twoFaMsg && (
                 <p
-                  className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                  className={`rounded-lg px-3 py-2 text-sm font-medium ${
                     twoFaMsg.ok
                       ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]'
                       : 'bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'
@@ -582,15 +588,16 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
                   daily one; it folds under متقدم beside the password controls.
                   Nothing is removed — the card still says it is registered. */}
               <AdvancedGroup holds="إعادة ضبط">
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={resetting2fa}
                 onClick={() => void resetTwoFactor()}
-                className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-4 py-1.5 text-xs font-medium text-[var(--sys-foreground)] hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
               >
                 {resetting2fa ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiShieldKeyholeLine className="w-4 h-4" />}
                 أعِد ضبط التحقّق بخطوتين
-              </button>
+              </Button>
               </AdvancedGroup>
             </CardContent>
           </Card>
@@ -598,26 +605,26 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
 
         <Card>
           <CardContent className="p-5">
-            <h3 className="text-xs font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-1.5">
+            <h3 className="text-sm font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-1.5">
               <RiKey2Line className="w-4 h-4" />
               {ar ? 'الدور والصلاحيات' : 'Role & Permissions'}
             </h3>
             {roleFlash && (
-              <div className="mb-3 rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-xs font-medium px-3 py-2">
+              <div className="mb-3 rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-sm font-medium px-3 py-2">
                 {roleFlash}
               </div>
             )}
             {roleError && (
-              <div className="mb-3 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs font-medium px-3 py-2">
+              <div className="mb-3 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm font-medium px-3 py-2">
                 {roleError}
               </div>
             )}
             <div className="flex flex-col sm:flex-row sm:items-end gap-3">
               <div className="flex-1 space-y-1">
-                <p className="text-xs text-[var(--sys-muted)]">{ar ? 'الدور الحالي' : 'Current role'}</p>
+                <p className="text-note text-[var(--sys-muted)]">{ar ? 'الدور الحالي' : 'Current role'}</p>
                 <p className="text-sm font-bold text-[var(--sys-heading)]">{user.role}</p>
                 {effectivePermsCount !== null && (
-                  <p className="text-xs text-[var(--sys-muted-foreground)]">
+                  <p className="text-note text-[var(--sys-muted-foreground)]">
                     {ar ? `${effectivePermsCount} صلاحية فعّالة` : `${effectivePermsCount} effective permissions`}
                   </p>
                 )}
@@ -657,7 +664,7 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
 
         {/* Where this person may work — the access API had no screen before this. */}
         {!mayManage && user?.manageRefusal && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">{user.manageRefusal}</p>
+          <p className="text-sm text-[var(--sys-muted-foreground)]">{user.manageRefusal}</p>
         )}
 
         {userId && userCan(currentUser, 'geo.manage') && (
@@ -672,21 +679,21 @@ export function UserDetailScreen({ twoFactorRequired = true }: { twoFactorRequir
         {/* Workload */}
         <Card>
           <CardContent className="p-5">
-            <h3 className="text-xs font-black text-[var(--sys-foreground)] mb-3">
+            <h3 className="text-sm font-black text-[var(--sys-foreground)] mb-3">
               {ar ? 'حجم العمل الحالي' : 'Current Workload'}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className="rounded-lg border border-[var(--sys-border)] px-3 py-4">
                 <p className="text-2xl font-black text-[var(--sys-destructive)]">{user.workload?.assigned ?? 0}</p>
-                <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات مسندة' : 'Assigned Orders'}</p>
+                <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات مسندة' : 'Assigned Orders'}</p>
               </div>
               <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-4">
                 <p className="text-2xl font-black text-[var(--sys-heading)]">{user.workload?.claimed ?? 0}</p>
-                <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات مستلمة' : 'Claimed Orders'}</p>
+                <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات مستلمة' : 'Claimed Orders'}</p>
               </div>
               <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-4">
                 <p className="text-2xl font-black text-[var(--sys-heading)]">{user.workload?.created ?? 0}</p>
-                <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات منشأة' : 'Created Orders'}</p>
+                <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{ar ? 'طلبات منشأة' : 'Created Orders'}</p>
               </div>
             </div>
           </CardContent>
@@ -1037,28 +1044,28 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
       {/* Card 1 — Effective permissions */}
       <Card>
         <CardContent className="p-5">
-          <h3 className="text-xs font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-1.5">
+          <h3 className="text-sm font-black text-[var(--sys-foreground)] mb-3 flex items-center gap-1.5">
             <RiShieldCheckLine className="w-4 h-4" />
             {ar ? 'الصلاحيات الفعّالة' : 'Effective Permissions'}
           </h3>
 
           {loadError && (
-            <div className="rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs font-medium px-3 py-2 mb-3 flex items-center justify-between gap-2">
+            <div className="rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm font-medium px-3 py-2 mb-3 flex items-center justify-between gap-2">
               <span>{loadError}</span>
-              <Button variant="outline" size="sm" onClick={loadPerms}>
+              <Button variant="secondary" size="sm" onClick={loadPerms}>
                 {ar ? 'إعادة المحاولة' : 'Retry'}
               </Button>
             </div>
           )}
 
           {!payload && !loadError && (
-            <p className="text-xs text-[var(--sys-muted)] py-3">{ar ? 'جارِ التحميل…' : 'Loading…'}</p>
+            <p className="text-note text-[var(--sys-muted)] py-3">{ar ? 'جارِ التحميل…' : 'Loading…'}</p>
           )}
 
           {payload && (
             <>
               {/* Summary line */}
-              <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5 text-xs text-[var(--sys-foreground)] mb-3 flex flex-wrap gap-x-3 gap-y-1">
+              <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5 text-sm text-[var(--sys-foreground)] mb-3 flex flex-wrap gap-x-3 gap-y-1">
                 <span className="font-bold text-[var(--sys-heading)]">
                   {ar ? `الدور: ${payload.role.name}` : `Role: ${payload.role.name}`}
                 </span>
@@ -1072,7 +1079,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
               </div>
 
               {isFullAccess ? (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                <p className="text-note text-[var(--sys-muted-foreground)]">
                   {ar
                     ? 'حساب SUPER_ADMIN — وصول كامل مركزيًا ولا يقبل استثناءات.'
                     : 'SUPER_ADMIN account — central full access; overrides do not apply.'}
@@ -1085,7 +1092,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                       value={tableSearch}
                       onChange={(e) => setTableSearch(e.target.value)}
                       placeholder={ar ? 'بحث في الصلاحيات…' : 'Search permissions…'}
-                      className="ps-8 text-xs"
+                      className="ps-8"
                     />
                   </div>
                   <div className="overflow-x-auto rounded-lg border border-[var(--sys-border)]">
@@ -1096,7 +1103,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                         { key: 'c0', label: ar ? 'الصلاحية' : 'Permission', primary: true,
                           render: (r) => (
                   <><p className="font-medium text-[var(--sys-heading)]">{ar ? r.ar : r.en}</p>
-                              <p className="text-xs text-[var(--sys-muted)] font-mono" dir="ltr">{r.key}</p></>
+                              <p className="text-note text-[var(--sys-muted)] font-mono" dir="ltr">{r.key}</p></>
                 ) },
                         { key: 'c1', label: ar ? 'من الدور' : 'Role', primary: true,
                           render: (r) => (
@@ -1148,7 +1155,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
       <Card>
         <CardContent className="p-5">
           <div className="flex items-center justify-between gap-3 mb-3">
-            <h3 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
+            <h3 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-1.5">
               <RiKey2Line className="w-4 h-4" />
               {ar ? 'استثناءات المستخدم' : 'User Overrides'}
             </h3>
@@ -1161,26 +1168,26 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
           </div>
 
           {flash && (
-            <div className="mb-3 rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-xs font-medium px-3 py-2">
+            <div className="mb-3 rounded-lg bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-sm font-medium px-3 py-2">
               {flash}
             </div>
           )}
 
           {removeNotice && (
-            <div role="status" className="mb-3 rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-xs px-3 py-2">
+            <div role="status" className="mb-3 rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-sm px-3 py-2">
               {removeNotice}
             </div>
           )}
 
           {payload && isFullAccess && (
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               {ar ? 'لا توجد استثناءات — حساب SUPER_ADMIN وصول كامل.' : 'No overrides — SUPER_ADMIN has central full access.'}
             </p>
           )}
 
           {payload && !isFullAccess && (
             payload.overrides.length === 0 ? (
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 {ar
                   ? 'لا توجد استثناءات — الصلاحيات تأتي من الدور كما هي.'
                   : 'No overrides — permissions come from the role as-is.'}
@@ -1195,14 +1202,14 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                   return (
                     <li key={o.permission} className="flex items-center justify-between gap-3 px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className="text-xs font-medium text-[var(--sys-heading)] truncate">
+                        <p className="text-sm font-medium text-[var(--sys-heading)] truncate">
                           {ar ? item?.ar ?? o.permission : item?.en ?? o.permission}
                         </p>
-                        <p className="text-xs text-[var(--sys-muted)] font-mono" dir="ltr">{o.permission}</p>
+                        <p className="text-note text-[var(--sys-muted)] font-mono" dir="ltr">{o.permission}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span
-                          className={`text-xs font-bold rounded-lg px-2 py-0.5 border ${
+                          className={`text-note font-bold rounded-lg px-2 py-0.5 border ${
                             o.effect === 'DENY'
                               ? 'text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)]'
                               : 'text-[var(--sys-success)] bg-[var(--sys-success-soft)] border-[var(--sys-success-soft)]'
@@ -1211,11 +1218,11 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                           {o.effect === 'DENY' ? 'منع' : 'منح'}
                         </span>
                         {o.effect === 'ALLOW' && scopeLabel && (
-                          <span className="text-xs text-[var(--sys-muted-foreground)]">{scopeLabel}</span>
+                          <span className="text-note text-[var(--sys-muted-foreground)]">{scopeLabel}</span>
                         )}
                         {canEdit && (
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             className="text-[var(--sys-destructive)]"
                             loading={removing === o.permission}
@@ -1246,9 +1253,9 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
         <div className="space-y-4">
           {/* What kind of exception — first, because the list below depends on it. Words, never colour alone. */}
           <div>
-            <p className="block text-xs font-medium text-[var(--sys-heading)] mb-1.5">نوع الاستثناء</p>
+            <p className="block text-sm font-medium text-[var(--sys-heading)] mb-1.5">نوع الاستثناء</p>
             <div className="flex flex-wrap items-center gap-5">
-              <label className="flex items-center gap-1.5 text-xs text-[var(--sys-heading)] cursor-pointer">
+              <label className="flex items-center gap-1.5 text-sm text-[var(--sys-heading)] cursor-pointer">
                 <input
                   type="radio"
                   name="override-effect"
@@ -1258,7 +1265,7 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                 />
                 منح — صلاحية زيادة عن دوره
               </label>
-              <label className="flex items-center gap-1.5 text-xs text-[var(--sys-heading)] cursor-pointer">
+              <label className="flex items-center gap-1.5 text-sm text-[var(--sys-heading)] cursor-pointer">
                 <input
                   type="radio"
                   name="override-effect"
@@ -1269,18 +1276,16 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                 منع — يحجبها حتى لو دوره بيسمح
               </label>
               {/* Advanced toggle — scopes stay hidden for ordinary permission changes */}
-              <label className="flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)] cursor-pointer ms-auto">
-                <input
-                  type="checkbox"
-                  checked={advancedScopes}
-                  onChange={(e) => {
-                    setAdvancedScopes(e.target.checked);
-                    if (!e.target.checked) onDraftScopeChange('ALL_COMPANY');
-                  }}
-                  className="w-3.5 h-3.5 accent-[var(--sys-primary)] cursor-pointer"
-                />
-                {ar ? 'تخصيص نطاق الوصول' : 'Customize access scope'}
-              </label>
+              <Checkbox
+                id="override-advanced-scopes"
+                className="ms-auto"
+                checked={advancedScopes}
+                onChange={(checked) => {
+                  setAdvancedScopes(checked);
+                  if (!checked) onDraftScopeChange('ALL_COMPANY');
+                }}
+                label={ar ? 'تخصيص نطاق الوصول' : 'Customize access scope'}
+              />
             </div>
           </div>
 
@@ -1303,16 +1308,16 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
 
           {/* What the chosen key is, and what choosing it brings with it — said BEFORE the press */}
           {draftKey && catalogItem(draftKey)?.note && (
-            <p className="text-xs text-[var(--sys-muted)]">{catalogItem(draftKey)?.note}</p>
+            <p className="text-note text-[var(--sys-muted)]">{catalogItem(draftKey)?.note}</p>
           )}
           {plan && plan.notes.length > 0 && (
             <div role="status" className="space-y-0.5">
               {plan.notes.map((n) => (
-                <p key={n} className="text-xs text-[var(--sys-warning)]">{n}</p>
+                <p key={n} className="text-sm text-[var(--sys-warning)]">{n}</p>
               ))}
             </div>
           )}
-          {plan?.blocked && <p role="alert" className="text-xs text-[var(--sys-destructive)]">{plan.blocked}</p>}
+          {plan?.blocked && <p role="alert" className="text-sm text-[var(--sys-destructive)]">{plan.blocked}</p>}
 
           {/* Scope — only meaningful for ALLOW (DENY blocks regardless of scope);
               hidden behind the advanced toggle for ordinary permission changes */}
@@ -1329,57 +1334,57 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
               />
 
               {draftKey && draftScope === 'CATEGORY' && (
-                <div className="rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3">
-                  {categoriesError && <p className="text-xs text-[var(--sys-destructive)]">{categoriesError}</p>}
+                <Card plain padding="sm">
+                  {categoriesError && <p className="text-sm text-[var(--sys-destructive)]">{categoriesError}</p>}
                   {!categoriesError && categories.length === 0 && (
-                    <p className="text-xs text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا يمكن حصر هذا الموظف في جزء من الكتالوج. تُعرَّف من «المنتجات ← التصنيفات».</p>
+                    <p className="text-note text-[var(--sys-muted)]">لا تصنيفات منتجات بعد — وبلا تصنيف لا يمكن حصر هذا الموظف في جزء من الكتالوج. تُعرَّف من «المنتجات ← التصنيفات».</p>
                   )}
                   {categories.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {categories.map((c) => (
-                        <label key={c.id} className="flex items-center gap-1.5 text-xs text-[var(--sys-heading)] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={draftScopeIds.includes(c.id)}
-                            onChange={() => toggleScopeId(c.id)}
-                            className="w-3.5 h-3.5 accent-[var(--sys-primary)] cursor-pointer"
-                          />
-                          {c.name}
-                        </label>
+                        <Checkbox
+                          key={c.id}
+                          id={`override-scope-category-${c.id}`}
+                          checked={draftScopeIds.includes(c.id)}
+                          onChange={() => toggleScopeId(c.id)}
+                          label={c.name}
+                        />
                       ))}
                     </div>
                   )}
-                </div>
+                </Card>
               )}
 
               {draftKey && draftScope === 'SPECIFIC' && (
-                <div className="rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-3 space-y-2">
+                <Card plain padding="sm" className="space-y-2">
                   <div className="relative">
                     <RiSearchLine className="absolute top-1/2 -translate-y-1/2 start-2.5 w-4 h-4 text-[var(--sys-muted)]" />
                     <Input
                       value={productQuery}
                       onChange={(e) => setProductQuery(e.target.value)}
                       placeholder={ar ? 'ابحث عن منتج بالاسم أو SKU…' : 'Search products by name or SKU…'}
-                      className="ps-8 text-xs"
+                      className="ps-8"
                     />
                   </div>
-                  {productLoading && <p className="text-xs text-[var(--sys-muted)]">{ar ? 'جارِ البحث…' : 'Searching…'}</p>}
-                  {productsError && <p className="text-xs text-[var(--sys-destructive)]">{productsError}</p>}
+                  {productLoading && <p className="text-note text-[var(--sys-muted)]">{ar ? 'جارِ البحث…' : 'Searching…'}</p>}
+                  {productsError && <p className="text-sm text-[var(--sys-destructive)]">{productsError}</p>}
                   {productResults.length > 0 && (
-                    <div className="max-h-36 overflow-y-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] divide-y divide-[var(--sys-surface)]">
+                    <Card plain className="max-h-36 overflow-y-auto divide-y divide-[var(--sys-surface)]">
                       {productResults.map((p) => (
-                        <button
+                        <Button
                           key={p.id}
                           type="button"
+                          variant="quiet"
+                          size="sm"
                           disabled={draftScopeIds.includes(p.id)}
                           onClick={() => toggleScopeId(p.id)}
-                          className="w-full text-start px-3 py-2 text-xs text-[var(--sys-heading)] hover:bg-[var(--sys-surface)] cursor-pointer disabled:opacity-50"
+                          className="w-full justify-start"
                         >
                           {p.name}{' '}
-                          <span className="text-xs text-[var(--sys-muted)] font-mono" dir="ltr">{p.sku}</span>
-                        </button>
+                          <span className="text-note text-[var(--sys-muted)] font-mono" dir="ltr">{p.sku}</span>
+                        </Button>
                       ))}
-                    </div>
+                    </Card>
                   )}
                   {draftScopeIds.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
@@ -1388,26 +1393,26 @@ function UserPermissionsSection({ userId, canEdit }: { userId: string; canEdit: 
                         return (
                           <span
                             key={id}
-                            className="inline-flex items-center gap-1 text-xs font-medium bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5"
+                            className="inline-flex items-center gap-1 text-note font-medium bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5"
                           >
                             {prod?.name ?? id}
-                            <button type="button" onClick={() => toggleScopeId(id)} aria-label="أزل من النطاق" title="أزل من النطاق" className="cursor-pointer hover:text-[var(--sys-destructive)]">
+                            <IconButton type="button" size="sm" onClick={() => toggleScopeId(id)} label="أزل من النطاق">
                               <RiCloseLine className="w-4 h-4" />
-                            </button>
+                            </IconButton>
                           </span>
                         );
                       })}
                     </div>
                   )}
-                </div>
+                </Card>
               )}
             </>
           )}
 
-          {modalError && <p className="text-xs text-[var(--sys-destructive)]">{modalError}</p>}
+          {modalError && <p className="text-sm text-[var(--sys-destructive)]">{modalError}</p>}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--sys-border)]">
-            <Button variant="outline" onClick={() => setModalOpen(false)}>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>
               {ar ? 'إلغاء' : 'Cancel'}
             </Button>
             <Button onClick={saveOverride} loading={saving} disabled={!draftKey || !!plan?.blocked}>
@@ -1463,25 +1468,25 @@ export function PermissionPicker({
 
   return (
     <div>
-      <p className="block text-xs font-medium text-[var(--sys-heading)] mb-1.5">الصلاحية</p>
+      <p className="block text-sm font-medium text-[var(--sys-heading)] mb-1.5">الصلاحية</p>
       <Input
         aria-label="ابحث عن صلاحية"
         placeholder="ابحث بالاسم أو بالقسم — مثلاً: الشحن، المرتجعات، الرواتب"
         value={query}
         onChange={(e) => onQuery(e.target.value)}
       />
-      <p className="mt-1 text-xs text-[var(--sys-muted)]">
+      <p className="mt-1 text-note text-[var(--sys-muted)]">
         {effect === 'ALLOW'
           ? `${count} صلاحية مش بدوره — اختار اللي بدك تمنحه إياها`
           : `${count} صلاحية عنده — اختار اللي بدك تمنعها عنه`}
       </p>
       <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-[var(--sys-border)]" role="listbox" aria-label="الصلاحيات">
         {groups.length === 0 ? (
-          <p className="p-3 text-xs text-[var(--sys-muted)]">ما في صلاحية بهالاسم.</p>
+          <p className="p-3 text-sm text-[var(--sys-muted)]">ما في صلاحية بهالاسم.</p>
         ) : (
           groups.map((g) => (
             <div key={g.module}>
-              <p className="sticky top-0 bg-[var(--sys-surface)] px-3 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)]">{g.section}</p>
+              <p className="sticky top-0 bg-[var(--sys-surface)] px-3 py-1 text-note font-semibold text-[var(--sys-muted-foreground)]">{g.section}</p>
               {g.items.map((i) => (
                 <button
                   key={i.key}
@@ -1489,7 +1494,7 @@ export function PermissionPicker({
                   role="option"
                   aria-selected={selected === i.key}
                   onClick={() => onPick(i.key)}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-xs ${
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm ${
                     selected === i.key ? 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]' : 'text-[var(--sys-heading)] hover:bg-[var(--sys-surface)]'
                   }`}
                 >
