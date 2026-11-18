@@ -1155,8 +1155,10 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
     }
   }
   if (told.length) {
+    // The notice says the limit the release USED: asked of `returnsLimits`, the one function every reader asks (30, or 20 with «أولوية الطابور»). `ReturnsMode` itself carries no figure: its shape is pinned key for key.
+    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime())).idleBusinessMinutes;
     await tx.notification.createMany({
-      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes: returns.idleBusinessMinutes })),
+      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes })),
     });
   }
   return told.length;

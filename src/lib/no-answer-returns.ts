@@ -130,8 +130,6 @@ export interface ReturnsMode {
   readyCut: Date;
   /** A claim or a logged attempt at or before this is `idleBusinessMinutes` working minutes old: nothing happened since. Never before 1970. */
   idleCut: Date;
-  /** The idle limit `idleCut` was placed with (30, or 20 under «أولوية الطابور») — so the notice of an idle release can say the figure the release used. Absent on a mode built by hand. */
-  idleBusinessMinutes?: number;
   /**
    * «جدول المحاولات» ON (step B, `no-answer-cadence.ts`): readiness is the plan's due instant written on the line, not the `ROUND_GAP_BUSINESS_MINUTES` gap. `since` is the switch's
    * `enabledAt` — the FLOOR: a line at or before it holds nothing. The key is OMITTED, never `undefined`, when the cadence is off, so every older shape stays byte for byte.
@@ -146,7 +144,6 @@ export function returnsMode(now: Date, clock: WorkClock, idleBusinessMinutes: nu
     now,
     readyCut: atEpochAtLeast(clock.back(now, ROUND_GAP_BUSINESS_MINUTES)),
     idleCut: atEpochAtLeast(clock.back(now, idleBusinessMinutes)),
-    idleBusinessMinutes,
     ...(cadenceSince ? { cadence: { since: cadenceSince } } : {}),
   };
 }
