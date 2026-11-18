@@ -112,6 +112,31 @@ describe('1 · the figures each row prints', () => {
   });
 });
 
+describe('the kit parts the card now wears', () => {
+  it('the three marks are the kit’s Checkbox with an id of their own, each label pointing at its box', async () => {
+    await mount();
+    await click(screen.getByText('عرض جديد'));
+    for (const [name, id] of [
+      [/العرض الافتراضي/, 'offer-draft-is-default'],
+      [/السعر شامل التوصيل/, 'offer-draft-delivery-included'],
+      [/العرض بعد الطلب/, 'offer-draft-post-order'],
+    ] as const) {
+      const box = screen.getByRole('checkbox', { name }) as HTMLInputElement;
+      expect(box.id, String(name)).toBe(id);
+      expect(document.querySelector(`label[for="${id}"]`), String(name)).toBeTruthy();
+    }
+  });
+
+  it('every row press has a name a screen reader can say, the on/off one too', async () => {
+    await mount();
+    const names = Array.from(rowsOf()[0].querySelectorAll('button')).map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual(['اسحب «قطعة واحدة» لتغيير ترتيبه', 'لأعلى', 'لأسفل', 'إيقاف', 'تعديل', 'حذف']);
+    // the star appears on an active offer that is not the default, and nowhere else
+    expect(within(rowsOf()[1]).getByLabelText('اجعله الافتراضي')).toBeTruthy();
+    expect(within(rowsOf()[2]).queryByLabelText('اجعله الافتراضي')).toBeNull();
+  });
+});
+
 describe('2 · every press sends what it sent', () => {
   it('the star makes an offer the default', async () => {
     await mount();
@@ -187,6 +212,15 @@ describe('2 · every press sends what it sent', () => {
         ],
       ])
     );
+  });
+
+  it('a stored row that came without a «was» price is saved with it as null, not left off', async () => {
+    list = [{ ...ROWS[0], compareAtPrice: undefined }];
+    await mount();
+    await click(within(rowsOf()[0]).getByLabelText('تعديل'));
+    await click(screen.getByText('حفظ العرض'));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(JSON.parse(sent[0].body!)).toHaveProperty('compareAtPrice', null);
   });
 
   it('a new offer sends what was typed, and nothing a browser made up', async () => {
