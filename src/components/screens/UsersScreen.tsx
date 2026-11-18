@@ -213,16 +213,7 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
             </IconButton>
           </div></>
             }
-          >
-
-        {error && (
-          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">{error}</div>
-        )}
-
-        {/* «عاين كـ» — the owner's alone (src/lib/preview-mode.ts). The door asks again; this is only where it is drawn. */}
-        {userHasFullAccess(currentUser) && !currentUser?.preview && <PreviewPicker />}
-
-        {/* Filters */}
+            filters={
         <Card plain padding="md" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="relative sm:col-span-2">
             <RiSearchLine className="absolute left-3 rtl:left-auto rtl:right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--sys-muted)]" />
@@ -255,6 +246,15 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
             <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
         </Card>
+            }
+          >
+
+        {error && (
+          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">{error}</div>
+        )}
+
+        {/* «عاين كـ» — the owner's alone (src/lib/preview-mode.ts). The door asks again; this is only where it is drawn. */}
+        {userHasFullAccess(currentUser) && !currentUser?.preview && <PreviewPicker />}
 
         {/*
           WHAT THE GRADE IS MADE OF, AND WHAT IS MISSING BEFORE IT SPEAKS.
