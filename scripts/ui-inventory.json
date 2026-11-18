@@ -1431,7 +1431,7 @@
   },
   "src/components/screens/GeoSettingsScreen.tsx": {
     "buttons": 14,
-    "inputs": 11,
+    "inputs": 12,
     "columns": 0,
     "cards": 0,
     "modals": 0,
