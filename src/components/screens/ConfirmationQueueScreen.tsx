@@ -2,10 +2,11 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
+import { Card, CardHeader } from '@/components/ui/Card';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadFailed } from '@/components/ui/LoadFailed';
@@ -43,17 +44,16 @@ export function ConfirmationQueueScreen() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <PageHeader title={routeLabel('/confirmation/queue')} />
+    // The frame (R8e): `max-w-3xl` is the shell's `narrow`; the header is the one PageShell draws, with the same registry name.
+    <PageShell title={routeLabel('/confirmation/queue')} width="narrow">
       <PullPanel queue={queue} onPulled={() => router.push('/confirmation/mine')} />
 
       {data.orders && <QueueHealthBoard />}
 
       {data.orders && (
-        <section className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
-          <header className="px-4 py-3 border-b border-[var(--sys-border)] text-sm font-semibold text-[var(--sys-heading)]">
-            عرض المشرف — نفس الطلبات المنتظرة ({data.orders.length})
-          </header>
+        // The kit's surface (R8e): the same words in the card's own header, the five columns untouched.
+        <Card className="overflow-hidden">
+          <CardHeader title={`عرض المشرف — نفس الطلبات المنتظرة (${data.orders.length})`} />
           <Rows
             rows={data.orders}
             keyOf={(o) => o.id}
@@ -89,8 +89,8 @@ export function ConfirmationQueueScreen() {
               />
             }
           />
-        </section>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
