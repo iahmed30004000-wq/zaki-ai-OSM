@@ -81,6 +81,9 @@ const answers: Record<string, () => Promise<unknown>> = {};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // ADDED 2026-11-18 (R14a1): the board now keeps the span in the one stored key of the report tabs, so a test that moved it would open
+  // the next test on that span (one more ask). Each test starts from nothing stored, as a fresh tab of the browser does.
+  sessionStorage.clear();
   apiFetch.mockResolvedValue(json(200, ANALYTICS));
   answers.team = async () => TEAM;
   answers.attribution = async () => ATTRIBUTION;

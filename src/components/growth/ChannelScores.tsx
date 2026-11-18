@@ -58,6 +58,9 @@ interface ChannelPerf {
   whyNoScore: string | null;
 }
 
+/** The window of `/api/settings/channels/performance`, which takes none from the screen. */
+const CHANNEL_WINDOW_LINE = 'آخر 90 يوم — ما بتتبع المدة المختارة فوق.';
+
 interface ShopSpread {
   orders: number;
   delivered: number;
@@ -98,6 +101,8 @@ function ChannelScores({ perf }: { perf: { channels: ChannelPerf[]; shop: ShopSp
         <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
           ليس الأكثر طلباً — الأكثر وصولاً. قناة تجلب 100 طلب يرجع منها 40 أسوأ من واحدة تجلب 30 كلها تُسلَّم.
         </p>
+        {/* Its door takes no window (it asks `period: 'all'`, which the server bounds to ninety days) — said beside it (R14a1, 18/11). */}
+        <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">{CHANNEL_WINDOW_LINE}</p>
       </div>
 
       {/*

@@ -3,6 +3,7 @@
 import React from 'react';
 import { RiPhoneLine, RiShieldCheckLine, RiUserSettingsLine } from '@remixicon/react';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
 
 /**
  * The confirmation desk, by person, for the span of days chosen above.
@@ -115,7 +116,51 @@ const HEADS = [
   { key: 'present', label: 'متوسط التواجد', hint: 'متوسط ساعات التواجد في اليوم الواحد' },
 ];
 
-export function TeamPerformanceTable({ rows, totals }: { rows: TeamRow[] | null; totals?: TeamRow | null }) {
+/**
+ * ONE PERSON'S ROW, AS THE TABLE WRITES IT — for the drawer under a row (R14a1, 18/11).
+ *
+ * The drawer reads `team/[userId]`, the same function as this table, and prints the figures with THESE words and THESE formatters, so a
+ * row and its drawer can never spell one number two ways. The key is the door's own `definitions` key where it has one.
+ */
+export function rowFigures(r: TeamRow): { key: string; label: string; value: string; hint?: string }[] {
+  const hintOf = (key: string) => HEADS.find((h) => h.key === key)?.hint;
+  return [
+    { key: 'claimed', label: 'سحب', value: String(r.claimed), hint: hintOf('claimed') },
+    { key: 'confirmed', label: 'أكّد', value: String(r.confirmed) },
+    { key: 'rejected', label: 'رفض', value: String(r.rejected), hint: hintOf('rejected') },
+    { key: 'noAnswer', label: 'لا يرد', value: String(r.noAnswer) },
+    { key: 'confirmationRate', label: 'نسبة التأكيد', value: r.confirmationRate === null ? '—' : `${r.confirmationRate}%`, hint: hintOf('rate') },
+    { key: 'medianFirstActionMinutes', label: 'أول اتصال', value: duration(r.medianFirstActionMinutes), hint: hintOf('firstAction') },
+    { key: 'medianConfirmMinutes', label: 'زمن التأكيد', value: duration(r.medianConfirmMinutes), hint: hintOf('confirmTime') },
+    { key: 'medianGapMinutes', label: 'بين طلب وطلب', value: duration(r.medianGapMinutes), hint: hintOf('gap') },
+    { key: 'attemptsPerDecision', label: 'محاولات/قرار', value: r.attemptsPerDecision === null ? '—' : String(r.attemptsPerDecision), hint: hintOf('attempts') },
+    { key: 'openNow', label: 'مفتوح الآن', value: String(r.openNow), hint: hintOf('openNow') },
+    {
+      key: 'daysPresent',
+      label: 'أيام حضور',
+      value: `${r.daysPresent}${r.daysWithoutWork > 0 ? ` (${r.daysWithoutWork} بلا شغل)` : ''}`,
+      hint: hintOf('daysPresent'),
+    },
+    {
+      key: 'daysLate',
+      label: 'أيام تأخير',
+      value: `${r.daysLate}${r.daysLate > 0 ? ` (${clock(r.totalLateMinutes)})` : ''}${r.daysLateEstimated > 0 ? ' ≈' : ''}`,
+      hint: hintOf('daysLate'),
+    },
+    { key: 'avgPresentMinutes', label: 'متوسط التواجد', value: clock(r.avgPresentMinutes), hint: hintOf('present') },
+  ];
+}
+
+export function TeamPerformanceTable({
+  rows,
+  totals,
+  onOpen,
+}: {
+  rows: TeamRow[] | null;
+  totals?: TeamRow | null;
+  /** A row's name opens that person's drawer (R14a1). Left out, the name is plain text, as before. */
+  onOpen?: (row: TeamRow) => void;
+}) {
   if (rows === null) {
     return <div className="p-4"><SkeletonRows rows={5} /></div>;
   }
@@ -185,7 +230,15 @@ export function TeamPerformanceTable({ rows, totals }: { rows: TeamRow[] | null;
             </tr>
             {section.rows.map((r) => (
               <tr key={r.id} className="hover:bg-[var(--sys-surface)] transition-colors">
-                <td className="px-4 py-3 font-semibold text-[var(--sys-heading)] whitespace-nowrap">{r.name}</td>
+                <td className="px-4 py-3 font-semibold text-[var(--sys-heading)] whitespace-nowrap">
+                  {onOpen ? (
+                    <Button variant="quiet" size="sm" type="button" onClick={() => onOpen(r)}>
+                      {r.name}
+                    </Button>
+                  ) : (
+                    r.name
+                  )}
+                </td>
                 <Num value={r.claimed} />
                 <Num value={r.confirmed} tone="text-[var(--sys-success)]" />
                 <Num value={r.rejected} tone={r.rejected > 0 ? 'text-[var(--sys-destructive)]' : undefined} />

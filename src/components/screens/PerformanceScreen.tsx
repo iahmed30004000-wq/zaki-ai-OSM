@@ -13,6 +13,8 @@ import { LandingAnalyticsTab } from '@/components/performance/LandingAnalyticsTa
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ScoreBoard } from '@/components/performance/ScoreBoard';
+import { TeamMemberDrawer, type DrawerPerson } from '@/components/performance/TeamMemberDrawer';
+import { readReportRange, searchWithRange, writeReportRange } from '@/lib/report-range';
 import { EodReportForm } from '@/components/performance/EodReportForm';
 import { NoAnswerWatch } from '@/components/performance/NoAnswerWatch';
 import { findRoute, routeLabel } from '@/lib/route-registry';
@@ -50,6 +52,9 @@ type Tab = 'team' | 'landing' | 'scores' | 'noanswer' | 'eod';
  * المحاولة» finds it done — and a minute is long enough that it rarely has to.
  */
 const BOARD_WAIT_MS = 60_000;
+
+/** The couriers' door (`/api/orders/shipping/performance`) takes no window: it counts every parcel each company ever held. */
+const COURIERS_WINDOW_LINE = 'كل التاريخ — ما بتتبع المدة المختارة فوق.';
 
 /** One courier as `/api/orders/shipping/performance` answers it. */
 interface CourierRow {
@@ -123,6 +128,31 @@ export function PerformanceScreen() {
   // of time on the same page.
   // Opens on TODAY (the owner, 17/11): thirty days of everything was the slow way in. أمس, 7 أيام, 30 يوم and a custom span are one press away.
   const [range, setRange] = useState(todayRange);
+  /*
+   * THE SHARED RANGE OF THE FOUR REPORT TABS (R14a1, 18/11) — «مدة وحدة بتضل لما أتنقّل بين التقارير».
+   * Read once after mount (the server render and the first client render agree on today): the address, then the one stored key.
+   * Nothing stored («today») leaves the board on its own today. Every change is written back to the key, and an address that
+   * already carried a range is kept in step with it (the address wins over the storage, so a reload would otherwise go back).
+   */
+  useEffect(() => {
+    const { range: shared, source } = readReportRange(window.location.search);
+    if (source !== 'today') setRange(shared);
+  }, []);
+  const pickRange = useCallback((next: { from: string; to: string }) => {
+    setRange(next);
+    const kept = next.from && next.to ? next : null;
+    writeReportRange(kept);
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.has('from') || q.has('to')) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${searchWithRange(window.location.search, kept)}`);
+      }
+    } catch {
+      /* an address that cannot be rewritten still has the stored key */
+    }
+  }, []);
+  /** The person whose drawer is open — from a row of the team table or of «سكور الموظفين». */
+  const [opened, setOpened] = useState<DrawerPerson | null>(null);
   const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   /** Why the numbers did not come: a refusal or a failure, said — never drawn as zeros. */
@@ -133,6 +163,8 @@ export function PerformanceScreen() {
   // "which courier".
   const [team, setTeam] = useState<any[] | null>(null);
   const [totals, setTotals] = useState<any>(null);
+  /** The words the team door sends for each of its figures — the drawer prints them under the same figures. */
+  const [definitions, setDefinitions] = useState<Record<string, string> | null>(null);
   const [couriers, setCouriers] = useState<CourierRow[] | null>(null);
   /**
    * WHETHER «COLLECTED» MAY BE SCORED AT ALL, for the whole shop. Kept
@@ -186,11 +218,12 @@ export function PerformanceScreen() {
     // the attribution endpoint's totals were being put into `totals`, which
     // is the team table's — so each table's footer was summing the other
     // table's rows. Two states, two endpoints, swapped once.
-    apiJson<{ employees: any[]; totals: any }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
+    apiJson<{ employees: any[]; totals: any; definitions?: Record<string, string> }>(`/api/orders/confirmation/team?${dateQuery}`, { timeoutMs: BOARD_WAIT_MS })
       .then((d) => {
         if (mine !== teamSeq.current) return;
         setTeam(d.employees ?? []);
         setTotals(d.totals ?? null);
+        setDefinitions(d.definitions ?? null);
       })
       .catch(() => {
         if (mine !== teamSeq.current) return;
@@ -342,7 +375,7 @@ export function PerformanceScreen() {
             {/* Not on «لا رد»: that tab carries its own dates, and two pickers on one screen would answer two windows. */}
             {tab !== 'noanswer' && (
             <div className="w-56">
-              <DateRange value={range} onChange={setRange} label="كل المدة" />
+              <DateRange value={range} onChange={pickRange} label="كل المدة" />
             </div>
             )}
             {/* The «تصدير CSV» that stood here opened /api/reports/export with
@@ -378,7 +411,7 @@ export function PerformanceScreen() {
           // settings — not the date range above. The score is comparable
           // across months only if everybody's is measured over the same
           // span, which a free-hand date picker would quietly break.
-          <ScoreBoard />
+          <ScoreBoard onOpen={setOpened} />
         ) : tab === 'landing' && canLanding ? (
           <LandingAnalyticsTab dateQuery={dateQuery} from={range.from} />
         ) : !analytics ? (
@@ -627,7 +660,7 @@ export function PerformanceScreen() {
                 action={{ label: 'إعادة المحاولة', onClick: loadTeam }}
               />
             ) : (
-              <TeamPerformanceTable rows={team as any} totals={totals} />
+              <TeamPerformanceTable rows={team as any} totals={totals} onOpen={(r) => setOpened({ id: r.id, name: r.name })} />
             )}
           </CardContent>
         </Card>
@@ -684,6 +717,8 @@ export function PerformanceScreen() {
             subtitle="سكور من 100 على ما أنجزه كلُّ مندوب — ومعه الأرقام التي بُني منها"
           />
           <CardContent className="p-0">
+            {/* Its door takes no window — every parcel a courier ever held — said beside its numbers (R14a1, 18/11). */}
+            <p className="px-5 pt-3 text-note text-[var(--sys-muted-foreground)]">{COURIERS_WINDOW_LINE}</p>
             {couriers === null ? (
               <div className="p-4"><SkeletonRows rows={5} /></div>
             ) : couriersFailed ? (
@@ -793,6 +828,8 @@ export function PerformanceScreen() {
         </Card>
         </>
         )}
+      {/* ONE drawer for both tables that list people: the same door as the team table, with the table's exact query. */}
+      <TeamMemberDrawer person={opened} query={dateQuery} definitions={definitions} onClose={() => setOpened(null)} />
       </PageShell>
   );
 }

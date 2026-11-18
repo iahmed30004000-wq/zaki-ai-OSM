@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { AgentScorecard } from './AgentScorecard';
 import { CommissionPreview } from './CommissionPreview';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import type { ScoreResult } from '@/lib/performance-score';
 import { RiLoader4Line } from '@remixicon/react';
 
@@ -41,7 +42,11 @@ interface BoardData {
 
 const PERIOD_AR = { WEEKLY: 'هذا الأسبوع', MONTHLY: 'هذا الشهر' };
 
-function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
+/** The score's own window, said beside it: the owner's week or month, never the board's date box (04 §هـ, «خانة مشتركة»). */
+const SCORE_WINDOW_LINE = (period: 'WEEKLY' | 'MONTHLY') =>
+  `السكور على ${period === 'WEEKLY' ? 'الأسبوع' : 'الشهر'} اللي حدده المالك — ما بيتبع المدة المختارة فوق.`;
+
+function Row({ person, bars, onOpen }: { person: Person; bars: BoardData['bars']; onOpen?: (person: { id: string; name: string }) => void }) {
   const [open, setOpen] = useState(false);
   const s = person.score;
   const unmeasured = s.total === null;
@@ -76,7 +81,24 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
         }
       >
         <td className="px-3 py-2 tabular-nums text-[var(--sys-muted)]">{unmeasured ? '—' : person.rank}</td>
-        <td className="px-3 py-2 font-medium text-[var(--sys-heading)]">{person.name}</td>
+        <td className="px-3 py-2 font-medium text-[var(--sys-heading)]">
+          {/* The SAME drawer as the team table (R14a1): the name opens it; the rest of the row still unfolds the bands. */}
+          {onOpen ? (
+            <Button
+              variant="quiet"
+              size="sm"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen({ id: person.id, name: person.name });
+              }}
+            >
+              {person.name}
+            </Button>
+          ) : (
+            person.name
+          )}
+        </td>
         <td className="px-3 py-2">
           {unmeasured ? (
             <span className="text-note text-[var(--sys-muted)]">
@@ -116,7 +138,7 @@ function Row({ person, bars }: { person: Person; bars: BoardData['bars'] }) {
   );
 }
 
-export function ScoreBoard() {
+export function ScoreBoard({ onOpen }: { /** A name opens the person's drawer — the team table's (R14a1). */ onOpen?: (person: { id: string; name: string }) => void } = {}) {
   const [data, setData] = useState<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -149,6 +171,8 @@ export function ScoreBoard() {
         {PERIOD_AR[data.window.period]} · الأعلى أولاً. لا توجد قائمة معلنة للأسوأ، ولا زرّ يقلب
         الترتيب — السكور أداة قياس، ولوحةُ فشلٍ تجعل الناس تتجنّب المركز الأخير بدل أن ترفع الرقم.
       </p>
+      {/* A FIXED WINDOW SAYS SO BESIDE ITS NUMBERS (R14a1, 18/11): the date box above stays on this tab and this list does not follow it. */}
+      <p className="text-note text-[var(--sys-muted-foreground)]">{SCORE_WINDOW_LINE(data.window.period)}</p>
 
       {data.roles.map((r) => (
         <Card plain key={r.role} className="overflow-hidden">
@@ -185,7 +209,7 @@ export function ScoreBoard() {
             </thead>
             <tbody className="divide-y divide-[var(--sys-surface-strong)]">
               {r.people.map((p) => (
-                <Row key={p.id} person={p} bars={data.bars} />
+                <Row key={p.id} person={p} bars={data.bars} onOpen={onOpen} />
               ))}
             </tbody>
           </table>

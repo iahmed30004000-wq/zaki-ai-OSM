@@ -865,7 +865,7 @@
     "tabs": 0
   },
   "src/components/performance/ScoreBoard.tsx": {
-    "buttons": 0,
+    "buttons": 1,
     "inputs": 0,
     "columns": 3,
     "cards": 2,
@@ -884,10 +884,20 @@
     "links": 0,
     "tabs": 0
   },
-  "src/components/performance/TeamPerformanceTable.tsx": {
+  "src/components/performance/TeamMemberDrawer.tsx": {
     "buttons": 0,
     "inputs": 0,
-    "columns": 15,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/performance/TeamPerformanceTable.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 28,
     "cards": 0,
     "modals": 0,
     "icons": 3,
