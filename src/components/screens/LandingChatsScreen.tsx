@@ -54,7 +54,18 @@ interface Line {
 }
 
 type Filter = 'all' | 'unread' | 'staff';
-const FILTER_AR: Record<Filter, string> = { all: 'الكل', unread: 'غير مقروءة', staff: 'بيد الموظفين' };
+// A thread row: the quiet button stretched into a list row (see the note where it is used).
+const ROW_STYLE: React.CSSProperties = {
+  height: 'auto',
+  justifyContent: 'flex-start',
+  alignItems: 'flex-start',
+  gap: '0.75rem',
+  padding: '0.75rem 1rem',
+  borderRadius: 0,
+  borderBottom: '1px solid var(--sys-surface)',
+};
+
+const FILTER_AR: Record<Filter, string> ={ all: 'الكل', unread: 'غير مقروءة', staff: 'بيد الموظفين' };
 
 const who = (t: Pick<Thread, 'customerName' | 'customerPhone'>) => t.customerName || t.customerPhone || 'زائر';
 const initials = (t: Pick<Thread, 'customerName' | 'customerPhone'>) => (t.customerName || t.customerPhone || 'ز').slice(0, 2);
@@ -293,7 +304,10 @@ export function LandingChatsScreen() {
                   variant="quiet"
                   onClick={() => open(t)}
                   aria-current={selectedId === t.id || undefined}
-                  className={`w-full h-auto! justify-start! items-start! text-right gap-3! px-4! py-3! rounded-none! border-b! border-b-[var(--sys-surface)]! ${selectedId === t.id ? 'bg-[var(--sys-primary-soft)]!' : ''}`}
+                  className={`w-full text-right ${selectedId === t.id ? 'bg-[var(--sys-primary-soft)]!' : ''}`}
+                  // The row's shape as a style, not as nine `…!` classes: each of those was new to the build, and the
+                  // first-load stylesheet has a ceiling (quality-gates.test.ts). Same look, no new CSS.
+                  style={ROW_STYLE}
                 >
                   <span className="w-10 h-10 rounded-full bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] flex items-center justify-center shrink-0 text-sm font-bold">
                     {initials(t)}
