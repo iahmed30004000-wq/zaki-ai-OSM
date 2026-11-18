@@ -130,6 +130,8 @@ interface OrderRow {
   closesOnNext?: boolean;
   /** «جدول المحاولات» is on: the attempt the next press will be, in the one counter's words («محاولة 2 من 5», `attempt-words.ts`), written by the server. Absent = the old counters. */
   attemptWords?: string;
+  /** The hint beside «لا يرد», only where it is true for the rule in force (`noAnswerHint`, written by the server). Absent = nothing. */
+  noAnswerHint?: string;
   /** RV2391: the server's number-free sentence for a closed card whose count is not the close's. Absent = print the count as always. */
   closedWords?: string;
   merchantRef: string | null;
@@ -1590,13 +1592,8 @@ export function ConfirmationMineScreen() {
               </Action>
             );
             // Said only where it is true: the base rule's arithmetic, or the plan's own fact for this card (`closesOnNext`). Under the rounds, and under the plan when a press now would not close it: nothing.
-            // -1 = say nothing (the rounds; the plan when a press now would not close it); 1 under the plan = the server's `closesOnNext`.
-            const left = planned || data.rounds ? (planned && order.closesOnNext ? 1 : -1) : remaining;
-            const remainingHint = left >= 0 && (
-              <span className="text-xs text-[var(--sys-muted)]">
-                {left === 0 ? 'بلغ الحد' : left === 1 ? 'المحاولة القادمة تُغلق الطلب تلقائياً' : `متبقٍ ${left} محاولات قبل الإغلاق التلقائي`}
-              </span>
-            );
+            // The server's words (`noAnswerHint`): only what is true for the rule in force — the desk counts nothing (finding #11, and its bundle is at its ceiling).
+            const remainingHint = order.noAnswerHint && <span className="text-xs text-[var(--sys-muted)]">{order.noAnswerHint}</span>;
             /*
               CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
               Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —

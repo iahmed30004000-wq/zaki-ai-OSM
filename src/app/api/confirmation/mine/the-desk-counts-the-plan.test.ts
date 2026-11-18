@@ -115,7 +115,7 @@ vi.mock('@/lib/call-proof-switch', () => ({
 import { GET } from './route';
 import { cadenceCalOf, cadencePress } from '@/lib/no-answer-cadence';
 
-type Row = { id: string; noAnswerCount: number; dueNow: boolean; dueReason: string | null; dueAt: string | null; dueWords: string | null; closesOnNext?: boolean; attemptWords?: string };
+type Row = { id: string; noAnswerCount: number; dueNow: boolean; dueReason: string | null; dueAt: string | null; dueWords: string | null; closesOnNext?: boolean; attemptWords?: string; noAnswerHint?: string };
 type Desk = {
   work: Row[]; noAnswer: Row[]; closedToday: Row[]; noAnswerLimit: number; cadenceOn?: boolean; rounds?: boolean; due?: unknown; callProofOn?: boolean;
 };
@@ -276,6 +276,10 @@ describe('ON — where each card sits and what it says', () => {
     expect(byId(d, 'wt').attemptWords).toBe('محاولة 2 من 5');
     expect(byId(d, 'f4d').attemptWords).toBe('محاولة 5 من 5');
     expect(byId(d, 'c5').attemptWords).toBe('محاولة 5 من 5');
+    // …and the hint beside it only where a press NOW would close the order (finding #11): the server's fact, never a countdown.
+    expect(byId(d, 'f4d').noAnswerHint).toBe('المحاولة القادمة تُغلق الطلب تلقائياً');
+    expect(byId(d, 'f4w').noAnswerHint).toBeUndefined();
+    expect(byId(d, 'wt').noAnswerHint).toBeUndefined();
   });
 
   it('on a THURSDAY with Friday and Saturday off: a card whose #3 was Thursday afternoon waits in «بانتظار» for SUNDAY 09:00 (the country’s own start of work) — and that is the very due the door would store for the same lines', async () => {

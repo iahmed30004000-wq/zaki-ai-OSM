@@ -37,6 +37,15 @@ export function planRule(idleBusinessMinutes: number): string {
  * (the lead is 0) and the untouched release is the mode's idle limit (30, or 20 with «أولوية الطابور») — passed in by the caller from `returnsLimits`, the one function every reader asks.
  * Mode off: the server sends nothing and the screen keeps its old sentence, word for word.
  */
+/**
+ * THE SENTENCE WITH EVERY SWITCH OFF — the panel's old sentence, word for word, now written by the server (18/11, C1 review): the desk's bundle is at its ceiling, and this
+ * sentence is the one longest string of the panel. Its two numbers are the rule's own constants (`POSTPONE_LEAD_DAYS`, `AUTO_RELEASE_BUSINESS_MINUTES`), handed in by the
+ * caller — it used to type «90» in the browser.
+ */
+export function offModeRule(leadDays: number, releaseMinutes: number): string {
+  return `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال ${leadDays} يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد ${releaseMinutes} دقيقة عمل.`;
+}
+
 export function returnsModeRule(idleBusinessMinutes: number): string {
   return `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي وصل موعده، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد ${idleBusinessMinutes} دقيقة دوام.`;
 }

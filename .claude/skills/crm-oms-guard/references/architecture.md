@@ -43,7 +43,7 @@ Rules:
 ## Navigation — eleven groups, drawn as sixteen lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **53 pages in 11 groups**; the menu draws them as **16 lines**.
+is its contract. It holds **54 pages in 11 groups**; the menu draws them as **16 lines**.
 
 How a group is drawn is `NavGroup.hub`, and it is a statement about the MENU only — it never
 changes what a page is, who may open it, or where it lives:
@@ -90,6 +90,7 @@ page keeps its old address as a permanent redirect (`next.config.ts`).
 طلباتي                   /confirmation/mine       (the pull panel is at its top)
 المتابعة                  /confirmation/follow-up  (two tabs: the postponed orders and the cancelled-before ones)
 الإشكالات                /confirmation/issues
+قواعد مركز التأكيد        /confirmation/rules      (the eight confirmation-rule cards, moved from إعدادات النظام on 18/11)
 ```
 «الطلبات المؤجلة» and «استرجاع الملغى» are no longer screens: they are the two tabs of المتابعة, and an
 agent's own postponed orders are a tab of طلباتي.
@@ -215,6 +216,7 @@ asks the same keys again.
 | `/confirmation/queue` · `/confirmation/follow-up` | confirmation.supervise |
 | `/confirmation/mine` | confirmation.work · confirmation.pull |
 | `/confirmation/issues` | confirmation.issues |
+| `/confirmation/rules` | settings.view |
 | `/ops/preparation` · `/ops/shipments/new` · `/ops/batches` · `/ops/tracking` · `/ops/returns` | ops.prepare · ops.ship · ops.batches · ops.track · ops.returns |
 | `/inventory/balances` · `/inventory/movements` | inventory.view |
 | `/manufacturing` | production.view |
@@ -291,6 +293,10 @@ as an ordinary new order in her queue.
 **/confirmation/issues** — Moderator-entered orders only. A store-sourced order can never raise an entry
 issue. Actions: correct and return to queue, or void (owner only). An issue is never counted as a
 cancellation against the agent, and the order keeps its original created_at.
+
+**/confirmation/rules** — «قواعد مركز التأكيد» (18/11): the eight cards of the confirmation rules, moved unchanged from
+`/settings/system`, under a read-only box «القاعدة بالمختصر» written on the server from the constants and switches the engine
+reads. The two old cards (rounds, returns) stand at the bottom under «قواعد قديمة». Opens on `settings.view`; each card asks its own key.
 
 **/ops/preparation** — Grouped BY PRODUCT, collapsible. Per product: orders, required, available, shortage
 (all from the API; the screen adds nothing). Per order: open it, cancel it, print its waybill, review a

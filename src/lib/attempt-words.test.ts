@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { attemptWords, nextAttempt, nextAttemptWords } from './attempt-words';
+import { attemptWords, nextAttempt, nextAttemptWords, noAnswerHint } from './attempt-words';
 import { cadenceCardWords, cadencePressWords, CADENCE_LIMIT } from './no-answer-cadence';
 
 /**
@@ -62,5 +62,25 @@ describe('the file', () => {
     expect(code).not.toMatch(/^\s*import\s/m);
     expect(code).not.toMatch(/\b5\b/);
     expect(code).not.toMatch(/\b3\b/);
+  });
+});
+
+describe('the hint beside «لا يرد» says only what is true for the rule in force (finding #11; the server writes it since 18/11)', () => {
+  const NEXT = 'المحاولة القادمة تُغلق الطلب تلقائياً';
+  it('the plan: «تُغلق» only when the server’s clock says a press now closes it — never from the count', () => {
+    expect(noAnswerHint({ planned: true, rounds: false, closesOnNext: true, count: 1, limit: 5 })).toBe(NEXT);
+    expect(noAnswerHint({ planned: true, rounds: false, closesOnNext: false, count: 4, limit: 5 })).toBeUndefined();
+    expect(noAnswerHint({ planned: true, rounds: false, count: 4, limit: 5 })).toBeUndefined();
+    expect(noAnswerHint({ planned: true, rounds: true, closesOnNext: false, count: 5, limit: 5 })).toBeUndefined();
+  });
+  it('the rounds: nothing at any count — presses are not rounds', () => {
+    for (const count of [0, 1, 2, 3, 4]) expect(noAnswerHint({ planned: false, rounds: true, count, limit: 3 }), String(count)).toBeUndefined();
+  });
+  it('the base rule: the old countdown, word for word', () => {
+    expect(noAnswerHint({ planned: false, rounds: false, count: 0, limit: 3 })).toBe('متبقٍ 3 محاولات قبل الإغلاق التلقائي');
+    expect(noAnswerHint({ planned: false, rounds: false, count: 1, limit: 3 })).toBe('متبقٍ 2 محاولات قبل الإغلاق التلقائي');
+    expect(noAnswerHint({ planned: false, rounds: false, count: 2, limit: 3 })).toBe(NEXT);
+    expect(noAnswerHint({ planned: false, rounds: false, count: 3, limit: 3 })).toBe('بلغ الحد');
+    expect(noAnswerHint({ planned: false, rounds: false, count: 7, limit: 3 })).toBe('بلغ الحد');
   });
 });

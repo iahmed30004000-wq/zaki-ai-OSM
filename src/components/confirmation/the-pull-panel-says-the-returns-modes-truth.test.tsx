@@ -10,7 +10,8 @@ import React from 'react';
  *  1. With the legacy mode on and the plan off, the server sends `waitingRule` and the panel prints IT: a postponed order «وصل موعده» (it is pulled at its date) and the mode's own idle limit —
  *     never the old «المؤجّل اللي موعده خلال 2 يوم» and «بعد 90 دقيقة عمل», which are the mode-OFF rules.
  *  2. The plan's own sentence (`waitingPlan.rule`) still wins when the plan is on.
- *  3. THE OFF PIN: with neither, the old sentence is word for word what it was, with the lead days the server sent (a tab open over a deploy, or the mode off).
+ *  3. THE OFF PIN: with every switch off the server sends the old sentence (`offModeRule`, the rule's own constants) and the panel prints it word for word; a server that sends no
+ *     sentence gets none — the panel types no rule of its own (the desk's bundle is at its ceiling).
  * ═══════════════════════════════════════════════════════════════════════
  */
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
@@ -25,7 +26,7 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
 }));
 
 import { PullPanel, useQueue, type QueueResponse } from './PullPanel';
-import { planRule, returnsModeRule } from '@/lib/pull-plan-words';
+import { offModeRule, planRule, returnsModeRule } from '@/lib/pull-plan-words';
 import { QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 import { RETURNS_MODE } from '@/lib/returns-mode';
 
@@ -85,9 +86,17 @@ describe('the sentence under the card', () => {
     expect(screen.queryByText(returnsModeRule(30))).toBeNull();
   });
 
-  it('THE OFF PIN: no `waitingRule` — the old sentence, word for word, with the lead days the server sent', async () => {
+  it('THE OFF PIN: the server’s off sentence is the old sentence, word for word', async () => {
+    pool.waitingRule = offModeRule(2, 90);
     render(<Harness />);
     expect(await screen.findByText(OLD_SENTENCE)).toBeTruthy();
+  });
+
+  it('no sentence from the server: none on the card — the browser types no rule (and no «90»)', async () => {
+    render(<Harness />);
+    await screen.findByText('10');
+    expect(document.body.textContent).not.toContain('دقيقة عمل');
+    expect(document.body.textContent).not.toContain('دقيقة دوام');
   });
 });
 

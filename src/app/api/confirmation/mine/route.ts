@@ -19,7 +19,7 @@ import type { BusinessCalendar } from '@/lib/business-calendar';
 import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { nextAttemptWords } from '@/lib/attempt-words';
+import { nextAttemptWords, noAnswerHint } from '@/lib/attempt-words';
 import { CADENCE_LIMIT, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { callProofState } from '@/lib/call-proof';
@@ -485,6 +485,10 @@ export async function GET(request: Request) {
         ...(desks ? { closesOnNext: desks.get(o.id)!.closesOnNext } : {}),
         // …and the one counter's words for the button and the tag («محاولة N من 5», the attempt the next press will be) — written here so the desk's bundle carries no counting.
         ...(desks ? { attemptWords: nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT) } : {}),
+        // …and the hint beside «لا يرد», only where it is true for the rule in force (finding #11): absent = the card says nothing.
+        ...((h) => (h ? { noAnswerHint: h } : {}))(
+          noAnswerHint({ planned: !!desks, rounds: !!rounds && !desks, closesOnNext: desks?.get(o.id)!.closesOnNext, count: row.noAnswerCount, limit: desks ? CADENCE_LIMIT : NO_ANSWER_LIMIT })
+        ),
       };
     });
     const owedSummary = summariseDue(held.map((o) => ({ id: o.id, orderNumber: o.orderNumber, claimedAt: o.claimedAt, due: o.dueNow })));

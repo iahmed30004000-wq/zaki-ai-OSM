@@ -204,56 +204,37 @@ describe('1 · under the plan: one counter, the attempt this press will be', () 
 });
 
 describe('2 · the hint says only what the server told the card', () => {
-  it('the plan, closesOnNext true: «المحاولة القادمة تُغلق الطلب تلقائياً»', async () => {
+  // 18/11 (C1 review): the hint is the SERVER's words now (`noAnswerHint`, `attempt-words.ts` — which rule says what is pinned in `attempt-words.test.ts` and in the desk door's test); the desk prints it and counts nothing.
+  it('the server’s hint is printed as it came — «المحاولة القادمة تُغلق الطلب تلقائياً»', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 4, closesOnNext: true, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
+    withRow({ noAnswerCount: 4, closesOnNext: true, noAnswerHint: HINT_NEXT, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
     await draw();
     expect(screen.getByText(HINT_NEXT)).toBeTruthy();
   });
 
-  it('the plan, closesOnNext false at 4 of 5 (an early press, or a due that has not come): NO hint — the client arithmetic would have said «تُغلق» — and no «متبقٍ»', async () => {
+  it('no hint from the server: none on the card, whatever the count — the plan at 4 of 5, the rounds at 2 of 3, the base rule at 2 of 3 (the old client countdown is gone)', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 4, closesOnNext: false, dueWords: 'محاولة 5 من 5 — جاهز الساعة 18:00', attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
-    await draw();
-    expect(screen.queryByText(HINT_NEXT)).toBeNull();
-    expect(nobody()).not.toContain('متبقٍ');
-    expect(nobody()).not.toContain('بلغ الحد');
-  });
-
-  it('the plan, the server said nothing (no closesOnNext): no hint either', async () => {
-    phone.value = false;
-    withRow({ noAnswerCount: 4, attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 });
-    await draw();
-    expect(screen.queryByText(HINT_NEXT)).toBeNull();
-  });
-
-  it('THE ROUNDS: 2 of 3 presses is not 2 rounds — NO hint at any count, though the old arithmetic said «تُغلق» at 2', async () => {
-    phone.value = false;
-    for (const count of [0, 1, 2, 3]) {
+    const cases: [Record<string, unknown>, Record<string, unknown>][] = [
+      [{ noAnswerCount: 4, closesOnNext: false, attemptWords: 'محاولة 5 من 5' }, { cadenceOn: true, noAnswerLimit: 5 }],
+      [{ noAnswerCount: 2 }, { rounds: true, noAnswerLimit: 3 }],
+      [{ noAnswerCount: 2 }, { noAnswerLimit: 3 }],
+    ];
+    for (const [row, desk] of cases) {
       cleanup();
-      withRow({ noAnswerCount: count }, { rounds: true, noAnswerLimit: 3 });
+      withRow(row, desk);
       await draw();
-      expect(screen.queryByText(HINT_NEXT), `count ${count}`).toBeNull();
-      expect(nobody(), `count ${count}`).not.toContain('متبقٍ');
-      expect(nobody(), `count ${count}`).not.toContain('بلغ الحد');
+      expect(screen.queryByText(HINT_NEXT)).toBeNull();
+      expect(nobody()).not.toContain('متبقٍ');
+      expect(nobody()).not.toContain('بلغ الحد');
     }
   });
 
-  it('THE BASE RULE (neither switch): the old arithmetic, exactly — «متبقٍ N» · «تُغلق» · «بلغ الحد»', async () => {
+  it('the base rule’s countdown, sent by the server, is printed word for word', async () => {
     phone.value = false;
-    withRow({ noAnswerCount: 0 }, { noAnswerLimit: 3 });
+    withRow({ noAnswerCount: 1, noAnswerHint: 'متبقٍ 2 محاولات قبل الإغلاق التلقائي' }, { noAnswerLimit: 3 });
     await draw();
-    expect(screen.getByText('متبقٍ 3 محاولات قبل الإغلاق التلقائي')).toBeTruthy();
-    cleanup();
-    withRow({ noAnswerCount: 2 }, { noAnswerLimit: 3 });
-    await draw();
-    expect(screen.getByText(HINT_NEXT)).toBeTruthy();
-    cleanup();
-    withRow({ noAnswerCount: 3 }, { noAnswerLimit: 3 });
-    await draw();
-    expect(screen.getByText('بلغ الحد')).toBeTruthy();
+    expect(screen.getByText('متبقٍ 2 محاولات قبل الإغلاق التلقائي')).toBeTruthy();
   });
-
   it('the call sheet: under the rounds the old arithmetic no longer warns that the next press closes the order', async () => {
     phone.value = true;
     withRow({ noAnswerCount: 2 }, { rounds: true, noAnswerLimit: 3 });

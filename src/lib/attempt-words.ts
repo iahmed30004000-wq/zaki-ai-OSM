@@ -8,8 +8,8 @@
  * The counters of the older generations («جولة N من 3» under the rounds, «N/3» under the base rule) are not here and are not touched: they are what the desk
  * prints with the switch OFF, which is the way back.
  *
- * NO IMPORTS, on purpose: the desk's bundle is a few hundred bytes under its ceiling, so this file is a template and a `Math.min`, and the limit (5) arrives from
- * the server (`noAnswerLimit`, which is `CADENCE_LIMIT` in `no-answer-cadence.ts`) — it is never typed here.
+ * NO IMPORTS, and read by the SERVER only (`/api/confirmation/mine` writes the words on each card): the desk's bundle is at its ceiling, so the desk prints strings and
+ * counts nothing. The limit (5) is handed in (`CADENCE_LIMIT` in `no-answer-cadence.ts`) — it is never typed here.
  */
 
 /**
@@ -28,4 +28,18 @@ export function nextAttempt(counted: number, limit: number): number {
 /** What the card prints for an order with `counted` attempts behind it: the attempt the next press will be. */
 export function nextAttemptWords(counted: number, limit: number): string {
   return attemptWords(nextAttempt(counted, limit), limit);
+}
+
+/**
+ * THE HINT BESIDE «لا يرد» (finding #11 of the rules map, 18/11): only what is TRUE for the rule in force, written by the server.
+ *   · the plan: «the next attempt closes it» only when the server's own clock says a press now would (`closesOnNext`) — never a client countdown (an early press does not count);
+ *   · the rounds: nothing — presses are not rounds, so «N left» would be false;
+ *   · the base rule (neither switch): every press counts, so the countdown is true and is said as it always was.
+ * `undefined` = say nothing.
+ */
+export function noAnswerHint(a: { planned: boolean; rounds: boolean; closesOnNext?: boolean; count: number; limit: number }): string | undefined {
+  if (a.planned) return a.closesOnNext ? 'المحاولة القادمة تُغلق الطلب تلقائياً' : undefined;
+  if (a.rounds) return undefined;
+  const left = Math.max(0, a.limit - a.count);
+  return left === 0 ? 'بلغ الحد' : left === 1 ? 'المحاولة القادمة تُغلق الطلب تلقائياً' : `متبقٍ ${left} محاولات قبل الإغلاق التلقائي`;
 }
