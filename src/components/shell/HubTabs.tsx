@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { RiArrowLeftLine, RiArrowRightLine } from '@remixicon/react';
 import type { NavGroup } from '@/lib/route-registry';
-import { hubAt } from '@/lib/hub';
+import { cardsDoor, hubAt } from '@/lib/hub';
 import { roadPosition } from '@/lib/next-stop';
 import { useNotifications } from './NotificationsProvider';
 
@@ -77,9 +77,10 @@ export function HubTabs({ groups }: { groups: NavGroup[] }) {
   if (!at) return null;
   const { group, here } = at;
 
-  if (group.hub === 'cards') {
-    const door = group.routes[0];
-    if (!door || here.path === door.path) return null;
+  // A page of cards for whoever may open its door; for somebody who may not, the strip below (18/11 — see `cardsDoor`).
+  const door = group.hub === 'cards' ? group.routes.find((r) => r.path === cardsDoor(group)) : undefined;
+  if (door) {
+    if (here.path === door.path) return null;
     return (
       <nav aria-label={group.label} className="mb-3 text-sm">
         <Link

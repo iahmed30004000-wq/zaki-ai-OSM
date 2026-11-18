@@ -210,12 +210,14 @@ export function Header({
             selected store. The server decides who is told what. */}
         <NotificationBell />
 
-        <div className="text-left leading-tight hidden sm:block">
+        {/* The name IS the door to the profile (18/11): «الملف الشخصي» is nobody's menu line any more. A phone has
+            the same door as a line of «المزيد». */}
+        <Link href="/admin/profile" title="الملف الشخصي" className="text-left leading-tight hidden sm:block hover:underline">
           <p className="text-sm font-semibold text-[var(--sys-heading)]">{userName}</p>
           <p className="text-sm text-[var(--sys-muted-foreground)]">
             {ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]?.ar ?? userRole}
           </p>
-        </div>
+        </Link>
         <button aria-label="تسجيل الخروج"
           onClick={logout}
           className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 hidden md:block p-2 rounded-lg text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"

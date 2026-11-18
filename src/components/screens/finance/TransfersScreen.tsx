@@ -15,7 +15,8 @@ import {
   type PreviousRate,
 } from '@/lib/transfer-rate';
 import { minorUnitFor } from '@/lib/currencies';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiArrowGoBackLine, RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -298,7 +299,7 @@ export function TransfersScreen() {
 
   return (
     <div className="max-w-5xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/finance/transfers')} />
 
       <form
         onSubmit={async (e) => {

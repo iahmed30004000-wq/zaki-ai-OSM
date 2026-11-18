@@ -34,7 +34,6 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: keys.value } }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المطابقة</h1> }));
 vi.mock('@/components/ui/NextStep', () => ({ NextStepButton: () => null }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => (...a: unknown[]) => (confirmFn as (...x: unknown[]) => Promise<boolean>)(...a), useAsk: () => async () => null }));
 vi.mock('@/components/screens/finance/DifferencesByPerson', () => ({ DifferencesByPerson: () => null }));

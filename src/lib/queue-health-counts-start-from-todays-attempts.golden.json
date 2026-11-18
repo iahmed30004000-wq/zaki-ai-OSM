@@ -1,0 +1,46 @@
+{
+  "c1/s1": {
+    "backlog": 6,
+    "dueNow": 6,
+    "oldestDueHours": 62,
+    "enteredToday": 5,
+    "closedToday": 3,
+    "newWaiting": 2,
+    "oldestNewMinutes": 180,
+    "noPullMinutes": 120,
+    "inShift": true
+  },
+  "c1/s2": {
+    "backlog": 1,
+    "dueNow": 1,
+    "oldestDueHours": 10,
+    "enteredToday": 1,
+    "closedToday": 1,
+    "newWaiting": 0,
+    "oldestNewMinutes": null,
+    "noPullMinutes": 180,
+    "inShift": true
+  },
+  "c2/x1": {
+    "backlog": 1,
+    "dueNow": 1,
+    "oldestDueHours": 10,
+    "enteredToday": 1,
+    "closedToday": 1,
+    "newWaiting": 0,
+    "oldestNewMinutes": null,
+    "noPullMinutes": 180,
+    "inShift": true
+  },
+  "c1/nobody": {
+    "backlog": 0,
+    "dueNow": 0,
+    "oldestDueHours": null,
+    "enteredToday": 0,
+    "closedToday": 0,
+    "newWaiting": 0,
+    "oldestNewMinutes": null,
+    "noPullMinutes": 180,
+    "inShift": true
+  }
+}

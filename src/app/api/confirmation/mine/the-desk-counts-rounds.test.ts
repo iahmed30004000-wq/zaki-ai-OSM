@@ -64,6 +64,13 @@ describe('ON', () => {
     expect(noAnswer).toEqual({ oneDay: 3, twice: 1 });
     expect(db.orderContactAttempt.groupBy).not.toHaveBeenCalled();
   });
+
+  // 18/11 (C1, finding #11): presses are not rounds, so the card gets NO countdown beside «لا يرد» under the rounds — the base rule would have said
+  // «المحاولة القادمة تُغلق» for two presses and «متبقٍ 3» for none.
+  it('says no countdown beside «لا يرد» — not for one round of two presses, not for a fresh order', async () => {
+    const data = await (await GET(new Request('http://localhost/api/confirmation/mine'))).json();
+    for (const o of [...data.work, ...data.noAnswer] as { id: string; noAnswerHint?: string }[]) expect(o.noAnswerHint, o.id).toBeUndefined();
+  });
 });
 
 describe('OFF — today’s desk', () => {
@@ -81,6 +88,12 @@ describe('OFF — today’s desk', () => {
     expect(data.work.map((o: { id: string }) => o.id)).toEqual(['fresh']);
     expect(data.noAnswer.map((o: { id: string; noAnswerCount: number }) => o.noAnswerCount).sort()).toEqual([2, 3]);
     expect(db.orderContactAttempt.findMany).not.toHaveBeenCalled();
+  });
+
+  it('the base rule keeps its countdown, written by the server: «تُغلق» at two of three, «متبقٍ 3» at none, «بلغ الحد» at three (18/11, C1)', async () => {
+    const data = await (await GET(new Request('http://localhost/api/confirmation/mine'))).json();
+    const hint = Object.fromEntries([...data.work, ...data.noAnswer].map((o: { id: string; noAnswerHint?: string }) => [o.id, o.noAnswerHint]));
+    expect(hint).toEqual({ fresh: 'متبقٍ 3 محاولات قبل الإغلاق التلقائي', twice: 'المحاولة القادمة تُغلق الطلب تلقائياً', oneDay: 'بلغ الحد' });
   });
 
   it('OFF AFTER ON: an order still open with four presses stays under «لا يرد» — never on no list at all', async () => {

@@ -6,7 +6,8 @@ import { PayoutDialog } from '@/components/screens/commission/PayoutDialog';
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from '@/types/auth';
 import { PeriodProgress } from '@/components/screens/commission/PeriodProgress';
 import { FairnessPanel, type FairnessData } from '@/components/screens/commission/FairnessPanel';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { AgentCommissionCard } from '@/components/settings/AgentCommissionCard';
 import {
   COMMISSION_METRICS, COMMISSION_TYPES, METRIC_LABEL_AR, PERIOD_LABEL_AR, TYPE_LABEL_AR,
@@ -144,7 +145,7 @@ export function CommissionSettingsScreen() {
 
   return (
     <div className="max-w-5xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/settings/commission')} />
 
       {/* «قاعدة جديدة» was in the header of the THIRD card: below the rule paragraph, the period list and the fairness
           panel, so several screens down. On a phone it is the first thing under the title. */}

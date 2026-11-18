@@ -17,9 +17,10 @@ import {
   postponedNotDueCount,
   openIssuesCount,
   POSTPONE_LEAD_DAYS,
+  AUTO_RELEASE_BUSINESS_MINUTES,
 } from '@/lib/confirmation-queue';
 import { heldFor } from '@/lib/order-reservation';
-import { planWords } from '@/lib/pull-plan-words';
+import { offModeRule, planWords, returnsModeRule } from '@/lib/pull-plan-words';
 import type { ReturnsMode } from '@/lib/no-answer-returns';
 
 /**
@@ -49,7 +50,7 @@ export async function GET() {
     const now = new Date();
     /*
      * «الطلب يرجع للطابور فوراً»: where it is on, every number below is the mode's — a returned order counts from its ready-time, a dated one
-     * from its date, and the limit is five — the very predicates the pull picks from, so a number shown is what the pull can hand out.
+     * from its date, and the limit is the mode's (5, or 3 with the queue-priority key on) — the very predicates the pull picks from, so a number shown is what the pull can hand out.
      * Off (the default, and on any failure to read the switches) none of this runs and the answer is what it always was.
      */
     const returns = await readReturnsMode(db, companyId, {
@@ -126,6 +127,9 @@ export async function GET() {
             waitingNew: pool.fresh,
             waitingReturned: pool.returned,
             waitingDue: pool.due,
+            // The sentence under the card, in the server's words (18/11, C1): with the legacy pair on (rounds + returns mode, no plan) «at its date» and the mode's own idle limit —
+            // the old «خلال 2 يوم … 90 دقيقة عمل» is the mode-OFF rule, which is what is said with every switch off.
+            waitingRule: returns ? returnsModeRule((limits ?? RETURNS_MODE).idleBusinessMinutes) : offModeRule(POSTPONE_LEAD_DAYS, AUTO_RELEASE_BUSINESS_MINUTES),
           }),
       waitingOnADate,
       ...(openIssues === undefined ? {} : { openIssues }),

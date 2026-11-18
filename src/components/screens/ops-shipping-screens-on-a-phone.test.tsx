@@ -38,7 +38,6 @@ vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ locale: 'ar', t: {}, currentUser: user.current }),
 }));
 vi.mock('@/context/StoreCurrency', () => ({ useStoreCurrency: () => ({ code: 'JOD', minorUnit: 3 }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => confirmFn,
   useAsk: () => vi.fn(async () => null),

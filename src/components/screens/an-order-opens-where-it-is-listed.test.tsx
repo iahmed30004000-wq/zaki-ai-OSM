@@ -39,7 +39,6 @@ vi.mock('@/context/AppContext', () => ({
     currentUser: { id: 'u1', name: 'سارة', role: 'MODERATOR', status: 'ACTIVE', permissions: me.permissions },
   }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>الطلبات المؤجلة</h1> }));
 
 import { ConfirmationPostponedScreen } from './ConfirmationPostponedScreen';
 

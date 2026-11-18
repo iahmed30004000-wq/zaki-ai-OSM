@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { WhatsAppSettingsScreen } from '@/components/screens/WhatsAppSettingsScreen';
@@ -43,7 +44,7 @@ export function LinksSettingsScreen() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6" dir="rtl">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/settings/links')} />
       {whatsapp && (
         <section id="whatsapp" aria-label="واتساب">
           <WhatsAppSettingsScreen embedded />

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { QUEUE_PRIORITY } from '@/lib/queue-priority';
+import { POSTPONE_MAX_TIMES, QUEUE_PRIORITY, QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 
 /**
  * THE QUEUE-PRIORITY CARD TELLS THE OWNER WHAT HIS SWITCH CHANGES — AND WHAT IT DOES NOT (step D1).
@@ -42,8 +42,15 @@ describe('the sentence of «أولوية الطابور (تجريبي)»', () =>
     const text = await subtitle();
     expect(text).toContain('بيغيّر أي طلب بيطلع للموظفة بالسحب الجاي');
     expect(text).toContain('من 9 الصبح للـ11 ومن 9 بالليل للـ12');
-    expect(text).toContain('ما بيغيّر حد اليد ولا رجوع الطلب اللي ما انلمس');
-    expect(text).toContain('ما في رفض ولا إغلاق ولا رسالة للزبون');
+    // 18/11 (C1, finding #8 of the rules map): the sentence used to say «ما بيغيّر حد اليد ولا رجوع الطلب اللي ما انلمس، وما في رفض ولا إغلاق ولا رسالة للزبون» — FALSE: the same key sets the hand to
+    // 3 and the idle return to 20 working minutes (`QUEUE_PRIORITY_LIMITS`, where the plan is on) and refuses a third postponement (`POSTPONE_MAX_TIMES`). The new sentence says so, with the constants'
+    // own figures; the old one is pinned ABSENT below, so it cannot come back.
+    expect(text).toContain(`وبيغيّر كمان حد اليد لـ${QUEUE_PRIORITY_LIMITS.handLimit} طلبات ورجوع الطلب اللي ما انلمس لـ${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام`);
+    expect(text).toContain('بس إذا «إثبات المكالمات وجدول المحاولات» شغّال');
+    expect(text).toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات (اللي بعدهم بينرفض)`);
+    expect(text).toContain('ما في إغلاق ولا رسالة للزبون');
+    expect(text).not.toContain('ما بيغيّر حد اليد');
+    expect(text).not.toContain('ما في رفض');
     expect(text).toContain('مش مفتاح «إثبات المكالمات وجدول المحاولات»');
     expect(text).toContain('مطفي = السحب زي ما هو');
   });

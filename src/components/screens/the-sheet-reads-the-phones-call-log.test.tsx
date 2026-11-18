@@ -48,7 +48,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, []);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>طلباتي</h1> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn(), warn: vi.fn() }) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
 vi.mock('@/hooks/useRegions', () => ({ useRegions: () => ({ regions: [], countryName: '', currency: null }) }));

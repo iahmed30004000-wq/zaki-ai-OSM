@@ -8,7 +8,8 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { RejectDialog } from '@/components/screens/confirmation/ActionDialogs';
 import { useApp } from '@/context/AppContext';
 import { PickingAssistant } from '@/components/screens/ops/PickingAssistant';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiArchiveDrawerLine, RiArrowDownSLine, RiArrowLeftSLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPrinterLine } from '@remixicon/react';
 import { LabelSizePicker, useLabelSize } from '@/components/labels/LabelSize';
 import { BLOCKED_WAYBILLS, describeRefused, openWaybills, WaybillError } from '@/components/labels/openWaybills';
@@ -138,7 +139,7 @@ export function PreparationScreen() {
 
   return (
     <div className="max-w-4xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/ops/preparation')} />
       {/* A phone: the three figures share one row of equal boxes and the stock rule is a line of its own under them
           (two boxes on one row and the third beside a sentence was a ragged wrap). A desk: the row it has always been. */}
       <div className={phone ? 'grid grid-cols-3 gap-2 text-sm' : 'flex flex-wrap gap-3 text-sm'}>

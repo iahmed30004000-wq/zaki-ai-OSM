@@ -27,7 +27,6 @@ vi.mock('@/context/AppContext', () => ({
     currentUser: { id: 'u1', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: ['settlement.review', 'settlement.upload', 'settlement.approve'] },
   }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المطابقة</h1> }));
 vi.mock('@/components/ui/NextStep', () => ({ NextStepButton: () => null }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => async () => true, useAsk: () => async () => null }));
 vi.mock('@/components/screens/finance/DifferencesByPerson', () => ({ DifferencesByPerson: () => null }));

@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * A NEW MEMBER OF STAFF OPENS ON «ليل» — AND NOBODY WHO ALREADY WORKS HERE
+ * A NEW MEMBER OF STAFF OPENS ON «نظيف» — AND NOBODY WHO ALREADY WORKS HERE
  * IS TOUCHED, AND THE OWNER'S ROLE LOOK STILL ANSWERS FIRST.
  *
  * Three promises, each held by the doors themselves rather than by a
  * reading of the source:
- *   1. the two creation doors write «ليل» into the new person's own
+ *   1. the creation door writes «نظيف» into the new person's own
  *      column (called for real, with the database stubbed, and the row
  *      they hand to `create` inspected);
  *   2. a role the owner published a look for keeps it: the new hire's own
@@ -18,11 +18,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *      upsert, no migration, no backfill.
  *
  * ── THE MUTATIONS THIS WAS RUN AGAINST (each turned it red) ──
- *   · `newStaffTheme` returning «ليل» always       → the role-look test
+ *   · `newStaffTheme` returning «نظيف» always      → the role-look test
  *   · `systemTheme: …` deleted from /api/users      → the users-door test
  *   · `systemTheme: …` deleted from /api/moderators → the moderators-door test
  *   · `NEW_STAFF_THEME = 'lyl'` (a typo)            → «is a real theme»
- *   · an update path writing `systemTheme: 'layl'`  → the existing-users sweep
+ *   · an update path writing `systemTheme: 'clean'` → the existing-users sweep
+ *   · a second door writing a user's look           → «only two doors write a user's look»
+ *
+ * 18/11/2026 (R5) — RENAMED from a-new-member-of-staff-opens-on-layl.test.ts.
+ * It said «ليل» (`layl`); it says «نظيف» (`clean`) now, because the plan of
+ * 17/11 makes the new look what a new employee opens on. The three promises
+ * did not change — only the look. Everybody who already works here is
+ * OFFERED it once (src/components/shell/TryTheNewLook.tsx), and only their
+ * own press writes it, through /api/profile/theme.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -78,17 +86,17 @@ beforeEach(() => {
 });
 
 describe('the rule itself', () => {
-  it('— «ليل» is a real theme, and not one the first-load sheet carries, so it costs that sheet nothing', () => {
+  it('— «نظيف» is a real theme, and not one the first-load sheet carries, so it costs that sheet nothing', () => {
     expect(SYSTEM_THEMES.some((t) => t.key === NEW_STAFF_THEME)).toBe(true);
-    expect(NEW_STAFF_THEME).toBe('layl');
+    expect(NEW_STAFF_THEME).toBe('clean');
     expect((SHEET_THEMES as readonly string[]).includes(NEW_STAFF_THEME)).toBe(false);
   });
 
-  it('— no role look: the new person is given «ليل», and opens on it', () => {
-    expect(newStaffTheme(null)).toBe('layl');
-    expect(newStaffTheme(undefined)).toBe('layl');
-    expect(newStaffTheme('')).toBe('layl');
-    expect(openingTheme(newStaffTheme(null), null)).toBe('layl');
+  it('— no role look: the new person is given «نظيف», and opens on it', () => {
+    expect(newStaffTheme(null)).toBe('clean');
+    expect(newStaffTheme(undefined)).toBe('clean');
+    expect(newStaffTheme('')).toBe('clean');
+    expect(openingTheme(newStaffTheme(null), null)).toBe('clean');
   });
 
   it('— a role the owner published a look for: the own column stays empty, and the role answers', () => {
@@ -98,12 +106,12 @@ describe('the rule itself', () => {
 });
 
 describe('the two creation doors write it — called for real', () => {
-  it('— /api/users, with a role that has no look of its own: «ليل»', async () => {
+  it('— /api/users, with a role that has no look of its own: «نظيف»', async () => {
     db.role.findUnique.mockResolvedValue({ id: ROLE_ID, name: 'WAREHOUSE', companyId: null, systemTheme: null });
     const res = await createUser(post({ name: 'موظف جديد', email: 'new.hire@example.test', password: SAMPLE_PASSWORD, roleId: ROLE_ID }) as never);
     expect(res.status, await res.clone().text()).toBeLessThan(300);
     expect(tx.user.create).toHaveBeenCalledTimes(1);
-    expect(tx.user.create.mock.calls[0][0].data.systemTheme).toBe('layl');
+    expect(tx.user.create.mock.calls[0][0].data.systemTheme).toBe('clean');
   });
 
   it('— /api/users, with a role the owner gave «نهاري»: nothing written, so «نهاري» is what they open on', async () => {
@@ -115,11 +123,11 @@ describe('the two creation doors write it — called for real', () => {
     expect(openingTheme(data.systemTheme, 'day')).toBe('day');
   });
 
-  it('— /api/users, by the legacy role name (no role row, so no role look): «ليل»', async () => {
+  it('— /api/users, by the legacy role name (no role row, so no role look): «نظيف»', async () => {
     const res = await createUser(post({ name: 'موظف جديد', email: 'new.hire@example.test', password: SAMPLE_PASSWORD, role: 'MODERATOR' }) as never);
     expect(res.status, await res.clone().text()).toBeLessThan(300);
     expect(db.role.findUnique).not.toHaveBeenCalled();
-    expect(tx.user.create.mock.calls[0][0].data.systemTheme).toBe('layl');
+    expect(tx.user.create.mock.calls[0][0].data.systemTheme).toBe('clean');
   });
 
   // `/api/moderators` was the third door that made staff. It is closed now
@@ -141,7 +149,7 @@ describe('and nobody who already exists is touched', () => {
     });
 
   // One door now: `/api/moderators` is closed (410) and creates nobody.
-  it('— «ليل» is written only where a user is CREATED: the one door, through the one rule', () => {
+  it('— «نظيف» is written only where a user is CREATED: the one door, through the one rule', () => {
     const writers = walk(join(ROOT, 'src'))
       .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f))
       .filter((f) => /newStaffTheme\(|NEW_STAFF_THEME/.test(stripComments(readFileSync(f, 'utf8'))))
@@ -163,7 +171,7 @@ describe('and nobody who already exists is touched', () => {
     const offenders: string[] = [];
     for (const f of walk(join(ROOT, 'src')).filter((x) => /\.(ts|tsx)$/.test(x) && !/\.test\.tsx?$/.test(x))) {
       const body = stripComments(readFileSync(f, 'utf8'));
-      if (/systemTheme:\s*'layl'|system_theme\s*=\s*'layl'/.test(body)) offenders.push(f.slice(ROOT.length + 1));
+      if (/systemTheme:\s*'(clean|layl)'|system_theme\s*=\s*'(clean|layl)'/.test(body)) offenders.push(f.slice(ROOT.length + 1));
     }
     expect(offenders).toEqual([]);
   });
@@ -172,6 +180,33 @@ describe('and nobody who already exists is touched', () => {
     const dir = join(ROOT, 'prisma', 'migrations');
     const sql = walk(dir).filter((f) => f.endsWith('.sql'));
     expect(sql.length).toBeGreaterThan(0);
-    for (const f of sql) expect(readFileSync(f, 'utf8'), f).not.toMatch(/layl/);
+    for (const f of sql) expect(readFileSync(f, 'utf8'), f).not.toMatch(/layl|'clean'/);
+  });
+
+  /*
+   * ONLY TWO DOORS WRITE A PERSON'S LOOK: the creation door (through
+   * `newStaffTheme`) and the person's own press (`/api/profile/theme` — the
+   * profile's picker and the shell's «جرّب الشكل الجديد» line both use it).
+   * Every `user.create/update/upsert(…)` in the source is read to its closing
+   * bracket; a raw statement naming the column is a writer too.
+   */
+  it("— only two doors write a user's look: /api/users (creation) and /api/profile/theme (their own press)", () => {
+    const writers = new Set<string>();
+    for (const f of walk(join(ROOT, 'src')).filter((x) => /\.(ts|tsx)$/.test(x) && !/\.test\.tsx?$/.test(x))) {
+      const body = stripComments(readFileSync(f, 'utf8'));
+      const rel = f.slice(ROOT.length + 1).split('\\').join('/');
+      const call = /\buser\.(create|createMany|update|updateMany|upsert)\(/g;
+      for (let m = call.exec(body); m; m = call.exec(body)) {
+        let depth = 0;
+        let end = m.index + m[0].length - 1;
+        for (; end < body.length; end++) {
+          if (body[end] === '(') depth++;
+          else if (body[end] === ')' && --depth === 0) break;
+        }
+        if (/systemTheme/.test(body.slice(m.index, end))) writers.add(rel);
+      }
+      if (/(UPDATE|INSERT)[^;]*system_theme/i.test(body)) writers.add(rel);
+    }
+    expect([...writers].sort()).toEqual(['src/app/api/profile/theme/route.ts', 'src/app/api/users/route.ts']);
   });
 });

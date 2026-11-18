@@ -132,23 +132,45 @@ const r = (
   path, label, icon, permissions, ...(step ? { step } : {}),
 });
 
+/**
+ * NINE GROUPS, TEN LINES (18/11, the owner: «القائمة من 16 سطر لـ9»).
+ *
+ * Each line is one kind of work. What moved is only which group a screen
+ * belongs to — every path, every permission, every title stays as it was, so
+ * the guard, the pills, the bookmarks and the notification links mean the
+ * same screens. Ten and not nine until the storefront's two lines fold into
+ * one (its own request): 1+1+1+1+1+1+1+2+1 = 10.
+ */
 export const NAV: NavGroup[] = [
   {
-    key: 'main',
-    label: 'الرئيسية',
+    // «اليوم»: the first screen of the day, alone on its line.
+    key: 'today',
+    label: 'اليوم',
+    icon: 'LayoutDashboard',
     hub: 'loose',
+    routes: [r('/dashboard', 'لوحة التحكم', 'LayoutDashboard', ['dashboard.view'])],
+  },
+  {
+    // «الطلبات»: every door an order comes in by, one line. The key stays `main` — the arrangement door's
+    // canary builds a real menu for a holder of `orders.view` and expects it.
+    key: 'main',
+    label: 'الطلبات',
+    icon: 'ShoppingCart',
+    hub: 'tabs',
     routes: [
-      r('/dashboard', 'لوحة التحكم', 'LayoutDashboard', ['dashboard.view']),
       r('/orders', 'الطلبات', 'ShoppingCart', ['orders.view']),
       // Beside the orders, on the same key: whoever sees the orders sees the carts (contract oms-lp.v1 §9, 15/11).
       r('/abandoned-carts', 'السلات المهجورة', 'CartAbandoned', ['orders.view']),
       r('/customers', 'العملاء', 'Users', ['customers.view', 'customers.view_basic']),
-      r('/products', 'المنتجات', 'Package', ['products.view']),
+      // The two inboxes: a conversation that arrives is somebody who wants to order. Their SETUP stays with
+      // the rest of the setup (`/settings/links`) — an operation sits with the work, its configuration apart.
+      r('/growth/telegram/orders', 'طلبات تلجرام', 'Send', ['telegram.view']),
+      r('/growth/whatsapp/inbox', 'صندوق الواتساب', 'MessageCircle', ['whatsapp.view']),
     ],
   },
   {
     key: 'confirmation',
-    label: 'مركز التأكيد',
+    label: 'التأكيد',
     icon: 'ClipboardList',
     hub: 'tabs',
     routes: [
@@ -165,6 +187,9 @@ export const NAV: NavGroup[] = [
       // An agent's postponed orders are a tab of «طلباتي»; the old addresses redirect.
       r('/confirmation/follow-up', 'المتابعة', 'CalendarClock', ['confirmation.supervise']),
       r('/confirmation/issues', 'الإشكالات', 'AlertTriangle', ['confirmation.issues']),
+      // «قواعد مركز التأكيد» (18/11): the eight cards of the confirmation rules, moved here from «إعدادات النظام». On `settings.view`, the key those cards' own doors already read —
+      // a holder of it who holds no `confirmation.*` key opens this page, and the cards behave as they always did (each asks its own key again).
+      r('/confirmation/rules', 'قواعد مركز التأكيد', 'ShieldCheck', ['settings.view']),
     ],
   },
   {
@@ -187,13 +212,14 @@ export const NAV: NavGroup[] = [
   },
   {
     key: 'inventory',
-    label: 'المخزون',
+    label: 'المخزون والمنتجات',
     icon: 'Boxes',
     hub: 'tabs',
-    // Stock has one home: what you have, the two doors it comes in through,
-    // and the history. Production used to sit beside "Products" as if it were
-    // a different subject; it is the door for the goods you make.
+    // The goods, in one place: what we sell, what we have, the door for the
+    // goods we make, and the history. Production used to sit beside "Products"
+    // as if it were a different subject; it is the door for the goods you make.
     routes: [
+      r('/products', 'المنتجات', 'Package', ['products.view']),
       r('/inventory/balances', 'أرصدة المخزون', 'Boxes', ['inventory.view']),
       r('/manufacturing', 'تشغيلات الإنتاج', 'Factory', ['production.view']),
       r('/inventory/movements', 'حركات المخزون', 'ArrowLeftRight', ['inventory.view']),
@@ -219,57 +245,24 @@ export const NAV: NavGroup[] = [
       r('/finance/wallets', 'المحافظ والحركات', 'Wallet', ['finance.cashbox_view']),
       r('/finance/transfers', 'التحويلات', 'Repeat', ['finance.cashbox_view']),
       r('/finance/profit', 'الأرباح', 'TrendingUp', ['finance.view']),
-    ],
-  },
-  {
-    key: 'control',
-    label: 'الرقابة',
-    icon: 'ShieldCheck',
-    hub: 'tabs',
-    routes: [
-      r('/control/change-requests', 'طلبات التعديل', 'FilePen', ['control.change_requests']),
-      r('/control/discount-alerts', 'تنبيهات الخصم', 'BadgePercent', ['control.discount_alerts']),
-      // «خصومات الموظفين», not «الخصومات»: it sat beside «تنبيهات الخصم», and
-      // one is money taken off a salary while the other is a price cut
-      // given to a customer. Two words from one root, one row apart.
-      r('/control/penalties', 'خصومات الموظفين', 'ShieldQuestion', ['penalties.view']),
-      r('/control/audit', 'سجل التدقيق', 'ScrollText', ['audit.view']),
-      r('/control/blacklist', 'القائمة السوداء', 'Ban', ['control.blacklist']),
+      // Commission is money owed to the staff, so it is a tab of «المال» (18/11). Its address stays under
+      // /settings — the one screen under /settings that is not in «الإدارة».
+      r('/settings/commission', 'العمولات', 'Percent', ['commission.view']),
     ],
   },
   {
     key: 'growth',
-    // «والذكاء» because the assistant, the intelligence centre and the test
-    // bench are most of what stands here, and a group named for one of
-    // its three subjects made people look for the other two elsewhere.
-    label: 'النمو والذكاء',
+    // «التقارير» (18/11): what happened and what to try next — the numbers, the
+    // campaigns, the intelligence centre and the bench.
+    label: 'التقارير',
     icon: 'Gauge',
     hub: 'tabs',
     routes: [
       // The DETAIL of the dashboard (owner, 24/10): a link there («التفاصيل»), not a second
-      // menu line, for whoever can open the dashboard. Whoever cannot keeps it as a line.
+      // menu line, for whoever can open the dashboard. Whoever cannot keeps it as a line — the first tab here.
+      // (18/11: the fold STAYS for now — the arrangement door's canary pins it unedited; see the PR of R6.)
       { ...r('/growth/performance', 'لوحة الأداء', 'Gauge', ['reports.view']), foldedUnder: '/dashboard' },
       r('/growth/campaigns', 'الحملات', 'Megaphone', ['campaigns.view']),
-
-      /**
-       * THE AI'S WORK IS HERE; ITS WIRING IS IN THE SETTINGS.
-       *
-       * This block used to carry «الذكاء الاصطناعي والنصوص» too, on the
-       * argument that somebody who wants the assistant to answer
-       * differently should not have to know its words live in settings
-       * while its answers live in growth. The argument is sound, and this
-       * reverses it anyway — because the contract has a rule that placement
-       * was breaking: an OPERATION sits with the work and its CONFIGURATION
-       * sits in settings. The WhatsApp inbox is here and its setup is
-       * there; the same has to hold for the model. The provider, the key,
-       * the address of a server on the owner's own machine and the house
-       * prompts are configuration. Asking the assistant a question is work.
-       *
-       * They are one click apart either way, which was the point of the
-       * old argument; and the group is named for what is DONE here.
-       */
-      // The bubble on every screen is the same chat; this page is its «افتح كاملاً» (owner, 24/10).
-      { ...r('/assistant', 'المساعد الذكي', 'Bot', ['ai.use']), offMenu: true },
       r('/growth/intelligence', 'مركز الذكاء', 'Lightbulb', ['growth.intelligence']),
       /*
        * THE BENCH, BESIDE THE INTELLIGENCE CENTRE AND NOT UNDER PRODUCTS.
@@ -284,25 +277,21 @@ export const NAV: NavGroup[] = [
        * should I do next», and both are read by the person who decides it.
        */
       r('/growth/bench', 'منصّة التجريب', 'FlaskConical', ['growth.intelligence']),
-    ],
-  },
-  {
-    // The two inboxes, as a group of their own. They sat at the bottom of
-    // النمو, and a conversation that arrives is not a growth question: it is
-    // somebody who wrote to us. Their SETUP is in the settings, as before —
-    // an operation sits with the work and its configuration with the rest.
-    key: 'chats',
-    label: 'المحادثات',
-    icon: 'MessageCircle',
-    hub: 'tabs',
-    routes: [
-      r('/growth/whatsapp/inbox', 'صندوق الواتساب', 'MessageCircle', ['whatsapp.view']),
-      r('/growth/telegram/orders', 'طلبات تلجرام', 'Send', ['telegram.view']),
+      /**
+       * THE AI'S WORK IS HERE; ITS WIRING IS IN THE SETTINGS.
+       *
+       * An OPERATION sits with the work and its CONFIGURATION sits in
+       * settings. The provider, the key, the address of a server on the
+       * owner's own machine and the house prompts are configuration
+       * (`/settings/ai`). Asking the assistant a question is work.
+       */
+      // The bubble on every screen is the same chat; this page is its «افتح كاملاً» (owner, 24/10).
+      { ...r('/assistant', 'المساعد الذكي', 'Bot', ['ai.use']), offMenu: true },
     ],
   },
   {
     // The shop's own face. Named «واجهة المتجر» and not «المتجر», because
-    // «متجر التطبيقات» sits one group below and two menu entries that both
+    // «متجر التطبيقات» sits in «الإدارة» and two menu entries that both
     // read "store" are two entries nobody can tell apart.
     //
     // The rule that divides this group from /settings: anything about how
@@ -343,23 +332,33 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
-    key: 'settings',
-    label: 'الإعدادات',
-    icon: 'Settings',
+    /**
+     * «الإدارة»: HOW THE SYSTEM RUNS, AND WHO RUNS IT — ONE LINE, A PAGE OF CARDS.
+     *
+     * The settings, the apps, the schedule, the staff and their permissions,
+     * and the control screens (18/11: «الإعدادات» «الرقابة» «الإدارة» were three
+     * lines). The line opens the first screen this person may open here — the
+     * door `/settings` for whoever may open it, else their own first screen
+     * (`hubHref`) — and every other screen carries «← الإدارة» back to it.
+     */
+    key: 'admin',
+    label: 'الإدارة',
+    icon: 'UserCog',
     hub: 'cards',
     routes: [
       /**
-       * THE FRONT DOOR OF TWELVE SCREENS.
+       * THE FRONT DOOR.
        *
-       * Twelve entries under one heading is twelve lines in a menu that is
-       * read all day, and a strip of twelve pills above every settings
-       * screen would be the same clutter moved up a row. So the menu holds
-       * ONE line, and this page is what it opens: eight cards, each naming
-       * what it holds and linking to the screens a person may open — and a
-       * card with nothing they may open is not drawn.
+       * A strip of twenty pills above every screen here would be the same
+       * clutter moved up a row. So the menu holds ONE line, and this page is
+       * what it opens: cards, each naming what it holds and linking to the
+       * screens a person may open — and a card with nothing they may open is
+       * not drawn.
        *
-       * Its permissions are the union of the screens it fronts: whoever may
-       * open any one of them may open the door to it, and nobody else.
+       * Its permissions are the union of the SETTINGS screens it fronts (as on
+       * 18/11, pinned): whoever may open any one of them may open the door. The
+       * staff, permissions and control screens are cards on it too, and somebody
+       * who may open one of those but not the door reaches it through the line.
        */
       r('/settings', 'الإعدادات', 'Settings', ['geo.view', 'settings.view', 'commission.view', 'whatsapp.manage', 'telegram.connect', 'apps.view']),
       r('/settings/geo', 'البلدان والمتاجر', 'Globe', ['geo.view']),
@@ -377,7 +376,6 @@ export const NAV: NavGroup[] = [
        * Aleppo exists, and the two now read in that order.
        */
       r('/settings/couriers', 'شركات الشحن وأجورها', 'Truck', ['settings.view']),
-      r('/settings/commission', 'العمولات', 'Percent', ['commission.view']),
       r('/settings/channels', 'قنوات الطلبات', 'Radio', ['settings.view']),
       r('/settings/tracking', 'بكسل الإعلانات', 'Radar', ['settings.view']),
       // «الربط»: WhatsApp and Telegram, one card each (owner, 24/10). Each card is drawn only
@@ -386,40 +384,38 @@ export const NAV: NavGroup[] = [
       r('/settings/links', 'الربط', 'MessageCircle', ['whatsapp.manage', 'telegram.connect']),
 
       /**
-       * WHAT WAS CONFIGURED FROM OTHER GROUPS, NOW CONFIGURED HERE.
+       * WHAT WAS CONFIGURED FROM OTHER GROUPS, CONFIGURED HERE.
        *
-       * Three entries arrive, each from a group it was the odd one out of:
+       *   • «الذكاء الاصطناعي والنصوص» — the assistant's wiring; asking it is in «التقارير».
+       *   • «متجر التطبيقات» and «التطبيقات المثبتة» — installing an app and
+       *     wiring it up IS configuration.
+       *   • «المهام المجدولة» — the schedule the system runs itself by; its own
+       *     gate is `settings.view`, and it sits on the system card.
        *
-       *   • «الذكاء الاصطناعي والنصوص» — from النمو, where it sat beside
-       *     the assistant it configures. See the note there.
-       *   • «متجر التطبيقات» and «التطبيقات المثبتة» — a group of their own
-       *     with two entries, which is a heading you open to find two
-       *     links. Installing an app and wiring it up IS configuration.
-       *   • «المهام المجدولة» — from الإدارة, where it sat beside the
-       *     staff and the permissions although it is the schedule the
-       *     system runs itself by, and its own gate is `settings.view`.
-       *
-       * The contract had said «apps appear ONCE, as group 8, not in
-       * settings». What it was protecting was the ONCE — the same two
-       * screens in a main menu, in settings and in a group of their own —
-       * and that holds. The owner's plan of 21/10 put them here.
+       * The contract had said «apps appear ONCE». What it was protecting was
+       * the ONCE — the same two screens in a main menu, in settings and in a
+       * group of their own — and that holds: they are here and nowhere else.
        */
       r('/settings/ai', 'الذكاء الاصطناعي والنصوص', 'Bot', ['settings.view']),
       r('/apps/store', 'متجر التطبيقات', 'LayoutGrid', ['apps.view']),
       r('/apps/installed', 'التطبيقات المثبتة', 'Blocks', ['apps.view']),
       r('/settings/system', 'إعدادات النظام', 'Settings', ['settings.view']),
       r('/admin/jobs', 'المهام المجدولة', 'Timer', ['settings.view']),
-    ],
-  },
-  {
-    key: 'admin',
-    label: 'الإدارة',
-    icon: 'UserCog',
-    hub: 'tabs',
-    routes: [
       r('/admin/users', 'الموظفين', 'UserCog', ['users.view']),
       r('/admin/permissions', 'الصلاحيات', 'ShieldCheck', ['roles.view']),
-      r('/admin/profile', 'الملف الشخصي', 'CircleUser', null),
+      // The control screens — what was asked to change, what was given off, what was taken from a salary,
+      // who did what, and who is refused.
+      r('/control/change-requests', 'طلبات التعديل', 'FilePen', ['control.change_requests']),
+      r('/control/discount-alerts', 'تنبيهات الخصم', 'BadgePercent', ['control.discount_alerts']),
+      // «خصومات الموظفين», not «الخصومات»: it sat beside «تنبيهات الخصم», and
+      // one is money taken off a salary while the other is a price cut
+      // given to a customer. Two words from one root, one row apart.
+      r('/control/penalties', 'خصومات الموظفين', 'ShieldQuestion', ['penalties.view']),
+      r('/control/audit', 'سجل التدقيق', 'ScrollText', ['audit.view']),
+      r('/control/blacklist', 'القائمة السوداء', 'Ban', ['control.blacklist']),
+      // Everybody's own page, so not a line of anybody's menu: its door is the name in the header and the
+      // line in the phone's «المزيد» sheet. It stays in this group (and in the registry) for its guard and title.
+      { ...r('/admin/profile', 'الملف الشخصي', 'CircleUser', null), offMenu: true },
     ],
   },
 ];

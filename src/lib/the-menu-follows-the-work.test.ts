@@ -5,6 +5,7 @@ vi.mock('./db', () => ({ db: {} }));
 
 import { ALL_ROUTES, NAV, canAccessRoute, findRoute, visibleNav } from './route-registry';
 import { repoFile, stripComments } from './guard-source';
+import { SETTINGS_CARDS } from './settings-home';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -131,8 +132,10 @@ describe('a number belongs to the SCREEN, not to its place in the list', () => {
 });
 
 describe('operations sit with the work, and configuration sits in settings', () => {
+  // 18/11 (R6): the settings group is «الإدارة» (key `admin`; the key `settings` went with «الرقابة»'s `control` and «المحادثات»'s
+  // `chats`). Every rule below is the same rule, written on the new keys and pinned as exact lists by name.
   it('— the AI’s wiring is in settings, beside every other thing that is wired', () => {
-    expect(pathsOf('settings')).toContain('/settings/ai');
+    expect(pathsOf('admin')).toContain('/settings/ai');
     expect(pathsOf('growth')).not.toContain('/settings/ai');
   });
 
@@ -140,38 +143,49 @@ describe('operations sit with the work, and configuration sits in settings', () 
     for (const path of ['/assistant', '/growth/intelligence', '/growth/bench']) {
       expect(pathsOf('growth'), path).toContain(path);
     }
-    expect(group('growth').label).toBe('النمو والذكاء');
+    // 18/11 (R6): was «النمو والذكاء»; the line is «التقارير», and it opens on the performance board.
+    expect(group('growth').label).toBe('التقارير');
+    expect(pathsOf('growth')).toEqual(['/growth/performance', '/growth/campaigns', '/growth/intelligence', '/growth/bench', '/assistant']);
   });
 
   it('and the WhatsApp and Telegram pairing is the same shape: inbox here, setup there', () => {
     // The pairing the contract already had, which the AI was the exception to.
-    // The inboxes are their own group, «المحادثات», since the menu was folded.
-    expect(pathsOf('chats')).toEqual(['/growth/whatsapp/inbox', '/growth/telegram/orders']);
+    // 18/11 (R6): was their own group, «المحادثات» (`chats`). A conversation that arrives is somebody who wants to order, so the
+    // inboxes are the last two tabs of «الطلبات» (`main`).
+    expect(pathsOf('main')).toEqual(['/orders', '/abandoned-carts', '/customers', '/growth/telegram/orders', '/growth/whatsapp/inbox']);
     // …and the setup is ONE page now, «الربط», with a card for each (owner, 24/10).
-    expect(pathsOf('settings')).toContain('/settings/links');
-    expect(pathsOf('settings')).not.toContain('/settings/whatsapp');
-    expect(pathsOf('settings')).not.toContain('/settings/telegram');
+    expect(pathsOf('admin')).toContain('/settings/links');
+    expect(pathsOf('admin')).not.toContain('/settings/whatsapp');
+    expect(pathsOf('admin')).not.toContain('/settings/telegram');
   });
 
-  it('and nothing under /settings is filed in another group', () => {
-    for (const g of NAV.filter((x) => x.key !== 'settings')) {
-      for (const route of g.routes) {
-        expect(route.path.startsWith('/settings/'), `${route.path} في «${g.label}»`).toBe(false);
-      }
-    }
+  it('and nothing under /settings is filed in another group — but «العمولات», by name', () => {
+    // 18/11 (R6): the one exception — money owed to the staff is a tab of «المال»; its address did not move.
+    const elsewhere = NAV.filter((x) => x.key !== 'admin').flatMap((g) =>
+      g.routes.filter((route) => route.path.startsWith('/settings/')).map((route) => `${g.key} ${route.path}`)
+    );
+    expect(elsewhere).toEqual(['finance /settings/commission']);
   });
 
-  it('and the only things in settings that are NOT /settings/… are the front door and the three that arrived', () => {
-    // Pinned by name so a fifth cannot drift in unnoticed: settings is the
-    // group that grows by one «while we're here» at a time. The front door is
-    // `/settings` itself — the page of cards the menu's one line opens.
-    const arrived = pathsOf('settings').filter((p) => !p.startsWith('/settings/'));
-    expect(arrived).toEqual(['/settings', '/apps/store', '/apps/installed', '/admin/jobs']);
+  it('and the only things in «الإدارة» that are NOT /settings/… are the door, the three that arrived, the staff and the control screens', () => {
+    // Pinned by name so another cannot drift in unnoticed: this is the group that grows by one «while we're here» at a time.
+    // The front door is `/settings` itself — the page of cards the menu's one line opens.
+    // 18/11 (R6): was ['/settings', '/apps/store', '/apps/installed', '/admin/jobs'] (the settings group) — «الإدارة»'s staff and
+    // «الرقابة»'s five joined, and the profile (off the menu).
+    const arrived = pathsOf('admin').filter((p) => !p.startsWith('/settings/'));
+    expect(arrived).toEqual([
+      '/settings', '/apps/store', '/apps/installed', '/admin/jobs', '/admin/users', '/admin/permissions',
+      '/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/blacklist',
+      '/admin/profile',
+    ]);
   });
 
-  it('and the schedule is no longer filed with the staff', () => {
-    expect(pathsOf('admin')).not.toContain('/admin/jobs');
-    expect(pathsOf('admin')).toEqual(['/admin/users', '/admin/permissions', '/admin/profile']);
+  it('and the schedule is on the system card, beside the system settings, on its own gate', () => {
+    // 18/11 (R6): was «no longer filed with the staff» — the staff and the schedule are one group now, so what is pinned is the CARD:
+    // the schedule is on «النظام», not on «الموظفون والصلاحيات».
+    const system = SETTINGS_CARDS.find((c) => c.key === 'system')!;
+    expect(system.paths).toEqual(['/settings/system', '/admin/jobs']);
+    expect(SETTINGS_CARDS.find((c) => c.key === 'staff')!.paths).toEqual(['/admin/users', '/admin/permissions']);
     // Its own gate did not move: only the shelf it stands on.
     expect(findRoute('/admin/jobs')!.permissions).toEqual(['settings.view']);
   });
@@ -205,16 +219,19 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
   it('— every one of the 52 screens is still there, once, at its own address — and the front door is the 53rd', () => {
     const paths = ALL_ROUTES.map((r) => r.path);
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
-    expect(paths).toHaveLength(53);
-    expect(new Set(paths).size).toBe(53);
+    // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(54);
+    expect(new Set(paths).size).toBe(54);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);
     }
   });
 
-  it('and the eleven groups are the whole menu, with none left empty', () => {
-    expect(NAV).toHaveLength(11);
+  it('and the nine groups are the whole menu, with none left empty', () => {
+    // 18/11 (R6): 11 → 9 — «المحادثات» folded into «الطلبات», «الرقابة» and «الإعدادات» into «الإدارة», and «اليوم» is new:
+    // 11 − 3 + 1 = 9.
+    expect(NAV).toHaveLength(9);
     for (const g of NAV) expect(g.routes.length, g.key).toBeGreaterThan(0);
   });
 

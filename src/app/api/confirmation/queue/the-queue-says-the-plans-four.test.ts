@@ -43,7 +43,7 @@ vi.mock('@/lib/confirmation-queue', async (orig) => ({
 }));
 
 import { GET } from './route';
-import { planWords, planRule } from '@/lib/pull-plan-words';
+import { offModeRule, planWords, planRule, returnsModeRule } from '@/lib/pull-plan-words';
 import { RETURNS_MODE } from '@/lib/confirmation-queue';
 
 const PLAN_RULE = planRule(RETURNS_MODE.idleBusinessMinutes);
@@ -135,11 +135,14 @@ describe('ON — the plan’s counter, in the server’s words', () => {
 });
 
 describe('OFF — byte for byte what it was (the pin)', () => {
-  const OFF_KEYS = ['waiting', 'waitingNew', 'waitingReturned', 'waitingDue', 'waitingOnADate', 'reservedForColleagues', 'owned', 'caps', 'leadDays', 'canPull', 'refusal', 'autoReleased', 'orders'];
+  // 18/11 (C1 review): ONE more key, `waitingRule`, after `waitingDue` — the panel's sentence is written by the server now (the desk's bundle is at its ceiling). With every switch off it is the
+  // old sentence word for word (pinned below), with the rule's own two constants in it.
+  const OFF_KEYS = ['waiting', 'waitingNew', 'waitingReturned', 'waitingDue', 'waitingRule', 'waitingOnADate', 'reservedForColleagues', 'owned', 'caps', 'leadDays', 'canPull', 'refusal', 'autoReleased', 'orders'];
 
   it('the switch off: the same keys in the same order, the three-part counter asked, the plan’s counter never, no waitingPlan', async () => {
     const body = await read();
     expect(Object.keys(body)).toEqual(OFF_KEYS);
+    expect(body.waitingRule).toBe('طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال 2 يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.');
     expect(body).toMatchObject({ waiting: 425, waitingNew: 5, waitingReturned: 417, waitingDue: 3, waitingOnADate: 67 });
     expect(queue.waitingByPlan).not.toHaveBeenCalled();
     expect(queue.waitingBreakdown).toHaveBeenCalledTimes(1);
@@ -151,11 +154,28 @@ describe('OFF — byte for byte what it was (the pin)', () => {
     sw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
     rsw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
     const body = await read();
+    // 18/11 (C1, finding #10 of the rules map): this case was «the same keys» — and under the legacy mode the old panel sentence («المؤجّل اللي موعده خلال 2 يوم… بعد 90 دقيقة عمل») is FALSE (a postponed
+    // order is pulled at its date, and the untouched release is the mode's idle limit). The answer now carries ONE more key, `waitingRule`, right after `waitingDue`; with the mode fully off it does
+    // not (the pin above), and every other key is what it was.
     expect(Object.keys(body)).toEqual(OFF_KEYS);
+    expect(body.waitingRule).toBe(returnsModeRule(RETURNS_MODE.idleBusinessMinutes));
     expect(queue.waitingByPlan).not.toHaveBeenCalled();
     expect(queue.waitingBreakdown.mock.calls[0][4]).toMatchObject({ readyCut: expect.any(Date) });
     expect(queue.waitingBreakdown.mock.calls[0][4]).not.toHaveProperty('cadence');
     expect(body).not.toHaveProperty('waitingPlan');
     expect(body.waitingDue).toBe(3);
+  });
+
+  it('the legacy mode’s sentence is the mode’s truth: its idle limit, no «90», no «خلال 2 يوم» — and with the switches fully off it is the old sentence', async () => {
+    sw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
+    rsw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
+    const rule = (await read()).waitingRule as string;
+    expect(rule).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
+    expect(rule).toContain('المؤجّل اللي وصل موعده');
+    expect(rule).not.toContain('90');
+    expect(rule).not.toContain('خلال');
+    sw.value = OFF;
+    rsw.value = OFF;
+    expect((await read()).waitingRule).toBe(offModeRule(2, 90));
   });
 });

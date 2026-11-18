@@ -46,7 +46,6 @@ vi.mock('next/link', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ locale: 'ar', isRtl: true, t: { cancel: 'تراجع' }, currentUser: user.current }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => vi.fn(async () => true),
   useAsk: () => vi.fn(async () => null),
@@ -728,7 +727,9 @@ describe('«العمولات»', () => {
     const buttons = screen.getAllByRole('button', { name: /قاعدة جديدة/ });
     expect(buttons).toHaveLength(1);
     expect(buttons[0].className).toContain('w-full');
-    expect(screen.getByRole('heading', { name: 'العنوان' }).nextElementSibling).toBe(buttons[0]);
+    // 18/11 (R3): was heading «العنوان» (the mocked ScreenTitle) and its next sibling. The real PageHeader is drawn now: the
+    // h1 is the registry's «العمولات», and the button is the first thing after the header that holds it.
+    expect(screen.getByRole('heading', { level: 1, name: 'العمولات' }).closest('header')!.nextElementSibling).toBe(buttons[0]);
   });
 
   it('FIN-20 DESK: it is in the header of the rules card, as it was', async () => {

@@ -4,6 +4,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { RiCloseLine, RiDeleteBinLine, RiLoader4Line, RiRobot2Line, RiSendPlaneLine, RiSubtractLine } from '@remixicon/react';
 import { useBulkActive } from '@/components/shell/BulkBar';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 import { arTime } from '@/lib/format';
 import { useAppOptional } from '@/context/AppContext';
 import { dockKey } from '@/lib/dock-memory';
@@ -173,6 +176,14 @@ function AiDockSurface() {
     }
   }
 
+  /*
+   * THE ONE PRESS HERE THAT STAYS A RAW BUTTON (18/11, R17b — for R19's allowed list).
+   *
+   * The bubble is a round 48px control pinned to the corner. The kit's square is 40 or 44
+   * and is positioned in the flow; laid over this one it would fight the corner, the size
+   * and the fill on stylesheet order. And its size is a measured fact: the room under the
+   * page is computed from THIS class string (`the-assistant-clears-the-last-row`).
+   */
   if (!open) {
     return (
       <button
@@ -214,10 +225,20 @@ function AiDockSurface() {
       // is the whole difference between an assistant and an interruption.
       /* The open panel clears the bar for the same reason the button does. */
       style={{ bottom: 'calc(var(--sys-mobile-nav-h) + env(safe-area-inset-bottom) + 0.75rem)' }}
-      className="fixed end-4 z-40 flex h-[min(32rem,calc(100vh-8rem))] w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] shadow-overlay md:!bottom-4 md:h-[min(32rem,calc(100vh-2rem))]"
+      /* 18/11 (R17b): this element only places the panel — corner, width, height. The
+         surface itself is the kit's `Card plain` inside it: a panel over the page, not a
+         page-level card, so it wears no theme ornament. */
+      className="fixed end-4 z-40 h-[min(32rem,calc(100vh-8rem))] w-[min(22rem,calc(100vw-2rem))] md:!bottom-4 md:h-[min(32rem,calc(100vh-2rem))]"
     >
-      <header className="flex items-center justify-between border-b border-[var(--sys-border)] bg-[var(--sys-heading)] px-3 py-2">
-        <span className="flex items-center gap-2 text-xs font-bold text-[var(--sys-primary-foreground)]">
+      <Card plain className="flex h-full flex-col overflow-hidden shadow-overlay">
+      {/*
+        18/11 (R17b): the header wore the heading colour as a fill, with its own
+        pale buttons — the one dark bar in the product. It is the card's own
+        header now, and its three presses are the kit's `IconButton` (same
+        names, same tooltips, a 44px square on a phone as before).
+      */}
+      <header className="flex items-center justify-between border-b border-[var(--sys-border)] px-3 py-2">
+        <span className="flex items-center gap-2 text-sm font-semibold text-[var(--sys-heading)]">
           <RiRobot2Line className="h-4 w-4" /> المساعد الذكي
         </span>
         <span className="flex items-center gap-0.5">
@@ -225,36 +246,21 @@ function AiDockSurface() {
               the assistant, and this is how it opens wide. */}
           <Link
             href="/assistant"
-            className="rounded-lg px-2 text-xs font-medium text-[var(--sys-muted)] hover:bg-[var(--sys-card)]/10 hover:text-[var(--sys-primary-foreground)]"
+            className="rounded-lg px-2 text-note font-medium text-[var(--sys-primary)] hover:underline"
           >
             افتح كاملاً
           </Link>
           {msgs.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setMsgs([])}
-              aria-label="ابدأ محادثة جديدة" title="ابدأ محادثة جديدة"
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted)] hover:bg-[var(--sys-card)]/10 hover:text-[var(--sys-primary-foreground)]"
-            >
+            <IconButton size="sm" label="ابدأ محادثة جديدة" onClick={() => setMsgs([])}>
               <RiDeleteBinLine className="h-4 w-4" />
-            </button>
+            </IconButton>
           )}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="تصغير" title="تصغير"
-            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted)] hover:bg-[var(--sys-card)]/10 hover:text-[var(--sys-primary-foreground)]"
-          >
+          <IconButton size="sm" label="تصغير" onClick={() => setOpen(false)}>
             <RiSubtractLine className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => { setMsgs([]); setOpen(false); }}
-            aria-label="إغلاق ومسح" title="إغلاق ومسح"
-            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted)] hover:bg-[var(--sys-card)]/10 hover:text-[var(--sys-primary-foreground)]"
-          >
+          </IconButton>
+          <IconButton size="sm" label="إغلاق ومسح" onClick={() => { setMsgs([]); setOpen(false); }}>
             <RiCloseLine className="h-4 w-4" />
-          </button>
+          </IconButton>
         </span>
       </header>
 
@@ -262,20 +268,17 @@ function AiDockSurface() {
         {msgs.length === 0 ? (
           <div className="pt-4 text-center">
             <RiRobot2Line className="mx-auto h-6 w-6 text-[var(--sys-border-strong)]" />
-            <p className="mt-2 text-xs font-semibold text-[var(--sys-foreground)]">اسأل عن أرقامك</p>
-            <p className="mx-auto mt-1 max-w-[16rem] text-xs leading-relaxed text-[var(--sys-muted)]">
+            <p className="mt-2 text-sm font-semibold text-[var(--sys-foreground)]">اسأل عن أرقامك</p>
+            <p className="mx-auto mt-1 max-w-[16rem] text-note text-[var(--sys-muted)]">
               يرى بيانات هذا المتجر وحده، وبحدود صلاحياتك.
             </p>
             <div className="mt-3 space-y-1.5">
+              {/* `ask` keeps its own `busy` flag, so the press is fire-and-forget: the kit's
+                  promise lock is not a second one stacked on it. */}
               {OPENERS.map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  onClick={() => void ask(o)}
-                  className="min-h-11 md:min-h-0 inline-flex items-center block w-full rounded-lg border border-[var(--sys-border)] px-2.5 py-1.5 text-xs text-[var(--sys-foreground)] transition hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-                >
+                <Button key={o} variant="secondary" size="sm" className="w-full" onClick={() => { void ask(o); }}>
                   {o}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -283,14 +286,14 @@ function AiDockSurface() {
           msgs.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
                     : 'bg-[var(--sys-surface-strong)] text-[var(--sys-heading)]'
                 }`}
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
-                <p className={`mt-0.5 text-xs ${m.role === 'user' ? 'text-[var(--sys-primary-foreground)]/60' : 'text-[var(--sys-muted)]'}`}>
+                <p className={`mt-0.5 text-note ${m.role === 'user' ? 'text-[var(--sys-primary-foreground)]/60' : 'text-[var(--sys-muted)]'}`}>
                   {m.at}
                 </p>
               </div>
@@ -299,7 +302,7 @@ function AiDockSurface() {
         )}
         {busy && (
           <div className="flex justify-end">
-            <span className="flex items-center gap-1 rounded-lg bg-[var(--sys-surface-strong)] px-3 py-2 text-xs text-[var(--sys-muted-foreground)]">
+            <span className="flex items-center gap-1 rounded-lg bg-[var(--sys-surface-strong)] px-3 py-2 text-note text-[var(--sys-muted-foreground)]">
               <RiLoader4Line className="h-4 w-4 animate-spin" /> يقرأ أرقامك…
             </span>
           </div>
@@ -316,16 +319,13 @@ function AiDockSurface() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="اكتب سؤالك…"
-          className="min-h-11 md:min-h-0 inline-flex items-center flex-1 rounded-lg border border-[var(--sys-border-input)] px-2.5 py-1.5 text-xs text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
+          className="min-h-11 md:min-h-0 inline-flex items-center flex-1 rounded-lg border border-[var(--sys-border-input)] px-2.5 py-1.5 text-sm text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
         />
-        <button aria-label="إرسال"
-          type="submit"
-          disabled={busy || !q.trim()}
-          className="flex h-11 md:h-8 w-8 items-center justify-center rounded-lg bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] transition disabled:opacity-40"
-        >
+        <IconButton type="submit" variant="primary" size="sm" label="إرسال" disabled={busy || !q.trim()}>
           <RiSendPlaneLine className="icon-mirror h-4 w-4" />
-        </button>
+        </IconButton>
       </form>
+      </Card>
     </div>
   );
 }

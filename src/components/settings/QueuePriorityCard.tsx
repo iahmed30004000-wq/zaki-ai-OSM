@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { useCan } from '@/hooks/useCan';
-import { QUEUE_PRIORITY } from '@/lib/queue-priority';
+import { POSTPONE_MAX_TIMES, QUEUE_PRIORITY, QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 
 /**
  * «أولوية الطابور (تجريبي)» — THE OWNER'S SWITCH FOR THE PULL ORDER (`queue-priority-switch.ts`, step D of Confirmation Center v2).
@@ -70,7 +70,7 @@ export function QueuePriorityCard() {
             بيغيّر أي طلب بيطلع للموظفة بالسحب الجاي: الطلب الجديد (أقل من {QUEUE_PRIORITY.freshMinutes} دقيقة) أول، والطلب اللي ما ردّ وتأخر أكتر من {QUEUE_PRIORITY.agingHours} ساعة عن موعدو بيتقدّم على الجدد الأقدم،
             وحصة من سحبات كل موظفة بتروح للمتأخر (بتنحسب من آخر {QUEUE_PRIORITY.windowDays} أيام).
             <br />
-            من 9 الصبح للـ11 ومن 9 بالليل للـ12: الجديد أول والأقدم أول، بلا حصة. ما بيغيّر حد اليد ولا رجوع الطلب اللي ما انلمس، وما في رفض ولا إغلاق ولا رسالة للزبون.
+            من 9 الصبح للـ11 ومن 9 بالليل للـ12: الجديد أول والأقدم أول، بلا حصة. وبيغيّر كمان حد اليد لـ{QUEUE_PRIORITY_LIMITS.handLimit} طلبات ورجوع الطلب اللي ما انلمس لـ{QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام (بس إذا «إثبات المكالمات وجدول المحاولات» شغّال)، وتأجيل الطلب بموعد من الزبون حدّو {POSTPONE_MAX_TIMES} مرات (اللي بعدهم بينرفض). ما في إغلاق ولا رسالة للزبون.
             <br />
             مفتاح لحالو، مش مفتاح «إثبات المكالمات وجدول المحاولات». مطفي = السحب زي ما هو.
           </>

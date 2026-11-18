@@ -3,6 +3,7 @@ import { businessMinutesBetween, zonedParts, type BusinessCalendar } from './bus
 import { DELIVERED_SHIPPING, RETURNED_SHIPPING } from './order-state';
 import { NOT_A_CALL } from './no-answer-rounds';
 import type { db } from './db';
+import { breatheEvery } from './breathe';
 
 type Client = Prisma.TransactionClient | typeof db;
 
@@ -117,8 +118,26 @@ interface Cell {
   reactivated: number;
 }
 
-/** The pure tally: the rows for every (bucket, agent) that did anything. */
-export function tallyScorecard(i: ScoreInputs): ScoreRow[] {
+/**
+ * The pure tally: the rows for every (bucket, agent) that did anything.
+ *
+ * IT HANDS THE THREAD BACK (H2, cause 8 of the hang — 18/11). A window of the store can be 50,000 claims and 100,000 attempt lines; the loops
+ * over them never let go of the one thread, so every other request waited for the tally to end. Now a turn is given back every `breatheEvery()`
+ * rows — which is why it answers with a promise. The rows are the same: `the-scorecard-breathes-and-counts-the-same.test.ts` holds them to osm/main's.
+ */
+export async function tallyScorecard(i: ScoreInputs): Promise<ScoreRow[]> {
+  const pause = breatheEvery();
+  const steps = tallySteps(i);
+  for (;;) {
+    const s = steps.next();
+    if (s.done) return s.value;
+    const turn = pause();
+    if (turn) await turn;
+  }
+}
+
+/** The tally's one body: it yields once per row it walks (claims, releases, decisions, attempts) — the caller decides whether a yield is a breath. */
+function* tallySteps(i: ScoreInputs): Generator<void, ScoreRow[], void> {
   const tz = i.calendar.timezone;
   const cells = new Map<string, { bucket: string; userId: string; cell: Cell }>();
   const cellOf = (at: Date, userId: string): Cell => {
@@ -134,28 +153,48 @@ export function tallyScorecard(i: ScoreInputs): ScoreRow[] {
 
   // claims, and the claims let go inside a minute — the release has to be hers, on the same order, after the claim and within the minute
   const claimedAt = new Map<string, Date[]>(); // `${user}|${order}` → claim times, oldest first
+  // (the per-order lists grow with `push` — H2: copying a list on every line made the walk quadratic in a busy order's lines)
   for (const c of [...i.claims].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    yield;
     cellOf(c.at, c.userId).claims.add(c.orderId);
     const k = `${c.userId}|${c.orderId}`;
-    claimedAt.set(k, [...(claimedAt.get(k) ?? []), c.at]);
+    const list = claimedAt.get(k);
+    if (list) list.push(c.at);
+    else claimedAt.set(k, [c.at]);
   }
   for (const r of i.releases) {
-    const claim = [...(claimedAt.get(`${r.userId}|${r.orderId}`) ?? [])].reverse().find((t) => t.getTime() <= r.at.getTime());
+    yield;
+    // her latest claim on that order at or before the release (the list is oldest first): walked from the end, no copy
+    const list = claimedAt.get(`${r.userId}|${r.orderId}`) ?? [];
+    let claim: Date | undefined;
+    for (let n = list.length - 1; n >= 0; n--) {
+      if (list[n].getTime() <= r.at.getTime()) {
+        claim = list[n];
+        break;
+      }
+    }
     if (claim && r.at.getTime() - claim.getTime() < QUICK_RELEASE_MS) cellOf(claim, r.userId).quick.add(r.orderId);
   }
 
   // decisions: the LAST one per (day, agent, order) stands
-  for (const d of [...i.decisions].sort((a, b) => a.at.getTime() - b.at.getTime())) cellOf(d.at, d.userId).decided.set(d.orderId, d.value);
+  for (const d of [...i.decisions].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    yield;
+    cellOf(d.at, d.userId).decided.set(d.orderId, d.value);
+  }
 
   // attempts logged (calls and results, not the press and not a message), and the time from a claim to her first line on that order
-  const byOrder = new Map<string, { userId: string; at: Date }[]>();
+  const byOrder = new Map<string, Date[]>();
   for (const a of i.attempts) {
+    yield;
     if (!NOT_A_CALL.includes(a.result)) cellOf(a.at, a.userId).attempts += 1;
     const k = `${a.userId}|${a.orderId}`;
-    byOrder.set(k, [...(byOrder.get(k) ?? []), { userId: a.userId, at: a.at }]);
+    const list = byOrder.get(k);
+    if (list) list.push(a.at);
+    else byOrder.set(k, [a.at]);
   }
   for (const [k, times] of claimedAt) {
-    const lines = (byOrder.get(k) ?? []).map((l) => l.at).sort((x, y) => x.getTime() - y.getTime());
+    yield;
+    const lines = [...(byOrder.get(k) ?? [])].sort((x, y) => x.getTime() - y.getTime());
     for (const t0 of times) {
       const first = lines.find((l) => l.getTime() >= t0.getTime());
       if (first) cellOf(t0, k.split('|')[0]).firstAttemptMinutes.push(businessMinutesBetween(t0, first, i.calendar));
@@ -279,7 +318,7 @@ export async function readScorecard(client: Client, scope: ScorecardScope, now: 
     userIds.length ? client.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : Promise.resolve([]),
   ]);
 
-  const rows = tallyScorecard({
+  const rows = await tallyScorecard({
     now,
     grain: scope.grain,
     calendar: scope.calendar,

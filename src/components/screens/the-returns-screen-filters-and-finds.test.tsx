@@ -27,7 +27,6 @@ const { api, scan } = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a) }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/ops/returns' }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المرتجعات</h1> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
 vi.mock('@/components/orders/OrderNotesPeek', () => ({ OrderNotesPeek: () => null }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));

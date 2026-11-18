@@ -281,13 +281,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * «فيه فرق» dialog renders it from there as well as the matching screen — so it is rendered by another file, and
    * an entry that said «only its own file draws it» was exactly what this test calls stale.
    */
-  /*
-   * `PageShell` (18/11, R2c of the plan of 17/11) — THE ONE FRAME OF A SCREEN, built and tested, rendered by no screen yet. The screens
-   * move onto it one by one from R3 (the header first); this line leaves the list with the first screen that renders it, and the
-   * «has the unwired list gone stale» test below fails the day it does, so the entry cannot outlive its reason.
-   */
-  'src/components/ui/PageShell.tsx:PageShell':
-    'إطار الشاشة الواحد (رأس + شريط أدوات + مرشّحات + محتوى) — مبنيّ ومفحوص، وتنتقل إليه الشاشات واحدة واحدة من R3؛ يغادر القائمة بأول شاشة ترسمه.',
+  // `PageShell` LEFT this list on 18/11: «قواعد مركز التأكيد» (`ConfirmationRulesScreen`, C1) is the first screen that renders it.
 
   'src/components/screens/UserDetailScreen.tsx:PermissionPicker':
     'قائمة الصلاحيات بنافذة «إضافة استثناء» — ترسمها شاشة المستخدم نفسها، وتُصدَّر ليرسمها اختبارُها بدور جاهز بلا صفحة كاملة.',
@@ -298,8 +292,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * The restructure moves every hand-written tick box, on/off toggle and compressed option pair onto these in the
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
+   *
+   * 18/11 (R17a): `Checkbox` LEFT the list — «تذكرني» on the login page and «لا تطلب الرمز على هذا الجهاز» on the
+   * second step are the first screens that draw it. The old line said «no screen draws it yet»; that is no longer true.
    */
-  // Checkbox left this list (18/11, المقاسات والألوان): `ProductVariants.tsx` on the product screen is the first to render it.
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':
@@ -313,8 +309,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * (IconButton.test.tsx, Card.kit.test.tsx), and each entry leaves this
    * list in the pull request that first renders it — not before, and never
    * by adding it to another list.
+   *
+   * 18/11 (R17b): `IconButton` left — the assistant's bubble and the search palette, both in the shell
+   * layout, are the first to render it.
    */
-  // IconButton left this list (18/11, المقاسات والألوان): `ProductVariants.tsx` on the product screen is the first to render it.
   'src/components/ui/StatTile.tsx:StatTile':
     'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
 };
