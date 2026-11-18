@@ -746,14 +746,12 @@
       "textXs": 24
     },
     "src/components/screens/finance/WalletLookDialog.tsx": {
-      "rawButtons": 7,
-      "textXs": 6
+      "rawButtons": 2
     },
     "src/components/screens/finance/WalletsScreen.tsx": {
-      "rawButtons": 23,
-      "rawSurfaces": 5,
+      "rawButtons": 2,
       "rawDatePickers": 2,
-      "textXs": 51
+      "textXs": 3
     },
     "src/components/screens/tracking/BulkDeliverReport.tsx": {
       "rawButtons": 1,
