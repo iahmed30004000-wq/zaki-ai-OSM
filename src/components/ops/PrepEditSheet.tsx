@@ -31,7 +31,7 @@ export interface PrepParcel {
     altPhone?: string | null;
     address?: string | null;
   } | null;
-  items: { productId: string; productName: string; quantity: number; freeQuantity: number; unitPrice: number }[];
+  items: { productId: string; productName: string; quantity: number; freeQuantity: number; unitPrice: number; variantSummary?: string | null }[];
 }
 
 const inputClass =

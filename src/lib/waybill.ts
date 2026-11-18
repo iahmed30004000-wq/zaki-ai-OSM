@@ -50,7 +50,7 @@ export const WAYBILL_SELECT = {
   customer: { select: { fullName: true, phone: true, rawPhone: true, altPhone: true, city: true, address: true } },
   region: { select: { name: true } },
   deliveryProvider: { select: COURIER_KIND_SELECT },
-  items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true } },
+  items: { select: { productName: true, quantity: true, freeQuantity: true, unitPrice: true, discountShare: true, lineTotal: true, variantSummary: true } },
   // The upsell accepted on the thank-you page. It used to be missing from
   // the label, so the packer never put it in the box.
   addOns: { select: { productName: true, quantity: true, price: true } },
@@ -215,7 +215,8 @@ export async function toLabelView(order: WaybillOrder, minorUnit: number, countr
     phones: [c.rawPhone || c.phone, altPhoneForLabel(c.altPhone, countryCode)].filter(Boolean),
     place: placeLine(order.region?.name, c.city, order.deliveryAddress ?? c.address),
     items: [
-      ...order.items.map((i) => ({ name: i.productName, qty: i.quantity + i.freeQuantity })),
+      // The size and colour of every piece ride on the label too: the packer reads it there (product variants).
+      ...order.items.map((i) => ({ name: i.variantSummary ? `${i.productName} — ${i.variantSummary}` : i.productName, qty: i.quantity + i.freeQuantity })),
       ...order.addOns.map((a) => ({ name: a.productName, qty: a.quantity, addOn: true })),
     ],
     note: order.customerNotes?.trim() || null,

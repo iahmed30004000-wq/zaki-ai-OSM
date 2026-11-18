@@ -537,7 +537,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
   {
     module: 'whatsapp',
     items: [
-      { key: 'whatsapp.view', opens: ['صندوق الواتساب'], ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox', scopes: ['ALL_COMPANY', 'ASSIGNED'] },
+      { key: 'whatsapp.view', opens: ['صندوق الواتساب', 'رسائل اللاندينج'], ar: 'عرض صندوق واتساب', en: 'View WhatsApp inbox', scopes: ['ALL_COMPANY', 'ASSIGNED'] },
       { key: 'whatsapp.send', requires: 'whatsapp.view', ar: 'إرسال رسائل واتساب', en: 'Send WhatsApp messages' },
       { key: 'whatsapp.manage', requires: 'whatsapp.view', ar: 'إدارة إعدادات واتساب', en: 'Manage WhatsApp settings' },
       { key: 'whatsapp.assign', requires: 'whatsapp.view', ar: 'إسناد محادثات واتساب', en: 'Assign WhatsApp conversations' },
