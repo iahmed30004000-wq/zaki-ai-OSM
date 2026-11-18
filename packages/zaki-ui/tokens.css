@@ -98,6 +98,11 @@
   --zk-color-chart-6: #C97A94;
   --zk-color-surface-sidebar: #0A1A2E;
   --zk-color-text-sidebar: #9FB6C2;
+  --zk-color-text-sidebar-muted: #9FB6C2;
+  --zk-color-border-sidebar: #1C3A52;
+  --zk-color-surface-sidebar-hover: #0e2a3e;
+  --zk-color-text-sidebar-heading: #E6F1F4;
+  --zk-color-text-sidebar-accent: #36B5CC;
   --zk-color-scrollbar: #1C3A52;
   --zk-color-scrollbar-hover: #597183;
   --zk-color-scrollbar-sidebar: #1C3A52;
@@ -139,6 +144,11 @@
   --zk-color-chart-6: #c1758e;
   --zk-color-surface-sidebar: #F4F8FA;
   --zk-color-text-sidebar: #4A6272;
+  --zk-color-text-sidebar-muted: #4A6272;
+  --zk-color-border-sidebar: #D5E1E6;
+  --zk-color-surface-sidebar-hover: #e9f1f4;
+  --zk-color-text-sidebar-heading: #0C3252;
+  --zk-color-text-sidebar-accent: #1A6382;
   --zk-color-scrollbar: #D5E1E6;
   --zk-color-scrollbar-hover: #99acba;
   --zk-color-scrollbar-sidebar: #D5E1E6;
@@ -180,6 +190,11 @@
   --zk-color-chart-6: #b97088;
   --zk-color-surface-sidebar: #EFE9DE;
   --zk-color-text-sidebar: #566369;
+  --zk-color-text-sidebar-muted: #566369;
+  --zk-color-border-sidebar: #D8CEBC;
+  --zk-color-surface-sidebar-hover: #e4e2d9;
+  --zk-color-text-sidebar-heading: #0C3252;
+  --zk-color-text-sidebar-accent: #1A6382;
   --zk-color-scrollbar: #D8CEBC;
   --zk-color-scrollbar-hover: #9b9f9c;
   --zk-color-scrollbar-sidebar: #D8CEBC;
