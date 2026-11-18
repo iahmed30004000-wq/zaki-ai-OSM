@@ -20,7 +20,8 @@ import Link from 'next/link';
 import { RiAddCircleLine, RiArchiveLine, RiArrowRightUpLine, RiCloseLine, RiDeleteBinLine, RiFolderTransferLine, RiFoldersLine, RiImageAddLine, RiMedalLine, RiPencilLine, RiSearchLine, RiStarLine, RiTruckLine, RiWallet3Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { CategoryPicker } from '@/components/products/CategoryPicker';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows } from '@/components/ui/Rows';
@@ -320,9 +321,12 @@ export function ProductsScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={t.products}
+      {/*
+        THE KIT'S FRAME (R12a). The name is the menu's own (`routeLabel`, the same «المنتجات» `t.products` printed), and no width cap:
+        the table is the widest thing on the page. The search and the «بلا تصنيف» row stay INSIDE the table's card and not in the frame's
+        filter row: they narrow the table only, and drawn above the four cards they would read as narrowing those figures too.
+      */}
+      <PageShell title={routeLabel('/products')}
             description="كتالوج المنتجات مع الصور، تحليل تكاليف التصنيع متعدد التشغيلات والمخزون"
             actions={
               <><div className="flex items-center space-x-2 rtl:space-x-reverse">
@@ -344,7 +348,7 @@ export function ProductsScreen() {
             </Button>
           </div></>
             }
-          />
+          >
 
         {/*
           «بطاقات ذكية في المنتجات زي احصائيات» — THE OWNER, 21/10.
@@ -688,7 +692,7 @@ export function ProductsScreen() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
 
       {/* Create Product Modal with Image Upload */}
       <Modal
