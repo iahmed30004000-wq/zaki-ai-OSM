@@ -1187,9 +1187,9 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 15,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
-    "icons": 3,
+    "icons": 2,
     "links": 0,
     "tabs": 0
   },
@@ -1762,9 +1762,9 @@
     "buttons": 2,
     "inputs": 0,
     "columns": 5,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
-    "icons": 5,
+    "icons": 4,
     "links": 0,
     "tabs": 0
   },
