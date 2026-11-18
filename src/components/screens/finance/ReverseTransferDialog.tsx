@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /** The two ends of a transfer as the dialog names them. */
 interface End {
@@ -73,7 +75,7 @@ export function ReverseTransferDialog({
         }}
         className="space-y-3"
       >
-        <div className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+        <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)] space-y-1">
           <p>
             {half
               ? 'أحد طرفي هذا التحويل معكوس من قبل، فيُعكس الطرف الباقي فقط ويكتمل عكس التحويل:'
@@ -93,11 +95,11 @@ export function ReverseTransferDialog({
               <Money value={transfer.amountIn} currency={transfer.to.currencyCode} />
             </p>
           )}
-          <p className="text-xs text-[var(--sys-muted)]">القيدان الأصليان لا يُحذفان ولا يُعدَّلان، ويبقى التحويل ظاهراً في القائمة مكتوباً عليه «معكوس».</p>
-        </div>
+          <p className="text-note text-[var(--sys-muted)]">القيدان الأصليان لا يُحذفان ولا يُعدَّلان، ويبقى التحويل ظاهراً في القائمة مكتوباً عليه «معكوس».</p>
+        </Card>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -112,21 +114,21 @@ export function ReverseTransferDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={onClose}
             disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm disabled:opacity-50"
           >
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="danger"
             disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ التسجيل…' : 'تسجيل القيد العكسي'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
