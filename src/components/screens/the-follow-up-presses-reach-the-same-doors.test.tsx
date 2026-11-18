@@ -86,11 +86,13 @@ const daily = {
 
 let postponedRows: ReturnType<typeof postponedRow>[];
 let winbackRows: ReturnType<typeof winbackRow>[];
+let canOffer: boolean;
 
 beforeEach(() => {
   vi.clearAllMocks();
   postponedRows = [postponedRow('P1')];
   winbackRows = [winbackRow('W1')];
+  canOffer = true;
   ask.mockResolvedValue('7');
   api.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') return { success: true, order: { orderNumber: 'ORD-NEW' } };
@@ -111,6 +113,7 @@ beforeEach(() => {
         facts: { views: { ready: 1, cooling: 0, skipped: 0 }, reasons: [], products: [], periods: { '7': 0, '30': 1, '90': 1 }, shipping: { before: 1, after: 0 } },
         rule: { ...DEFAULT_WINBACK_RULE, reasons: [...DEFAULT_WINBACK_RULE.reasons] },
         canEditRule: true,
+        canOffer,
       };
     }
     if (path === '/api/confirmation/winback/daily') return daily;
@@ -212,6 +215,14 @@ describe('NEGATIVE: what was not offered is still not offered', () => {
     expect(card.querySelector('footer')!.textContent).toContain('لم يمضِ وقت كافٍ');
   });
 
+  it('without the offer key an eligible row has no «اعرضه من جديد» — the ceiling is still written', async () => {
+    canOffer = false;
+    render(<WinbackScreen embedded />);
+    const card = (await screen.findByText('ORD-W1')).closest('article')!;
+    expect(within(card).queryByRole('button', { name: 'اعرضه من جديد' })).toBeNull();
+    expect(card.textContent).toContain('أقصى خصم');
+  });
+
   it('a press on «إلى الطابور» holds the button while the request is in the air — one request, not two', async () => {
     let finish!: (v: unknown) => void;
     const original = api.getMockImplementation()!;
@@ -258,5 +269,14 @@ describe('the sources', () => {
     expect(src).toContain(`<PageShell title={routeLabel('/confirmation/follow-up')} width="wide">`);
     expect(src).not.toMatch(/<PageHeader\b/);
     expect(raw('ConfirmationFollowUpScreen.tsx').split('\n')).toContain('      <LeadsLane />');
+  });
+
+  it('the leads lane is drawn ABOVE the tabs (R10c moves it; until then its place is unchanged)', () => {
+    const src = stripComments(raw('ConfirmationFollowUpScreen.tsx'));
+    const lane = src.indexOf('<LeadsLane />');
+    const tabs = src.indexOf('<Tabs ');
+    expect(lane).toBeGreaterThan(-1);
+    expect(tabs).toBeGreaterThan(-1);
+    expect(lane).toBeLessThan(tabs);
   });
 });
