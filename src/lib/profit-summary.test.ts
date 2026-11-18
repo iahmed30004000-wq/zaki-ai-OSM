@@ -33,7 +33,9 @@ const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
 describe('the profit summary has one shape', () => {
   it('and the route sends the one `profitToDate` made, not a second one of its own', () => {
     const src = stripComments(read(ROUTE));
-    expect(src, 'الباب لم يعد يأخذ الملخّص من profitToDate').toMatch(/const \{[^}]*\bsummary\b[^}]*\} = await profitToDate\(/);
+    // 18/11 (H2, cause 6 of the hang): the door asks `profitToDate` through the reports lane (`heavyOnce(key, ttl, () => profitToDate(…))`) — the same
+    // one answer, kept a minute. Was `= await profitToDate(`; now either form, and the two checks below still forbid a summary of its own.
+    expect(src, 'الباب لم يعد يأخذ الملخّص من profitToDate').toMatch(/const \{[^}]*\bsummary\b[^}]*\} = await (?:profitToDate\(|heavyOnce\([^;]*?\(\) => profitToDate\()/);
     expect(src, 'عاد الباب يبني ملخّصاً بنفسه').not.toContain('const summary');
     expect(src, 'عاد الباب يحسب الصافي بنفسه').not.toMatch(/\bnetProfit\s*=/);
   });

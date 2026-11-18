@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { getCompanyAnalytics } from '@/lib/analytics';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * GET /api/finance/summary?from=&to=
@@ -32,11 +33,16 @@ export async function GET(req: Request) {
     const to = searchParams.get('to');
     const hasRange = Boolean(from && to);
 
-    const analytics = await getCompanyAnalytics(
-      { companyId, storeId },
-      // An explicit start+end wins over the period in getDateRange, so the
-      // range travels without inventing a period name it does not know.
-      hasRange ? { startDate: from!, endDate: to! } : { period: 'all' }
+    // In the reports lane and kept a minute (H2, cause 6 of the hang — 18/11), keyed by the company, the store and the span asked — the
+    // profitability door's own key (`../profitability/route.ts`), so one computation answers both. The settlement counts below stay live.
+    const key = ['finance-analytics', companyId, storeId, hasRange ? `${from}~${to}` : 'all'].join('|');
+    const analytics = await heavyOnce(key, REPORT_TTL_MS, () =>
+      getCompanyAnalytics(
+        { companyId, storeId },
+        // An explicit start+end wins over the period in getDateRange, so the
+        // range travels without inventing a period name it does not know.
+        hasRange ? { startDate: from!, endDate: to! } : { period: 'all' }
+      )
     );
 
     const f = analytics.financials;
