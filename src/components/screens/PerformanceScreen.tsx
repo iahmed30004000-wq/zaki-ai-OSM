@@ -1,7 +1,8 @@
 ﻿'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { Card, CardHeader, CardContent, KpiCard } from '@/components/ui/Card';
+import { StatTile } from '@/components/ui/StatTile';
 import { useApp } from '@/context/AppContext';
 import { apiFetch, apiJson, saidBy } from '@/lib/api-client';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -15,12 +16,21 @@ import { ScoreBoard } from '@/components/performance/ScoreBoard';
 import { EodReportForm } from '@/components/performance/EodReportForm';
 import { NoAnswerWatch } from '@/components/performance/NoAnswerWatch';
 import { findRoute, routeLabel } from '@/lib/route-registry';
-import { RiAlertLine, RiCopperCoinLine, RiEBike2Line, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
+import { RiAlertLine, RiArrowRightLine, RiArrowUpCircleLine, RiAwardLine, RiCopperCoinLine, RiEBike2Line, RiHandCoinLine, RiInboxUnarchiveLine, RiTrophyLine, RiTruckLine } from '@remixicon/react';
+import Link from 'next/link';
+import { plainNumber } from '@/lib/format';
+import { TEAM_PERMISSIONS } from '@/lib/ai-assistants';
+import { useMayOpen } from '@/hooks/useMayOpen';
+import { STATE_TONE, type CoreState } from '@/lib/order-state';
+import { TONE_DOT, TONE_TEXT } from '@/components/ui/StatusChip';
+import { IntelligenceStrip } from '@/components/growth/IntelligenceStrip';
+import { LossPanel } from '@/components/dashboard/LossPanel';
+import { PersonNameLink, ProductNameLink } from '@/components/dashboard/NameLinks';
 import { Money } from '@/components/ui/Money';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { Rows } from '@/components/ui/Rows';
-import { healthOf } from '@/lib/health';
+import { healthOf, type Health } from '@/lib/health';
 import { HealthChip } from '@/components/ui/HealthChip';
 import { BackToDashboardLink } from '@/components/dashboard/DetailsLinks';
 import { ChannelScoresSection } from '@/components/growth/ChannelScores';
@@ -140,6 +150,13 @@ export function PerformanceScreen() {
 
   /** Empty dates mean "the whole window"; the server clamps it to 90 days. */
   const dateQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : 'period=all';
+  /**
+   * The loss panel (moved from «اليوم», R9) asks its door with `?period=` and nothing else. Its door reads the days beside the name
+   * and they win over it (`reportRange`), so this board's window travels as `all` plus the days; empty dates are `all` alone.
+   */
+  const lossPeriod = range.from && range.to ? `all&${dateQuery}` : 'all';
+  /** Colleagues by name (the leaderboard moved from «اليوم»): only for the key of a screen that already shows them. */
+  const maySeeColleagues = TEAM_PERMISSIONS.some((p) => userCan(currentUser, p));
 
   /**
    * A TABLE THAT DID NOT COME IS NOT AN EMPTY TABLE, AND THE NEWEST ANSWER WINS (13/11).
@@ -386,6 +403,9 @@ export function PerformanceScreen() {
           </div>
         ) : (
         <>
+        {/* What left «اليوم» (R9, 18/11): the strip, the other figures, the state tiles and the whole history's outcomes. */}
+        <FromTheDashboard analytics={analytics} canFinance={canFinance} />
+
         {/*
           ─── THE FOUR HEADLINES, AND WHY IT IS FOUR AND NOT FIVE ───
 
@@ -412,6 +432,7 @@ export function PerformanceScreen() {
             icon={<RiTrophyLine className="w-4 h-4" />}
             label="الأكثر طلباً"
             name={analytics?.rankings?.mostRequested?.name}
+            id={analytics?.rankings?.mostRequested?.id}
             note={`${analytics?.rankings?.mostRequested?.totalOrders || 0} طلب`}
           />
           {canFinance && (
@@ -419,6 +440,7 @@ export function PerformanceScreen() {
             icon={<RiCopperCoinLine className="w-4 h-4" />}
             label="الأكثر ربحاً"
             name={costStated ? analytics?.rankings?.mostProfitable?.name : undefined}
+            id={analytics?.rankings?.mostProfitable?.id}
             note={
               costStated ? (
                 <>صافي <Money value={analytics?.rankings?.mostProfitable?.netProfit || 0} /></>
@@ -432,12 +454,14 @@ export function PerformanceScreen() {
             icon={<RiTruckLine className="w-4 h-4" />}
             label="الأكثر توصيلاً"
             name={analytics?.rankings?.mostDelivered?.name}
+            id={analytics?.rankings?.mostDelivered?.id}
             note={`${analytics?.rankings?.mostDelivered?.deliveredOrders || 0} موصَّل`}
           />
           <Rank
             icon={<RiInboxUnarchiveLine className="w-4 h-4" />}
             label="الأكثر إرجاعاً"
             name={topReturned?.name}
+            id={topReturned?.productId}
             note={
               topReturned
                 ? `${topReturned.returned} من ${topReturned.decided} بتَّ فيه الباب`
@@ -596,6 +620,12 @@ export function PerformanceScreen() {
           </CardContent>
         </Card>
 
+        {/*
+          WHY ORDERS DIED, RIGHT AFTER THE TABLE THAT COUNTS THEM PER PRODUCT («مرفوض على الهاتف», «مرتجع من الباب»). Moved
+          from «اليوم» (R9, 18/11), the same panel and the same door, over this board's own window.
+        */}
+        {canInsights && <LossPanel period={lossPeriod} />}
+
         {/* Confirmation agents */}
         {canScores && (
         <Card>
@@ -635,6 +665,9 @@ export function PerformanceScreen() {
             )}
           </CardContent>
         </Card>
+
+        {/* The leaderboard that stood on «اليوم» (R9, 18/11): colleagues by name, only for the key of a screen that shows them. */}
+        {maySeeColleagues && <ModeratorLeaderboard rows={analytics?.moderatorLeaderboard} canFinance={canFinance} />}
 
         {/* Which door it came through */}
         <Card>
@@ -795,12 +828,15 @@ function Rank({
   icon,
   label,
   name,
+  id,
   note,
   warn,
 }: {
   icon: React.ReactNode;
   label: string;
   name?: string;
+  /** The product's id — what makes the name a link to it (the ranking that stood on «اليوم» had it; R9 carried it here). */
+  id?: string;
   note: React.ReactNode;
   warn?: boolean;
 }) {
@@ -812,9 +848,252 @@ function Rank({
         {label}
       </span>
       <p className="font-bold text-[var(--sys-heading)] text-sm mt-1.5 line-clamp-1" title={name}>
-        {name || '—'}
+        {name ? <ProductNameLink id={id} name={name} /> : '—'}
       </p>
       <p className="text-xs text-[var(--sys-muted-foreground)] font-semibold mt-0.5 tabular-nums">{note}</p>
     </div>
+  );
+}
+
+/* ═══════════════════ FROM «اليوم» (R9, plan 17/11 — 18/11) ═══════════════════
+ *
+ * The dashboard became «اليوم»: three figures, one list, one chart. Everything else it drew was MOVED here, the same blocks over
+ * the same builder (`/api/analytics/performance` is `answerAnalytics`, the dashboard's own answer and projection): the intelligence
+ * strip, the three other figures with their rules, the seven state tiles and the whole history's outcomes — and, further down the
+ * board, the loss panel and the leaderboard. The product ranking was not moved: this board's four headlines are its rows (the same
+ * `rankings` fields, their names now linking to the product as they did there), and the refusals per product are the table's
+ * «مرفوض على الهاتف».
+ *
+ * The figures here carry no «previous period» arrow: this board asks by days, and the door compares only a named window.
+ */
+function FromTheDashboard({ analytics, canFinance }: { analytics: any; canFinance: boolean }) {
+  const { t } = useApp();
+  const mayOpen = useMayOpen();
+  /** The href, or nothing — a card with no link is still a card, and a link that ends in a refusal is worse than none. */
+  const linkTo = (path: string): string | undefined => (mayOpen(path) ? path : undefined);
+
+  const fin = analytics?.financials ?? { deliveredRevenue: 0 };
+  const counts = analytics?.ordersCount ?? {
+    total: 0, new: 0, contacting: 0, confirmed: 0,
+    postponed: 0, rejected: 0, shipped: 0, delivered: 0,
+  };
+  const vitals = analytics?.vitals as
+    | {
+        door: { delivered: number; failed: number; returned: number; decided: number; returnRate: number | null };
+        outstanding: { orders: number; money: number; unrecordedOrders: number };
+      }
+    | undefined;
+
+  const verdicts = {
+    rejectionRate: healthOf(
+      'rejectionRate',
+      (counts.decided ?? counts.total) > 0 ? (counts.rejected / (counts.decided ?? counts.total)) * 100 : null,
+      counts.decided ?? counts.total
+    ),
+    /**
+     * THE RETURN RATE, AGAINST THE BAR THAT ALREADY EXISTED FOR IT. The sample is what the DOOR decided, not orders created: an
+     * order still in a van has not failed, and counting it would make this rate fall every time intake sped up.
+     */
+    returnRate: healthOf('returnRate', vitals?.door.returnRate ?? null, vitals?.door.decided),
+  };
+
+  /*
+   * THE COLOUR COMES FROM THE STATE, NOT FROM THIS SCREEN: «مشحون» in the accent here and in plain foreground on the orders list
+   * would be two different claims about the same parcel.
+   */
+  const tile = (
+    label: string,
+    value: number,
+    state: CoreState
+  ): { label: string; value: number; color: string; dot: string; health?: Health } => {
+    const tone = STATE_TONE[state];
+    return { label, value, color: TONE_TEXT[tone], dot: TONE_DOT[tone] };
+  };
+
+  const statusTiles = [
+    tile(t.NEW, counts.new, 'NEW'),
+    // «قيد التأكيد» — the legacy CONTACTING column's own state.
+    tile(t.CONTACTING, counts.contacting, 'CLAIMED'),
+    tile(t.CONFIRMED, counts.confirmed, 'CONFIRMED'),
+    tile(t.POSTPONED, counts.postponed, 'POSTPONED'),
+    tile(t.SHIPPED, counts.shipped, 'SHIPPED'),
+    tile(t.DELIVERED, counts.delivered, 'DELIVERED'),
+    // A rejected order derives to CANCELLED, which is where its tone lives.
+    { ...tile(t.REJECTED, counts.rejected, 'CANCELLED'), health: verdicts.rejectionRate },
+  ];
+
+  return (
+    <>
+      {/* What needs a person, before what merely happened. Draws nothing while loading and nothing when all is quiet. */}
+      <IntelligenceStrip />
+
+      <div className={canFinance ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'grid grid-cols-1 gap-4'}>
+        {canFinance && (
+          <KpiCard
+            title={t.deliveredRevenue}
+            rule="مجموع المحصَّل فعلاً للطلبات اللي انحصّلت، زائد إجمالي الطلبات الموصَّلة اللي ما انسجّل إلها تحصيل. الموصَّل وحده، وبالمدّة المختارة فوق."
+            value={<Money value={fin.deliveredRevenue} />}
+            subtitle={`${counts.delivered} طلب موصّل`}
+            icon={RiArrowUpCircleLine}
+            goodWhen="rising"
+            href={linkTo("/orders?state=DELIVERED")}
+          />
+        )}
+
+        <KpiCard
+          title="نسبة الإرجاع"
+          rule="المرجَّع ÷ اللي بتّ فيه الباب (موصَّل + فاشل + مرجَّع). مش مقسوم على المُنشَأ: طلب لسّا بالفان ما فشل، وحسابه كان بينزّل النسبة كلّ ما سرّعنا الإدخال."
+          value={vitals?.door.returnRate === null || vitals === undefined ? '—' : `${vitals.door.returnRate}%`}
+          subtitle={`${vitals?.door.returned ?? 0} / ${vitals?.door.decided ?? 0} طلب بتَّ فيه الباب`}
+          icon={RiInboxUnarchiveLine}
+          health={verdicts.returnRate}
+          goodWhen="falling"
+          href={linkTo("/ops/returns")}
+        />
+
+        {canFinance && (
+          <KpiCard
+            title="لم يُحصَّل بعد"
+            rule="مجموع مبالغ الطلبات الموصَّلة اللي ما وصل تحصيلها للمحفظة بعد. موصَّل وغير محصَّل بس — لا المشحون ولا المرجَّع."
+            value={<Money value={vitals?.outstanding.money ?? 0} />}
+            /**
+             * «كل المدة» is not filler — it is the one figure that ignores the dates above it, and it says so. Money a courier owes
+             * us is owed whatever month the order was typed in.
+             */
+            subtitle={
+              `${vitals?.outstanding.orders ?? 0} طلب مسلَّم بانتظار التحصيل — كل المدة` +
+              (vitals?.outstanding.unrecordedOrders
+                ? ` · و${vitals.outstanding.unrecordedOrders} مسلَّم بلا حالة تحصيل مكتوبة`
+                : '')
+            }
+            icon={RiHandCoinLine}
+            href={linkTo("/finance/collection")}
+          />
+        )}
+      </div>
+
+      {/* ─── Order Status Tiles ─── */}
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-3">
+        {statusTiles.map((s) => (
+          <StatTile
+            key={s.label}
+            label={
+              <span className="inline-flex items-center gap-1.5">
+                <span className={`inline-block w-2 h-2 rounded-full ${s.dot}`} aria-hidden />
+                {s.label}
+              </span>
+            }
+            value={<span className={s.value > 0 ? s.color : 'text-[var(--sys-border-strong)]'}>{s.value}</span>}
+            /* Only the tile that has a bar carries one: a count of new orders is neither good nor bad. */
+            caption={s.health && <HealthChip health={s.health} />}
+          />
+        ))}
+      </div>
+
+      {/* ─── Where every order ended up, in the owner's words ───
+          The whole history, not the dates above: the server counts it (order-outcome.ts) and this only draws the rows it sends. */}
+      {analytics?.outcomes?.outcomes?.length > 0 && (
+        <Card>
+          <CardHeader
+            title="حالات الطلبات — كل التاريخ"
+            action={
+              mayOpen('/orders') ? (
+                <Link href="/orders?state=CLOSED" className="tap-safe text-sm text-[var(--sys-primary)] font-medium hover:underline">
+                  الطلبات المغلقة
+                </Link>
+              ) : undefined
+            }
+          />
+          <ul className="divide-y divide-[var(--sys-border)]">
+            {analytics.outcomes.outcomes.map((r: { key: string; label: string; count: number; closed: boolean }) => (
+              <li key={r.key} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span className="flex items-center gap-2">
+                  <span className={`inline-block w-2 h-2 rounded-full ${r.closed ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
+                  <span className="text-[var(--sys-heading)]">{r.label}</span>
+                </span>
+                <span className="font-bold tabular-nums">{plainNumber(r.count)}</span>
+              </li>
+            ))}
+            <li className="flex items-center justify-between px-4 py-2.5 text-sm bg-[var(--sys-surface)]">
+              <span className="font-semibold">المجموع</span>
+              <span className="font-black tabular-nums">{plainNumber(analytics.outcomes.total)}</span>
+            </li>
+          </ul>
+        </Card>
+      )}
+    </>
+  );
+}
+
+/** The moderators' leaderboard, as it stood on «اليوم» (R9 moved it): the server sends it only to the key of a screen that shows colleagues. */
+function ModeratorLeaderboard({
+  rows,
+  canFinance,
+}: {
+  rows?: { id: string; name: string; totalOrders: number; confirmedOrders: number; confirmationRate: number; sales: number }[];
+  canFinance: boolean;
+}) {
+  const { t } = useApp();
+  const mayOpen = useMayOpen();
+  return (
+    <Card>
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <RiAwardLine className="w-4 h-4 text-[var(--sys-warning)]" />
+            {t.moderatorLeaderboard}
+          </span>
+        }
+        action={
+          /* The card stays; only the way OUT of it goes, for whoever would land on «لا تملك صلاحية لهذه الشاشة». */
+          mayOpen('/admin/users') ? (
+            <Link href="/admin/users" className="tap-safe inline-flex items-center gap-1 text-sm text-[var(--sys-destructive)] font-medium hover:underline">
+              الفريق
+              <RiArrowRightLine className="icon-mirror h-4 w-4" aria-hidden />
+            </Link>
+          ) : undefined
+        }
+      />
+      <CardContent className="p-0">
+        <div className="divide-y divide-[var(--sys-border)]">
+          {rows?.map((mod, idx) => (
+            <div key={mod.id} className="px-6 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`w-7 h-7 rounded-full text-note font-black flex items-center justify-center ${
+                    idx === 0
+                      ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] ring-2 ring-[var(--sys-warning)]/60'
+                      : idx === 1
+                      ? 'bg-[var(--sys-border)] text-[var(--sys-foreground)]'
+                      : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]'
+                  }`}
+                >
+                  {idx + 1}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-[var(--sys-heading)]">
+                    <PersonNameLink id={mod.id} name={mod.name} />
+                  </p>
+                  <p className="text-note text-[var(--sys-muted)]">
+                    {mod.totalOrders} طلب • {mod.confirmedOrders}{' '}
+                    مؤكد
+                  </p>
+                </div>
+              </div>
+              <div className="text-end">
+                <span className="text-note font-bold text-[var(--sys-success)] bg-[var(--sys-success-soft)] border-0 px-2 py-0.5 rounded-full">
+                  {mod.confirmationRate}%
+                </span>
+                {canFinance && (
+                  <p className="text-note font-semibold text-[var(--sys-foreground)] mt-1" dir="ltr">
+                    <Money value={mod.sales} />
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
