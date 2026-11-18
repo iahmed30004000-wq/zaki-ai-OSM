@@ -166,13 +166,28 @@ describe('«الطلبات» — the bar and the boxes', () => {
     expect(fold.querySelector('[data-picker]')).not.toBeNull();
   });
 
+  /*
+   * 18/11 (R10a): the boxes are the kit's `Checkbox` now. The old sentence — «the label carries `tap-safe`» — is no longer
+   * how the 44px is made: the kit's label is 44px tall and wide on a phone by its own size (`min-h-11 min-w-11`), with no
+   * invisible area that could cover a neighbour. The promise is the same (the label is the target, 44px on a phone), so
+   * the test asks for the new way of keeping it, and for the label pointing at its own box by a unique id.
+   */
   it('each box is inside a label, so the label carries a 44px hit area the box cannot', async () => {
     await draw();
+    const ids = new Set<string>();
     for (const name of ['تحديد كل الطلبات في هذه الصفحة', ...ORDERS.map((o) => `تحديد الطلب ${o.orderNumber}`)]) {
-      const label = screen.getByLabelText(name).closest('label');
+      const box = screen.getByLabelText(name) as HTMLInputElement;
+      const label = box.closest('label');
       expect(label, name).not.toBeNull();
-      expect(label!.className, name).toContain('tap-safe');
+      const tokens = label!.className.split(/\s+/);
+      expect(tokens, name).toContain('min-h-11');
+      expect(tokens, name).toContain('min-w-11');
+      expect(label!.getAttribute('for'), name).toBe(box.id);
+      ids.add(box.id);
     }
+    expect(ids.size, 'كل مربّع إله id خاص فيه').toBe(ORDERS.length + 1);
+    expect([...ids]).toContain('order-select-all');
+    for (const o of ORDERS) expect([...ids]).toContain(`order-select-${o.id}`);
   });
 
   it('pressing the label beside the box ticks it — a miss no longer opens the order', async () => {
