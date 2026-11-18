@@ -3,6 +3,7 @@
 import { DispatchResult } from '@/components/ops/DispatchResult';
 import { DispatchInterrupted, dispatchInChunks, type DispatchProgress } from '@/components/ops/dispatchInChunks';
 import { OrderRef } from '@/components/orders/OrderRef';
+import { withPieces } from '@/components/orders/OrderGoods';
 import { PrepEditSheet, type PrepParcel } from '@/components/ops/PrepEditSheet';
 import { BatchBarcodePaste } from '@/components/ops/BatchBarcodePaste';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -966,7 +967,9 @@ export function ShippingBatchesScreen() {
                         {((o.items?.length ?? 0) > 0 || o.totalAmount != null) && (
                           <p className="w-full text-xs text-[var(--sys-muted-foreground)]">
                             {(o.items ?? [])
-                              .map((l) => `${l.productName} × ${l.quantity}${l.freeQuantity ? ` + ${l.freeQuantity} هدية` : ''}`)
+                              .map((l) =>
+                                withPieces(`${l.productName} × ${l.quantity}${l.freeQuantity ? ` + ${l.freeQuantity} هدية` : ''}`, l.variantSummary)
+                              )
                               .join('، ')}
                             {(o.items?.length ?? 0) > 0 && o.totalAmount != null && ' · '}
                             {o.totalAmount != null && <span dir="ltr">{amount(o.totalAmount, parcels.currency)}</span>}

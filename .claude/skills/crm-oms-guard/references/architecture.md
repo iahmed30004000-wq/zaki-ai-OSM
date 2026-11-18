@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **54 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **55 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -94,6 +94,7 @@ being a page keeps its old address as a permanent redirect (`next.config.ts`).
 العملاء                  /customers
 طلبات تلجرام              /growth/telegram/orders
 صندوق الواتساب            /growth/whatsapp/inbox
+رسائل اللاندينج           /growth/landing-chats   (Zaki pages' chat assistant; whatsapp.view)
 ```
 
 **3. التأكيد** (`confirmation`) — tabs
@@ -233,6 +234,7 @@ asks the same keys again.
 | `/growth/intelligence` · `/growth/bench` | growth.intelligence |
 | `/assistant` | ai.use |
 | `/growth/whatsapp/inbox` · `/growth/telegram/orders` | whatsapp.view · telegram.view |
+| `/growth/landing-chats` | whatsapp.view |
 | `/store` | storefront.view · storefront.manage · geo.manage |
 | `/store/landing-pages` | landing_pages.view |
 | `/settings` | geo.view · settings.view · commission.view · whatsapp.manage · telegram.connect · apps.view |
