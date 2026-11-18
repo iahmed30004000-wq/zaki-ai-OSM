@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiGitBranchLine, RiLoader4Line, RiScales3Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NextStepButton } from '@/components/ui/NextStep';
@@ -317,7 +318,7 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
   if (mayManual && mode === 'manual') {
     return (
       <div className="max-w-6xl space-y-3">
-        <ScreenTitle />
+        <PageHeader title={routeLabel('/finance/matching')} />
         {modeTabs}
         <ManualMatching />
       </div>
@@ -326,7 +327,7 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/finance/matching')} />
       {modeTabs}
       <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end">
         <label className="flex-1 min-w-[220px]">

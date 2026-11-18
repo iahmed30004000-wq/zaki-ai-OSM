@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
 import { OrderRef } from '@/components/orders/OrderRef';
@@ -43,7 +44,7 @@ export function ConfirmationQueueScreen() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/confirmation/queue')} />
       <PullPanel queue={queue} onPulled={() => router.push('/confirmation/mine')} />
 
       {data.orders && <QueueHealthBoard />}

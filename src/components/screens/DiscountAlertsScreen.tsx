@@ -4,7 +4,8 @@ import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Rows } from '@/components/ui/Rows';
 import { OrderRef } from '@/components/orders/OrderRef';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiDiscountPercentLine, RiLoader4Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
@@ -76,7 +77,7 @@ export function DiscountAlertsScreen() {
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/control/discount-alerts')} />
 
       <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end">
         <label>

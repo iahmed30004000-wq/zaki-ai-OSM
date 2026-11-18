@@ -12,7 +12,8 @@
  * places at once — and the one they are actually in is the less
  * prominent of the two.
  *
- * `ScreenTitle` had it right, and only because it needed a single answer
+ * `ScreenTitle` (deleted 18/11 — its screens read their name from the
+ * registry through `PageHeader` now) had it right, and only because it needed a single answer
  * to print a heading: among the matching prefixes, take the LONGEST. That
  * is the rule, and it lives here now so there is one of it.
  *

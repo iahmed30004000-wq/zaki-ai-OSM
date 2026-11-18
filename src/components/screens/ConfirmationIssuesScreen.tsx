@@ -5,7 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { useRegions } from '@/hooks/useRegions';
 import { arDateTime } from '@/lib/format';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiForbidLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -247,7 +248,7 @@ export function ConfirmationIssuesScreen() {
 
   return (
     <div className="max-w-4xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/confirmation/issues')} />
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 

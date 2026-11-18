@@ -7,6 +7,7 @@ import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
 import { readQueueHealth } from '@/lib/queue-health';
 import { HEALTH_RULE_AR, healthAlerts } from '@/lib/queue-health-words';
 import { readRecalibration } from '@/lib/queue-recalibration';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * GET /api/confirmation/health — THE SUPERVISOR'S BOARD OF THE QUEUE'S HEALTH (step D2 of Confirmation Center v2): the backlog, what is due now, the oldest wait, what entered and what
@@ -18,11 +19,19 @@ export async function GET() {
     const { companyId, storeId, country } = await requireContext();
     await requirePermission('confirmation.supervise');
     if (!(await queuePrioritySwitch(db, companyId)).enabled) return NextResponse.json({ enabled: false });
-    const now = new Date();
-    const [health, weekly] = await Promise.all([
-      readQueueHealth(db, { companyId, storeId }, { workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone }, now),
-      readRecalibration(db, { companyId, storeId }, country.timezone, now),
-    ]);
+    /*
+     * ONE ANSWER A MINUTE PER STORE, IN THE REPORTS LANE (H2, cause 7 of the hang — 18/11). The board refreshes every two minutes for every supervisor
+     * who has it open; the same store's counts are now computed once and kept `REPORT_TTL_MS` (60 s), on the reports' own pool. The key is the company
+     * and the store — never the reader, never the clock. The switch above stays live. The job that raises the alerts (`jobs/definitions/queue-health.ts`)
+     * runs in its own process and keeps reading fresh: this cache helps the door only.
+     */
+    const [health, weekly] = await heavyOnce(['queue-health', companyId, storeId].join('|'), REPORT_TTL_MS, () => {
+      const now = new Date();
+      return Promise.all([
+        readQueueHealth(db, { companyId, storeId }, { workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone }, now),
+        readRecalibration(db, { companyId, storeId }, country.timezone, now),
+      ]);
+    });
     // the weekly recalibration is a NOTE only (what moved over the last 14 days, and its rule): it changes nothing the pull uses
     return NextResponse.json({ enabled: true, health, alerts: healthAlerts(health), rule: HEALTH_RULE_AR, ...(weekly ? { weekly: weekly.note } : {}) });
   } catch (error) {

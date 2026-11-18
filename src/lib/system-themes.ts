@@ -725,10 +725,9 @@ export const SYSTEM_THEMES: SystemTheme[] = [
    *
    * The teal carries the accent, the golds the moment — and text on either
    * is the dark of the ground (#050F1F), 9.66:1 on the gold and 7.38:1 on
-   * the teal. A new staff member opens on this one: the creation paths in
-   * api/users writes `layl` explicitly (api/moderators no longer creates staff). `layl` is NOT in
-   * SHEET_THEMES (that list is the default and `auto` only, and
-   * a-new-member-of-staff-opens-on-layl.test.ts asserts it stays out): the
+   * the teal. Until 18/11/2026 a new staff member opened on this one; since
+   * R5 they open on `clean` (see `NEW_STAFF_THEME`). `layl` is NOT in
+   * SHEET_THEMES (that list is the default and `auto` only): the
    * theme's CSS is inlined per request from the user's own choice, so the
    * first paint already wears it without being in the sheet.
    * ══════════════════════════════════════════════════════════════════════
@@ -896,10 +895,15 @@ export const SYSTEM_THEMES: SystemTheme[] = [
    * and this is the first light theme to use that on purpose.
    *
    * ADD-ONLY. Nothing that exists changes: `DEFAULT_THEME`, `AUTO_LIGHT`,
-   * `AUTO_DARK`, `NEW_STAFF_THEME` and the two colour blocks of system.css
-   * are exactly as they were, and `clean` is not in `SHEET_THEMES` — it is
-   * written by the frame for the person who chose it, like the other eleven.
-   * It is not an automatic pick either: «تلقائي» still resolves to ops/day.
+   * `AUTO_DARK` and the two colour blocks of system.css are exactly as they
+   * were, and `clean` is not in `SHEET_THEMES` — it is written by the frame
+   * for the person who chose it, like the other eleven. It is not an
+   * automatic pick either: «تلقائي» still resolves to ops/day.
+   *
+   * 18/11/2026 (R5) — ONE THING DID MOVE: `NEW_STAFF_THEME` is now `clean`
+   * (it was `layl`), so a NEW member of staff with no role look opens here.
+   * Nobody who exists is written; they are offered it once, by the shell's
+   * «جرّب الشكل الجديد» line, and only their own press saves it.
    *
    * EVERY PAIR WAS MEASURED BEFORE IT WAS WRITTEN, and no threshold moved:
    * text on the page 13.7:1 · on the card 14.7:1 · the dim text 5.2:1 on the
@@ -1126,9 +1130,13 @@ export function openingTheme(own: string | null | undefined, roleBase: string | 
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * THE LOOK A NEW MEMBER OF STAFF IS GIVEN — «ليل», UNLESS THEIR ROLE HAS ONE.
+ * THE LOOK A NEW MEMBER OF STAFF IS GIVEN — «نظيف», UNLESS THEIR ROLE HAS ONE.
  *
- * Phase 3 of the owner's brief opens every NEW employee on «ليل». The one
+ * 18/11/2026 (R5): it was «ليل» (Phase 3 of the owner's earlier brief); the
+ * plan of 17/11 makes the new look («نظيف», R1 + R4) what a new employee
+ * opens on. Below, «ليل» in the older sentences now reads «نظيف».
+ *
+ * Phase 3 of the owner's brief opened every NEW employee on «ليل». The one
  * creation door (`/api/users` — `/api/moderators` is closed) writes it into the
  * person's own column, so the first time they pick a theme of their own it
  * is simply overwritten — and nobody who already exists is touched: no
@@ -1144,11 +1152,11 @@ export function openingTheme(own: string | null | undefined, roleBase: string | 
  * answers, as it always did; «ليل» fills only the place where the product's
  * default used to.
  *
- * Whether «ليل» is right for every new employee is the owner's decision to
- * confirm — it is one constant here.
+ * Which look every new employee gets is the owner's decision — it is one
+ * constant here.
  * ═══════════════════════════════════════════════════════════════════════
  */
-export const NEW_STAFF_THEME = 'layl';
+export const NEW_STAFF_THEME = 'clean';
 
 export function newStaffTheme(roleBase: string | null | undefined): string | null {
   return roleBase ? null : NEW_STAFF_THEME;

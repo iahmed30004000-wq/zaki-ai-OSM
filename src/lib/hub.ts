@@ -1,4 +1,4 @@
-import type { NavGroup, RouteDef } from './route-registry';
+import { NAV, type NavGroup, type RouteDef } from './route-registry';
 import { activePath } from './active-route';
 
 /**
@@ -43,6 +43,16 @@ export function hubAt(groups: readonly NavGroup[], pathname: string): HubAt | nu
   return { group, here: group.routes.find((r) => r.path === at)! };
 }
 
+/**
+ * The page of cards a 'cards' group opens on — its FIRST screen in the registry, whether or not this person
+ * may open it (18/11). Somebody who may open a screen of «الإدارة» but not its door (`/settings`) has no page of
+ * cards to go back to: the strip above their screens is then pills, like any group of tabs, so a second
+ * screen they may open is never left without a way in.
+ */
+export function cardsDoor(group: NavGroup): string | undefined {
+  return NAV.find((g) => g.key === group.key)?.routes[0]?.path;
+}
+
 /** Where a hub's one line leads: the first screen this person may open in it. */
 export function hubHref(group: NavGroup): string {
   return group.routes[0]?.path ?? '/';
@@ -52,7 +62,7 @@ export function hubHref(group: NavGroup): string {
  * What the line is called.
  *
  * A group of tabs of which only ONE is left to this person is not a group any
- * more — a warehouse hand's «الإدارة» holds nothing but their own profile —
+ * more — a packer's «الشحن» holds nothing but «التجهيز» —
  * so the line takes that screen's own name and says what is actually behind
  * it. A page of cards keeps its group's name: its first screen IS the group.
  */

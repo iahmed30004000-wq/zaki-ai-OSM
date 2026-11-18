@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { Tabs } from '@/components/ui/Tabs';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -50,7 +51,7 @@ export function ConfirmationFollowUpScreen() {
 
   return (
     <div className="max-w-5xl space-y-4">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/confirmation/follow-up')} />
       {/* the pages system's leads (step E2): its own door, drawn only when the owner turned «ليدز الصفحات» on and there is a lead waiting */}
       <LeadsLane />
       <Tabs tabs={tabs} value={tab} onChange={(k) => setTab(k as Tab)} />

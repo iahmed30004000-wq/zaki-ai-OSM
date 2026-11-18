@@ -39,7 +39,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>الربط</h1> }));
 vi.mock('@/components/settings/TelegramSourcesCard', () => ({ TelegramSourcesCard: () => null }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn(), warn: vi.fn() }) }));
 vi.mock('@/lib/screen-api', () => ({

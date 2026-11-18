@@ -44,7 +44,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, []);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>طلباتي</h1> }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null }));
 vi.mock('@/components/orders/ContactButtons', () => ({ ContactButtons: () => null }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));

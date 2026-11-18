@@ -5,7 +5,7 @@ import React from 'react';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * FIFTY-FOUR LINES BECAME FIFTEEN, AND NOT ONE SCREEN MOVED.
+ * FIFTY-FOUR LINES BECAME FIFTEEN, AND NOT ONE SCREEN MOVED. (18/11, R6: and then TEN — nine groups, see below.)
  *
  * The owner, 21/10, twice: «الموقع كثييييييييييييييير معجوق» and «دمج القوائم
  * بذكاء». The sidebar spent a line on every screen — fifty-four, under ten
@@ -55,7 +55,8 @@ import { MobileNav } from '@/components/shell/MobileNav';
 import { HubTabs } from '@/components/shell/HubTabs';
 import { SettingsHomeScreen } from '@/components/screens/SettingsHomeScreen';
 import { iconFor } from '@/components/shell/icons';
-import { ALL_ROUTES, NAV, findRoute, type NavGroup } from './route-registry';
+import { ALL_ROUTES, NAV, findRoute, menuNav, type NavGroup } from './route-registry';
+import type { SessionUser } from '@/types/auth';
 import { applyArrangement } from './nav-arrangement';
 import { setRailed } from './sidebar-rail';
 import { hubAt, hubHref, hubLabel, isHub } from './hub';
@@ -79,7 +80,11 @@ const menuFor = (...permissions: string[]): NavGroup[] =>
     routes: g.routes.filter((r) => r.permissions === null || r.permissions.some((p) => permissions.includes(p))),
   })).filter((g) => g.routes.length > 0);
 
-const everyPermission = [...new Set(ALL_ROUTES.flatMap((r) => r.permissions ?? []))];
+/** What the shell REALLY hands down for these permissions: `menuNav`, so a screen that is no line (the profile, the assistant) is gone. */
+const menuOf = (...permissions: string[]): NavGroup[] =>
+  menuNav({ id: 'u1', role: 'MODERATOR', status: 'ACTIVE' } as unknown as SessionUser, (_user, p) => permissions.includes(p));
+
+const everyPermission =[...new Set(ALL_ROUTES.flatMap((r) => r.permissions ?? []))];
 const lines = (groups: readonly NavGroup[]) => groups.reduce((n, g) => n + (g.hub === 'loose' ? g.routes.length : 1), 0);
 
 /** The links inside the menu proper — not the logo, not «رتّب القائمة». */
@@ -92,20 +97,30 @@ const LIT = 'bg-[var(--sys-primary)]';
 
 // 18/11 (R0): the TITLES of this block and of the test below said «fifteen lines» and «fifty-two screens» while the assertions under them
 // said 16 and 53 (15/11, «السلات المهجورة»). Only the words are corrected — not one expectation moved.
-describe('the menu is sixteen lines', () => {
-  it('— fifty-three screens in the registry, sixteen lines in the menu', () => {
+describe('the menu is ten lines', () => {
+  it('— fifty-four screens in the registry, nine groups, ten lines in the menu', () => {
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved. One more screen, no more line (it is a tab of an existing hub).
+    // 18/11 (R6, the owner: «القائمة من 16 سطر لـ9»): 16 → 10 lines, 11 → 9 groups, still 54 screens. The sum, group by group:
+    // اليوم 1 (loose, one screen) + الطلبات 1 + التأكيد 1 + الشحن 1 + المخزون والمنتجات 1 + المال 1 + التقارير 1 + واجهة المتجر 2 (loose,
+    // two screens, until the store's own request folds them) + الإدارة 1 = 1+1+1+1+1+1+1+2+1 = 10.
+    // And the 54 screens: 1 + 5 + 5 + 5 + 4 + 8 + 5 + 2 + 19 = 54.
     expect(ALL_ROUTES).toHaveLength(54);
-    expect(lines(NAV), 'عدد أسطر القائمة').toBe(16);
+    expect(NAV).toHaveLength(9);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 5, 5, 5, 4, 8, 5, 2, 19]);
+    expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
+    expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
 
   it('and every group says how it is drawn — none is left to fold as a heading', () => {
     for (const g of NAV) expect(isHub(g) || g.hub === 'loose', `${g.key}: بلا hub`).toBe(true);
-    expect(NAV.filter((g) => g.hub === 'loose').map((g) => g.key)).toEqual(['main', 'storefront']);
-    expect(NAV.filter((g) => g.hub === 'cards').map((g) => g.key)).toEqual(['settings']);
+    // 18/11 (R6): was loose ['main', 'storefront'] · cards ['settings'] · tabs [confirmation, ops, inventory, finance, control, growth,
+    // chats, admin]. «الطلبات» became a hub of tabs (the orders, the carts, the customers and the two inboxes), the dashboard a loose
+    // line of its own («اليوم»), and «الإدارة» the page of cards.
+    expect(NAV.filter((g) => g.hub === 'loose').map((g) => g.key)).toEqual(['today', 'storefront']);
+    expect(NAV.filter((g) => g.hub === 'cards').map((g) => g.key)).toEqual(['admin']);
     expect(NAV.filter((g) => g.hub === 'tabs').map((g) => g.key)).toEqual([
-      'confirmation', 'ops', 'inventory', 'finance', 'control', 'growth', 'chats', 'admin',
+      'main', 'confirmation', 'ops', 'inventory', 'finance', 'growth',
     ]);
   });
 
@@ -125,18 +140,22 @@ describe('the menu is sixteen lines', () => {
 // ───────────────────────── what the sidebar draws ─────────────────────────
 
 describe('the sidebar', () => {
-  it('draws one line per hub and one per loose screen — sixteen, with no heading to fold', () => {
+  it('draws one line per hub and one per loose screen — ten, with no heading to fold', () => {
     const { container } = render(<Sidebar groups={NAV} />);
     const links = menuLinks(container);
-    expect(links).toHaveLength(16);
+    // 18/11 (R6): 16 → 10 (1+1+1+1+1+1+1+2+1, see above), written out in order.
+    expect(links).toHaveLength(10);
     // No heading that folds: the buttons of an accordion carry `aria-expanded`.
     expect(container.querySelectorAll('aside nav [aria-expanded]')).toHaveLength(0);
     const text = links.map((a) => a.textContent);
-    for (const hub of ['مركز التأكيد', 'الشحن', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات', 'الإدارة']) {
-      expect(text, hub).toContain(hub);
-    }
+    expect(text).toEqual([
+      'لوحة التحكم', 'الطلبات', 'التأكيد', 'الشحن', 'المخزون والمنتجات', 'المال', 'التقارير', 'المتجر', 'صفحات الهبوط', 'الإدارة',
+    ]);
     // And what folded into them is not a line of its own any more.
-    for (const folded of ['الطلبات الجديدة', 'التجهيز', 'أرصدة المخزون', 'المطابقة', 'لوحة الأداء', 'صندوق الواتساب']) {
+    for (const folded of [
+      'الطلبات الجديدة', 'التجهيز', 'أرصدة المخزون', 'المطابقة', 'لوحة الأداء', 'صندوق الواتساب',
+      'العملاء', 'المنتجات', 'سجل التدقيق', 'الموظفين', 'الإعدادات', 'الملف الشخصي', 'العمولات',
+    ]) {
       expect(text, folded).not.toContain(folded);
     }
   });
@@ -161,9 +180,19 @@ describe('the sidebar', () => {
     };
     expect(litFor('/ops/tracking')).toBe('الشحن');
     expect(litFor('/finance/matching')).toBe('المال');
-    expect(litFor('/settings/geo')).toBe('الإعدادات');
-    expect(litFor('/settings')).toBe('الإعدادات');
+    // 18/11 (R6): the settings screens light «الإدارة» (was «الإعدادات», a line that is gone)…
+    expect(litFor('/settings/geo')).toBe('الإدارة');
+    expect(litFor('/settings')).toBe('الإدارة');
+    expect(litFor('/control/audit')).toBe('الإدارة');
+    // …except «العمولات», whose address is under /settings and whose line is «المال».
+    expect(litFor('/settings/commission')).toBe('المال');
+    // The orders are a hub now: the line is the group's own name, which happens to be the orders' too.
     expect(litFor('/orders')).toBe('الطلبات');
+    expect(litFor('/growth/whatsapp/inbox')).toBe('الطلبات');
+    expect(litFor('/customers')).toBe('الطلبات');
+    expect(litFor('/products')).toBe('المخزون والمنتجات');
+    expect(litFor('/growth/performance')).toBe('التقارير');
+    expect(litFor('/dashboard')).toBe('لوحة التحكم');
     expect(litFor('/store/landing-pages')).toBe('صفحات الهبوط');
     expect(litFor('/admin/profile')).toBe('الإدارة');
   });
@@ -181,13 +210,14 @@ describe('the sidebar', () => {
     expect(href(menuFor('ops.batches', 'ops.track', 'ops.returns'), 'الشحن')).toBe('/ops/batches');
     // …and the tracking key alone no longer reaches the batches page (PR-8): the line opens «متابعة الشحن».
     expect(href(menuFor('ops.track', 'ops.returns'), 'الشحن')).toBe('/ops/tracking');
-    expect(href(NAV, 'الإعدادات')).toBe('/settings');
+    // 18/11 (R6): the door is «الإدارة»'s line now (was «الإعدادات»).
+    expect(href(NAV, 'الإدارة')).toBe('/settings');
   });
 
   it('and a hub line carries every unread number of the screens inside it, added up', () => {
     unread.byRoute = { '/confirmation/mine': 2, '/confirmation/issues': 3, '/orders': 4 };
     const { container } = render(<Sidebar groups={NAV} />);
-    const line = menuLinks(container).find((a) => a.textContent?.startsWith('مركز التأكيد'))!;
+    const line = menuLinks(container).find((a) => a.textContent?.startsWith('التأكيد'))!;
     expect(within(line).getByLabelText('5 إشعار غير مقروء')).toBeTruthy();
     const orders = menuLinks(container).find((a) => a.textContent?.startsWith('الطلبات'))!;
     expect(within(orders).getByLabelText('4 إشعار غير مقروء')).toBeTruthy();
@@ -198,9 +228,9 @@ describe('the sidebar', () => {
     try {
       unread.byRoute = { '/confirmation/mine': 2, '/confirmation/issues': 1 };
       const { container } = render(<Sidebar groups={NAV} />);
-      const line = menuLinks(container).find((a) => a.getAttribute('aria-label') === 'مركز التأكيد');
+      const line = menuLinks(container).find((a) => a.getAttribute('aria-label') === 'التأكيد');
       expect(line, 'السطر المطوي بلا اسم').toBeTruthy();
-      expect(line!.getAttribute('title')).toBe('مركز التأكيد');
+      expect(line!.getAttribute('title')).toBe('التأكيد');
       // The number is the only thing a folded menu can say, and it is the sum.
       expect(within(line!).getByLabelText('3 إشعار غير مقروء')).toBeTruthy();
     } finally {
@@ -208,15 +238,55 @@ describe('the sidebar', () => {
     }
   });
 
-  it('and a group of one screen takes that screen’s own name — a warehouse hand’s «الإدارة» is only their profile', () => {
-    const only = menuFor('ops.prepare');
+  // 18/11 (R6): this was pinned on a warehouse hand's «الإدارة», which held only their profile. The profile is no menu line now
+  // (`offMenu`: its door is the header's name and the phone sheet's line — see `the-profile-has-a-door-for-everyone` below), so the
+  // same rule is pinned on a packer: one station of «الشحن» left, and the line is that station's own name.
+  it('and a group of one screen takes that screen’s own name — a packer’s «الشحن» is only «التجهيز»', () => {
+    const only = menuOf('ops.prepare');
     const { container } = render(<Sidebar groups={only} />);
     const text = menuLinks(container).map((a) => a.textContent);
-    expect(text).toContain('الملف الشخصي');
+    expect(text).toContain('التجهيز');
+    expect(text).not.toContain('الشحن');
+    // And their «الإدارة» held only the profile, which is not a line: no «الإدارة», and no «الملف الشخصي» either.
     expect(text).not.toContain('الإدارة');
+    expect(text).not.toContain('الملف الشخصي');
     // Labels are decided in one place.
-    const admin = only.find((g) => g.key === 'admin')!;
-    expect(hubLabel(admin)).toBe('الملف الشخصي');
+    const ops = only.find((g) => g.key === 'ops')!;
+    expect(hubLabel(ops)).toBe('التجهيز');
+  });
+
+  // 18/11 (R6): «عاين كـ» swaps only WHO the server builds the menu for — it is `menuNav` over that person's keys, the same call the
+  // shell makes. So each role's menu is rendered here exactly as the preview would draw it (nothing behind the login can be opened
+  // in a browser by anybody but the owner): every line is one their keys open, none is empty, none is extra.
+  it('and «عاين كـ»: an agent, a warehouse hand, an accountant and a moderator each see exactly the lines their keys open', () => {
+    const people: Record<string, { keys: string[]; lines: [string, string][] }> = {
+      'موظفة تأكيد': { keys: ['confirmation.pull', 'confirmation.work'], lines: [['طلباتي', '/confirmation/mine']] },
+      'مستودع': {
+        keys: ['ops.prepare', 'ops.batches', 'ops.returns', 'inventory.view', 'products.view'],
+        lines: [['الشحن', '/ops/preparation'], ['المخزون والمنتجات', '/products']],
+      },
+      'محاسب': {
+        keys: ['finance.cashbox_view', 'finance.view', 'settlement.view', 'commission.view', 'audit.view'],
+        lines: [['المال', '/finance/agents'], ['الإدارة', '/settings']],
+      },
+      'مودريتور': {
+        keys: ['orders.view', 'orders.create', 'customers.view', 'confirmation.issues', 'products.view'],
+        lines: [['الطلبات', '/orders'], ['الإشكالات', '/confirmation/issues'], ['المنتجات', '/products']],
+      },
+    };
+    for (const [who, { keys, lines: want }] of Object.entries(people)) {
+      const groups = menuOf(...keys);
+      const { container, unmount } = render(<Sidebar groups={groups} />);
+      const got = menuLinks(container).map((a) => [a.textContent, a.getAttribute('href')]);
+      unmount();
+      expect(got, who).toEqual(want);
+      // Every line leads to a screen they may open, and no group handed down is empty.
+      for (const g of groups) expect(g.routes.length, `${who}: ${g.key}`).toBeGreaterThan(0);
+      for (const [, href] of got) {
+        const route = findRoute(href!)!;
+        expect(route.permissions === null || route.permissions.some((p) => keys.includes(p)), `${who}: ${href}`).toBe(true);
+      }
+    }
   });
 
   it('and «show everything» is offered only when something folds — with every group a line it would do nothing', () => {
@@ -248,9 +318,12 @@ describe('the phone’s «المزيد»', () => {
   it('— draws a hub as ONE line, not fifty screens under ten headings', () => {
     const sheet = openSheet(NAV);
     const text = linksOf(sheet).map((a) => a.textContent);
-    // Fifteen lines in the menu, less «الطلبات», which the bar already holds on this page.
-    expect(text).toHaveLength(15);
-    for (const hub of ['مركز التأكيد', 'الشحن', 'المخزون', 'المال', 'الرقابة', 'النمو والذكاء', 'المحادثات', 'الإعدادات', 'الإدارة']) {
+    // 18/11 (R6): was «sixteen lines in the menu, less «الطلبات», which the bar already holds» = 15. Now the ten lines — «الطلبات»
+    // is a hub, so it stays a line here although its first screen is in the bar — plus the profile's own line at the bottom
+    // (the profile is no menu line; this is its door on a phone): 10 + 1 = 11.
+    expect(text).toHaveLength(11);
+    expect(text[text.length - 1]).toBe('الملف الشخصي');
+    for (const hub of ['الطلبات', 'التأكيد', 'الشحن', 'المخزون والمنتجات', 'المال', 'التقارير', 'الإدارة']) {
       expect(text, hub).toContain(hub);
     }
     for (const folded of ['التجهيز', 'أرصدة المخزون', 'المطابقة', 'لوحة الأداء', 'صندوق الواتساب', 'البلدان والمتاجر والمحافظات']) {
@@ -264,13 +337,17 @@ describe('the phone’s «المزيد»', () => {
     const sheet = openSheet(NAV);
     const hrefOf = (label: string) => linksOf(sheet).find((a) => a.textContent === label)!.getAttribute('href');
     expect(hrefOf('الشحن')).toBe(hubHref(NAV.find((g) => g.key === 'ops')!));
-    expect(hrefOf('مركز التأكيد')).toBe(hubHref(NAV.find((g) => g.key === 'confirmation')!));
-    expect(hrefOf('الإعدادات')).toBe('/settings');
+    expect(hrefOf('التأكيد')).toBe(hubHref(NAV.find((g) => g.key === 'confirmation')!));
+    // 18/11 (R6): «الإعدادات» → «الإدارة»; and «الطلبات» is a hub whose first screen the bar already holds on this page.
+    expect(hrefOf('الإدارة')).toBe('/settings');
+    expect(hrefOf('الطلبات')).toBe('/orders');
   });
 
-  it('and the loose screens stay lines of their own, with no heading — the store’s two and the main ones', () => {
+  it('and the loose screens stay lines of their own, with no heading — the store’s two and the dashboard', () => {
     const text = linksOf(openSheet(NAV)).map((a) => a.textContent);
-    for (const loose of ['لوحة التحكم', 'العملاء', 'المنتجات', 'المتجر', 'صفحات الهبوط']) expect(text, loose).toContain(loose);
+    // 18/11 (R6): «العملاء» and «المنتجات» were loose lines of «الرئيسية»; they are tabs of «الطلبات» and «المخزون والمنتجات» now.
+    for (const loose of ['لوحة التحكم', 'المتجر', 'صفحات الهبوط']) expect(text, loose).toContain(loose);
+    for (const tab of ['العملاء', 'المنتجات']) expect(text, tab).not.toContain(tab);
   });
 
   it('and one line is lit for a page inside a hub — and none for a page the bar already shows', () => {
@@ -280,14 +357,19 @@ describe('the phone’s «المزيد»', () => {
     expect(lit(sheet).map((a) => a.textContent)).toEqual(['المال']);
     cleanup();
 
-    here.path = '/orders';
+    // 18/11 (R6): was '/orders', a loose line until today; it is a tab of the «الطلبات» hub now, whose line is lit like any hub's.
+    // The loose page the bar shows is the dashboard.
+    here.path = '/dashboard';
     expect(lit(openSheet(NAV))).toHaveLength(0);
   });
 
-  it('and a group of one screen takes that screen’s name, as in the sidebar', () => {
-    const text = linksOf(openSheet(menuFor('ops.prepare', 'orders.view', 'customers.view', 'products.view'))).map((a) => a.textContent);
+  // 18/11 (R6): was «a group of one screen takes that screen's name», pinned on the warehouse hand's «الإدارة» = their profile. The
+  // profile is no menu line now: the sheet carries it as its own line at the bottom, for everyone — and no «الإدارة» line for them.
+  it('and a person whose only admin screen is the profile has no «الإدارة» line — and the profile line, at the bottom', () => {
+    const sheet = openSheet(menuOf('ops.prepare', 'orders.view', 'customers.view', 'products.view'));
+    const text = linksOf(sheet).map((a) => a.textContent);
     expect(text).not.toContain('الإدارة');
-    expect(text).toContain('الملف الشخصي');
+    expect(within(sheet).getByRole('link', { name: 'الملف الشخصي' }).getAttribute('href')).toBe('/admin/profile');
   });
 
   it('and a group wholly in the bar has no line in the sheet — it is already one tap away', () => {
@@ -320,7 +402,9 @@ describe('which hub a page is in', () => {
   });
 
   it('and a page in a loose group, or in none, is in no hub', () => {
-    expect(hubAt(NAV, '/orders')).toBeNull();
+    // 18/11 (R6): was '/orders' — a tab of the «الطلبات» hub now; the loose screen of «اليوم» is the dashboard.
+    expect(hubAt(NAV, '/dashboard')).toBeNull();
+    expect(hubAt(NAV, '/orders')!.group.key).toBe('main');
     expect(hubAt(NAV, '/store')).toBeNull();
     expect(hubAt(NAV, '/no/such/page')).toBeNull();
   });
@@ -344,7 +428,7 @@ describe('the pills above a screen', () => {
       pinned: [],
     });
     render(<HubTabs groups={arranged} />);
-    const nav = screen.getByRole('navigation', { name: 'أقسام مركز التأكيد' });
+    const nav = screen.getByRole('navigation', { name: 'أقسام التأكيد' }); // 18/11 (R6): the group is «التأكيد» (was «مركز التأكيد»).
     const pills = within(nav).getAllByRole('link').map((a) => a.textContent);
     // Hidden by the person: not there. First by the person: first.
     expect(pills[0]).toBe('الإشكالات');
@@ -359,7 +443,7 @@ describe('the pills above a screen', () => {
     // screens («الطلبات الجديدة» — she pulls from the top of her own desk — and «المتابعة»)
     // are not theirs to see, so they are not there at all.
     render(<HubTabs groups={menuFor('confirmation.work', 'confirmation.pull', 'confirmation.issues')} />);
-    const nav = screen.getByRole('navigation', { name: 'أقسام مركز التأكيد' });
+    const nav = screen.getByRole('navigation', { name: 'أقسام التأكيد' }); // 18/11 (R6): the group is «التأكيد» (was «مركز التأكيد»).
     const pills = within(nav).getAllByRole('link').map((a) => a.textContent);
     expect(pills).toContain('طلباتي');
     expect(pills).not.toContain('الطلبات الجديدة');
@@ -370,7 +454,7 @@ describe('the pills above a screen', () => {
     here.path = '/confirmation/mine';
     unread.byRoute = { '/confirmation/issues': 7 };
     render(<HubTabs groups={menuFor('confirmation.work', 'confirmation.issues')} />);
-    const nav = screen.getByRole('navigation', { name: 'أقسام مركز التأكيد' });
+    const nav = screen.getByRole('navigation', { name: 'أقسام التأكيد' }); // 18/11 (R6): the group is «التأكيد» (was «مركز التأكيد»).
     expect(within(nav).getByText('الإشكالات').textContent).toContain('7');
   });
 
@@ -437,9 +521,25 @@ describe('the pills above a screen', () => {
   it('and a page of cards is not a strip — its screens carry one link back to the front door', () => {
     here.path = '/settings/geo';
     const { container } = render(<HubTabs groups={NAV} />);
-    const back = within(container).getByRole('link', { name: 'الإعدادات' });
+    // 18/11 (R6): the link is named for the group, «الإدارة» (was «الإعدادات»); it still leads to /settings.
+    const back = within(container).getByRole('link', { name: 'الإدارة' });
     expect(back.getAttribute('href')).toBe('/settings');
     expect(container.querySelectorAll('li')).toHaveLength(0);
+    cleanup();
+    // The control and staff screens are cards of the same door now.
+    here.path = '/control/audit';
+    const again = render(<HubTabs groups={NAV} />);
+    expect(within(again.container).getByRole('link', { name: 'الإدارة' }).getAttribute('href')).toBe('/settings');
+  });
+
+  // 18/11 (R6): «الرقابة» and the staff screens were a strip of their own. Somebody who may open two of them and NOT the door
+  // (`/settings`) has no page of cards to go back to — so for them the strip is pills, and the second screen keeps a way in.
+  it('and whoever may not open the door gets pills instead — no screen of theirs is left without a way in', () => {
+    here.path = '/admin/users';
+    const { container } = render(<HubTabs groups={menuOf('users.view', 'audit.view')} />);
+    const nav = within(container).getByRole('navigation', { name: 'أقسام الإدارة' });
+    expect(within(nav).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/admin/users', '/control/audit']);
+    expect(within(nav).queryByRole('link', { name: 'الإعدادات' })).toBeNull();
   });
 
   it('and the front door itself carries no link to itself', () => {
@@ -451,34 +551,71 @@ describe('the pills above a screen', () => {
 
 // ───────────────────────── the settings door ─────────────────────────
 
+// 18/11 (R6): the door of «الإدارة» — «الإعدادات» «الرقابة» «الإدارة» became one line, and their screens are cards on this page.
 describe('the settings front door', () => {
-  const settingsScreens = () =>
-    NAV.find((g) => g.key === 'settings')!.routes.map((r) => r.path).filter((p) => p !== '/settings');
+  /** The cards added on 18/11 for the staff and the control screens — the other eight are the settings cards. */
+  const ADMIN_CARDS = ['staff', 'control'];
+  /** Every screen of «الإدارة» behind the door: not the door, and not the profile (its door is the header and the sheet). */
+  const adminScreens = () =>
+    NAV.find((g) => g.key === 'admin')!.routes.map((r) => r.path).filter((p) => p !== '/settings' && p !== '/admin/profile');
+  /** The one screen under /settings whose line is «المال» — still on its card, since the door opens on `commission.view`. */
+  const OUTSIDE = '/settings/commission';
 
-  it('— every settings screen is on exactly one card, so none is lost now the menu does not list it', () => {
+  it('— every screen of «الإدارة» is on exactly one card, so none is lost now the menu does not list it', () => {
     const onCards = SETTINGS_CARDS.flatMap((c) => c.paths);
     expect(new Set(onCards).size, 'شاشة على بطاقتين').toBe(onCards.length);
-    expect([...onCards].sort()).toEqual([...settingsScreens()].sort());
+    // Was: the cards == the settings group's screens. Now: the cards == the screens of «الإدارة» (7 settings + 2 apps + the
+    // schedule + 2 staff + 5 control = 17) + «العمولات» (its line is «المال», its card stays: 18 paths).
+    expect(adminScreens()).toHaveLength(17);
+    expect([...onCards].sort()).toEqual([...adminScreens(), OUTSIDE].sort());
+    expect(NAV.find((g) => g.key === 'finance')!.routes.map((r) => r.path)).toContain(OUTSIDE);
   });
 
-  it('and every card names real screens, in the registry, in the settings group', () => {
+  it('and every card names real screens, in the registry', () => {
     for (const card of SETTINGS_CARDS) {
       expect(card.paths.length, card.key).toBeGreaterThan(0);
       expect(card.why.length, `${card.key}: بلا جملة`).toBeGreaterThan(10);
       for (const path of card.paths) expect(findRoute(path), path).toBeTruthy();
     }
-    expect(SETTINGS_CARDS).toHaveLength(8);
+    // 18/11 (R6): 8 → 10 — the eight settings cards + «الموظفون والصلاحيات» + «الرقابة» = 8 + 2 = 10.
+    expect(SETTINGS_CARDS).toHaveLength(10);
+    expect(SETTINGS_CARDS.slice(-2).map((c) => c.key)).toEqual(ADMIN_CARDS);
   });
 
-  it('and the door opens for whoever may open any one of the screens behind it, and nobody else', () => {
-    const behind = settingsScreens().flatMap((p) => findRoute(p)!.permissions ?? []);
+  // 18/11 (R6), restated: was «the door is the union of the permissions of every screen behind it». The door's permissions may not
+  // change (the path-permission pair pin of R0), and the staff and control screens are behind it now. So: the door is the union of
+  // the EIGHT SETTINGS cards (as on 18/11); the two admin cards are drawn for whoever may open a screen on them, and a person who
+  // cannot open the door reaches those screens through the line, which leads to their own first screen (`hubHref`).
+  it('and the door opens for whoever may open any one of the SETTINGS screens behind it, and nobody else', () => {
+    const settingsCards = SETTINGS_CARDS.filter((c) => !ADMIN_CARDS.includes(c.key));
+    expect(settingsCards).toHaveLength(8);
+    const behind = settingsCards.flatMap((c) => c.paths).flatMap((p) => findRoute(p)!.permissions ?? []);
     expect([...new Set(findRoute('/settings')!.permissions)].sort()).toEqual([...new Set(behind)].sort());
+  });
+
+  it('and a person who may not open the door reaches their admin screen by the line — only users, only audit, only commission', () => {
+    const line = (...keys: string[]) => {
+      const groups = menuOf(...keys);
+      const { container, unmount } = render(<Sidebar groups={groups} />);
+      const links = menuLinks(container).map((a) => [a.textContent, a.getAttribute('href')]);
+      unmount();
+      return links;
+    };
+    // Only `users.view`: «الإدارة» leads to the staff screen, not to a door they would be refused at.
+    expect(line('users.view')).toEqual([['الإدارة', '/admin/users']]);
+    expect(line('audit.view')).toEqual([['الإدارة', '/control/audit']]);
+    // Only `commission.view`: the commission is «المال»'s only screen for them (so the line takes its name), AND it opens the door
+    // (its card is there) — two ways in.
+    expect(line('commission.view')).toEqual([['العمولات', '/settings/commission'], ['الإدارة', '/settings']]);
   });
 
   it('and the page draws a card, with a link for each screen the person may open', () => {
     render(<SettingsHomeScreen />);
     expect(screen.getByRole('heading', { level: 1, name: 'الإعدادات' })).toBeTruthy();
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(8);
+    // 18/11 (R6): 8 → 10 cards for whoever may open everything (8 settings + 2 admin).
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(10);
+    expect(screen.getByRole('link', { name: 'الموظفين' }).getAttribute('href')).toBe('/admin/users');
+    expect(screen.getByRole('link', { name: 'سجل التدقيق' }).getAttribute('href')).toBe('/control/audit');
     const link = screen.getByRole('link', { name: 'البلدان والمتاجر' });
     expect(link.getAttribute('href')).toBe('/settings/geo');
     // A card's links are the screens' own names, as the menu used to say them.

@@ -29,6 +29,12 @@ const { db, rows, requireContext, requirePermission, logAudit } = vi.hoisted(() 
   const db: Record<string, any> = {
     expense: {
       findMany: vi.fn(async ({ where }: { where: Row }) => rows.filter((r) => matches(r, where))),
+      // 18/11 (H2): the profit door now reads the store's live expenses as they stand (count, sum, newest) to name its kept answer — a read for the
+      // key only; every figure still comes from `profitToDate` over the rows above.
+      aggregate: vi.fn(async ({ where }: { where: Row }) => {
+        const hit = rows.filter((r) => matches(r, where));
+        return { _count: { _all: hit.length }, _sum: { amount: hit.reduce((s, r) => s + r.amount, 0) }, _max: { createdAt: null } };
+      }),
       groupBy: vi.fn(async ({ where }: { where: Row }) => {
         const hit = rows.filter((r) => matches(r, where));
         const byCategory = new Map<string, Row[]>();

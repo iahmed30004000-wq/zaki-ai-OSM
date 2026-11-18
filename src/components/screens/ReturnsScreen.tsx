@@ -9,7 +9,8 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { useTell } from '@/components/ui/Confirm';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -297,7 +298,7 @@ export function ReturnsScreen() {
 
   return (
     <div className="max-w-5xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/ops/returns')} />
 
       {/* Drawn from the first moment, with or without the numbers: a desk that scans must never open without its box. */}
       <ListToolbar

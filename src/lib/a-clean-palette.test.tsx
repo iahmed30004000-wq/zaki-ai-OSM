@@ -209,11 +209,13 @@ describe('«نظيف» is a light page with a dark menu, and it is measured', ()
 });
 
 describe('«نظيف» is added, not adopted — nothing that exists changes appearance', () => {
-  it('the default, the automatic pair and the new staff’s look are what they were', () => {
+  it('the default and the automatic pair are what they were; only a NEW member of staff opens on «نظيف»', () => {
     expect(DEFAULT_THEME).toBe('ops');
     expect(AUTO_DARK).toBe('ops');
     expect(AUTO_LIGHT).toBe('day');
-    expect(NEW_STAFF_THEME).toBe('layl');
+    // 18/11/2026 (R5): was `layl`, now `clean` — the plan of 17/11 makes the new look what a new employee opens on.
+    // Nobody who exists is written (see a-new-member-of-staff-opens-on-clean.test.ts); the global default is not flipped.
+    expect(NEW_STAFF_THEME).toBe('clean');
   });
 
   it('is not in the stylesheet: the sheet carries the default and «تلقائي», and the frame writes «نظيف» for the one who chose it', () => {

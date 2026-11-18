@@ -1,5 +1,5 @@
 /**
- * THE EIGHT CARDS BEHIND ONE MENU LINE.
+ * THE CARDS BEHIND ONE MENU LINE.
  *
  * Twelve settings screens stood as twelve entries in the sidebar. They are
  * one line now (`NavGroup.hub: 'cards'`), and this is what that line opens:
@@ -13,10 +13,17 @@
  * guards each screen on its own permission, exactly as before — this is a
  * list of doors, not a lock.
  *
- * Every path must be a settings screen in the registry, and every settings
- * screen must be on exactly one card: a screen left off this page is one
- * nobody can find, since the sidebar no longer lists it. `the-menu-is-one-
- * line-a-group.test.ts` holds both directions.
+ * Every path must be a screen of «الإدارة» in the registry (or «العمولات»,
+ * whose address is under /settings although its line is «المال»), and every
+ * screen of «الإدارة» must be on exactly one card: a screen left off this page
+ * is one nobody can find, since the sidebar no longer lists it.
+ * `the-menu-is-one-line-a-group.test.ts` holds both directions.
+ *
+ * TEN SINCE 18/11: «الإعدادات» «الرقابة» «الإدارة» became one line, «الإدارة»,
+ * and this page is its door — the eight settings cards, then the staff and the
+ * control screens (8 + 2 = 10). The door's own permissions are still the union
+ * of the EIGHT settings cards; the last two are drawn for whoever may open a
+ * screen on them, like every card.
  */
 
 export interface SettingsCard {
@@ -56,7 +63,7 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
   {
     key: 'chat',
     title: 'واتساب وتلجرام',
-    why: 'حالة الربط وإعادة الاتصال. المحادثات نفسها في «المحادثات».',
+    why: 'حالة الربط وإعادة الاتصال. المحادثات نفسها في «الطلبات».',
     paths: ['/settings/links'],
   },
   {
@@ -76,5 +83,17 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
     title: 'النظام',
     why: 'اسم الشركة، والمهام التي يشغّل النظام بها نفسه.',
     paths: ['/settings/system', '/admin/jobs'],
+  },
+  {
+    key: 'staff',
+    title: 'الموظفون والصلاحيات',
+    why: 'من يشتغل معك، وما يفتحه كل دور وكل موظف.',
+    paths: ['/admin/users', '/admin/permissions'],
+  },
+  {
+    key: 'control',
+    title: 'الرقابة',
+    why: 'ما طُلب تعديله، وما أُعطي من خصم، وما خُصم من راتب، ومن فعل ماذا، ومن هو ممنوع.',
+    paths: ['/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/blacklist'],
   },
 ];

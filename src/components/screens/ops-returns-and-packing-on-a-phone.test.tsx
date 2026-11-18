@@ -32,7 +32,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
   },
 }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn() }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/scan/ScanButton', () => ({ ScanButton: () => null }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));
 vi.mock('@/components/orders/ChangeRequestReview', () => ({ ChangeRequestReview: () => null }));

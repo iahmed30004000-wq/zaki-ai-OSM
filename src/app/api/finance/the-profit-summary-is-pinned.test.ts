@@ -37,6 +37,12 @@ const { db, orders, expenses, commission, requireContext, requirePermission } = 
   const db = {
     expense: {
       findMany: vi.fn(async ({ where }: { where: Row }) => expenses.filter((r) => matches(r, where))),
+      // 18/11 (H2): the profit door now reads the store's live expenses as they stand (count, sum, newest) to name its kept answer — a read for the
+      // key only; every figure pinned below still comes from `profitToDate` over the rows above.
+      aggregate: vi.fn(async ({ where }: { where: Row }) => {
+        const hit = expenses.filter((r) => matches(r, where));
+        return { _count: { _all: hit.length }, _sum: { amount: hit.reduce((s, r) => s + (r.amount as number), 0) }, _max: { createdAt: null } };
+      }),
       groupBy: vi.fn(async () => []),
     },
     order: {

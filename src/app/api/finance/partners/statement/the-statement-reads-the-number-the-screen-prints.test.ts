@@ -29,7 +29,9 @@ const { db, tables, current, commission, requireContext } = vi.hoisted(() => {
     walletMovement: { findMany: finder('walletMovement') },
     user: { findMany: finder('user') },
     order: { findMany: finder('order') },
-    expense: { findMany: finder('expense'), groupBy: vi.fn(async () => []) },
+    // 18/11 (H2): `aggregate` — the profit door now reads the store's live expenses as they stand to name its kept answer (a key only; the figures
+    // compared below still come from `profitToDate`).
+    expense: { findMany: finder('expense'), groupBy: vi.fn(async () => []), aggregate: vi.fn(async () => ({ _count: { _all: 0 }, _sum: { amount: null }, _max: { createdAt: null } })) },
   };
   return { db, tables, current: { keys: [] as string[] }, commission: vi.fn(async () => 12.7), requireContext: vi.fn() };
 });

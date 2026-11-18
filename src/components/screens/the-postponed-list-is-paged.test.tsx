@@ -25,7 +25,6 @@ import { stripComments } from '@/lib/guard-source';
 const { api, may } = vi.hoisted(() => ({ api: vi.fn(), may: { yes: true } }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => may.yes }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>الطلبات المؤجلة</h1> }));
 
 import { ConfirmationPostponedScreen } from './ConfirmationPostponedScreen';
 

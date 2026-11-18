@@ -34,7 +34,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, []);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>الشاشة</h1> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn(), warn: vi.fn() }) }));
 vi.mock('@/components/orders/useOrderPatch', () => ({ useOrderPatch: () => vi.fn() }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null, CustomerHistoryOffer: () => null }));
@@ -62,7 +61,8 @@ describe('the queue', () => {
     apiJson.mockResolvedValue({ waiting: 0, owned: { total: 0, withoutAttempt: 0 }, caps: { withoutAttempt: 10, total: 300 }, leadDays: 2, canPull: false, refusal: null, autoReleased: 0, orders: [] });
     const before = calls('/api/confirmation/queue');
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'الشاشة' })).toBeTruthy());
+    // 18/11 (R3): was heading «الشاشة» (the mocked ScreenTitle); the real header says the registry's name.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'الطلبات الجديدة' })).toBeTruthy());
     expect(calls('/api/confirmation/queue')).toBe(before + 1);
     expect(screen.queryByRole('alert')).toBeNull();
   });
