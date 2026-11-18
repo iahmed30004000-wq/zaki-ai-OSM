@@ -6,6 +6,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
+import { PageShell } from '@/components/ui/PageShell';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -160,60 +161,51 @@ export function ProductDetailScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
+      {/*
+        THE ONE FRAME (R12b, 18/11): the product's own name is the page's one h1 — the same tag and classes it had, drawn by
+        `PageHeader` — with the code and the status beside it, the two presses at the end of the row, and the two numbers
+        this page is opened for in the row under it.
+      */}
+      <PageShell
+        title={product.name}
+        badge={
+          <>
+            <span className="font-mono text-note font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
+            <Badge variant={productStatusTone(product.status)}>{productStatusAr(product.status)}</Badge>
+            {/* The picture count is said once, in the gallery's own heading — «0 صورة» up here and an empty gallery
+                under it were one fact written twice. */}
+          </>
+        }
+        actions={
+          <>
             <Button variant="quiet" size="sm" onClick={() => window.history.back()}>
               <RiArrowRightLine className="icon-mirror w-4 h-4" />
               <span>عودة للمنتجات</span>
             </Button>
-            <h1 className="text-xl font-bold text-[var(--sys-heading)]">{product.name}</h1>
-            <div className="flex items-center space-x-2 rtl:space-x-reverse mt-1.5">
-              <span className="font-mono text-note font-bold text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] px-2 py-0.5 rounded-lg">{product.sku}</span>
-              <Badge variant={productStatusTone(product.status)}>{productStatusAr(product.status)}</Badge>
-              {/* The picture count is said once, in the gallery's own heading — «0 صورة» up here and an empty gallery
-                  under it were one fact written twice. */}
-            </div>
-            {/* The two numbers this page is opened for. They are also in
-                the panel far below, from the same endpoint — see
-                ProductHeadline for why they are up here as well. */}
-            <div className="mt-3">
-              <ProductHeadline productId={productId} />
-            </div>
-          </div>
+            {/*
+              ── THE BUTTON THIS PAGE NEVER HAD ──
 
-          {canManage && (
-            <div className="flex items-center gap-2">
-              {/*
-                ── THE BUTTON THIS PAGE NEVER HAD ──
-
-                «التعديل من داخل صفحة المنتج مش شغال» — it was not broken,
-                it was absent. The page could change images, attributes
-                and offers, and nothing else: not the name, the SKU, the
-                price, the status, the category or the type. The list's
-                own edit modal sends people HERE «للتعديل والتبديل
-                والحذف», so this is where they looked.
-              */}
+              «التعديل من داخل صفحة المنتج مش شغال» — it was not broken,
+              it was absent. The page could change images, attributes
+              and offers, and nothing else: not the name, the SKU, the
+              price, the status, the category or the type. The list's
+              own edit modal sends people HERE «للتعديل والتبديل
+              والحذف», so this is where they looked.
+            */}
+            {canManage && (
               <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                 <RiPencilLine className="w-4 h-4 ml-1.5 rtl:ml-0 rtl:mr-1.5" />
                 تعديل المنتج
               </Button>
-              {/* «رفع صور جديدة» was here AND the gallery asked for the main picture in words: one door for pictures,
-                  and it is the gallery's own (the button in its heading, and the empty gallery itself). */}
-            </div>
-          )}
-
-          {/* The shared form — the same one the list opens, so the two
-              screens cannot disagree about what a product is. */}
-          <ProductEditDialog
-            product={product}
-            open={editOpen}
-            onClose={() => setEditOpen(false)}
-            onSaved={loadProduct}
-          />
-        </div>
-
+            )}
+            {/* «رفع صور جديدة» was here AND the gallery asked for the main picture in words: one door for pictures,
+                and it is the gallery's own (the button in its heading, and the empty gallery itself). */}
+          </>
+        }
+        // The two numbers this page is opened for. They are also in the panel far below, from the same endpoint — see
+        // ProductHeadline for why they are up here as well.
+        toolbar={<ProductHeadline productId={productId} />}
+      >
         {/* Gallery + Info */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Gallery */}
@@ -480,7 +472,16 @@ export function ProductDetailScreen() {
 
         {/* The latest orders on this product — from its own door (this card read `product.orders`, which was never sent). */}
         <ProductRecentOrders productId={productId} />
-      </div>
+      </PageShell>
+
+      {/* The shared form — the same one the list opens, so the two
+          screens cannot disagree about what a product is. */}
+      <ProductEditDialog
+        product={product}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={loadProduct}
+      />
 
       {/* Lightbox */}
       <Modal isOpen={!!lightbox} onClose={() => setLightbox(null)} title="معاينة الصورة" maxWidth="4xl">
