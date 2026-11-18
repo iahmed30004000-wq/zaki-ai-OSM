@@ -79,7 +79,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             customer: { select: { fullName: true, phone: true, altPhone: true, address: true, city: true } },
             region: { select: { id: true, name: true } },
             items: {
-              select: { productId: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, discountShare: true },
+              select: { productId: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, discountShare: true, variantSummary: true },
               orderBy: { id: 'asc' },
             },
           },

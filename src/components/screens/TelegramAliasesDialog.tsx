@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusChip } from '@/components/ui/StatusChip';
@@ -171,16 +172,17 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
           )}
         </div>
         {rows.length === 0 ? (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">ما في أسماء هون لسا.</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">ما في أسماء هون لسا.</p>
         ) : (
           <ul className="space-y-2">
             {rows.map((row) => (
-              <li key={row.id} className="rounded-lg border border-[var(--sys-border)] p-3 space-y-1">
+              <li key={row.id}>
+                <Card plain padding="sm" className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-[var(--sys-heading)] break-words">{row.incomingName}</span>
                   <StatusChip tone={row.isActive ? 'good' : 'neutral'}>{row.isActive ? 'شغّال' : 'مطفي'}</StatusChip>
                 </div>
-                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                <p className="text-note text-[var(--sys-muted-foreground)]">
                   المنتج: {row.productName ?? '—'}
                   {row.kind === 'UPSELL' && (
                     <>
@@ -192,7 +194,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
                 </p>
                 {row.kind === 'RENAMED' &&
                   row.offerAliases.map((o) => (
-                    <p key={o.name} className="text-xs text-[var(--sys-muted)]">
+                    <p key={o.name} className="text-note text-[var(--sys-muted)]">
                       {o.name} ← {o.quantity} بـ<Money value={o.price} currency={currency || undefined} minorUnit={list?.currency.minorUnit} />
                     </p>
                   ))}
@@ -206,6 +208,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
                     </Button>
                   </div>
                 )}
+                </Card>
               </li>
             ))}
           </ul>
@@ -215,7 +218,8 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
   };
 
   const form = draft && (
-    <form onSubmit={save} className="space-y-3 rounded-lg border border-[var(--sys-border)] p-3">
+    <Card plain padding="sm">
+    <form onSubmit={save} className="space-y-3">
       <h3 className="text-sm font-semibold text-[var(--sys-heading)]">
         {draft.id ? 'تعديل' : 'إضافة'} — {KIND_TITLE[draft.kind]}
       </h3>
@@ -248,7 +252,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-[var(--sys-heading)]">العروض القديمة (اسم العرض القديم · الكمية · السعر)</p>
+          <p className="text-note font-medium text-[var(--sys-heading)]">العروض القديمة (اسم العرض القديم · الكمية · السعر)</p>
           {draft.offers.map((o, i) => (
             <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input label="اسم العرض القديم" type="text" value={o.name} onChange={(e) => setDraft({ ...draft, offers: draft.offers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
@@ -278,6 +282,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
         </Button>
       </div>
     </form>
+    </Card>
   );
 
   return (
@@ -302,18 +307,18 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
           </div>
         )}
         {missing.length > 0 && (
-          <div className="rounded-lg border border-[var(--sys-border)] p-3 space-y-1">
-            <p className="text-xs font-semibold text-[var(--sys-heading)]">ما لقينا منتجها بهالمتجر — زيدها بإيدك:</p>
+          <Card plain padding="sm" className="space-y-1">
+            <p className="text-note font-semibold text-[var(--sys-heading)]">ما لقينا منتجها بهالمتجر — زيدها بإيدك:</p>
             {missing.map((m) => (
-              <p key={m.incomingName} className="text-xs text-[var(--sys-muted-foreground)]">
+              <p key={m.incomingName} className="text-note text-[var(--sys-muted-foreground)]">
                 {m.incomingName} ← {m.productName} ({m.why})
               </p>
             ))}
-          </div>
+          </Card>
         )}
         {form}
         {list === null && !error ? (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">عم نقرأ…</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">عم نقرأ…</p>
         ) : list && list.rows.length === 0 && !draft ? (
           <EmptyState
             title="ما في أسماء لسا"
