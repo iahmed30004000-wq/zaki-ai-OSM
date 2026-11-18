@@ -14,7 +14,7 @@ import {
 import { DEFAULT_FLOW_WINDOW, FLOW_WINDOWS, flowWindowKey } from '@/lib/held-flow';
 
 /**
- * GET /api/orders/confirmation/no-answer?startDate=&endDate=&part=board|report|flow&window=6h|24h|7d
+ * GET /api/orders/confirmation/no-answer?startDate=&endDate=&part=board|report|flow|measure|weekly&window=6h|24h|7d&week=this|last
  *
  * «لا رد والطلبات المحجوزة» — read only. The board is «now»; the dates are the
  * answer-rate report's alone (default: the last fourteen days, today included,
@@ -72,6 +72,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ flow: await heldFlow({ companyId, storeId, calendar, windowKey, now }) });
     }
 
+    // `?part=weekly` (request C3): «القياس كل أسبوع» — six figures against six targets and two checks, over the last seven complete local days
+    // (`week=last`: the seven before). After the key, loaded only here like the flow; it ignores the dates. It runs in the report lane.
+    if (searchParams.get('part') === 'weekly') {
+      const [{ weeklyMeasures }, { weekKeyOf, weeklyWindowWords }] = await Promise.all([import('@/lib/weekly-measures-read'), import('@/lib/weekly-measures')]);
+      const { weekly, window } = await weeklyMeasures({ companyId, storeId, calendar, week: weekKeyOf(searchParams.get('week')), now });
+      return NextResponse.json({
+        weekly,
+        window: { week: window.week, start: window.start.toISOString(), end: window.end.toISOString(), fromDay: window.fromDay, toDay: window.toDay, timezone: window.timezone, words: weeklyWindowWords(window) },
+      });
+    }
+
     // `?part=measure`: the measurement report of step G1, its own question over the report's dates — after the key, loaded only here like the flow.
     if (searchParams.get('part') === 'measure') {
       const [{ readMeasure }, { db }] = await Promise.all([import('@/lib/no-answer-measure'), import('@/lib/db')]);
@@ -86,7 +97,8 @@ export async function GET(req: Request) {
     const part = searchParams.get('part');
     const [board, report] = await Promise.all([
       part === 'report' ? undefined : noAnswerBoard({ companyId, storeId, calendar, now }),
-      part === 'board' ? undefined : answerRateReport({ companyId, storeId, timezone: country.timezone, start, end }),
+      // `calendar` (request C3): the plan's numbering of the attempts needs the country's rest days and hours.
+      part === 'board' ? undefined : answerRateReport({ companyId, storeId, timezone: country.timezone, start, end, calendar }),
     ]);
 
     return NextResponse.json({
