@@ -20,7 +20,7 @@ import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } 
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { nextAttemptWords, noAnswerHint } from '@/lib/attempt-words';
-import { CADENCE_LIMIT, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
+import { CADENCE_LIMIT, type CadenceFact, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { callProofState } from '@/lib/call-proof';
 import {
@@ -157,7 +157,7 @@ async function noAnswerCounts(orderIds: string[]) {
  * counter and the «due now» verdict are both made from it, so the number on a card and the tab it sits in cannot disagree.
  */
 async function attemptsByOrder(orderIds: string[], underPlan?: { since: Date; before: { orderId: string; from: Date | null }[] }) {
-  const byOrder = new Map<string, AttemptFact[]>();
+  const byOrder = new Map<string, CadenceFact[]>();
   if (orderIds.length === 0) return byOrder;
   const rows = await db.orderContactAttempt.findMany({
     /*
@@ -174,7 +174,13 @@ async function attemptsByOrder(orderIds: string[], underPlan?: { since: Date; be
           ],
         }
       : { orderId: { in: orderIds } },
-    select: { orderId: true, createdAt: true, result: true, employeeId: true, attemptNumber: true },
+    /*
+     * `nextFollowUpAt` — THE DUE THE DOOR STORED on the line (request C2b, 18/11). The plan's fold (`cadenceFold`) keeps a counted line's stored due and only computes the
+     * anchors for a line without one — exactly as the door (`contact-attempts`) and the pool read it. Without this column a #4 pressed before C2 (stored at the old 09:00)
+     * was recomputed at the new 11:00 here: the card printed «جاهز الساعة 11:00» while the pool brought the order back at 09:00, and a #4 pressed in between counted at
+     * the door and not on the card. One column, not one row more: H2's floor (the `where` above) is unchanged. The rounds and the proof ignore the field.
+     */
+    select: { orderId: true, createdAt: true, result: true, employeeId: true, attemptNumber: true, nextFollowUpAt: true },
   });
   for (const row of rows) {
     const list = byOrder.get(row.orderId);
