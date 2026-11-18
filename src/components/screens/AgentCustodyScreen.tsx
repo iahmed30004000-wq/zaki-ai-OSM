@@ -136,14 +136,15 @@ export function AgentCustodyScreen() {
     const awaiting = open.owing.filter((o) => o.collected === null);
 
     return (
-      <div className="max-w-4xl space-y-4">
-        <Button variant="quiet" size="sm" onClick={() => setOpen(null)}>
-          <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
-          كل المندوبين
-        </Button>
-
         <PageShell title={`عهدة ${open.agent.name}`}
           description={open.agent.code}
+          width="medium"
+          actions={
+            <Button variant="quiet" size="sm" onClick={() => setOpen(null)}>
+              <RiArrowLeftSLine className="icon-mirror w-4 h-4" />
+              كل المندوبين
+            </Button>
+          }
         >
 
         <Summary totals={open.totals} money={money} />
@@ -223,7 +224,6 @@ export function AgentCustodyScreen() {
           </Card>
         )}
         </PageShell>
-      </div>
     );
   }
 
