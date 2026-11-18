@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
+import { StatTile } from '@/components/ui/StatTile';
 import { apiJson } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import type { HealthAlert, QueueHealth } from '@/lib/queue-health-words';
@@ -63,14 +64,12 @@ export function QueueHealthBoard() {
             ))}
           </ul>
         )}
-        <dl className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {/* each cell is a number and its name — the kit's tile (R8e); the number arrives from the server as text, nothing worked out here */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {cells.map(([label, value]) => (
-            <div key={label} className="rounded-md border border-[var(--sys-border)] px-3 py-2">
-              <dt className="text-xs text-[var(--sys-muted-foreground)]">{label}</dt>
-              <dd className="text-lg font-semibold tabular-nums text-[var(--sys-heading)]">{value}</dd>
-            </div>
+            <StatTile key={label} label={label} value={value} />
           ))}
-        </dl>
+        </div>
         {data.weekly && (
           <p className="mt-3 rounded-md border border-[var(--sys-border)] px-3 py-2 text-xs text-[var(--sys-foreground)]">
             <strong>معايرة الأسبوع:</strong> {data.weekly}

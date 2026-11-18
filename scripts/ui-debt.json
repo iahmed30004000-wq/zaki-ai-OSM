@@ -74,10 +74,9 @@
       "textXs": 14
     },
     "src/components/growth/CampaignsBoard.tsx": {
-      "rawButtons": 8,
-      "rawCheckboxes": 2,
+      "rawButtons": 1,
       "rawSurfaces": 4,
-      "textXs": 15
+      "textXs": 7
     },
     "src/components/growth/ChannelScores.tsx": {
       "rawSurfaces": 2,
@@ -165,12 +164,7 @@
     "src/components/ops/DelayShipmentDialog.tsx": {
       "rawButtons": 2,
       "rawDatePickers": 1,
-      "textXs": 7
-    },
-    "src/components/ops/DispatchResult.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 8
+      "textXs": 1
     },
     "src/components/ops/PrepEditSheet.tsx": {
       "rawButtons": 4,
@@ -390,9 +384,8 @@
       "textXs": 8
     },
     "src/components/screens/AgentCustodyScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 4,
-      "textXs": 19
+      "rawButtons": 1,
+      "textXs": 1
     },
     "src/components/screens/AiSettingsScreen.tsx": {
       "rawButtons": 7,
@@ -416,14 +409,6 @@
     "src/components/screens/BatchButtonsHelp.tsx": {
       "textXs": 2
     },
-    "src/components/screens/BenchScreen.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 5
-    },
-    "src/components/screens/BenchTestPanel.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 7
-    },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
       "rawCheckboxes": 1,
@@ -431,10 +416,10 @@
       "textXs": 13
     },
     "src/components/screens/CampaignsScreen.tsx": {
-      "rawButtons": 8,
-      "rawSurfaces": 3,
+      "rawButtons": 1,
+      "rawSurfaces": 1,
       "rawDatePickers": 2,
-      "textXs": 29
+      "textXs": 23
     },
     "src/components/screens/ChangeRequestsScreen.tsx": {
       "rawButtons": 6,
@@ -465,9 +450,6 @@
       "rawButtons": 1,
       "rawSurfaces": 1,
       "textXs": 2
-    },
-    "src/components/screens/ConfirmationQueueScreen.tsx": {
-      "rawSurfaces": 1
     },
     "src/components/screens/CouriersScreen.tsx": {
       "rawButtons": 11,
@@ -554,9 +536,8 @@
       "textXs": 30
     },
     "src/components/screens/PreparationScreen.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 2,
-      "textXs": 6
+      "rawButtons": 1,
+      "rawSurfaces": 1
     },
     "src/components/screens/ProductDetailScreen.tsx": {
       "rawButtons": 7,
@@ -572,7 +553,7 @@
       "textXs": 3
     },
     "src/components/screens/QueueHealthBoard.tsx": {
-      "textXs": 4
+      "textXs": 3
     },
     "src/components/screens/ReturnsScreen.tsx": {
       "rawButtons": 5,
@@ -585,11 +566,8 @@
       "textXs": 4
     },
     "src/components/screens/ShipmentsNewScreen.tsx": {
-      "rawButtons": 9,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
       "rawDatePickers": 1,
-      "textXs": 21
+      "textXs": 1
     },
     "src/components/screens/ShippingBatchesScreen.tsx": {
       "rawButtons": 14,
@@ -667,10 +645,6 @@
       "rawCheckboxes": 2,
       "rawSurfaces": 3,
       "textXs": 74
-    },
-    "src/components/screens/UsersScreen.tsx": {
-      "rawSurfaces": 4,
-      "textXs": 23
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
       "rawButtons": 1,
@@ -824,11 +798,6 @@
       "rawDatePickers": 2,
       "textXs": 51
     },
-    "src/components/screens/ops/PickingAssistant.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/tracking/CloseLegacyDialog.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,
@@ -868,11 +837,6 @@
     "src/components/screens/tracking/WriteOffDialog.tsx": {
       "rawButtons": 2,
       "textXs": 3
-    },
-    "src/components/screens/users/CreateUserModal.tsx": {
-      "rawCheckboxes": 2,
-      "rawSurfaces": 2,
-      "textXs": 13
     },
     "src/components/screens/users/UserAccessSections.tsx": {
       "rawCheckboxes": 2,
@@ -931,8 +895,7 @@
       "textXs": 2
     },
     "src/components/settings/MenuOrderCard.tsx": {
-      "rawButtons": 10,
-      "textXs": 14
+      "rawButtons": 2
     },
     "src/components/settings/MessageTemplatesCard.tsx": {
       "rawButtons": 3,
