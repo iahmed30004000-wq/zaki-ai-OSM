@@ -80,7 +80,7 @@ export async function POST() {
         // The street THIS order goes to — see the same select in `mine`.
         deliveryAddress: true,
         customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true } },
-        items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true } },
+        items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, variantSummary: true } },
         // The customer's own additions after the order — see the same select in `mine`.
         addOns: { select: { id: true, productName: true, quantity: true, total: true } },
       },

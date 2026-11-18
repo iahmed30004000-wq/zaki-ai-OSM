@@ -115,7 +115,7 @@ const ORDER_SELECT = {
   region: { select: { name: true } },
   customerNotes: true,
   customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true, address: true, totalOrders: true } },
-  items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true } },
+  items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, lineTotal: true, reservedQty: true, variantSummary: true } },
   // What the customer added on the thank-you screen. The total on the card already carries it, so a card that
   // listed only the lines read as a total that does not add up — and the agent on the phone read the wrong goods.
   addOns: { select: { id: true, productName: true, quantity: true, total: true } },

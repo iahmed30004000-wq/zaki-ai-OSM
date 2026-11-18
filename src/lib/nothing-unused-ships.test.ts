@@ -299,8 +299,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
    */
-  'src/components/ui/Checkbox.tsx:Checkbox':
-    'مربّع الاختيار الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  // Checkbox left this list (18/11, المقاسات والألوان): `ProductVariants.tsx` on the product screen is the first to render it.
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':
@@ -315,8 +314,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * list in the pull request that first renders it — not before, and never
    * by adding it to another list.
    */
-  'src/components/ui/IconButton.tsx:IconButton':
-    'زرُّ الأيقونة بلا نصّ — اسمُه مفروضٌ بالنوع، ومربّعٌ ٤٤ على الهاتف؛ بُني مع عدّة R2a ولم تنتقل إليه أيّ شاشة بعد (يخرج من القائمة بأول شاشة تُنقل).',
+  // IconButton left this list (18/11, المقاسات والألوان): `ProductVariants.tsx` on the product screen is the first to render it.
   'src/components/ui/StatTile.tsx:StatTile':
     'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
 };

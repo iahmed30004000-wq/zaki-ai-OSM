@@ -36,6 +36,7 @@ interface Line {
   freeQuantity: number;
   reservedQty: number;
   shippingStatus: string;
+  variantSummary?: string | null;
 }
 
 interface Group {
@@ -227,6 +228,8 @@ export function PreparationScreen() {
                   },
                   { key: 'customer', label: 'العميل', primary: true, render: (l) => l.customerName },
                   { key: 'region', label: 'المحافظة', render: (l) => l.regionName ?? '—' },
+                  // The size and colour of every piece: what the packer takes off the rail (product variants).
+                  { key: 'pieces', label: 'المقاس واللون', render: (l) => l.variantSummary ?? '—' },
                   {
                     key: 'qty',
                     label: 'الكمية',
