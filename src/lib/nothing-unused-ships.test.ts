@@ -293,8 +293,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
    */
-  'src/components/ui/Checkbox.tsx:Checkbox':
-    'مربّع الاختيار الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  // `Checkbox` LEFT this list on 18/11 (R10a): the orders list (`OrdersScreen`) is the first screen that renders it.
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':
@@ -312,8 +311,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * 18/11 (R17b): `IconButton` left — the assistant's bubble and the search palette, both in the shell
    * layout, are the first to render it.
    */
-  'src/components/ui/StatTile.tsx:StatTile':
-    'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
+  // `StatTile` LEFT this list on 18/11 (R10a): the figures above the orders list (`OrdersSummary`) are the first to render it.
 };
 
 describe('كلُّ مكوّنٍ إمّا تعرضه شاشة أو يُقال إنه بُني ولم يُوصَل', () => {

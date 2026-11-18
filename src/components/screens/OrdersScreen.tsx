@@ -7,6 +7,8 @@ import { DEFAULT_LATE_DAYS, EMPTY_ORDER_FILTERS, lateChoices, lateFromUrl, order
 import { DismissButton } from '@/components/ui/DismissButton';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Select } from '@/components/ui/Input';
 import { DateRange } from '@/components/ui/DateRange';
 import { BulkBar } from '@/components/shell/BulkBar';
@@ -602,7 +604,7 @@ export function OrdersScreen() {
           value={lateDays}
           onChange={(e) => setLateDays(e.target.value)}
           aria-label="عدد أيام التأخير"
-          className="h-11 md:h-10 w-24 px-2 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs"
+          className="h-11 md:h-10 w-24 px-2 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
         >
           {lateChoices(lateDays).map((d) => (
             <option key={d} value={d}>
@@ -694,7 +696,7 @@ export function OrdersScreen() {
         {/* One bar, three rows that each answer a different question:
             which queue am I in, what am I looking for, and how do I narrow
             it. The old grid mixed all three into six equal cells. */}
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg shadow-raised divide-y divide-[var(--sys-border)]">
+        <Card plain className="shadow-raised divide-y divide-[var(--sys-border)]">
           {/* RiSearchLine — pressing Enter or the button runs it; it no longer
               fires on every keystroke, which made a long phone number send
               a request per digit. */}
@@ -752,14 +754,14 @@ export function OrdersScreen() {
           >
           {/* Narrowing */}
           <div className={phone ? 'grid grid-cols-2 gap-2 p-3' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 p-3'}>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="فلتر الحالة" className="text-xs py-2">
+            <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="فلتر الحالة" className="py-2">
               <option value="all">كل الحالات</option>
               {STATUS_FILTER_OPTIONS.map((st) => (
                 <option key={st} value={st}>{STATUS_FILTER_LABELS[st] ?? st}</option>
               ))}
             </Select>
 
-            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="فلتر الجهة" className="text-xs py-2">
+            <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="فلتر الجهة" className="py-2">
               <option value="all">كل الجهات</option>
               {sources.map((sc) => (
                 <option key={sc.name} value={sc.name}>{sc.name} ({sc.count})</option>
@@ -797,14 +799,14 @@ export function OrdersScreen() {
               className="min-w-0"
             />
 
-            <Select value={regionId} onChange={(e) => setRegionId(e.target.value)} aria-label="فلتر المحافظة" className="text-xs py-2">
+            <Select value={regionId} onChange={(e) => setRegionId(e.target.value)} aria-label="فلتر المحافظة" className="py-2">
               <option value="all">كل المحافظات</option>
               {regions.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </Select>
 
-            <Select value={courierId} onChange={(e) => setCourierId(e.target.value)} aria-label="فلتر شركة الشحن" className="text-xs py-2">
+            <Select value={courierId} onChange={(e) => setCourierId(e.target.value)} aria-label="فلتر شركة الشحن" className="py-2">
               <option value="all">كل شركات الشحن</option>
               <option value="none">بلا شركة شحن بعد</option>
               {couriers.map((c) => (
@@ -830,7 +832,7 @@ export function OrdersScreen() {
           */}
           {holders && (
             <div className={phone ? 'grid grid-cols-2 gap-2 px-3 pb-3' : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 px-3 pb-3'}>
-              <Select value={holderId} onChange={(e) => setHolderId(e.target.value)} aria-label="فلتر ماسكه" className="text-xs py-2">
+              <Select value={holderId} onChange={(e) => setHolderId(e.target.value)} aria-label="فلتر ماسكه" className="py-2">
                 <option value="all">ماسكه: الكل</option>
                 <option value="none">ما حدا ماسكه</option>
                 {holders.map((h) => (
@@ -852,14 +854,14 @@ export function OrdersScreen() {
             <SavedViews screen="orders" current={filterQuery} onApply={applyFilters} />
           </div>
           </FilterFold>
-        </div>
+        </Card>
 
         {/* How many in each state, and what the filtered set adds up to — pressing a chip is the state filter above. */}
         {summary && <OrdersSummary summary={summary} status={status} onStatus={setStatus} currency={currency} />}
 
         {/* Load error banner */}
         {error && (
-          <div className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] px-3 py-2.5 text-xs flex items-center justify-between gap-2">
+          <div className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] px-3 py-2.5 text-sm flex items-center justify-between gap-2">
             <span>{error}</span>
             <DismissButton onClick={() => setError(null)} />
           </div>
@@ -871,7 +873,7 @@ export function OrdersScreen() {
         <BulkBar show={selected.size > 0} done={batchDone}>
           {!phone ? (
           <>
-            <span className="text-xs font-semibold text-[var(--sys-primary)]">
+            <span className="text-sm font-semibold text-[var(--sys-primary)]">
               محدَّد: {selected.size} طلب
             </span>
             {/* The paper sits beside the button that uses it, so nobody
@@ -920,7 +922,7 @@ export function OrdersScreen() {
               PDF and the export are one tap away, and the paper still sits
               beside the button that uses it.
             */}
-            <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">
+            <span className="me-auto text-sm font-semibold text-[var(--sys-primary)]">
               محدَّد: {selected.size} طلب
             </span>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} title="إلغاء التحديد">
@@ -976,18 +978,16 @@ export function OrdersScreen() {
             had taken theirs («نسخة الهاتف بالطلبات كله داخل ببعضو»).
           */}
           <div>
-            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)] text-xs text-[var(--sys-muted-foreground)]">
-              {/* A 16px box is a 44px target on a phone: the label carries the
-                  hit area (a checkbox draws no pseudo-element of its own). */}
-              <label className="tap-safe flex shrink-0">
-                <input
-                  type="checkbox"
-                  checked={allOnPageSelected}
-                  onChange={toggleAll}
-                  aria-label="تحديد كل الطلبات في هذه الصفحة"
-                  className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
-                />
-              </label>
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)] text-note text-[var(--sys-muted-foreground)]">
+              {/* The kit's box: its label is the 44px target on a phone (a checkbox draws no pseudo-element of its own).
+                  An explicit id, because the id would otherwise fall back to a name, and repeated names break label clicks. */}
+              <Checkbox
+                id="order-select-all"
+                checked={allOnPageSelected}
+                onChange={toggleAll}
+                aria-label="تحديد كل الطلبات في هذه الصفحة"
+                className="shrink-0"
+              />
               {orders.length > 0 && (
                 <span className="tabular-nums">
                   عرض {firstOnPage}–{lastOnPage} من أصل {pagination.total} طلب
@@ -998,20 +998,24 @@ export function OrdersScreen() {
                   acting: printing or exporting a filtered batch means having
                   all of it in front of you. */}
               {!showAll && pagination.totalPages > 1 && (
-                <button
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={() => setShowAll(true)}
-                  className="tap-safe ms-auto text-xs font-medium text-[var(--sys-primary)] hover:underline"
+                  className="tap-safe ms-auto text-[var(--sys-primary)] hover:underline"
                 >
                   إظهار كل النتائج ({pagination.total})
-                </button>
+                </Button>
               )}
               {showAll && (
-                <button
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={() => setShowAll(false)}
-                  className="tap-safe ms-auto text-xs font-medium text-[var(--sys-muted-foreground)] hover:underline"
+                  className="tap-safe ms-auto text-[var(--sys-muted-foreground)] hover:underline"
                 >
                   العودة للعرض بالصفحات
-                </button>
+                </Button>
               )}
             </div>
 
@@ -1096,15 +1100,14 @@ export function OrdersScreen() {
                         it to 44px without moving anything (a checkbox cannot
                         grow its own).
                       */}
-                      <label onClick={(e) => e.stopPropagation()} className="tap-safe flex pt-1 shrink-0">
-                        <input
-                          type="checkbox"
+                      <span onClick={(e) => e.stopPropagation()} className="flex shrink-0">
+                        <Checkbox
+                          id={`order-select-${order.id}`}
                           checked={selected.has(order.id)}
                           onChange={() => toggleRow(order.id)}
                           aria-label={`تحديد الطلب ${order.orderNumber}`}
-                          className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
                         />
-                      </label>
+                      </span>
 
                       <ProductThumb
                         src={order.productImageSnapshot || order.product?.image}
@@ -1117,7 +1120,7 @@ export function OrdersScreen() {
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           {/* Text, not `OrderRef`: the whole row already opens the order, so the number takes only its copy button. */}
                           <span className="inline-flex items-center gap-1 shrink-0">
-                            <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
+                            <span className="font-bold text-[var(--sys-heading)] text-sm shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
                             <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
                           </span>
                           <OrderStateBadge state={order.state} testStore={order.testStore} />
@@ -1128,7 +1131,7 @@ export function OrdersScreen() {
                           */}
                           {order.reservedFor && (
                             <span
-                              className="inline-flex items-center rounded-md border border-[var(--sys-primary)]/40 bg-[var(--sys-primary-soft)] px-2 py-0.5 text-xs font-medium text-[var(--sys-primary)]"
+                              className="inline-flex items-center rounded-md border border-[var(--sys-primary)]/40 bg-[var(--sys-primary-soft)] px-2 py-0.5 text-note font-medium text-[var(--sys-primary)]"
                               title="زبون راجع: الموظفة اللي تعاملت معه قبل هي اللي تسحب طلبه. بيصير عاماً بعد 24 ساعة من حجزه لها أو إذا ما كانت متاحة."
                             >
                               تابع لـ{order.reservedFor.name}
@@ -1136,12 +1139,12 @@ export function OrdersScreen() {
                           )}
                           {/* where it ended up, in the owner's words — sent by the server */}
                           {order.outcome && (
-                            <span className={`text-xs font-medium ${order.outcomeClosed ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
+                            <span className={`text-note font-medium ${order.outcomeClosed ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted-foreground)]'}`}>
                               {order.outcome}
                             </span>
                           )}
                           {order.deliveryProvider && (
-                            <span className="inline-flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
+                            <span className="inline-flex items-center gap-1 text-note text-[var(--sys-muted-foreground)]">
                               {order.deliveryProvider.kind === 'AGENT' ? (
                                 <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" />
                               ) : (
@@ -1151,7 +1154,7 @@ export function OrdersScreen() {
                             </span>
                           )}
                           {order.trackingNumber && (
-                            <span className="text-xs font-mono text-[var(--sys-muted)] shrink-0 whitespace-nowrap" dir="ltr">
+                            <span className="text-note font-mono text-[var(--sys-muted)] shrink-0 whitespace-nowrap" dir="ltr">
                               {order.trackingNumber}
                             </span>
                           )}
@@ -1171,16 +1174,16 @@ export function OrdersScreen() {
                         {/* Line 2 — who it goes to. */}
                         <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm text-[var(--sys-heading)]">
                           <span dir="auto">{order.customer?.fullName}</span>
-                          <span className="text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
+                          <span className="text-note text-[var(--sys-muted-foreground)]" dir="ltr">
                             {order.customer?.rawPhone || order.customer?.phone}
                           </span>
-                          <span className="text-xs text-[var(--sys-muted)]" dir="auto">
+                          <span className="text-note text-[var(--sys-muted)]" dir="auto">
                             {order.region?.name ?? order.customer?.city ?? '—'}
                           </span>
                         </p>
 
                         {/* Line 3 — what is in it. */}
-                        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-[var(--sys-muted-foreground)]">
+                        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-note text-[var(--sys-muted-foreground)]">
                           <span dir="auto" className="break-words">{order.productNameSnapshot || order.product?.name}</span>
                           <span className="text-[var(--sys-muted)] whitespace-nowrap">× {order.quantity}</span>
                           {order.offer?.name && (
@@ -1189,7 +1192,7 @@ export function OrdersScreen() {
                         </p>
 
                         {/* Line 4 — where it came from and when. */}
-                        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-[var(--sys-muted)]">
+                        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-note text-[var(--sys-muted)]">
                           <span dir="auto">{order.source || '—'}</span>
                           {order.moderator?.name && <span dir="auto">{order.moderator.name}</span>}
                           <span className="whitespace-nowrap">{arDateTime(order.createdAt)}</span>
@@ -1224,16 +1227,15 @@ export function OrdersScreen() {
                             state, so for her every row can produce one.
                           */}
                           {canPrint && (canPrintAny || order.confirmationStatus === 'CONFIRMED') && (
-                            <button
-                              type="button"
+                            <IconButton
+                              size="sm"
                               onClick={() => void handlePrintLabels('print', [order.id])}
                               disabled={printing}
-                              aria-label={`اطبع بوليصة ${order.orderNumber}`}
-                              title="اطبع بوليصة هذا الطلب"
-                              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)] disabled:opacity-40"
+                              label={`اطبع بوليصة ${order.orderNumber}`}
+                              className="text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
                             >
                               <RiPrinterLine className="w-4 h-4" />
-                            </button>
+                            </IconButton>
                           )}
                           {/*
                             CALL, SMS, WHATSAPP — FROM THE ROW.

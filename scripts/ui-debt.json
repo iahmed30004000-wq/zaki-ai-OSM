@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawButtons": 669,
+    "rawCheckboxes": 75,
+    "rawSurfaces": 346,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2610
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -310,10 +310,6 @@
       "rawSurfaces": 1,
       "textXs": 5
     },
-    "src/components/orders/OrdersSummary.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 1
-    },
     "src/components/orders/ProductLinesEditor.tsx": {
       "rawButtons": 5,
       "textXs": 6
@@ -588,12 +584,6 @@
       "rawButtons": 4,
       "rawSurfaces": 2,
       "textXs": 23
-    },
-    "src/components/screens/OrdersScreen.tsx": {
-      "rawButtons": 3,
-      "rawCheckboxes": 2,
-      "rawSurfaces": 1,
-      "textXs": 21
     },
     "src/components/screens/PenaltiesScreen.tsx": {
       "rawButtons": 7,
