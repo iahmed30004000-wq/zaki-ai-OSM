@@ -27,6 +27,7 @@ vi.mock('./no-answer-returns-switch', () => ({ returnsSwitch: async () => ((read
 import { IDLE_RETURNED_REASON, returnsMode } from './no-answer-returns';
 import { RETURNS_MODE, readReturnsMode, releaseNoAnswerRounds, returnsModeOn } from './confirmation-queue';
 import { workClock } from './no-answer-rounds';
+import { QUEUE_PRIORITY_LIMITS } from './queue-priority';
 
 const ON_AT = new Date('2026-11-01T05:00:00.000Z');
 const ON = { enabled: true, enabledAt: ON_AT };
@@ -79,7 +80,10 @@ describe('readReturnsMode', () => {
     const mode = await readReturnsMode({} as never, 'c1', { now: NOW, calendar });
     expect(mode?.cadence).toEqual({ since: ON_AT });
     expect(calendar).toHaveBeenCalledTimes(1);
-    expect(mode?.idleCut.getTime()).toBe(returnsMode(NOW, workClock(JO), RETURNS_MODE.idleBusinessMinutes).idleCut.getTime());
+    // UPDATED 2026-11-18 (request C2, decision 4): the idle cut was placed with `RETURNS_MODE.idleBusinessMinutes` (30) — with «أولوية الطابور» off. Under the plan the idle
+    // release is the one rule set's 20 working minutes whatever that key says (`QUEUE_PRIORITY_LIMITS`, read from `confirmation-rule.ts`); the plan is still read once.
+    expect(mode?.idleCut.getTime()).toBe(returnsMode(NOW, workClock(JO), QUEUE_PRIORITY_LIMITS.idleBusinessMinutes).idleCut.getTime());
+    expect(mode?.idleCut.getTime()).not.toBe(returnsMode(NOW, workClock(JO), RETURNS_MODE.idleBusinessMinutes).idleCut.getTime());
     expect(reads.cadence).toBe(1);
   });
 

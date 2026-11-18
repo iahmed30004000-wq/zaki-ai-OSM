@@ -1,11 +1,11 @@
 {
   "totals": {
     "rawButtons": 672,
-    "rawCheckboxes": 77,
+    "rawCheckboxes": 75,
     "rawSurfaces": 348,
     "rawDatePickers": 16,
     "screenTitle": 27,
-    "textXs": 2633
+    "textXs": 2628
   },
   "files": {
     "src/app/(system)/(shell)/settings/tracking/page.tsx": {
@@ -1046,14 +1046,6 @@
       "rawCheckboxes": 1,
       "rawSurfaces": 1,
       "textXs": 13
-    },
-    "src/components/settings/NoAnswerReturnsCard.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 3
-    },
-    "src/components/settings/NoAnswerRoundsCard.tsx": {
-      "rawCheckboxes": 1,
-      "textXs": 2
     },
     "src/components/settings/PartnersCard.tsx": {
       "rawCheckboxes": 1,

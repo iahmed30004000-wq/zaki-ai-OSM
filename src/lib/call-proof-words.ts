@@ -1,18 +1,23 @@
+import { CONFIRMATION_RULE } from './confirmation-rule';
+
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * «إثبات المكالمات» — THE CLIENT-SAFE HALF (Confirmation Center v2, step A).
  *
- * Numbers and words only, and NO IMPORTS: the screens import this file and nothing else of the rule, so the bundle of `/confirmation/mine` (a few hundred
+ * Numbers and words only, and ONE import — the rule set's numbers (`confirmation-rule.ts`, itself import-free; request C2, 18/11): the screens import this file and nothing else of the rule, so the bundle of `/confirmation/mine` (a few hundred
  * bytes below its ceiling) grows by the strings and not by the rule. The rule itself — which «اتصال» press counts, since when — is `call-proof.ts`, and the
  * server decides; a screen only ticks a number the server gave it (`secondsLeft`).
  * ═══════════════════════════════════════════════════════════════════════
  */
 
+/** The proof's seconds, from the one rule set (request C2). */
+const PROOF_MS = CONFIRMATION_RULE.proofSeconds * 1000;
+
 /**
  * How long after the «اتصال» press a «didn't answer» may be recorded, per result. One constant per result so the owner can lower «مشغول» or «مسكّر» later
  * (a busy tone is known in seconds) without anyone digging through the code; in step A all three are the spec's thirty seconds.
  */
-export const MIN_CALL_MS = { NO_ANSWER: 30_000, BUSY: 30_000, UNREACHABLE: 30_000 } as const;
+export const MIN_CALL_MS = { NO_ANSWER: PROOF_MS, BUSY: PROOF_MS, UNREACHABLE: PROOF_MS } as const;
 
 /** The phone-side safety on top of the thirty seconds: the phone's clock and the server's are not the same clock. Only the call sheet uses it. */
 export const CLIENT_MARGIN_MS = 2_000;

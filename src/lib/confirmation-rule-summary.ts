@@ -4,7 +4,7 @@ import { AUTO_RELEASE_BUSINESS_MINUTES, returnsLimits } from './confirmation-que
 import { NO_ANSWER_LIMIT } from './confirmation-workflow';
 import { MIN_CALL_MS } from './call-proof-words';
 import { attemptWords } from './attempt-words';
-import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS, cadenceEveningAnchor, cadenceWorkWindow } from './no-answer-cadence';
+import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS, cadenceEveningAnchor, cadenceMorningAnchor, cadenceWorkWindow } from './no-answer-cadence';
 import { cadenceSince } from './no-answer-cadence-switch';
 import { ROUND_CLOSE_MIN_DAYS, ROUND_GAP_BUSINESS_MINUTES, ROUND_RELEASE_BUSINESS_MINUTES, roundsOn } from './no-answer-rounds';
 import { roundsSwitch } from './no-answer-rounds-switch';
@@ -81,22 +81,23 @@ export function ruleSummaryLines(f: RuleFacts): string[] {
   }
   const window = cadenceWorkWindow(f.workStart, f.workEnd);
   const lines = [
-    `الموظفة بتسحب وبإيدها ${f.hand} طلبات بالأكثر، والطلب اللي ما انلمس ${f.idleMinutes} دقيقة دوام بيرجع للطابور لحالو (${priority}).`,
+    // Request C2: under the plan the hand and the idle release are the rule set's whatever «أولوية الطابور» says (`returnsLimits`), so the line names no switch.
+    `الموظفة بتسحب وبإيدها ${f.hand} طلبات بالأكثر، والطلب اللي ما انلمس ${f.idleMinutes} دقيقة دوام بيرجع للطابور لحالو.`,
     `«لا يرد» ما بينفتح إلا بعد ضغطة «اتصال» و${MIN_CALL_MS.NO_ANSWER / 1000} ثانية — وإلا الزر بيقول ليش.`,
-    `بعد كل «لا يرد» محسوبة بيطلع الطلب من إيدها وبيرجع لأي موظفة بموعدو: بعد ${CADENCE_GAPS_MS.afterFirst / 60_000} دقيقة، بعدين بعد ${hoursWords(CADENCE_GAPS_MS.afterSecond / 3_600_000)}، بعدين ببداية الدوام (${window.start}) وبعد ${hoursWords(CADENCE_FLOORS_MS.beforeFourth / 3_600_000)} على الأقل، وبعدين المسا (${cadenceEveningAnchor(window)}) وبعد ${hoursWords(CADENCE_FLOORS_MS.beforeFifth / 3_600_000)} على الأقل. الضغطة قبل موعدها بتنسجّل وما بتنحسب.`,
+    `بعد كل «لا يرد» محسوبة بيطلع الطلب من إيدها وبيرجع لأي موظفة بموعدو: بعد ${CADENCE_GAPS_MS.afterFirst / 60_000} دقيقة، بعدين بعد ${hoursWords(CADENCE_GAPS_MS.afterSecond / 3_600_000)}، بعدين تاني يوم الصبح (${cadenceMorningAnchor(window)}) وبعد ${hoursWords(CADENCE_FLOORS_MS.beforeFourth / 3_600_000)} على الأقل، وبعدين المسا (${cadenceEveningAnchor(window)}) وبعد ${hoursWords(CADENCE_FLOORS_MS.beforeFifth / 3_600_000)} على الأقل. الضغطة قبل موعدها بتنسجّل وما بتنحسب.`,
     `بعد المحاولة ${CADENCE_LIMIT} على ${CADENCE_MIN_DAYS} أيام مختلفين بيتسكّر الطلب لحالو وبيروح لقائمة «ملغاة سابقاً».`,
+    // Request C2: the postponement cap and «لا يرد is not a postponement» hold under the plan whatever «أولوية الطابور» says (the confirmation door).
+    `موعد من الزبون: ${POSTPONE_MAX_TIMES} مرات بالأكثر. والتأجيل بسبب «لا يرد» ممنوع — بتنسجّل محاولة.`,
   ];
   if (f.priorityOn) {
     lines.push(
-      `ترتيب السحب: الطلب الجديد (أقل من ${QUEUE_PRIORITY.freshMinutes} دقيقة) أول، والإعادة اللي تأخرت أكتر من ${hoursWords(QUEUE_PRIORITY.agingHours)} بتتقدّم، وللمتأخر حصة من السحبات. وتأجيل الطلب بموعد من الزبون حدّو ${POSTPONE_MAX_TIMES} مرات.`,
+      `ترتيب السحب: الطلب الجديد (أقل من ${QUEUE_PRIORITY.freshMinutes} دقيقة) أول، والإعادة اللي تأخرت أكتر من ${hoursWords(QUEUE_PRIORITY.agingHours)} بتتقدّم، وللمتأخر حصة من السحبات.`,
       `من ${clock(f.modes.nightFrom)} لـ${clock(f.modes.nightTo)} ومن ${clock(f.modes.peakFrom)} لـ${clock(f.modes.peakTo)}: الجديد أول والأقدم أول، بلا حصة.`
     );
   } else {
-    lines.push('ترتيب السحب: زي ما هو، بلا حصة للمتأخر ولا حد لتأجيل الموعد (أولوية الطابور مطفية).');
+    lines.push('ترتيب السحب: زي ما هو، بلا حصة للمتأخر (أولوية الطابور مطفية).');
   }
-  if (f.roundsOn) {
-    lines.push(`«نظام الجولات» شغّال كمان: عدّو ما بيشتغل مع الجدول، بس تحريرو لسا بيرجّع الجولة اللي ما حدا ردّ عليها بعد ${hours(ROUND_RELEASE_BUSINESS_MINUTES)} عمل.`);
-  }
+  // Request C2: «نظام الجولات» stored on beside the plan does nothing any more (its releases stop too), so the box says nothing of it under the plan.
   lines.push(`وعدّاد واحد بكل الشاشات: «${attemptWords(2, CADENCE_LIMIT)}» — رقم المحاولة اللي بتصير بالضغطة الجاية.`);
   return lines;
 }

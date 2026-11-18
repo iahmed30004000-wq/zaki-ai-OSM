@@ -45,9 +45,13 @@ describe('the sentence of «أولوية الطابور (تجريبي)»', () =>
     // 18/11 (C1, finding #8 of the rules map): the sentence used to say «ما بيغيّر حد اليد ولا رجوع الطلب اللي ما انلمس، وما في رفض ولا إغلاق ولا رسالة للزبون» — FALSE: the same key sets the hand to
     // 3 and the idle return to 20 working minutes (`QUEUE_PRIORITY_LIMITS`, where the plan is on) and refuses a third postponement (`POSTPONE_MAX_TIMES`). The new sentence says so, with the constants'
     // own figures; the old one is pinned ABSENT below, so it cannot come back.
-    expect(text).toContain(`وبيغيّر كمان حد اليد لـ${QUEUE_PRIORITY_LIMITS.handLimit} طلبات ورجوع الطلب اللي ما انلمس لـ${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام`);
-    expect(text).toContain('بس إذا «إثبات المكالمات وجدول المحاولات» شغّال');
-    expect(text).toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات (اللي بعدهم بينرفض)`);
+    // UPDATED 2026-11-18 (request C2, decisions 4 and 9): the sentence said «وبيغيّر كمان حد اليد لـ3 طلبات ورجوع الطلب اللي ما انلمس لـ20 دقيقة دوام (بس إذا «إثبات المكالمات
+    // وجدول المحاولات» شغّال)، وتأجيل الطلب بموعد من الزبون حدّو 2 مرات (اللي بعدهم بينرفض)» — no longer true: under the plan the three figures hold WHATEVER this key
+    // says (`returnsLimits`, the confirmation door), so they are the plan's rule; this key alone refuses the third postponement only while the plan is off.
+    expect(text).toContain(`حد اليد (${QUEUE_PRIORITY_LIMITS.handLimit} طلبات) ورجوع الطلب اللي ما انلمس (${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام) وحد تأجيل الموعد (${POSTPONE_MAX_TIMES} مرات)`);
+    expect(text).toContain('صاروا من قاعدة «إثبات المكالمات وجدول المحاولات» نفسها، شغّالين معها مهما كان هالمفتاح');
+    expect(text).toContain('ولما هي مطفية، هالمفتاح لحالو بيرفض التأجيل التالت');
+    expect(text).not.toContain('بس إذا «إثبات المكالمات وجدول المحاولات» شغّال');
     expect(text).toContain('ما في إغلاق ولا رسالة للزبون');
     expect(text).not.toContain('ما بيغيّر حد اليد');
     expect(text).not.toContain('ما في رفض');

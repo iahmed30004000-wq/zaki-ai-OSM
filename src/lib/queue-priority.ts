@@ -1,3 +1,5 @@
+import { CONFIRMATION_RULE } from './confirmation-rule';
+
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * QUEUE PRIORITY v2 — THE PURE RULES (Confirmation Center v2, step D1). Nothing here reads a database or a clock.
@@ -19,8 +21,8 @@
  */
 
 export const QUEUE_PRIORITY = {
-  /** A new order younger than this is «fresh»: it goes before any backlog. */
-  freshMinutes: 15,
+  /** A new order younger than this is «fresh»: it goes before any backlog. From the one rule set (request C2). */
+  freshMinutes: CONFIRMATION_RULE.freshMinutes,
   /** A retry due this long ago (or more) outranks the new orders that are not fresh. */
   agingHours: 2,
   /** The share is never below this… */
@@ -44,10 +46,13 @@ export const QUEUE_PRIORITY = {
  * STEP D2 — the returns mode's two numbers with the queue-priority key ON: an agent holds at most 3 (was 5), and an order nothing was logged on goes back after 20 working
  * minutes (was 30). The study: 718 pulls were returned untouched in one week, 404 of them at the 17:00 shift change. Where the key is off, `RETURNS_MODE` (5 and 30) is asked as ever.
  */
-export const QUEUE_PRIORITY_LIMITS = { handLimit: 3, idleBusinessMinutes: 20 } as const;
+export const QUEUE_PRIORITY_LIMITS = { handLimit: CONFIRMATION_RULE.hand, idleBusinessMinutes: CONFIRMATION_RULE.idleMinutes } as const;
 
-/** A postponed order may be postponed at most this many times (the spec: «Postponed max 2»). With the key on, the third postpone is refused. */
-export const POSTPONE_MAX_TIMES = 2;
+/**
+ * A postponed order may be postponed at most this many times (the spec: «Postponed max 2»). With the key on, the third postpone is refused — and, since request C2
+ * (18/11), with «إثبات المكالمات وجدول المحاولات» on as well, whatever this key says. The figure and the two limits above are the one rule set's (`confirmation-rule.ts`).
+ */
+export const POSTPONE_MAX_TIMES = CONFIRMATION_RULE.postponeMax;
 
 export type PullLane = 'NEW' | 'BACKLOG';
 
