@@ -197,9 +197,11 @@ describe('a phone and a desk press the same button', () => {
     const undo = buttons()[0];
     const transfer = screen.getAllByRole('button', { name: 'تحويل' })[0];
     expect(undo.className).toBe(transfer.className);
-    expect(undo.className).toContain('min-h-11');
-    expect(undo.className).toContain('md:min-h-0');
-    expect(undo.className).not.toContain('rounded-lg border');
+    // 18/11 (R11d): the kit's quiet `Button` — 44px under a finger (`h-11`), 32 on a desk (`md:h-8`), and its edge is
+    // transparent: a row action, not a bordered target. (It was `min-h-11` / `md:min-h-0` and no `border` at all.)
+    expect(undo.className).toContain('h-11');
+    expect(undo.className).toContain('md:h-8');
+    expect(undo.className).toContain('border-transparent');
   });
 
   it('on a phone it is a bordered target of its own, 44px — never a bare word a thumb can miss', async () => {
@@ -207,8 +209,11 @@ describe('a phone and a desk press the same button', () => {
     answer = answerFor([parcel('2', 'DELIVERED')], { ...ACTS, undoDelivery: true });
     await draw();
     const undo = buttons()[0];
-    expect(undo.className).toContain('min-h-11');
-    expect(undo.className).toContain('rounded-lg border');
+    // 18/11 (R11d): the kit's bordered `secondary` on a phone — 44px (`h-11`), a visible edge, a share of the row.
+    // (It was `min-h-11` and a hand-written `rounded-lg border`.)
+    expect(undo.className).toContain('h-11');
+    expect(undo.className).toContain('rounded-lg');
+    expect(undo.className).toContain('border-[var(--sys-border)]');
     expect(undo.className).toContain('flex-1');
     // the same classes as «تحويل» on the phone: one family of quiet targets at the foot of the card
     expect(undo.className).toBe(screen.getAllByRole('button', { name: 'تحويل' })[0].className);
