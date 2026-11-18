@@ -316,16 +316,17 @@ describe('the fee panel', () => {
   it('«إضافة» on an unpriced region sends the same PUT, empty boxes absent', async () => {
     render(<CouriersScreen />);
     await tap(rowOf('شركة التجربة').then((row) => within(row).getByRole('button', { name: /بلا أجور/ })));
-    const box = (await screen.findAllByLabelText('أجرة المحافظة الأولى'))[0];
+    // The SECOND region, pressed from its own row: a press that sent another row's region would be caught.
+    const box = (await screen.findAllByLabelText('أجرة المحافظة التانية'))[0];
     fireEvent.change(box, { target: { value: '5' } });
-    const add = (await screen.findAllByRole('button', { name: /إضافة/ }))[0];
+    const add = within(box.closest('tr') as HTMLElement).getByRole('button', { name: /إضافة/ });
     expect(add.getAttribute('type')).toBe('button');
     await act(async () => { fireEvent.click(add); });
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0]).toEqual({
       url: '/api/settings/delivery-fees',
       method: 'PUT',
-      body: JSON.stringify({ deliveryProviderId: 'c1', regionId: 'r1', fee: 5 }),
+      body: JSON.stringify({ deliveryProviderId: 'c1', regionId: 'r2', fee: 5 }),
     });
   });
 
