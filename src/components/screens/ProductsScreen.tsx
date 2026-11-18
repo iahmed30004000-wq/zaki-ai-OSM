@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardContent, KpiCard } from '@/components/ui/Card';
 import { useConfirm, useTell } from '@/components/ui/Confirm';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Segmented } from '@/components/ui/Segmented';
 import { Input, Textarea, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -18,7 +20,8 @@ import Link from 'next/link';
 import { RiAddCircleLine, RiArchiveLine, RiArrowRightUpLine, RiCloseLine, RiDeleteBinLine, RiFolderTransferLine, RiFoldersLine, RiImageAddLine, RiMedalLine, RiPencilLine, RiSearchLine, RiStarLine, RiTruckLine, RiWallet3Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { CategoryPicker } from '@/components/products/CategoryPicker';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows } from '@/components/ui/Rows';
@@ -29,6 +32,12 @@ import { ProductEditDialog } from '@/components/products/ProductEditDialog';
 import { CategoriseDialog, type CategoriseResult } from '@/components/products/CategoriseDialog';
 import { apiJson } from '@/lib/api-client';
 import type { ProductStatsAnswer as ProductStats } from '@/lib/product-stats';
+
+/** Which door a new product's stock comes in through: the value, its name, and the sentence said under the bar. */
+const SOURCE_CHOICES = [
+  ['MANUFACTURED', 'نصنّعه', 'تشغيلة إنتاج ببنود كلفة — مواد، أجور، تغليف'],
+  ['PURCHASED', 'جاهز نشتريه', 'استلام بضاعة بسعر شراء للقطعة'],
+] as const;
 
 /** A count as a reader reads it — Latin digits, thousands separated. */
 const count = (n: number) => plainNumber(n);
@@ -312,15 +321,18 @@ export function ProductsScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={t.products}
+      {/*
+        THE KIT'S FRAME (R12a). The name is the menu's own (`routeLabel`, the same «المنتجات» `t.products` printed), and no width cap:
+        the table is the widest thing on the page. The search and the «بلا تصنيف» row stay INSIDE the table's card and not in the frame's
+        filter row: they narrow the table only, and drawn above the four cards they would read as narrowing those figures too.
+      */}
+      <PageShell title={routeLabel('/products')}
             description="كتالوج المنتجات مع الصور، تحليل تكاليف التصنيع متعدد التشغيلات والمخزون"
             actions={
               <><div className="flex items-center space-x-2 rtl:space-x-reverse">
             <AdvancedGroup holds="تشغيلات الإنتاج">
             <Link href="/manufacturing">
-              <Button variant="outline" size="sm" className="flex items-center space-x-1">
+              <Button variant="secondary" size="sm" className="flex items-center space-x-1">
                 <RiFoldersLine className="w-4 h-4" />
                 <span>تشغيلات الإنتاج</span>
               </Button>
@@ -329,14 +341,14 @@ export function ProductsScreen() {
             <Button
               size="sm"
               onClick={() => setCreateModalOpen(true)}
-              className="flex items-center space-x-1.5 bg-[var(--sys-destructive)] hover:bg-[var(--sys-destructive)]/85"
+              className="flex items-center space-x-1.5"
             >
               <RiAddCircleLine className="w-4 h-4" />
               <span>إضافة منتج</span>
             </Button>
           </div></>
             }
-          />
+          >
 
         {/*
           «بطاقات ذكية في المنتجات زي احصائيات» — THE OWNER, 21/10.
@@ -393,29 +405,29 @@ export function ProductsScreen() {
           cannot appear in the store at all.
         */}
         {gradeData && (
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-4 space-y-2">
+          <Card padding="md" className="space-y-2">
             <div className="flex items-center gap-2">
               <RiMedalLine className="w-4 h-4 text-[var(--sys-primary)]" />
-              <h3 className="text-xs font-bold text-[var(--sys-heading)]">
+              <h3 className="text-sm font-bold text-[var(--sys-heading)]">
                 تقدير المنتجات: ممّا يُبنى، وما ينقص قبل أن ينطق
               </h3>
             </div>
-            <p className="text-xs font-semibold text-[var(--sys-foreground)] leading-relaxed">
+            <p className="text-sm font-semibold text-[var(--sys-foreground)] leading-relaxed">
               {gradeData.readiness.why}
             </p>
             {gradeData.salesVisible && (
-              <p className="text-xs text-[var(--sys-muted-foreground)] leading-relaxed">
+              <p className="text-note text-[var(--sys-muted-foreground)] leading-relaxed">
                 يُبنى على: {gradeData.readiness.madeOf.join('، ')}
                 {gradeData.window.days !== null ? ` — عن طلبات آخر ${gradeData.window.days} يوماً` : ''} وفي المتجر
                 المختار وحده، ولا يُعطى رقمٌ لمنتجٍ عيّنتُه أقلّ من {gradeData.minSample} طلباً مؤكَّداً.
                 {!gradeData.costVisible && ' وكلفةُ البضاعة لا تُعرَض لهذا الحساب، فبندُ الهامش ساقطٌ من المجموع.'}
               </p>
             )}
-            <p className="text-xs text-[var(--sys-muted)] leading-relaxed">
+            <p className="text-note text-[var(--sys-muted)] leading-relaxed">
               لا يُستدعى أيُّ نموذجٍ في هذا الرقم. كلُّ جملةٍ هنا قالبٌ حول عددٍ مقروءٍ من السجل، والبندُ الذي لا
               يستطيع السجلُّ قياسَه يسقط من المجموع ويقول لماذا — ولا يُحسَب صفراً.
             </p>
-          </div>
+          </Card>
         )}
 
         {/* Products Table with Image Thumbnails */}
@@ -433,19 +445,16 @@ export function ProductsScreen() {
                 placeholder="بحث بالاسم (عربي/إنجليزي) أو SKU..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-11 md:h-auto w-full ps-9 pe-4 md:py-2.5 text-xs bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
+                className="h-11 md:h-auto w-full ps-9 pe-4 md:py-2.5 text-sm bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
               />
               {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  aria-label="امسح البحث"
-                  title="امسح البحث"
-                  className="absolute end-3 top-1/2 -translate-y-1/2 text-[var(--sys-muted)] hover:text-[var(--sys-foreground)] cursor-pointer"
-                >
-                  <RiCloseLine className="w-4 h-4" />
-                </button>
+                <span className="absolute end-1 top-1/2 -translate-y-1/2">
+                  <IconButton size="sm" label="امسح البحث" onClick={() => setSearch('')}>
+                    <RiCloseLine className="w-4 h-4" />
+                  </IconButton>
+                </span>
               )}
-              <span className="absolute -bottom-5 start-1 text-xs text-[var(--sys-muted)]">
+              <span className="absolute -bottom-5 start-1 text-note text-[var(--sys-muted)]">
                 {filteredProducts.length} من أصل {products.length} منتج
               </span>
             </div>
@@ -459,18 +468,16 @@ export function ProductsScreen() {
             */}
             {uncategorised > 0 && (
               <div className="mt-6">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant={onlyUnfiled ? 'primary' : 'secondary'}
+                  aria-pressed={onlyUnfiled}
                   onClick={() => setOnlyUnfiled((v) => !v)}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    onlyUnfiled
-                      ? 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)] text-[var(--sys-warning)]'
-                      : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]'
-                  }`}
                 >
-                  <RiFoldersLine className="w-4 h-4" aria-hidden />
+                  <RiFoldersLine className={onlyUnfiled ? 'w-4 h-4' : 'w-4 h-4 text-[var(--sys-warning)]'} aria-hidden />
                   {onlyUnfiled ? 'أظهِر الكلّ' : `${uncategorised} منتجاً بلا تصنيف`}
-                </button>
+                </Button>
                 {/*
                   AND THE SORTING, ONE PRESS AWAY.
                   «انتا صنف افضل» — THE OWNER, 22/10. Each of the products with no
@@ -478,15 +485,11 @@ export function ProductsScreen() {
                   where he changes what he disagrees with; nothing is written
                   until he presses «طبّق» there.
                 */}
-                <button
-                  type="button"
-                  onClick={() => setCategoriseOpen(true)}
-                  className="ms-2 min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
-                >
+                <Button type="button" size="sm" variant="secondary" onClick={() => setCategoriseOpen(true)} className="ms-2">
                   <RiFolderTransferLine className="w-4 h-4" aria-hidden />
                   رتّبها لي
-                </button>
-                <span className="ms-2 text-xs text-[var(--sys-muted)]">
+                </Button>
+                <span className="ms-2 text-note text-[var(--sys-muted)]">
                   التصنيف يحدّد من يرى المنتج، وكيف تُجمَّع تقاريره، وما يستطيع المساعد الإجابة عنه.
                 </span>
               </div>
@@ -511,7 +514,7 @@ export function ProductsScreen() {
                     render: (p) => (
                       <>
                         <span className="block font-bold text-[var(--sys-heading)]">{productName(p, locale)}</span>
-                        <span className="text-xs text-[var(--sys-muted)]">
+                        <span className="text-note text-[var(--sys-muted)]">
                           {/* The shelf, where the name is — not a column of
                               its own. A category is how a product is FILED,
                               so it reads as part of what it is rather than
@@ -614,13 +617,13 @@ export function ProductsScreen() {
                     label: 'التقدير',
                     render: (p: any) => {
                       const g = gradeOf(p.id);
-                      if (!g) return <span className="text-xs text-[var(--sys-muted)]">—</span>;
+                      if (!g) return <span className="text-note text-[var(--sys-muted)]">—</span>;
                       return (
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <HealthChip health={{ tone: g.tone, label: g.label, why: g.why }} />
                             {g.score && g.score.total !== null && (
-                              <span className="text-xs font-bold tabular-nums text-[var(--sys-primary)]">
+                              <span className="text-note font-bold tabular-nums text-[var(--sys-primary)]">
                                 {g.score.total}
                                 <span className="font-normal text-[var(--sys-muted-foreground)]">
                                   {' '}
@@ -629,13 +632,13 @@ export function ProductsScreen() {
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-[var(--sys-muted-foreground)] leading-relaxed">{g.why}</p>
+                          <p className="text-note text-[var(--sys-muted-foreground)] leading-relaxed">{g.why}</p>
                           {/* Every band that scored, with the fact it read —
                               so the total can be added up by hand. */}
                           {g.score?.bands
                             .filter((b) => b.points !== null)
                             .map((b) => (
-                              <p key={b.key} className="text-xs text-[var(--sys-muted)] leading-relaxed">
+                              <p key={b.key} className="text-note text-[var(--sys-muted)] leading-relaxed">
                                 {b.ar}: {b.points} / {b.weight} — {b.why}
                               </p>
                             ))}
@@ -655,26 +658,20 @@ export function ProductsScreen() {
                 ]}
                 actions={(p) => (
                   <span className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="outline" onClick={() => router.push(`/products/${p.id}`)} className="p-2" title="التفاصيل والصور">
+                    <IconButton size="sm" variant="secondary" onClick={() => router.push(`/products/${p.id}`)} label="التفاصيل والصور">
                       <RiArrowRightUpLine className="icon-mirror w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openEdit(p)}
-                      className="p-2 bg-[var(--sys-surface)] text-[var(--sys-primary)] border-[var(--sys-primary-soft)] hover:bg-[var(--sys-surface-strong)]"
-                      title="تعديل المنتج"
-                    >
-                      <RiPencilLine className="w-4 h-4" />
-                    </Button>
-                    <Button size="sm" variant="danger" onClick={() => handleDelete(p)} className="p-2" title="حذف المنتج">
+                    </IconButton>
+                    <IconButton size="sm" variant="secondary" onClick={() => openEdit(p)} label="تعديل المنتج">
+                      <RiPencilLine className="w-4 h-4 text-[var(--sys-primary)]" />
+                    </IconButton>
+                    <IconButton size="sm" variant="danger" onClick={() => handleDelete(p)} label="حذف المنتج">
                       <RiDeleteBinLine className="w-4 h-4" />
-                    </Button>
+                    </IconButton>
                   </span>
                 )}
                 empty={
                   loading ? (
-                    <p className="py-12 text-center text-xs text-[var(--sys-muted-foreground)]">{t.loading}</p>
+                    <p className="py-12 text-center text-sm text-[var(--sys-muted-foreground)]">{t.loading}</p>
                   ) : (
                     <EmptyState
                       title={search ? `لا منتجَ يطابق «${search}»` : 'لا منتجات في هذا المتجر بعد'}
@@ -695,7 +692,7 @@ export function ProductsScreen() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
 
       {/* Create Product Modal with Image Upload */}
       <Modal
@@ -707,14 +704,14 @@ export function ProductsScreen() {
       >
         <form onSubmit={handleCreateProduct} className="space-y-4">
           {modalError && (
-            <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">
+            <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">
               {modalError}
             </div>
           )}
 
           {/* Basic Information */}
-          <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)] space-y-3">
-            <h4 className="text-xs font-bold text-[var(--sys-foreground)]">1. المعلومات الأساسية</h4>
+          <Card plain padding="md" className="space-y-3">
+            <h4 className="text-sm font-bold text-[var(--sys-foreground)]">1. المعلومات الأساسية</h4>
             <Input
               label="اسم المنتج *"
               placeholder="مثال: كريم إزالة الندبات الألماني الأصلي"
@@ -749,30 +746,19 @@ export function ProductsScreen() {
                 the same ledger; a ready-made good entered as a "production
                 run" puts invented manufacturing costs into your cost
                 reports, which is why it is asked once, here. */}
+            {/* Two choices, one true: the kit's `Segmented`. The sentence of the chosen one is said under the bar. */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">مصدر المنتج *</label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {([
-                  ['MANUFACTURED', 'نصنّعه', 'تشغيلة إنتاج ببنود كلفة — مواد، أجور، تغليف'],
-                  ['PURCHASED', 'جاهز نشتريه', 'استلام بضاعة بسعر شراء للقطعة'],
-                ] as const).map(([key, title, hint]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSourceType(key)}
-                    className={`cursor-pointer rounded-lg border p-3 text-start transition ${
-                      sourceType === key
-                        ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)]'
-                        : 'border-[var(--sys-border)] bg-[var(--sys-card)] hover:border-[var(--sys-primary)]/40'
-                    }`}
-                  >
-                    <span className={`block text-sm font-bold ${sourceType === key ? 'text-[var(--sys-primary)]' : 'text-[var(--sys-heading)]'}`}>
-                      {title}
-                    </span>
-                    <span className="mt-0.5 block text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{hint}</span>
-                  </button>
-                ))}
-              </div>
+              <p id="new-product-source" className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">مصدر المنتج *</p>
+              <Segmented
+                aria-labelledby="new-product-source"
+                className="w-full"
+                value={sourceType}
+                onChange={(key) => setSourceType(key as 'MANUFACTURED' | 'PURCHASED')}
+                options={SOURCE_CHOICES.map(([key, title]) => ({ value: key, label: title }))}
+              />
+              <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+                {SOURCE_CHOICES.find(([key]) => key === sourceType)?.[2]}
+              </p>
             </div>
             <CategoryPicker value={categoryId} onChange={setCategoryId} />
 
@@ -782,12 +768,12 @@ export function ProductsScreen() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-          </div>
+          </Card>
 
           {/* Product Images */}
-          <div className="border border-[var(--sys-border)] rounded-lg p-4 bg-[var(--sys-surface)] space-y-3">
+          <Card plain padding="md" className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-[var(--sys-foreground)]">
+              <h4 className="text-sm font-bold text-[var(--sys-foreground)]">
                 2. صور المنتج (الأولى = الصورة الرئيسية)
               </h4>
               <input
@@ -801,9 +787,8 @@ export function ProductsScreen() {
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-xs"
               >
                 <RiImageAddLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
                 اختيار صور
@@ -811,7 +796,7 @@ export function ProductsScreen() {
             </div>
 
             {selectedFiles.length === 0 ? (
-              <div className="border-2 border-dashed border-[var(--sys-border)] rounded-lg p-6 text-center text-xs text-[var(--sys-muted)]">
+              <div className="border-2 border-dashed border-[var(--sys-border)] rounded-lg p-6 text-center text-note text-[var(--sys-muted)]">
                 JPG / PNG / WEBP — حتى 10 ميجابايت للصورة
               </div>
             ) : (
@@ -830,42 +815,37 @@ export function ProductsScreen() {
                       className="w-full h-20 object-cover"
                     />
                     {primaryIndex === idx && (
-                      <span className="absolute top-1 left-1 rtl:left-auto rtl:right-1 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-xs font-bold px-1.5 py-0.5 rounded-lg flex items-center space-x-0.5">
+                      <span className="absolute top-1 left-1 rtl:left-auto rtl:right-1 bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-note font-bold px-1.5 py-0.5 rounded-lg flex items-center space-x-0.5">
                         <RiStarLine className="w-4 h-4" />
                         <span>رئيسية</span>
                       </span>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => removeFile(idx)}
-                      aria-label="أزل الصورة"
-                      title="أزل الصورة"
-                      className="absolute top-1 right-1 rtl:right-auto rtl:left-1 bg-[var(--sys-card)]/90 text-[var(--sys-destructive)] rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                    >
-                      <RiCloseLine className="w-4 h-4" />
-                    </button>
+                    {/* The kit's controls sit in a positioned wrapper: the button's own `relative` would beat an `absolute` passed to it. */}
+                    <span className="absolute top-1 right-1 rtl:right-auto rtl:left-1 bg-[var(--sys-card)]/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                      <IconButton type="button" size="sm" label="أزل الصورة" onClick={() => removeFile(idx)}>
+                        <RiCloseLine className="w-4 h-4 text-[var(--sys-destructive)]" />
+                      </IconButton>
+                    </span>
                     {primaryIndex !== idx && (
-                      <button
-                        type="button"
-                        onClick={() => setPrimaryIndex(idx)}
-                        className="min-h-11 md:min-h-0 inline-flex items-center absolute bottom-1 left-1 rtl:left-auto rtl:right-1 bg-[var(--sys-sidebar)]/60 text-[var(--sys-primary-foreground)] text-xs px-1.5 py-0.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                      >
-                        رئيسية
-                      </button>
+                      <span className="absolute bottom-1 left-1 rtl:left-auto rtl:right-1 bg-[var(--sys-sidebar)]/60 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button type="button" variant="quiet" size="sm" onClick={() => setPrimaryIndex(idx)}>
+                          <span className="text-[var(--sys-primary-foreground)]">رئيسية</span>
+                        </Button>
+                      </span>
                     )}
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
 
           {/* Inventory info hint */}
-          <div className="p-3 bg-[var(--sys-surface)] border border-[var(--sys-primary-soft)] rounded-lg text-xs text-[var(--sys-primary)]">
+          <Card plain padding="sm" className="text-note text-[var(--sys-primary)]">
             بعد إنشاء المنتج أضف تشغيلات الإنتاج من صفحة <Link href="/manufacturing" className="underline font-semibold">تشغيلات الإنتاج</Link> لحساب تكلفة الوحدة والمخزون تلقائياً.
-          </div>
+          </Card>
 
           <div className="flex justify-end space-x-2 rtl:space-x-reverse pt-2">
-            <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setCreateModalOpen(false)}>
               إلغاء
             </Button>
             <Button type="submit" loading={modalLoading}>

@@ -287,13 +287,8 @@
       "rawButtons": 2,
       "textXs": 10
     },
-    "src/components/products/CategoriseDialog.tsx": {
-      "rawButtons": 2,
-      "textXs": 6
-    },
     "src/components/products/CategoryPicker.tsx": {
-      "rawButtons": 3,
-      "textXs": 3
+      "textXs": 1
     },
     "src/components/products/FixedCostEditor.tsx": {
       "rawSurfaces": 1,
@@ -303,19 +298,12 @@
       "rawCheckboxes": 1,
       "textXs": 3
     },
-    "src/components/products/ProductEditDialog.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/products/ProductHeadline.tsx": {
       "rawSurfaces": 2,
       "textXs": 4
     },
     "src/components/products/ProductOffers.tsx": {
-      "rawButtons": 7,
-      "rawCheckboxes": 3,
-      "textXs": 16
+      "rawButtons": 1
     },
     "src/components/products/ProductPerformance.tsx": {
       "textXs": 1
@@ -431,11 +419,6 @@
       "rawButtons": 1,
       "rawSurfaces": 1
     },
-    "src/components/screens/InventoryMovementsScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 4
-    },
     "src/components/screens/JobsScreen.tsx": {
       "rawButtons": 2,
       "rawSurfaces": 5,
@@ -492,9 +475,7 @@
       "textXs": 4
     },
     "src/components/screens/ProductsScreen.tsx": {
-      "rawButtons": 6,
-      "rawSurfaces": 4,
-      "textXs": 26
+      "textXs": 2
     },
     "src/components/screens/ProfileScreen.tsx": {
       "rawSurfaces": 1,
@@ -585,9 +566,8 @@
       "textXs": 12
     },
     "src/components/screens/TrackingScreen.tsx": {
-      "rawButtons": 27,
-      "rawSurfaces": 3,
-      "textXs": 41
+      "rawButtons": 4,
+      "textXs": 4
     },
     "src/components/screens/UserDetailScreen.tsx": {
       "rawButtons": 8,
@@ -645,25 +625,15 @@
       "rawSurfaces": 1,
       "textXs": 7
     },
-    "src/components/screens/finance/AssembleStatementDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 1
-    },
     "src/components/screens/finance/BulkDecide.tsx": {
       "rawButtons": 1,
       "textXs": 4
     },
     "src/components/screens/finance/ClosingScreen.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 4,
-      "rawDatePickers": 1,
-      "textXs": 11
+      "rawDatePickers": 1
     },
     "src/components/screens/finance/CollectionScreen.tsx": {
-      "rawButtons": 18,
-      "rawSurfaces": 7,
-      "textXs": 38
+      "rawSurfaces": 1
     },
     "src/components/screens/finance/CourierReason.tsx": {
       "textXs": 5
@@ -720,11 +690,6 @@
       "rawButtons": 3,
       "textXs": 10
     },
-    "src/components/screens/finance/ShortfallPeopleDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 1
-    },
     "src/components/screens/finance/StatementTally.tsx": {
       "textXs": 1
     },
@@ -747,11 +712,6 @@
       "rawDatePickers": 2,
       "textXs": 51
     },
-    "src/components/screens/tracking/BulkDeliverReport.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/tracking/CloseLegacyDialog.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,
@@ -767,9 +727,6 @@
       "rawSurfaces": 1,
       "textXs": 4
     },
-    "src/components/screens/tracking/CourierSaidChip.tsx": {
-      "textXs": 2
-    },
     "src/components/screens/tracking/DeliverDialog.tsx": {
       "rawButtons": 3,
       "rawSurfaces": 1,
@@ -780,8 +737,7 @@
       "textXs": 6
     },
     "src/components/screens/tracking/DifferenceMark.tsx": {
-      "rawButtons": 1,
-      "textXs": 1
+      "rawButtons": 1
     },
     "src/components/screens/tracking/TransferDialog.tsx": {
       "rawButtons": 2,
@@ -935,60 +891,24 @@
     "src/components/shell/CommandPalette.tsx": {
       "rawButtons": 2
     },
-    "src/components/shell/EditingStoreBar.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/shell/EntryPicker.tsx": {
       "rawButtons": 2,
       "rawSurfaces": 4
-    },
-    "src/components/shell/FirstRunTour.tsx": {
-      "rawButtons": 2,
-      "rawCheckboxes": 1,
-      "textXs": 4
     },
     "src/components/shell/Header.tsx": {
       "rawButtons": 4,
       "rawSurfaces": 1,
       "textXs": 1
     },
-    "src/components/shell/IdleGuard.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1
-    },
     "src/components/shell/InstallApp.tsx": {
-      "rawButtons": 2,
-      "textXs": 1
+      "rawButtons": 1
     },
     "src/components/shell/MobileNav.tsx": {
       "rawButtons": 3,
       "textXs": 2
     },
-    "src/components/shell/MyWork.tsx": {
-      "textXs": 1
-    },
     "src/components/shell/NotificationBell.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 1,
-      "textXs": 9
-    },
-    "src/components/shell/NotificationCards.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 3
-    },
-    "src/components/shell/OfflineWatch.tsx": {
-      "textXs": 1
-    },
-    "src/components/shell/PreviewAs.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
-    "src/components/shell/ScreenGuide.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 5
+      "rawButtons": 1
     },
     "src/components/shell/Sidebar.tsx": {
       "rawButtons": 4,

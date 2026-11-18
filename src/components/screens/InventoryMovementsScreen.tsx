@@ -2,11 +2,13 @@
 
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArrowDownLine, RiArrowUpLine, RiHistoryLine, RiLoader4Line, RiSearchLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { arDateTime } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 
@@ -62,18 +64,20 @@ export function InventoryMovementsScreen() {
   useLiveRefresh(load, { key: `${term}·${type}` });
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/inventory/movements')} />
-
+    <PageShell
+      title={routeLabel('/inventory/movements')}
+      width="wide"
+      filters={
+      <Card padding="md">
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void load();
         }}
-        className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end"
+        className="flex flex-wrap gap-3 items-end"
       >
         <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">بحث</span>
+          <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">بحث</span>
           <div className="relative">
             <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute right-3 top-3" />
             <input
@@ -85,7 +89,7 @@ export function InventoryMovementsScreen() {
           </div>
         </label>
         <label>
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
+          <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">النوع</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
@@ -99,9 +103,11 @@ export function InventoryMovementsScreen() {
             ))}
           </select>
         </label>
-        <button type="submit" className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium">بحث</button>
+        <Button type="submit">بحث</Button>
       </form>
-
+      </Card>
+      }
+    >
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
       {!data ? (
@@ -115,7 +121,7 @@ export function InventoryMovementsScreen() {
           why="لا حركة مخزون تطابق ما تبحث عنه. وسّع البحث أو امسحه لتعود كل الحركات."
         />
       ) : (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+        <Card plain className="overflow-hidden">
                     <Rows
             rows={data.movements}
             keyOf={(m) => m.id}
@@ -127,7 +133,7 @@ export function InventoryMovementsScreen() {
               { key: 'c1', label: "المنتج", primary: true,
                 render: (m) => (
                   <>{m.product?.name ?? '—'}
-                    {m.product?.sku && <span className="block text-xs text-[var(--sys-muted)]" dir="ltr">{m.product.sku}</span>}</>
+                    {m.product?.sku && <span className="block text-note text-[var(--sys-muted)]" dir="ltr">{m.product.sku}</span>}</>
                 ) },
               { key: 'c2', label: "النوع",
                 render: (m) => (TYPE_AR[m.type] ?? m.type) },
@@ -159,12 +165,12 @@ export function InventoryMovementsScreen() {
             }
           />
           {data.hasMore && (
-            <p className="text-xs text-[var(--sys-muted)] px-3 py-2 border-t border-[var(--sys-border)]">
+            <p className="text-note text-[var(--sys-muted)] px-3 py-2 border-t border-[var(--sys-border)]">
               تُعرض أحدث الحركات — ضيّق البحث لرؤية أقدم منها.
             </p>
           )}
-        </div>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
