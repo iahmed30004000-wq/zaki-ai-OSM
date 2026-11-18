@@ -305,9 +305,7 @@
       "textXs": 4
     },
     "src/components/products/ProductOffers.tsx": {
-      "rawButtons": 7,
-      "rawCheckboxes": 3,
-      "textXs": 16
+      "rawButtons": 1
     },
     "src/components/products/ProductPerformance.tsx": {
       "textXs": 1
@@ -428,11 +426,6 @@
     "src/components/screens/InventoryBalancesScreen.tsx": {
       "rawButtons": 1,
       "rawSurfaces": 1
-    },
-    "src/components/screens/InventoryMovementsScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 4
     },
     "src/components/screens/JobsScreen.tsx": {
       "rawButtons": 2,
