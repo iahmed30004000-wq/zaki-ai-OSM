@@ -185,8 +185,10 @@ describe('«قيد عكسي» on a row — drawn for the key its door asks', () 
     as('finance.cashbox_view', 'finance.cashbox');
     render(<TransfersScreen />);
     const press = pressIn(await card('تحويل ساري')) as HTMLElement;
-    expect(press.className).toContain('min-h-11');
-    expect(press.className).toContain('md:min-h-0');
+    // 18/11 (R13f, the transfers screen onto the kit): the press is the kit's `Button` (quiet, sm) now, not a hand-drawn
+    // button. It said `min-h-11 md:min-h-0` (44px on a phone, its own height on a desk); the kit's sm says `h-11 md:h-8`
+    // (44px on a phone, 32px on a desk) — the same promise, written by the kit.
+    expect(press.className).toContain('h-11 md:h-8');
   });
 
   it('the way to finish a half-reversed transfer is said ONLY to who has the press — nobody is pointed at a button they do not have', async () => {
