@@ -44,7 +44,6 @@ vi.mock('@/hooks/useRegions', () => ({
 }));
 vi.mock('@/hooks/useProducts', () => ({ useProducts: () => ({ products: [{ id: 'prod-a', name: 'كريم' }] }) }));
 vi.mock('@/components/ui/ProductPicker', () => ({ ProductPicker: () => null }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null }));
 vi.mock('@/components/orders/ContactButtons', () => ({ ContactButtons: () => null }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({ OrderDetailModal: () => null }));

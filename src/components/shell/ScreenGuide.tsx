@@ -19,12 +19,12 @@ import { guideRoute, whoOpens, type GuideText } from '@/lib/route-guide';
  *
  * ── WHY THE SHELL OWNS THE SHEET AND THE HEADERS ONLY HOLD THE BUTTON ──
  *
- * Fifty-three of the fifty-four screens draw their title with `PageHeader` or
- * `ScreenTitle` — two components, written at different times, laid out
- * differently. The button goes in both, beside the title where an eye looks
- * for «what is this»; the sheet is drawn by the shell, once, so the two
- * headers cannot disagree about how it looks, and neither has to know what a
- * guide is. They read one context, and without a provider (a component under
+ * The screens draw their title with `PageHeader` — one component since 18/11,
+ * when `ScreenTitle` (the older one, which read its name from the address) was
+ * deleted and its screens moved onto `PageHeader` with the name read from the
+ * registry. The button sits in it, beside the title where an eye looks for
+ * «what is this»; the sheet is drawn by the shell, once, so the header does
+ * not have to know what a guide is. It reads one context, and without a provider (a component under
  * test, a page outside the shell) it is `null` and the button is simply not
  * there — which is also why this is a context and not `usePathname()` inside
  * the headers: thirty tests mock `next/navigation` without it.

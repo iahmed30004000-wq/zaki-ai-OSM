@@ -19,7 +19,6 @@ import { join } from 'node:path';
 const { apiJson } = vi.hoisted(() => ({ apiJson: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/growth/bench' }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 
 import { BenchScreen } from './BenchScreen';
 import { DEFAULT_BENCH_RULES } from '@/lib/bench-verdict';

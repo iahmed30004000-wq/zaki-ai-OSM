@@ -87,7 +87,9 @@ describe('every read of the expenses table says which expenses count', () => {
     expect(profit).toMatch(/const totalOperationalExpenses = liveExpenses\.reduce/);
     // …and the route takes both from it, it does not ask for the cancelled ones itself.
     const route = all.find((f) => f.file === 'app/api/finance/route.ts')!.src;
-    expect(route).toMatch(/const \{[^}]*\bexpenses\b[^}]*\bliveExpenses\b[^}]*\} = await profitToDate\(/);
+    // 18/11 (H2, cause 6 of the hang): the route asks `profitToDate` through the reports lane (`heavyOnce(key, ttl, () => profitToDate(…))`) — the
+    // same one answer, kept a minute. Was `= await profitToDate(`; now either form, and still nothing but `profitToDate` makes the two lists.
+    expect(route).toMatch(/const \{[^}]*\bexpenses\b[^}]*\bliveExpenses\b[^}]*\} = await (?:profitToDate\(|heavyOnce\([^;]*?\(\) => profitToDate\()/);
   });
 
   it('no raw SQL reads the expenses table without leaving the cancelled out', () => {

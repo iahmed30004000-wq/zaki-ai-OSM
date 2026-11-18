@@ -6,6 +6,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { getDateRange } from '@/lib/analytics';
 import { endOfLocalDay, localDayKey, startOfLocalDay } from '@/lib/local-day';
 import { readScorecard, type Grain } from '@/lib/agent-scorecard';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /** The window when none is asked: the last seven days, today included — and no window is longer than this many days (a scorecard row is a day or a week, not a quarter). */
 const DEFAULT_DAYS = 7;
@@ -46,7 +47,14 @@ export async function GET(req: Request) {
       weekendDays: country.weekendDays,
       timezone: country.timezone,
     };
-    const card = await readScorecard(db, { companyId, storeId, start, end, calendar, grain }, now);
+    /*
+     * IN THE REPORTS LANE, ONE ANSWER A MINUTE PER QUESTION (H2, cause 8 of the hang — 18/11). Up to 4 × 50,000 + 100,000 rows were read on the
+     * site's main pool for every opening of the board. Now they run on the reports' own pool (`heavyOnce` → `runInHeavyLane`), two people asking the
+     * same window share one computation, and the answer is kept `REPORT_TTL_MS`. The key names the question completely — company, store, the window
+     * and the grain — and never the reader: the key above was already asked of him.
+     */
+    const key = ['score-card', companyId, storeId, start.toISOString(), end.toISOString(), grain].join('|');
+    const card = await heavyOnce(key, REPORT_TTL_MS, () => readScorecard(db, { companyId, storeId, start: start!, end: end!, calendar, grain }, now));
     return NextResponse.json({
       grain,
       window: { start: start.toISOString(), end: end.toISOString(), timezone: country.timezone },

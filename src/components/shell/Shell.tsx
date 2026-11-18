@@ -10,6 +10,7 @@ import { NotificationCards } from './NotificationCards';
 import { MobileNav } from './MobileNav';
 import { OfflineWatch } from './OfflineWatch';
 import { InstallAppStrip } from './InstallApp';
+import { TryTheNewLook } from './TryTheNewLook';
 import { Watermark } from './Watermark';
 import { IdleGuard } from './IdleGuard';
 import { CommandPalette, useCommandPalette } from './CommandPalette';
@@ -93,6 +94,8 @@ export function Shell({
         />
         {/* The phone's offer to install, seen without opening a menu. See InstallApp.tsx. */}
         <InstallAppStrip />
+        {/* The new look, offered once to whoever is not on it — never forced. See TryTheNewLook.tsx. */}
+        <TryTheNewLook />
         {/* The bar at the bottom is fixed, so the page needs room under it
             or the last row of every screen sits behind the thumb that is
             trying to read it. */}

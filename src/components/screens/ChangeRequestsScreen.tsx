@@ -15,7 +15,8 @@ import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmat
 import { deriveCoreState } from '@/lib/order-state';
 import { OrderStateChip } from '@/components/ui/StatusChip';
 import { ROLE_LABELS, type UserRole } from '@/types/auth';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiArrowGoBackLine, RiArrowLeftLine, RiCheckboxCircleLine, RiFileEditLine, RiLoader4Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
@@ -515,7 +516,7 @@ export function ChangeRequestsScreen() {
 
   return (
     <div className="max-w-4xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/control/change-requests')} />
 
 
       <div className="flex gap-1 rounded-lg bg-[var(--sys-surface-strong)] p-0.5 w-fit">

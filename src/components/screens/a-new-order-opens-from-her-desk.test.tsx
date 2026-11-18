@@ -37,7 +37,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
   },
 }));
 // The title draws what it is handed — the button lives in it.
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: ({ children }: { children?: React.ReactNode }) => <header><h1>طلباتي</h1>{children}</header> }));
 // The form itself is tested on its own (`confirm-now-in-the-new-order-form.test.tsx`); here: is it opened, and what happens after.
 vi.mock('@/components/orders/CreateOrderModal', () => ({
   CreateOrderModal: ({ isOpen, onSuccess }: { isOpen: boolean; onSuccess: () => void }) =>

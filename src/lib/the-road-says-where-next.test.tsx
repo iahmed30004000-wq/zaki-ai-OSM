@@ -180,8 +180,10 @@ describe('what the screen draws', () => {
   });
 
   it('and a screen that is not in a hub gets no strip', () => {
-    here.path = '/orders';
-    const { container } = render(<HubTabs groups={menuFor('orders.view', ...SHIPPING)} />);
+    // 18/11 (R6): was '/orders' with `orders.view` — the orders are a hub of tabs now (the carts beside them). The loose screen is
+    // the dashboard («اليوم»).
+    here.path = '/dashboard';
+    const { container } = render(<HubTabs groups={menuFor('dashboard.view', ...SHIPPING)} />);
     expect(container.innerHTML).toBe('');
   });
 

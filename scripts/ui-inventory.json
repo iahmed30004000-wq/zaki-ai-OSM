@@ -2509,7 +2509,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 6,
-    "links": 1,
+    "links": 2,
     "tabs": 0
   },
   "src/components/shell/HubTabs.tsx": {
@@ -2549,7 +2549,7 @@
     "cards": 0,
     "modals": 0,
     "icons": 3,
-    "links": 3,
+    "links": 4,
     "tabs": 0
   },
   "src/components/shell/MyWork.tsx": {
@@ -2631,6 +2631,16 @@
     "modals": 0,
     "icons": 6,
     "links": 4,
+    "tabs": 0
+  },
+  "src/components/shell/TryTheNewLook.tsx": {
+    "buttons": 2,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
     "tabs": 0
   },
   "src/components/store-admin/PanelHeader.tsx": {

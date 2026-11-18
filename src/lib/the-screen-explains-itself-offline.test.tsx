@@ -25,7 +25,8 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/ops/preparation' }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
 
 import { ScreenGuideProvider } from '@/components/shell/ScreenGuide';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 
 afterEach(() => cleanup());
 
@@ -33,7 +34,8 @@ describe('when the texts cannot be fetched', () => {
   const open = async () => {
     render(
       <ScreenGuideProvider>
-        <ScreenTitle />
+        {/* 18/11 (R3): was <ScreenTitle /> — deleted; the screen draws PageHeader with the registry name. */}
+        <PageHeader title={routeLabel('/ops/preparation')} />
       </ScreenGuideProvider>
     );
     await act(async () => {

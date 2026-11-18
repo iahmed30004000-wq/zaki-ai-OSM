@@ -34,7 +34,6 @@ vi.mock('@/context/AppContext', () => ({
 }));
 vi.mock('@/components/settings/StorefrontSettings', () => ({ StorefrontSettings: () => null }));
 vi.mock('@/components/settings/StoreIdentityCard', () => ({ StoreIdentityCard: () => null }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 
 import { GeoSettingsScreen } from './GeoSettingsScreen';
 import { BenchScreen } from './BenchScreen';

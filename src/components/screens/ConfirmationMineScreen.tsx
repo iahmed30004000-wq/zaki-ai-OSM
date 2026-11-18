@@ -16,7 +16,8 @@ import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { Button } from '@/components/ui/Button';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import {
   ChangeRequestDialog,
   IssueDialog,
@@ -1271,14 +1272,18 @@ export function ConfirmationMineScreen() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <ScreenTitle>
-        {canCreate && !readOnly && (
-          <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
-            <RiAddCircleLine className="w-4 h-4" />
-            <span>إنشاء طلب</span>
-          </Button>
-        )}
-      </ScreenTitle>
+      <PageHeader
+        title={routeLabel('/confirmation/mine')}
+        actions={
+          canCreate &&
+          !readOnly && (
+            <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
+              <RiAddCircleLine className="w-4 h-4" />
+              <span>إنشاء طلب</span>
+            </Button>
+          )
+        }
+      />
       {canCreate && !readOnly && (
         <CreateOrderModal
           isOpen={creating}

@@ -18,8 +18,12 @@ export function useNewCartsCount(enabled: boolean): number {
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
+    // A tick never asks on top of its own question (H2, 18/11 — the header polls' rule): while the last read is still out, the next tick does nothing.
+    let inFlight = false;
     const read = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (inFlight) return;
+      inFlight = true;
       try {
         const res = await apiFetch('/api/abandoned-carts/summary');
         if (!res.ok) return;
@@ -27,6 +31,8 @@ export function useNewCartsCount(enabled: boolean): number {
         if (alive && typeof body.new === 'number') setCount(body.new);
       } catch {
         /* the menu works without the number */
+      } finally {
+        inFlight = false;
       }
     };
     void read();

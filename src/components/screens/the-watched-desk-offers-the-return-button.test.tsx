@@ -48,7 +48,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, [opts?.key]);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>طلباتي</h1> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => toastApi }));
 // Only the yes/no question is replaced: the order patch hook beside it (`useAsk`) still reads the real module.
 vi.mock('@/components/ui/Confirm', async (orig) => ({ ...(await orig<typeof import('@/components/ui/Confirm')>()), useConfirm: () => askFirst }));

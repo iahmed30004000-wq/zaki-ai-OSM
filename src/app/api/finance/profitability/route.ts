@@ -4,6 +4,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { getCompanyAnalytics } from '@/lib/analytics';
 import { readLimit } from '@/lib/numeric-input';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * GET /api/finance/profitability?from=&to=&limit=
@@ -46,10 +47,11 @@ export async function GET(req: Request) {
      */
     const limit = readLimit(searchParams, 20, 100);
 
-    const analytics = await getCompanyAnalytics(
-      { companyId, storeId },
-      startDate && endDate ? { startDate, endDate } : { period: 'all' }
-    );
+    // In the reports lane and kept a minute (H2, cause 6 of the hang — 18/11), keyed by the company, the store and the span asked. The key is the
+    // summary door's own (`../summary/route.ts`): the two ask the engine the same question, so one computation answers both.
+    const filter = startDate && endDate ? { startDate, endDate } : { period: 'all' as const };
+    const key = ['finance-analytics', companyId, storeId, startDate && endDate ? `${startDate}~${endDate}` : 'all'].join('|');
+    const analytics = await heavyOnce(key, REPORT_TTL_MS, () => getCompanyAnalytics({ companyId, storeId }, filter));
 
     const products = (analytics.productStats ?? [])
       .filter((p: { deliveredOrders: number }) => p.deliveredOrders > 0)

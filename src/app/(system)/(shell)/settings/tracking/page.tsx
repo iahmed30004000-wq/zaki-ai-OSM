@@ -1,5 +1,6 @@
 import { guardRoute, requireShellContext } from '@/lib/page-guard';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { TrackingPixelsSection } from '@/components/settings/TrackingPixelsSection';
 import { AdAccountsCard } from '@/components/settings/AdAccountsCard';
 import { CustomConversionsCard } from '@/components/settings/CustomConversionsCard';
@@ -16,7 +17,7 @@ export default async function Page() {
         A TITLE, because the ⓘ hangs on one. This page drew none — the first card began at the top of the screen — so the only screen of
         the settings with no name on it was also the only one that could not offer its guide.
       */}
-      <ScreenTitle note="البكسلات التي تحمّلها صفحاتك، وما يُرسله الخادم بعد الطلب، وحسابات الإعلانات — في مكان واحد." />
+      <PageHeader title={routeLabel('/settings/tracking')} description="البكسلات التي تحمّلها صفحاتك، وما يُرسله الخادم بعد الطلب، وحسابات الإعلانات — في مكان واحد." />
       <TrackingPixelsSection />
       {/*
         Directly under the pixels, because it is the same thought carried
