@@ -236,7 +236,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
             {m.reading.orderedAt}
           </span>
         ) : (
-          <span className="text-xs text-[var(--sys-muted-foreground)]">وصلت {arDateTime(m.createdAt)}</span>
+          <span className="text-note text-[var(--sys-muted-foreground)]">وصلت {arDateTime(m.createdAt)}</span>
         ) },
     { key: 'customer', label: 'العميل', primary: true, render: (m) => value(m, 'customer') },
     { key: 'phone', label: 'الهاتف', render: (m) => <span dir="ltr">{value(m, 'phone')}</span> },
@@ -247,7 +247,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
         <div className="space-y-0.5">
           {value(m, 'offer')}
           {/* The offer the text was tied to — the one the order was priced from. */}
-          {m.order?.offer && <p className="text-xs font-semibold text-[var(--sys-primary)]">مربوط بالعرض: {m.order.offer.name}</p>}
+          {m.order?.offer && <p className="text-note font-semibold text-[var(--sys-primary)]">مربوط بالعرض: {m.order.offer.name}</p>}
         </div>
       ) },
     { key: 'priceQuantity', label: 'السعر × الكمية', render: (m) => <span dir="ltr">{value(m, 'priceQuantity')}</span> },
@@ -257,7 +257,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
           <StatusChip tone={STATE[m.processingStatus]?.tone ?? 'neutral'}>{STATE[m.processingStatus]?.label ?? 'غير معروفة'}</StatusChip>
           {m.order && <OrderRef id={m.order.id} number={m.order.orderNumber} className="font-mono text-[var(--sys-primary)] font-semibold" />}
           {/* On a phone the reason leads the card instead (`notice`), so it is drawn here for the desk only. */}
-          {reasonLine(m, 'hidden md:block text-xs text-[var(--sys-destructive)] mt-0.5')}
+          {reasonLine(m, 'hidden md:block text-note text-[var(--sys-destructive)] mt-0.5')}
         </div>
       ) },
   ];
@@ -275,7 +275,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
         </Button>
       )}
       {m.processingStatus === 'NEEDS_REVIEW' && !mayRetry(m) && (
-        <span className="text-xs text-[var(--sys-muted-foreground)]">صحّح الرسالة وابعتها من جديد</span>
+        <span className="text-note text-[var(--sys-muted-foreground)]">صحّح الرسالة وابعتها من جديد</span>
       )}
       {canManage && mayIgnore(m) && (
         <Button size="sm" variant="ghost" disabled={busyId === m.id} onClick={() => ignore(m)}>
@@ -284,16 +284,16 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
       )}
       {/* The message as it arrived, and where from — folded, closed until asked for, and not remembered. */}
       <details className="w-full rounded-lg border border-[var(--sys-border)]">
-        <summary className="min-h-11 md:min-h-0 inline-flex items-center cursor-pointer px-2 py-1.5 text-xs font-semibold text-[var(--sys-muted-foreground)]">
+        <summary className="min-h-11 md:min-h-0 inline-flex items-center cursor-pointer px-2 py-1.5 text-note font-semibold text-[var(--sys-muted-foreground)]">
           نص الرسالة
         </summary>
         <div className="border-t border-[var(--sys-surface-strong)] px-2 py-2">
-          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-[var(--sys-heading)]">{m.text || '—'}</p>
-          <p className="mt-1 text-xs text-[var(--sys-muted)]">
+          <p className="whitespace-pre-wrap break-words text-note leading-relaxed text-[var(--sys-heading)]">{m.text || '—'}</p>
+          <p className="mt-1 text-note text-[var(--sys-muted)]">
             من: {m.source?.chatTitle || m.chatId} · {m.threadName || m.source?.topicName || (m.threadId ? `موضوع ${m.threadId}` : 'بلا موضوع')} ·{' '}
             {m.senderName || 'مجهول'} · وصلت {arDateTime(m.createdAt)}
           </p>
-          {m.pageName && <p className="mt-1 text-xs text-[var(--sys-muted)]">الصفحة: {m.pageName}</p>}
+          {m.pageName && <p className="mt-1 text-note text-[var(--sys-muted)]">الصفحة: {m.pageName}</p>}
         </div>
       </details>
     </div>
@@ -382,7 +382,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
           keyOf={(m) => m.id}
           columns={columns}
           alert={(m) => (m.processingStatus === 'FAILED' ? 'danger' : m.processingStatus === 'NEEDS_REVIEW' ? 'warn' : null)}
-          notice={(m) => reasonLine(m, 'text-xs text-[var(--sys-destructive)]')}
+          notice={(m) => reasonLine(m, 'text-note text-[var(--sys-destructive)]')}
           actions={actions}
           empty={empty}
         />
