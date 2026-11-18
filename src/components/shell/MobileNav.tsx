@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { isActiveGroup, isActiveRoute } from '@/lib/active-route';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { NavGroup } from '@/lib/route-registry';
+import { routeLabel, type NavGroup } from '@/lib/route-registry';
 import { mobileNav } from '@/lib/mobile-nav';
 import { hubHref, hubLabel, isHub } from '@/lib/hub';
 import { iconFor } from './icons';
@@ -40,6 +40,7 @@ import { InstallAppLine } from './InstallApp';
  */
 
 const TAP = 'min-h-[44px] min-w-[44px]';
+const ProfileIcon = iconFor('CircleUser');
 
 export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: string[] }) {
   const pathname = usePathname();
@@ -81,7 +82,8 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
   const sheetTone = (on: boolean) =>
     on ? 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]' : 'text-[var(--sys-foreground)]';
 
-  if (primary.length === 0 || yielding) return null;
+  // No screen in the bar still leaves «المزيد» (18/11): its sheet holds the profile and the way out, which every person has.
+  if (yielding) return null;
 
   return (
     <>
@@ -186,6 +188,11 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
               width of a notification bell.
             */}
             <div className="border-t border-[var(--sys-border)] p-2">
+              {/* Everybody's own page (18/11): not a menu line any more, so its door on a phone is here — the header's name is `sm:` only. */}
+              <Link href="/admin/profile" className={`${TAP} flex items-center gap-3 rounded-lg px-2 text-sm ${sheetTone(isActiveRoute(pathname, '/admin/profile', ['/admin/profile']))}`}>
+                <ProfileIcon className="h-4 w-4 shrink-0" />
+                {routeLabel('/admin/profile')}
+              </Link>
               {/* Installing, while this phone can: the strip above the page rests, this line stays. */}
               <InstallAppLine className={`${TAP} flex w-full items-center gap-3 rounded-lg px-2 text-sm font-semibold text-[var(--sys-primary)]`} />
               <button

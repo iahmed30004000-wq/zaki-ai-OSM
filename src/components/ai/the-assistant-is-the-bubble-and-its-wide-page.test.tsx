@@ -46,8 +46,10 @@ describe('the menu', () => {
     expect(pathsOf(menuNav(user, can))).toContain('/growth/intelligence');
   });
 
-  it('hides exactly that one line for being a bubble — «offMenu» is nobody else’s', () => {
-    expect(ALL_ROUTES.filter((r) => r.offMenu).map((r) => r.path)).toEqual(['/assistant']);
+  it('hides exactly that one line for being a bubble — «offMenu» is nobody else’s but the profile’s', () => {
+    // 18/11 (R6): was ['/assistant'] alone. «الملف الشخصي» is off the menu too — everybody's own page, whose door is the name in
+    // the header and a line of the phone's «المزيد» (`the-profile-has-a-door-for-everyone.test.tsx`). Still exactly these, by name.
+    expect(ALL_ROUTES.filter((r) => r.offMenu).map((r) => r.path)).toEqual(['/assistant', '/admin/profile']);
   });
 
   it('and the route still asks the permission it always asked', () => {
