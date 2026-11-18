@@ -444,13 +444,14 @@
   },
   "src/components/ops/BatchBarcodePaste.tsx": {
     "buttons": 3,
-    "inputs": 2,
+    "inputs": 1,
     "columns": 0,
     "cards": 0,
     "modals": 1,
     "icons": 2,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/ops/DelayShipmentDialog.tsx": {
     "buttons": 2,
@@ -473,14 +474,15 @@
     "tabs": 0
   },
   "src/components/ops/PrepEditSheet.tsx": {
-    "buttons": 4,
+    "buttons": 2,
     "inputs": 6,
     "columns": 0,
     "cards": 0,
     "modals": 1,
     "icons": 3,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/orders/AiOrderModal.tsx": {
     "buttons": 4,
@@ -1543,7 +1545,7 @@
     "buttons": 14,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 19,
     "links": 0,
