@@ -152,7 +152,7 @@ export const BENCH_FORWARD_SHIPPING: readonly string[] = [
 ];
 
 /** The state label of a confirmed bench order, in the owner's words. */
-export const BENCH_CONFIRMED_AR = 'مؤكَّد — تيست، ما بينشحن';
+export { BENCH_CONFIRMED_AR } from './bench-label';
 
 /**
  * DOES A BENCH ORDER STOP HERE?

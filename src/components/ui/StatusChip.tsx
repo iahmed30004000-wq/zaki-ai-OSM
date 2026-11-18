@@ -3,7 +3,7 @@
 import React from 'react';
 import clsx from 'clsx';
 import { STATE_LABEL_AR, STATE_TONE, type CoreState, type StateTone } from '@/lib/order-state';
-import { BENCH_CONFIRMED_AR } from '@/lib/test-store';
+import { BENCH_CONFIRMED_AR } from '@/lib/bench-label';
 
 /**
  * ONE CHIP, AND THE WORD COMES FROM ONE PLACE.
@@ -101,9 +101,8 @@ export function StatusChip({
  * (`test-store.ts`), so the word says it — from `Store.isTest`, not from a state of its own.
  */
 export function OrderStateChip({ state, beforeShipping, testStore }: { state: string; beforeShipping?: boolean; testStore?: boolean }) {
-  const label = STATE_LABEL_AR[state as CoreState];
-
-  if (state === 'CONFIRMED' && testStore) return <StatusChip tone="warn">{BENCH_CONFIRMED_AR}</StatusChip>;
+  // The word only, in the tone «مؤكد» already has: the fewest bytes on the desk, whose budget is measured to the kilobyte.
+  const label = testStore && state === 'CONFIRMED' ? BENCH_CONFIRMED_AR : STATE_LABEL_AR[state as CoreState];
 
   if (state === 'CANCELLED' && beforeShipping !== undefined) {
     return (

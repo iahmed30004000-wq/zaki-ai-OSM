@@ -121,7 +121,7 @@ beforeEach(() => {
 });
 
 describe('a bench order, by the PATCH', () => {
-  it.each(['PACKING', 'READY_FOR_SHIPPING', 'READY_FOR_PICKUP', 'SHIPPED'])(
+  it.each(['PACKING', 'READY_FOR_SHIPPING', 'READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY'])(
     'shippingStatus: %s is refused in the owner’s sentence, and nothing is written',
     async (to) => {
       bench();
