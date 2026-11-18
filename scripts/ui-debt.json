@@ -1,36 +1,10 @@
 {
-  "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 345,
-    "rawDatePickers": 16,
-    "screenTitle": 0,
-    "textXs": 2621
-  },
   "files": {
     "src/app/(system)/error.tsx": {
-      "rawButtons": 1,
       "rawSurfaces": 1
-    },
-    "src/app/(system)/forgot-password/page.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 5
-    },
-    "src/app/(system)/login/page.tsx": {
-      "rawButtons": 1,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 2,
-      "textXs": 7
     },
     "src/app/(system)/not-found.tsx": {
       "rawSurfaces": 2
-    },
-    "src/app/(system)/register/page.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 6
-    },
-    "src/app/(system)/reset-password/page.tsx": {
-      "textXs": 3
     },
     "src/app/forbidden.tsx": {
       "rawSurfaces": 1
@@ -706,17 +680,11 @@
       "textXs": 10
     },
     "src/components/screens/TelegramAliasesDialog.tsx": {
-      "textXs": 8
-    },
-    "src/components/screens/TelegramOrdersScreen.tsx": {
-      "textXs": 9
+      "textXs": 1
     },
     "src/components/screens/TelegramSettingsScreen.tsx": {
       "rawSurfaces": 1,
       "textXs": 12
-    },
-    "src/components/screens/TelegramUpsellMergeDialog.tsx": {
-      "textXs": 3
     },
     "src/components/screens/TrackingScreen.tsx": {
       "rawButtons": 27,
@@ -1088,9 +1056,7 @@
       "textXs": 2
     },
     "src/components/shell/AccountScreens.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 1,
-      "textXs": 1
+      "rawSurfaces": 1
     },
     "src/components/shell/CommandPalette.tsx": {
       "rawButtons": 2
@@ -1100,9 +1066,8 @@
       "textXs": 2
     },
     "src/components/shell/EntryPicker.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 4,
-      "textXs": 5
+      "rawButtons": 2,
+      "rawSurfaces": 4
     },
     "src/components/shell/FirstRunTour.tsx": {
       "rawButtons": 2,
@@ -1150,12 +1115,6 @@
       "rawButtons": 1,
       "rawSurfaces": 1,
       "textXs": 5
-    },
-    "src/components/shell/SecondFactor.tsx": {
-      "rawButtons": 8,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
-      "textXs": 11
     },
     "src/components/shell/Sidebar.tsx": {
       "rawButtons": 4,

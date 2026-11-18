@@ -71,7 +71,7 @@ export async function GET(req: Request) {
           deliveryAddress: true,
           region: { select: { name: true } },
           customerNotes: true,
-          items: { select: { id: true, productName: true, quantity: true, freeQuantity: true } },
+          items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, variantSummary: true } },
           addOns: { select: { id: true, productName: true, quantity: true } },
           customer: { select: { id: true, fullName: true, phone: true, city: true, address: true } },
           claimer: { select: { id: true, name: true } },
