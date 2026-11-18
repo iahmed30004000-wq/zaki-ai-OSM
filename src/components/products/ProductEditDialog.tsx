@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { CategoryPicker } from '@/components/products/CategoryPicker';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { apiJson } from '@/lib/api-client';
@@ -142,7 +143,7 @@ export function ProductEditDialog({
     >
       <form onSubmit={save} className="space-y-4">
         {error && (
-          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg">
+          <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-sm rounded-lg">
             {error}
           </div>
         )}
@@ -176,25 +177,25 @@ export function ProductEditDialog({
         <Textarea label="الوصف بالإنجليزية" rows={2} dir="ltr" value={form.descriptionEn} onChange={(e) => setForm({ ...form, descriptionEn: e.target.value })} />
 
         {product && onManageImages && (
-          <div className="flex items-center gap-3 p-3 bg-[var(--sys-surface)] border border-[var(--sys-primary-soft)] rounded-lg">
+          <Card plain padding="sm" className="flex items-center gap-3">
             <ProductThumb src={product.images?.find((i) => i.isPrimary)?.url || product.images?.[0]?.url} size="md" />
-            <div className="text-xs text-[var(--sys-primary)]">
+            <div className="text-note text-[var(--sys-primary)]">
               <p className="font-bold">إدارة الصور</p>
               <p>
                 {product.images?.length || 0} صورة — للتعديل والتبديل والحذف افتح{' '}
-                <button type="button" onClick={onManageImages} className="underline font-bold cursor-pointer">
+                <Button type="button" variant="quiet" size="sm" onClick={onManageImages} className="underline">
                   صفحة تفاصيل المنتج
-                </button>
+                </Button>
               </p>
             </div>
-          </div>
+          </Card>
         )}
 
         <div className="flex justify-end space-x-2 rtl:space-x-reverse pt-1">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
           </Button>
-          <Button type="submit" loading={saving} className="bg-[var(--sys-primary)] hover:bg-[var(--sys-primary)]/85">
+          <Button type="submit" loading={saving}>
             <RiPencilLine className="w-4 h-4" />
             حفظ التعديلات
           </Button>

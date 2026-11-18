@@ -116,7 +116,7 @@ function Chip({ work }: { work: WorkItem }) {
       <span className="tabular-nums font-bold">{work.count}</span>
       {/* The word is for a desk. On a phone the icon and the number are the
           whole chip — and the title carries the sentence either way. */}
-      <span className="hidden lg:inline text-xs font-medium">{work.ar}</span>
+      <span className="hidden lg:inline text-note font-medium">{work.ar}</span>
     </>
   );
 

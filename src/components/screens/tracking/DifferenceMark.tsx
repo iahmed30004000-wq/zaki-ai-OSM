@@ -17,6 +17,9 @@ import { gapWord, markHead, markTitle, markTone, type DifferenceOnTheRow } from 
  *
  * A real button, 44px on a phone: it opens the dialog that shows the two figures and takes the answer. The figures and the
  * words are the server's (`difference`) and the library's; this draws.
+ *
+ * It stays a hand-drawn button on the kit (R11d, 18/11): it is a chip, painted in a verdict's tone beside the row's other
+ * chips, and none of the kit's four looks is a tone.
  */
 
 /** The same four tones every verdict is painted with (`HealthChip`) — the mark invents no colour of its own. */
@@ -45,7 +48,7 @@ export function DifferenceMark({
       type="button"
       onClick={onOpen}
       title={markTitle(difference, mayDecide)}
-      className={`mt-1 flex w-fit min-h-11 md:min-h-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${TONE[markTone(difference)]}`}
+      className={`mt-1 flex w-fit min-h-11 md:min-h-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-note font-medium ${TONE[markTone(difference)]}`}
     >
       <span>{markHead(difference)}</span>
       {word && difference.gap !== null && (

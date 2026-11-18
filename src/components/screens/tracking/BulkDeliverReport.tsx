@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { RiCheckLine, RiCloseLine } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * THE REPORT OF «استلم المحدد» — ONE LINE PER PARCEL, SAID BY THE SERVER, KEPT UNTIL THE PERSON READS IT.
@@ -32,31 +34,31 @@ export function BulkDeliverReport({
   onClose: () => void;
 }) {
   return (
-    <section
-      aria-label="تقرير الاستلام الجماعي"
-      className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 space-y-2"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-semibold text-[var(--sys-heading)]">
-          {refused === 0 ? `انسجّل ${delivered} طرد` : `انسجّل ${delivered} وما انسجّل ${refused}`}
-        </p>
-        <button onClick={onClose} className="mr-auto min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
-          تمام
-        </button>
-      </div>
-      <ul className="space-y-1 max-h-[70vh] overflow-y-auto">
-        {lines.map((l) => (
-          <li key={l.id} className="flex items-start gap-1.5 text-xs">
-            {l.ok ? (
-              <RiCheckLine className="w-4 h-4 text-[var(--sys-success)] shrink-0" aria-hidden />
-            ) : (
-              <RiCloseLine className="w-4 h-4 text-[var(--sys-destructive)] shrink-0" aria-hidden />
-            )}
-            <span className="font-medium text-[var(--sys-heading)]">{l.label}</span>
-            <span className="text-[var(--sys-muted-foreground)]">{l.ok ? 'انسجّل' : l.reason}</span>
-          </li>
-        ))}
-      </ul>
+    // The region keeps its name (a screen reader finds the report by it); the surface inside it is the kit's page-level card.
+    <section aria-label="تقرير الاستلام الجماعي">
+      <Card padding="sm" className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-[var(--sys-heading)]">
+            {refused === 0 ? `انسجّل ${delivered} طرد` : `انسجّل ${delivered} وما انسجّل ${refused}`}
+          </p>
+          <Button type="button" variant="quiet" size="sm" onClick={onClose} className="mr-auto">
+            تمام
+          </Button>
+        </div>
+        <ul className="space-y-1 max-h-[70vh] overflow-y-auto">
+          {lines.map((l) => (
+            <li key={l.id} className="flex items-start gap-1.5 text-note">
+              {l.ok ? (
+                <RiCheckLine className="w-4 h-4 text-[var(--sys-success)] shrink-0" aria-hidden />
+              ) : (
+                <RiCloseLine className="w-4 h-4 text-[var(--sys-destructive)] shrink-0" aria-hidden />
+              )}
+              <span className="font-medium text-[var(--sys-heading)]">{l.label}</span>
+              <span className="text-[var(--sys-muted-foreground)]">{l.ok ? 'انسجّل' : l.reason}</span>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }
