@@ -93,15 +93,29 @@ describe('one page header', () => {
     expect(offenders, 'ملفات لسّا بترسم ScreenTitle').toEqual([]);
   });
 
-  it.each(TABLE)('%s draws PageHeader with the registry name of %s, read, never typed', (file, path, count) => {
+  /*
+   * 18/11 (R12e): «draws PageHeader» became «draws PageHeader, or PageShell, which draws it». The restructure moves each screen
+   * onto the kit's frame `PageShell` (R2c), and the frame's header IS `PageHeader` with the same `title` (PageShell.tsx) — so the
+   * name is still read from the registry and still one h1. Old: the file must import and draw `<PageHeader title={routeLabel…}`.
+   * New: the same, with `PageShell` accepted in its place. The count, the routeLabel title and «no typed title» are held as before.
+   */
+  it.each(TABLE)('%s draws PageHeader (itself or through PageShell) with the registry name of %s, read, never typed', (file, path, count) => {
     const src = stripComments(repoFile(file));
-    expect(src, 'ما بيستورد PageHeader').toMatch(/import \{ PageHeader \} from '@\/components\/ui\/PageHeader';/);
+    expect(src, 'ما بيستورد PageHeader ولا PageShell').toMatch(
+      /import \{ PageHeader \} from '@\/components\/ui\/PageHeader';|import \{ PageShell \} from '@\/components\/ui\/PageShell';/
+    );
     expect(src, 'ما بيستورد routeLabel').toMatch(/import \{ routeLabel \} from '@\/lib\/route-registry';/);
-    const headers = src.match(/<PageHeader\b/g) ?? [];
+    const headers = src.match(/<(?:PageHeader|PageShell)\b/g) ?? [];
     expect(headers, 'عدد الرؤوس').toHaveLength(count);
-    const titled = src.match(new RegExp(`<PageHeader\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
+    const titled = src.match(new RegExp(`<(?:PageHeader|PageShell)\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
     expect(titled, `العنوان مش routeLabel('${path}')`).toHaveLength(count);
-    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<PageHeader\s+title="/);
+    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<(?:PageHeader|PageShell)\s+title="/);
+  });
+
+  it('— and PageShell is a PageHeader with the same title, so a screen on the frame still prints the registry name once', () => {
+    const shell = stripComments(repoFile('src/components/ui/PageShell.tsx'));
+    expect(shell).toMatch(/<PageHeader title=\{title\}/);
+    expect(shell.match(/<PageHeader\b/g) ?? []).toHaveLength(1);
   });
 
   it.each(TABLE.filter((r) => r[3] !== null))('%s is drawn by the page at %s', (file, path, _count, page) => {

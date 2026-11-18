@@ -434,7 +434,8 @@ export function ProductOffers({
                   {canManage && (
                     <div className="flex shrink-0 items-center gap-1">
                       <GripSlot />
-                      <div className="flex shrink-0 flex-col">
+                      {/* Side by side since R12e (18/11): each arrow is a kit square now, and two squares stacked made the row twice as tall. */}
+                      <div className="flex shrink-0">
                         <IconButton
                           size="sm"
                           onClick={() => move(i, -1)}

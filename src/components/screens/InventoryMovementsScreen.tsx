@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArrowDownLine, RiArrowUpLine, RiHistoryLine, RiLoader4Line, RiSearchLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
@@ -64,9 +64,10 @@ export function InventoryMovementsScreen() {
   useLiveRefresh(load, { key: `${term}·${type}` });
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/inventory/movements')} />
-
+    <PageShell
+      title={routeLabel('/inventory/movements')}
+      width="wide"
+      filters={
       <Card padding="md">
       <form
         onSubmit={(e) => {
@@ -105,7 +106,8 @@ export function InventoryMovementsScreen() {
         <Button type="submit">بحث</Button>
       </form>
       </Card>
-
+      }
+    >
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
       {!data ? (
@@ -169,6 +171,6 @@ export function InventoryMovementsScreen() {
           )}
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
