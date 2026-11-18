@@ -383,6 +383,15 @@ describe('(b) the parcel edit window', () => {
     expect(patch).not.toHaveBeenCalled();
   });
 
+  it('NEGATIVE: «إلغاء» after a change closes the window and writes nothing', async () => {
+    const dlg = await openEdit();
+    fireEvent.click(press(dlg, 'زد الكمية'));
+    fireEvent.click(press(dlg, 'إلغاء'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(patch).not.toHaveBeenCalled();
+  });
+
   it('its four presses say type="button" (the kit sets none)', async () => {
     const dlg = await openEdit();
     for (const name of ['احفظ التعديل', 'إلغاء', 'زد الكمية', 'أنقص الكمية']) expect(press(dlg, name).getAttribute('type'), name).toBe('button');
