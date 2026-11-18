@@ -189,6 +189,12 @@ describe('the file of the ready orders — GET /api/ops/shipments/export', () =>
     expect(db.order.findMany).not.toHaveBeenCalled();
   });
 
+  it('asks about THIS company and THIS store', async () => {
+    bench();
+    await get();
+    expect(db.store.findFirst.mock.calls[0][0].where).toEqual({ id: 's1', companyId: 'c1', isTest: true });
+  });
+
   it('NEGATIVE: a real store’s file reads its orders', async () => {
     await get();
     expect(db.order.findMany).toHaveBeenCalled();
@@ -241,6 +247,12 @@ describe('the single order door — POST /api/orders/[id]/shipping', () => {
       expect(db.order.update).not.toHaveBeenCalled();
     });
   }
+
+  it('asks the ORDER’s store, not the session’s, inside this company', async () => {
+    bench();
+    await door(anOrder({ storeId: 's9' }), { action: 'transition', to: 'READY_FOR_SHIPPING' });
+    expect(db.store.findFirst.mock.calls[0][0].where).toEqual({ id: 's9', companyId: 'c1', isTest: true });
+  });
 
   it('and the owner’s override with a note does not pass it either', async () => {
     bench();

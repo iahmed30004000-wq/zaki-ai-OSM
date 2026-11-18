@@ -105,7 +105,10 @@ describe('the tripwires — each names the line a removal would break', () => {
     const r = src('src/lib/reservation.ts');
     const from = r.indexOf('export async function reserveOrderLines');
     const body = r.slice(from, r.indexOf('export async function releaseOrderLines'));
-    expect(body.match(/where: \{ orderId, order: \{ \.\.\.realStoresOnly\(\) \} \}/g), 'الحجز عاد يحجز لطلب منصّة').toHaveLength(2);
+    expect(
+      body.match(/where: \{ orderId, order: \{ OR: \[\{ storeId: null \}, \{ store: realStoresHere\(\) \}\] \} \}/g),
+      'الحجز عاد يحجز لطلب منصّة — أو صار يرفض طلباً بلا متجر'
+    ).toHaveLength(2);
   });
 
   it('period commission does not run for a bench store', () => {

@@ -151,6 +151,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const from = order.shippingStatus as ShippingStatus;
+    // The three facts the bench stop reads (`benchStopsHere`, B2), named: the access row is untyped.
+    const benchFacts: { shippingBatchId: string | null; shippingStatus: string; shippedAt: Date | string | null } = {
+      shippingBatchId: order.shippingBatchId ?? null,
+      shippingStatus: String(order.shippingStatus),
+      shippedAt: order.shippedAt ?? null,
+    };
     const now = new Date();
     const updateData: Record<string, unknown> = {};
     let feeChanged: DeliveryFeeChange | null = null;
@@ -306,7 +312,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           // A bench order stops at confirmation (`test-store.ts`, B2): no packing, no shelf, no courier — asked before the
           // transition's other questions, and the override with a note does not pass it either (it is checked after the table).
           // An order already on a trolley or gone before its store became a bench keeps its road (`benchStopsHere`).
-          if (benchStopsHere(order) && (await isBenchStore(db, { companyId, storeId: order.storeId ?? storeId }))) {
+          if (benchStopsHere(benchFacts) && (await isBenchStore(db, { companyId, storeId: order.storeId ?? storeId }))) {
             return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
           }
           const pending = await db.orderChangeRequest.findFirst({
@@ -408,7 +414,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           );
         }
         // And never a bench order onto a trolley (`test-store.ts`, B2) — one already on one before the mark keeps it.
-        if (benchStopsHere(order) && (await isBenchStore(db, { companyId, storeId: order.storeId ?? storeId }))) {
+        if (benchStopsHere(benchFacts) && (await isBenchStore(db, { companyId, storeId: order.storeId ?? storeId }))) {
           return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
         }
         updateData.shippingBatchId = batch.id;

@@ -24,7 +24,7 @@ type Row = Record<string, unknown>;
 
 interface World {
   stores: { id: string; isTest: boolean }[];
-  orders: { id: string; storeId: string; confirmationStatus: string; shippingStatus: string }[];
+  orders: { id: string; storeId: string | null; confirmationStatus: string; shippingStatus: string }[];
   items: Row[];
   addOns: Row[];
   batches: { companyId: string; productId: string; quantityRemaining: number }[];
@@ -51,12 +51,17 @@ function fakeTx(world: World) {
   const keeps = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
       if (key !== 'order') return fits(row[key], want);
-      const order = orderOf(row.orderId as string) as unknown as Row;
-      return Object.entries(want as Row).every(([k, w]) => {
-        if (k !== 'store') return fits(order[k], w);
-        const store = storeOf(order.storeId as string) as unknown as Row;
-        return Object.entries(w as Row).every(([sk, sw]) => fits(store[sk], sw));
-      });
+      return orderKeeps(orderOf(row.orderId as string) as unknown as Row, want as Row);
+    });
+
+  /** An order against a `where`: its columns, an `OR`, and the `store` relation — which matches NO row when there is no store, as in Prisma. */
+  const orderKeeps = (order: Row, where: Row): boolean =>
+    Object.entries(where).every(([k, w]) => {
+      if (k === 'OR') return (w as Row[]).some((part) => orderKeeps(order, part));
+      if (k !== 'store') return fits(order[k], w);
+      if (order.storeId === null) return false;
+      const store = storeOf(order.storeId as string) as unknown as Row;
+      return Object.entries(w as Row).every(([sk, sw]) => fits(store[sk], sw));
     });
 
   const table = (rows: Row[]) => ({
@@ -160,8 +165,8 @@ describe('confirming a bench order', () => {
   it('asks the lines through the order’s store, never by the order id alone', async () => {
     const tx = fakeTx(world());
     await reserveOrderLines(tx as never, 'o-bench', { allowNegativeStock: false });
-    expect(tx.orderItem.findMany.mock.calls[0][0].where).toEqual({ orderId: 'o-bench', order: { store: { isTest: false } } });
-    expect(tx.orderAddOn.findMany.mock.calls[0][0].where).toEqual({ orderId: 'o-bench', order: { store: { isTest: false } } });
+    expect(tx.orderItem.findMany.mock.calls[0][0].where).toEqual({ orderId: 'o-bench', order: { OR: [{ storeId: null }, { store: { isTest: false } }] } });
+    expect(tx.orderAddOn.findMany.mock.calls[0][0].where).toEqual({ orderId: 'o-bench', order: { OR: [{ storeId: null }, { store: { isTest: false } }] } });
   });
 
   it('an edit that asks again (a line added, a quantity raised) still reserves nothing', async () => {
@@ -192,6 +197,20 @@ describe('cancelling or postponing a bench order', () => {
     const held = await shelf(tx);
     expect(await releaseOrderLines(tx as never, 'o-bench')).toBe(1);
     expect((await shelf(tx)).P1.free).toBe(held.P1.free + 4);
+  });
+});
+
+describe('NEGATIVE: an order with NO store (storeId NULL, from before stores) reserves exactly as before', () => {
+  it('its lines and add-on are reserved in full, and its release gives them back', async () => {
+    const w = world();
+    w.orders.find((o) => o.id === 'o-real')!.storeId = null;
+    const tx = fakeTx(w);
+    const before = await shelf(tx);
+    const outcome = await reserveOrderLines(tx as never, 'o-real', { allowNegativeStock: false });
+    expect(outcome).toEqual({ reserved: 2, shortages: [] });
+    expect(reservedOf(w, 'o-real')).toEqual([4, 1]);
+    expect(await releaseOrderLines(tx as never, 'o-real')).toBe(2);
+    expect(await shelf(tx)).toEqual(before);
   });
 });
 

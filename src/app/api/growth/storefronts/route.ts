@@ -8,6 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { forgetHost } from '@/lib/landing-domain';
 import { publicPath } from '@/lib/public-address';
 import { openRefusal, openWarnings, storefrontFacts, refusalToOpen } from '@/lib/storefront-rules';
+import { BENCH_STORE_CANNOT_OPEN_AR } from '@/lib/test-store';
 
 /**
  * SINGLE PRODUCT STORES — WHICH ARE LIVE, WHAT THEY SHOW, AND WHAT THEY SELL.
@@ -154,7 +155,7 @@ export async function PATCH(req: Request) {
     }
     const store = await db.store.findFirst({
       where: { id: storeId, companyId },
-      select: { id: true, companyId: true, name: true, slug: true, type: true, status: true, storefrontEnabled: true, landingPageId: true, domain: true },
+      select: { id: true, companyId: true, name: true, slug: true, type: true, status: true, storefrontEnabled: true, landingPageId: true, domain: true, isTest: true },
     });
     if (!store) return NextResponse.json({ error: 'المتجر غير موجود' }, { status: 404 });
 
@@ -162,6 +163,8 @@ export async function PATCH(req: Request) {
     if ('live' in parsed.data) {
       const live = parsed.data.live;
       if (live) {
+        // A bench is never open to visitors — said here in words; the database CHECK is only the last line.
+        if (store.isTest) return NextResponse.json({ error: BENCH_STORE_CANNOT_OPEN_AR, code: 'BENCH_CANNOT_OPEN' }, { status: 409 });
         const refusal = await refusalToOpen(store);
         if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
       }

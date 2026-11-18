@@ -52,6 +52,8 @@ import { describeLines, type ApprovedLineEdit, type LinesChange } from '@/lib/ch
 import { fixedCostsOf, unitCostsOf } from '@/lib/product-fixed-cost';
 import { heldFor, reservationHoursLeft } from '@/lib/order-reservation';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
+import { isBenchStore } from '@/lib/bench-store';
+import { BENCH_FORWARD_SHIPPING, BENCH_STOPS_AR, BENCH_STOPS_CODE, benchStopsHere } from '@/lib/test-store';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
 const RESERVED_GOODS_EDIT_AR =
@@ -1267,6 +1269,26 @@ export async function PATCH(
           { error: 'Forbidden: orders.change_status required', errorAr: 'لا تملك صلاحية تغيير حالة الطلب.' }, { status: 403 }
         );
       }
+    }
+
+    /*
+     * A BENCH ORDER STOPS AT CONFIRMATION (B2, 18/11 — `test-store.ts`). This door writes `shippingStatus` too — by the
+     * field itself and by the combined `status: 'SHIPPED'` — so it asks the same question as the shipping door, of the
+     * ORDER's store: no step toward a courier for a bench order not already on a trolley or gone. Cancelling and the
+     * statuses after the handover are not steps toward a courier and are not asked.
+     */
+    if (
+      typeof updateData.shippingStatus === 'string' &&
+      updateData.shippingStatus !== existing.shippingStatus &&
+      BENCH_FORWARD_SHIPPING.includes(updateData.shippingStatus) &&
+      benchStopsHere({
+        shippingBatchId: existing.shippingBatchId ?? null,
+        shippingStatus: String(existing.shippingStatus),
+        shippedAt: existing.shippedAt ?? null,
+      }) &&
+      (await isBenchStore(db, { companyId, storeId: existing.storeId ?? storeId }))
+    ) {
+      return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
     }
 
     if (moderatorId !== undefined) {

@@ -1,6 +1,6 @@
 import { db } from './db';
 import type { Prisma } from '@prisma/client';
-import { realStoresOnly } from './test-store';
+import { realStoresHere } from './test-store';
 
 /**
  * RESERVATION — per LINE, never per order (contract, inventory section).
@@ -333,14 +333,18 @@ export async function reserveOrderLines(
    * read only when the order's store is a real one: a bench order finds no lines here, takes no lock, writes nothing and
    * reports no shortage — and every door that reserves (confirmation, «أرجِعه», a line edit, a twin) is covered by this
    * one read instead of by a check at each. Releasing needs no twin of this: it frees only what `reservedQty` holds.
+   *
+   * AN ORDER WITH NO STORE AT ALL (`storeId` NULL — rows from before stores existed) is not a bench and reserves exactly as
+   * before: a relation filter alone matches no row when there is no store, so the store-less branch is named first
+   * (the same shape `growth/bench` uses).
    */
   const items = await tx.orderItem.findMany({
-    where: { orderId, order: { ...realStoresOnly() } },
+    where: { orderId, order: { OR: [{ storeId: null }, { store: realStoresHere() }] } },
     select: { id: true, companyId: true, productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true },
   });
   // The add-ons the customer accepted on the thank-you screen — they reserve with the lines (see `reservedElsewhere`).
   const addOns = await tx.orderAddOn.findMany({
-    where: { orderId, order: { ...realStoresOnly() } },
+    where: { orderId, order: { OR: [{ storeId: null }, { store: realStoresHere() }] } },
     select: { id: true, companyId: true, productId: true, productName: true, quantity: true, reservedQty: true },
   });
 

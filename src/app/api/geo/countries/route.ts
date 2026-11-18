@@ -32,6 +32,8 @@ export async function GET() {
           orderBy: { name: 'asc' },
           select: {
             id: true, name: true, slug: true, logo: true, favicon: true, status: true, type: true, priceIncludesDelivery: true,
+            // «منصّة تجريب» and how many orders the store holds — the switch says what it will change for them.
+            isTest: true, _count: { select: { orders: true } },
             // The storefront's own settings, so the panel edits what is
             // stored rather than a copy it fetched separately.
             storefrontEnabled: true, theme: true, tagline: true, landingPageId: true,

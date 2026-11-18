@@ -143,6 +143,14 @@ export const BENCH_STOPS_AR = 'هاي طلبية منصّة تجريب — ما 
 /** Why the prep and shipment lists of a bench are empty — so they do not look broken. */
 export const BENCH_LIST_EMPTY_AR = 'هاي منصّة تجريب — طلباتها بتوقف عند التأكيد';
 
+/**
+ * The shipping statuses that are a step TOWARD a courier — what a bench order may not be moved to. The same five the
+ * shipping door calls `FORWARD`; asked by the orders PATCH door, which writes `shippingStatus` as well.
+ */
+export const BENCH_FORWARD_SHIPPING: readonly string[] = [
+  'PACKING', 'READY_FOR_SHIPPING', 'READY_FOR_PICKUP', 'SHIPPED', 'OUT_FOR_DELIVERY',
+];
+
 /** The state label of a confirmed bench order, in the owner's words. */
 export const BENCH_CONFIRMED_AR = 'مؤكَّد — تيست، ما بينشحن';
 
@@ -164,4 +172,26 @@ export function benchStopsHere(order: {
   if (order.shippingBatchId) return false;
   // Shipped is `hasEverShipped`'s question, asked of it rather than of a second list of statuses.
   return !hasEverShipped({ confirmationStatus: '', shippingStatus: order.shippingStatus, shippedAt: order.shippedAt });
+}
+
+/**
+ * THE THREE REFUSALS AROUND THE SWITCH «منصّة تجريب» — sentences, not codes.
+ *
+ * A store that is a bench is never open to visitors: the database holds that
+ * with a CHECK (`stores_test_bench_is_not_public`), but a CHECK answers a form
+ * with a generic save error. The doors ask first and say it in these words,
+ * so the CHECK stays the last line and never the sentence anybody reads.
+ */
+export const BENCH_STORE_IS_OPEN_AR = 'المتجر مفتوح للزوّار — سكّر واجهة المتجر أول، المنصّة ما بتنفتح للزوّار';
+export const BENCH_STORE_CANNOT_OPEN_AR = 'هذا المتجر منصّة تجريب — ما بتنفتح للزوّار. شيل علامة «منصّة تجريب» أول إذا بدك تفتحه';
+export const LAST_REAL_STORE_AR =
+  'هذا متجرك الحقيقي الوحيد — المنصّة بتنعمل من متجر زيادة. أنشئ متجراً جديداً وعلّم عليه «منصّة تجريب»';
+
+/** The database's own name for the rule, so a race that gets past the two questions above is still said in Arabic. */
+export const BENCH_CHECK_NAME = 'stores_test_bench_is_not_public';
+
+/** True when a database error is that CHECK firing (Prisma puts the constraint's name in the message). */
+export function isBenchCheckViolation(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  return text.includes(BENCH_CHECK_NAME);
 }
