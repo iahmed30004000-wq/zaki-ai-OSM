@@ -33,7 +33,7 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
         <Card>
           <CardHeader title="القاعدة بالمختصر" subtitle="هيك بيصير بالطلب اللي ما بيرد، بأرقام الإعدادات الحالية. للقراءة بس." />
           <CardContent>
-            <ul className="list-disc space-y-1.5 ps-5 text-sm leading-relaxed text-[var(--sys-foreground)]" data-rule-summary>
+            <ul className="space-y-1.5 ps-5 text-sm leading-relaxed text-[var(--sys-foreground)]" data-rule-summary>
               {lines.map((line) => (
                 <li key={line}>{line}</li>
               ))}
