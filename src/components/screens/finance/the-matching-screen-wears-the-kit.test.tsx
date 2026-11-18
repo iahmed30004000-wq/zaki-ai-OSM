@@ -72,8 +72,10 @@ const statementRow = (over: Record<string, unknown> = {}) => ({
 
 let statements: Record<string, unknown>[];
 let matchGate: Promise<void> | null;
+let answerGate: Promise<void> | null;
 beforeEach(() => {
   vi.clearAllMocks();
+  answerGate = null;
   phone.value = false;
   perms.current = ['settlement.review', 'settlement.view', 'customers.view', 'orders.unlock'];
   statements = [statementRow()];
@@ -86,6 +88,10 @@ beforeEach(() => {
     if (url === '/api/finance/statements/s1/match' && init?.method === 'POST') {
       if (matchGate) await matchGate;
       return {};
+    }
+    if (/\/(decisions|order-action)$/.test(url) && init?.method === 'POST') {
+      if (answerGate) await answerGate;
+      return { message: 'تم' };
     }
     if (url === '/api/finance/statements/s1') return { statement: { matches: ROWS() } };
     if (url.startsWith('/api/finance/statements/search')) return { q: 'B000002', hits: [], total: 0, limit: 50 };
@@ -292,6 +298,43 @@ describe('the presses and what they ask', () => {
     expect(unpinned.getAttribute('aria-pressed')).toBe('false');
     expect(unpinned.className).toContain('border-transparent');
     expect(localStorage.getItem('osm.matching.pinHeader')).toBe('off');
+  });
+
+  // 19/11 (the reviewer of #370: the money double-press gaps) — both presses stay shut while their request is in the air.
+  it('— «بتّ الأسطر» is grey while its request runs: a second press sends nothing', async () => {
+    let release!: () => void;
+    answerGate = new Promise<void>((r) => (release = r));
+    await draw();
+    openAll();
+    fireEvent.change(screen.getByLabelText('التفسير'), { target: { value: 'الشركة قالت إنو رجع بدون سبب واضح' } });
+    const go = screen.getByRole('button', { name: 'بتّ الأسطر' }) as HTMLButtonElement;
+    fireEvent.click(go);
+    await waitFor(() => expect(go.disabled).toBe(true));
+    fireEvent.click(go);
+    expect(api.mock.calls.filter((c) => String(c[0]).endsWith('/decisions'))).toHaveLength(1);
+    await act(async () => release());
+    await screen.findAllByText('في الكشف وليس عندنا');
+  });
+
+  it('— an unmentioned order’s actions are grey while one runs: a second press (the same or another) sends nothing', async () => {
+    let release!: () => void;
+    answerGate = new Promise<void>((r) => (release = r));
+    await draw();
+    const unmentioned = toggle('طلبات لم يذكرها أي كشف');
+    fireEvent.click(unmentioned);
+    const first = within(unmentioned.parentElement!).getAllByRole('button', { name: /انتظر كشفاً لاحقاً/ })[0] as HTMLButtonElement;
+    const row = first.parentElement!;
+    fireEvent.click(first);
+    await waitFor(() => expect(first.disabled).toBe(true));
+    const siblings = [...row.querySelectorAll('button')] as HTMLButtonElement[];
+    expect(siblings.length).toBeGreaterThan(1);
+    for (const b of siblings) {
+      expect(b.disabled, b.textContent!).toBe(true);
+      fireEvent.click(b);
+    }
+    expect(api.mock.calls.filter((c) => String(c[0]).endsWith('/order-action'))).toHaveLength(1);
+    await act(async () => release());
+    await screen.findAllByText('في الكشف وليس عندنا');
   });
 
   it('— a bulk answer and an order’s action send the bodies they sent', async () => {
