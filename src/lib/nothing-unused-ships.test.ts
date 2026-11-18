@@ -298,8 +298,7 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    */
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
-  'src/components/ui/Segmented.tsx:Segmented':
-    'شريط الخيارات المضغوط (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
+  // `Segmented` LEFT this list on 18/11 (R10e): «صندوق الواتساب» draws it for «مفتوحة / مغلقة».
 
   /*
    * R2a (18/11) — THE TWO COMPONENTS THE KIT GAINED AND NO SCREEN DRAWS YET.

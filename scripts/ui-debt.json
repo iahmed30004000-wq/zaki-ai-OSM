@@ -679,9 +679,8 @@
       "textXs": 23
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 5,
-      "textXs": 35
+      "rawButtons": 1,
+      "textXs": 9
     },
     "src/components/screens/WhatsAppSettingsScreen.tsx": {
       "rawButtons": 2,
