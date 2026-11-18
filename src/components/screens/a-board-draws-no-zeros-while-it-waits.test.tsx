@@ -51,6 +51,8 @@ vi.mock('@/components/growth/IntelligenceStrip', () => ({ IntelligenceStrip: () 
 vi.mock('@/components/growth/ChannelScores', () => ({ ChannelScoresSection: () => null }));
 vi.mock('@/components/dashboard/LossPanel', () => ({ LossPanel: () => null }));
 vi.mock('@/components/dashboard/WorkToday', () => ({ WorkToday: () => null }));
+// 18/11 (R9): «اليوم»'s one chart has its own door and its own tests (`DailyChart.test.tsx`); these files are about the figures.
+vi.mock('@/components/dashboard/DailyChart', () => ({ DailyChart: () => null }));
 vi.mock('@/components/dashboard/DetailsLinks', () => ({ DetailsLink: () => null, BackToDashboardLink: () => null }));
 vi.mock('@/components/performance/ScoreBoard', () => ({ ScoreBoard: () => null }));
 vi.mock('@/components/performance/LandingAnalyticsTab', () => ({ LandingAnalyticsTab: () => null }));
@@ -103,7 +105,8 @@ describe('the dashboard before its first answer', () => {
     expect(container.textContent ?? '').not.toMatch(/%|0 طلب|0 توصيل|0 رفض/);
     // the page itself is there: the title and the period choice do not wait for the numbers
     expect(screen.getByText('لوحة التحكم')).toBeTruthy();
-    expect(screen.getByText('اليوم')).toBeTruthy();
+    // 18/11 (R9): the period is the kit's date box (it reads the day, «اليوم» is its first option). Was the «اليوم» pill.
+    expect(container.querySelector('button[aria-expanded]')).toBeTruthy();
   });
 
   it('then the figures replace the waiting state, with the server’s numbers', async () => {
@@ -111,10 +114,11 @@ describe('the dashboard before its first answer', () => {
     apiFetch.mockReturnValue(wait.promise);
     render(<DashboardScreen />);
     await waitFor(() => expect(apiFetch).toHaveBeenCalled());
-    expect(screen.queryByText('4 طلب')).toBeNull();
+    expect(screen.queryByText('60%')).toBeNull();
     await act(async () => wait.answer(json(200, GOOD)));
-    await waitFor(() => expect(screen.getByText('4 طلب')).toBeTruthy());
-    expect(screen.getByText('الأكثر طلباً')).toBeTruthy();
+    // 18/11 (R9): was «4 طلب» and «الأكثر طلباً» (the ranking left for the board) — «اليوم» draws its rates.
+    await waitFor(() => expect(screen.getByText('60%')).toBeTruthy());
+    expect(screen.getByText('70%')).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'جارٍ التحميل' })).toBeNull();
   });
 
