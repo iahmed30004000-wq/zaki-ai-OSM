@@ -99,7 +99,8 @@ describe('«تسجيل نتيجة الاتصال» — the seven quick buttons',
     // They share a row: each takes what is left of its line instead of leaving a ragged edge.
     for (const b of [...within(results).getAllByRole('button'), ...within(decide).getAllByRole('button')]) {
       expect(tokens(b), b.textContent!).toContain('grow');
-      expect(tokens(b), b.textContent!).toContain('min-h-11');
+      // 18/11 (R10b): was `min-h-11` on seven hand-drawn buttons; they are the kit's Button now, whose 44 on a phone is `h-11`.
+      expect(tokens(b), b.textContent!).toContain('h-11');
     }
     // ORD-12 — the chip group in the header wraps instead of widening the sheet.
     expect(tokens(screen.getByText('تسجيل نتيجة الاتصال').nextElementSibling)).toContain('flex-wrap');
@@ -244,10 +245,12 @@ describe('«الشحن والتوصيل» — the grid of facts', () => {
 /* ═══════════════════════ OrderNotes — ORD-26 ═══════════════════════ */
 
 describe('the note box on the order sheet', () => {
-  it('its send button is 44px wide on a phone (it was 36) and 36 from md — and still sends', async () => {
+  // 18/11 (R10b): the send button is the kit's IconButton now. It was «44 on a phone, 36 from md» from five hand-written
+  // classes (h-11 md:h-9 w-9 min-w-11 md:min-w-0); the kit's square is 44×44 on a phone and 40×40 from md.
+  it('its send button is 44px wide on a phone (it was 36) and 40 from md — and still sends', async () => {
     render(<OrderNotes orderId="o-1" canWrite />);
     const send = await screen.findByRole('button', { name: /أضف الملاحظة/ });
-    expect(tokens(send)).toEqual(expect.arrayContaining(['h-11', 'md:h-9', 'w-9', 'min-w-11', 'md:min-w-0']));
+    expect(tokens(send)).toEqual(expect.arrayContaining(['h-11', 'w-11', 'md:h-10', 'md:w-10']));
     expect((send as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByPlaceholderText(/اكتب ملاحظة/), { target: { value: 'اتصلوا قبل الوصول' } });
     expect((send as HTMLButtonElement).disabled).toBe(false);

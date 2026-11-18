@@ -286,7 +286,9 @@ describe('Ⅵ · on a phone', () => {
     expect(screen.getAllByText(/بعد الخصم/)).toHaveLength(1);
     expect(after()).toContain('41.400 JOD');
     expect(discountBox().className).toMatch(/\bh-11\b/);
-    expect(saveButton().className).toMatch(/\bmin-h-11\b/);
+    // 18/11 (R10b, the order window on the kit): was `min-h-11` on a hand-drawn button; the save is the kit's Button now,
+    // whose 44 on a phone is its own height `h-11` (and 32 from `md`). Same 44, said by the kit.
+    expect(saveButton().className).toMatch(/\bh-11\b/);
     // the two boxes share one rule line, not two
     expect(screen.getAllByText('سعر كل سطر قبل الخصم؛ الخصم مرة واحدة على مجموع الطلب.')).toHaveLength(1);
   });

@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { IconButton } from '@/components/ui/IconButton';
 import { apiJson } from '@/lib/api-client';
 import { NOTE_KIND_AR } from '@/lib/order-notes';
 import { arDateShort } from '@/lib/format';
@@ -96,21 +98,21 @@ export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: st
   }
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised">
+    <Card plain padding="md">
       <div className="flex items-center gap-2 mb-4">
         <RiChatQuoteLine className="w-4 h-4 text-[var(--sys-primary)]" />
-        <h4 className="text-xs font-black text-[var(--sys-foreground)]">ملاحظات داخلية</h4>
+        <h4 className="text-sm font-black text-[var(--sys-foreground)]">ملاحظات داخلية</h4>
         {notes && notes.length > 0 && (
-          <span className="text-xs font-medium text-[var(--sys-muted)] tabular-nums">{notes.length}</span>
+          <span className="text-note font-medium text-[var(--sys-muted)] tabular-nums">{notes.length}</span>
         )}
       </div>
 
       {notes === null ? (
-        <p className="text-xs text-[var(--sys-muted)] flex items-center gap-1.5 py-2">
+        <p className="text-note text-[var(--sys-muted)] flex items-center gap-1.5 py-2">
           <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
         </p>
       ) : notes.length === 0 ? (
-        <p className="text-xs text-[var(--sys-muted)] py-2">لا ملاحظات بعد — اكتب أول واحدة.</p>
+        <p className="text-note text-[var(--sys-muted)] py-2">لا ملاحظات بعد — اكتب أول واحدة.</p>
       ) : (
         <ol className="space-y-2.5">
           {notes.map((note) => {
@@ -118,16 +120,16 @@ export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: st
             return (
               <li key={note.id} className="flex gap-2.5">
                 <span
-                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold ${toneFor(who)}`}
+                  className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-note font-bold ${toneFor(who)}`}
                   aria-hidden="true"
                 >
                   {initials(who)}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs text-[var(--sys-heading)] whitespace-pre-line break-words leading-relaxed">
+                  <p className="text-note text-[var(--sys-heading)] whitespace-pre-line break-words leading-relaxed">
                     {note.body}
                   </p>
-                  <p className="text-xs text-[var(--sys-muted)] mt-0.5 flex flex-wrap gap-x-1.5">
+                  <p className="text-note text-[var(--sys-muted)] mt-0.5 flex flex-wrap gap-x-1.5">
                     <span className="font-medium text-[var(--sys-muted-foreground)]">{who}</span>
                     <span>· {arDateShort(note.createdAt)}</span>
                     {note.kind !== 'internal' && <span>· {KIND_AR[note.kind] ?? note.kind}</span>}
@@ -139,7 +141,7 @@ export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: st
         </ol>
       )}
 
-      {error && <p className="text-xs text-[var(--sys-destructive)] mt-2">{error}</p>}
+      {error && <p className="text-note text-[var(--sys-destructive)] mt-2">{error}</p>}
 
       {mayWrite && (
       <div className="mt-4 pt-3 border-t border-[var(--sys-border)]">
@@ -157,22 +159,17 @@ export function OrderNotes({ orderId, canWrite: mayWrite = true }: { orderId: st
               }
             }}
             placeholder="اكتب ملاحظة لمن يكمل هذا الطلب…"
-            className="flex-1 min-h-9 max-h-32 px-3 py-2 rounded-lg border border-[var(--sys-border-input)] text-xs resize-y focus:outline-none focus:border-[var(--sys-primary)]"
+            className="flex-1 min-h-9 max-h-32 px-3 py-2 rounded-lg border border-[var(--sys-border-input)] text-note resize-y focus:outline-none focus:border-[var(--sys-primary)]"
           />
-          <button
-            onClick={send}
-            disabled={busy || draft.trim().length < 2}
-            className="h-11 md:h-9 w-9 min-w-11 md:min-w-0 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] disabled:opacity-30 flex items-center justify-center shrink-0"
-            aria-label="أضف الملاحظة (Enter)" title="أضف الملاحظة (Enter)"
-          >
+          <IconButton variant="primary" label="أضف الملاحظة (Enter)" onClick={() => { void send(); }} disabled={busy || draft.trim().length < 2} className="shrink-0">
             {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSendPlaneLine className="icon-mirror w-4 h-4" />}
-          </button>
+          </IconButton>
         </div>
-        <p className="text-xs text-[var(--sys-muted)] mt-1.5">
+        <p className="text-note text-[var(--sys-muted)] mt-1.5">
           تُضاف ولا تُعدَّل — تبقى كما كُتبت وباسم كاتبها.
         </p>
       </div>
       )}
-    </div>
+    </Card>
   );
 }

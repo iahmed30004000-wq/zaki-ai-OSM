@@ -38,11 +38,11 @@ export function DuplicateSuspectNotice({ orderId }: { orderId: string }) {
 
   return (
     <div role="alert" className="rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3">
-      <p className="flex items-center gap-1.5 text-xs font-bold text-[var(--sys-warning)]">
+      <p className="flex items-center gap-1.5 text-note font-bold text-[var(--sys-warning)]">
         <RiErrorWarningLine className="h-4 w-4" aria-hidden />
         طلب مشابه قبل دقائق
       </p>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         نفس العميل طلب نفس المنتج خلال {data.windowMinutes} دقائق: {data.twins.map((t) => `#${t.orderNumber}`).join('، ')}.
         اسأله قبل التأكيد: هل هو طلب ثانٍ فعلاً أم الطلب نفسه أُرسل مرتين؟
       </p>

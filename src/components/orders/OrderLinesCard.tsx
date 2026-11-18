@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { ProductThumb } from '@/components/ui/ProductThumb';
 import { useProducts } from '@/hooks/useProducts';
@@ -404,29 +406,26 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
   const nameOf = (productId: string) => products.find((p) => p.id === productId)?.name ?? '';
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 shadow-raised space-y-3">
+    <Card plain padding="md" className="space-y-3">
       <div className={phone ? 'flex flex-wrap items-center justify-between gap-2' : 'flex items-center justify-between gap-2'}>
-        <h4 className="text-xs font-black text-[var(--sys-foreground)] flex items-center gap-2">
+        <h4 className="text-sm font-black text-[var(--sys-foreground)] flex items-center gap-2">
           <RiArchiveLine className="w-4 h-4 text-[var(--sys-primary)]" />
           بيانات الطلب
           {offerName && (
-            <span className="text-xs font-medium text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5">
+            <span className="text-note font-medium text-[var(--sys-primary)] bg-[var(--sys-primary-soft)] border border-[var(--sys-primary-soft)] rounded-md px-1.5 py-0.5">
               عرض: {offerName}
             </span>
           )}
         </h4>
-        <button
-          onClick={openForm}
-          className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-2.5 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
-        >
+        <Button variant="secondary" size="sm" onClick={() => { void openForm(); }}>
           <RiPencilLine className="w-4 h-4" />
           {open ? 'إغلاق' : 'تعديل'}
-        </button>
+        </Button>
       </div>
 
       <div className="border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
         {lines.length === 0 && (
-          <p className="px-3 py-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="px-3 py-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             لا أسطرَ مسجَّلةٌ على هذا الطلب. الأرقام أدناه هي ما يحمله الطلب نفسه —
             اضغط «تعديل» لتسجيل ما فيه.
           </p>
@@ -458,7 +457,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
       </div>
 
       {done && (
-        <p role="status" className="text-xs text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
+        <p role="status" className="text-note text-[var(--sys-success)] bg-[var(--sys-success-soft)] rounded-lg px-2.5 py-1.5">
           {done}
         </p>
       )}
@@ -480,11 +479,11 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
       )}
 
       {order.priceIncludesDelivery && !open && (
-        <p className="text-xs text-[var(--sys-muted)]">سعر البيع شامل التوصيل.</p>
+        <p className="text-note text-[var(--sys-muted)]">سعر البيع شامل التوصيل.</p>
       )}
 
       {order.customerNotes && !open && (
-        <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5 whitespace-pre-line">
+        <p className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5 whitespace-pre-line">
           <span className="text-[var(--sys-warning)]">ملاحظات الطلب: </span>
           {order.customerNotes}
         </p>
@@ -501,7 +500,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
           />
 
           <label className="block max-w-xs">
-            <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">الخصم على الطلب</span>
+            <span className="block text-note font-medium text-[var(--sys-muted-foreground)] mb-1">الخصم على الطلب</span>
             <input
               type="number" min="0" step="0.01" dir="ltr"
               value={form.discountAmount}
@@ -515,7 +514,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
             </p>
           )}
           {preview.kind === 'invalid' && (
-            <p role="alert" className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+            <p role="alert" className="text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
               اكتب خصماً صحيحاً — رقم من صفر وما فوق.
             </p>
           )}
@@ -526,11 +525,11 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
             before the discount, and the discount is taken ONCE, off the
             whole order.
           */}
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-note text-[var(--sys-muted)]">
             سعر كل سطر قبل الخصم؛ الخصم مرة واحدة على مجموع الطلب.
           </p>
           <div aria-live="polite">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               بضاعة الطلب بعد الخصم (بدون التوصيل والإضافات):{' '}
               <span className="font-bold text-[var(--sys-heading)] tabular-nums" dir="ltr">
                 {preview.kind === 'ok' ? amount(preview.after, currency) : '—'}
@@ -538,13 +537,13 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
             </p>
             {preview.kind === 'ok' && draft.length > 1 && preview.discount > 0 &&
               draft.map((l, i) => (
-                <p key={l.key} className="text-xs text-[var(--sys-muted)]">
+                <p key={l.key} className="text-note text-[var(--sys-muted)]">
                   حصة {nameOf(l.productId) || `السطر ${i + 1}`} من الخصم:{' '}
                   <span dir="ltr">{amount(preview.shares[i] ?? 0, currency)}</span>
                 </p>
               ))}
             {pastConfirmation && (
-              <p className="text-xs text-[var(--sys-muted)]">
+              <p className="text-note text-[var(--sys-muted)]">
                 {holdsWindow && mayChangePrice
                   ? 'الطلب لم يدخل دفعة شحن بعد — الخصم والتعديل بيتطبّقوا فوراً.'
                   : 'الخصم بعد التأكيد طلب تعديل — لا يتغير الطلب حتى الموافقة.'}
@@ -553,7 +552,7 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
           </div>
 
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-muted-foreground)] mb-1">ملاحظات الطلب</span>
+            <span className="block text-note font-medium text-[var(--sys-muted-foreground)] mb-1">ملاحظات الطلب</span>
             <textarea
               rows={2}
               value={form.customerNotes}
@@ -563,34 +562,30 @@ export function OrderLinesCard({ order, currency, canEdit, onAcquireLock, onSave
             />
           </label>
 
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-note text-[var(--sys-muted)]">
             أجرة التوصيل لا تُكتب هنا — تُحسب من جدول الأجور حين يُسند الطلب لشركة شحن.
           </p>
 
-          {error && <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">{error}</p>}
+          {error && <p className="text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">{error}</p>}
           {/*
             «بانتظار الموافقة» — said, not left to be guessed. A save that
             raises a request closes the form and changes nothing on the
             order, which otherwise looks exactly like a save that failed.
           */}
-          {notice && <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">{notice}</p>}
+          {notice && <p className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg px-2.5 py-1.5">{notice}</p>}
 
           <div className="flex gap-2">
-            <button
-              onClick={save}
-              disabled={busy || refused}
-              className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] font-medium disabled:opacity-50 inline-flex items-center gap-1.5"
-            >
+            <Button variant="primary" size="sm" onClick={() => { void save(); }} disabled={busy || refused}>
               {busy && <RiLoader4Line className="w-4 h-4 animate-spin" />}
               حفظ بيانات الطلب
-            </button>
-            <button onClick={() => setOpen(false)} className="min-h-11 md:min-h-0 inline-flex items-center text-xs px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)]">
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
               إلغاء
-            </button>
+            </Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
