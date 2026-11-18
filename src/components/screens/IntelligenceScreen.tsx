@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { AskAi } from '@/components/growth/AskAi';
@@ -66,6 +67,24 @@ const TONE: Record<string, { border: string; chip: string; label: string }> = {
   GOOD: { border: 'border-[var(--sys-success)]/40', chip: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/40', label: 'جيد' },
 };
 
+/**
+ * THE SHARED RANGE OF THE FOUR REPORT TABS, AND WHY THIS ONE DRAWS NO PICKER (R14d, 18/11).
+ *
+ * `/api/growth/intelligence` takes no window: its detectors read the store as it is now (and the rates over its whole history).
+ * A date box here would be a control that changes nothing. So the tab draws this one line where the others draw the box, and it
+ * neither reads nor writes the stored range — the span picked on another tab is still there when the person goes back.
+ */
+const NO_WINDOW_LINE = 'الأرقام هون لحظية — ما بتتبع المدة';
+
+/**
+ * «أداء» IS A JUDGEMENT, NOT AN EIGHTH RANKING — AND IT LINKS TO THE ONE TABLE.
+ *
+ * Its findings are counted on the server (each confirmer against this store's own average); they carry no person's id, so the
+ * screen cannot point at one row, and recomputing a ranking here from another door is what the one-table decision forbids. The
+ * tab stays as it is, and under it one link opens the employees table on the performance board, which reads the shared range.
+ */
+const TEAM_TABLE_HREF = '/growth/performance';
+
 export function IntelligenceScreen() {
   // «اسأل الذكاء» answers at `/api/growth/intelligence/ask`, which asks `ai.use`: without it the box was drawn to be refused.
   const mayAsk = useCan('ai.use');
@@ -100,7 +119,11 @@ export function IntelligenceScreen() {
   useLiveRefresh(load);
 
   return (
-    <PageShell title={routeLabel('/growth/intelligence')} width="medium">
+    <PageShell
+      title={routeLabel('/growth/intelligence')}
+      width="medium"
+      toolbar={<p className="text-note text-[var(--sys-muted-foreground)]">{NO_WINDOW_LINE}</p>}
+    >
       {/* The screen's own rhythm (space-y-3) inside the frame's: the chips, the tabs and the tab's one line belong together. */}
       <div className="space-y-3">
       {/* The AI sits under the rule-based findings, never instead of them:
@@ -153,6 +176,12 @@ export function IntelligenceScreen() {
           <p className="text-note text-[var(--sys-muted-foreground)]">
             {TABS.find((t) => t.key === tab)?.blurb}
           </p>
+
+          {tab === 'team' && (
+            <Link href={TEAM_TABLE_HREF} className="inline-flex min-h-11 items-center text-note font-medium text-[var(--sys-primary)] hover:underline md:min-h-0">
+              جدول الموظفين بالمدة اللي اخترتها ←
+            </Link>
+          )}
 
           <div className="space-y-2">
             {shown.length === 0 ? (
