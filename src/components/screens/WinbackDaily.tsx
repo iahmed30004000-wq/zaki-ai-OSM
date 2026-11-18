@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
+import { Button } from '@/components/ui/Button';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { apiJson } from '@/lib/api-client';
@@ -62,7 +63,7 @@ export function WinbackDaily() {
     }
   };
 
-  const field = 'h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs';
+  const field = 'h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-sm';
 
   return (
     <Card>
@@ -111,7 +112,7 @@ export function WinbackDaily() {
                 render: (r: DailyItem) => (
                   <span className="space-y-1">
                     {r.lastCall && (
-                      <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                      <span className="block text-note text-[var(--sys-muted-foreground)]">
                         آخر اتصال: {CALL_RESULT_AR[r.lastCall.result]} — {r.lastCall.by}
                       </span>
                     )}
@@ -125,9 +126,18 @@ export function WinbackDaily() {
                             </option>
                           ))}
                         </select>
-                        <button type="button" className="rounded-md border border-[var(--sys-border-strong)] px-2 text-xs h-11 md:h-8 disabled:opacity-50" disabled={busy !== null || !picked[r.orderId]} onClick={() => void post(`c${r.orderId}`, { action: 'call', orderId: r.orderId, result: picked[r.orderId] })}>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy !== null || !picked[r.orderId]}
+                          loading={busy === `c${r.orderId}`}
+                          onClick={() => {
+                            void post(`c${r.orderId}`, { action: 'call', orderId: r.orderId, result: picked[r.orderId] });
+                          }}
+                        >
                           سجّل
-                        </button>
+                        </Button>
                       </span>
                     )}
                   </span>
