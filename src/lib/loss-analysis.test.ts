@@ -284,10 +284,12 @@ describe('the money on the report is an invoice, not an estimate', () => {
 
 describe('and it is on the screen people already open', () => {
   it('on the dashboard, beside the card that names the product', () => {
-    const dash = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
-    expect(dash, 'اللوحةُ لا تعرض التحليل').toContain('<LossPanel period={period} />');
-    // The rankings card names «الأكثر رفضاً»; the panel follows it.
-    expect(dash.indexOf('<LossPanel')).toBeGreaterThan(dash.indexOf('highestRejection'));
+    // 18/11 (R9): the panel moved from the dashboard to the performance board, over that board's window, right after the table
+    // that counts the refusals per product. Was: DashboardScreen, `<LossPanel period={period} />` after `highestRejection`.
+    const dash = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
+    expect(dash, 'اللوحةُ لا تعرض التحليل').toContain('<LossPanel period={lossPeriod} />');
+    expect(dash.indexOf('<LossPanel')).toBeGreaterThan(dash.indexOf('label: "مرفوض على الهاتف"'));
+    expect(dash).toContain("const lossPeriod = range.from && range.to ? `all&${dateQuery}` : 'all';");
   });
 
   it('with no money column on the half that spent none', () => {

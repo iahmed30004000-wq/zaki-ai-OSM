@@ -93,12 +93,15 @@ describe('one page header', () => {
     expect(offenders, 'ملفات لسّا بترسم ScreenTitle').toEqual([]);
   });
 
-  it.each(TABLE)('%s draws PageHeader with the registry name of %s, read, never typed', (file, path, count) => {
+  /*
+   * 18/11 (R8g, «الإشكالات» on the kit): this test said «draws PageHeader» and read only `<PageHeader`. A screen that moves onto
+   * the frame draws `<PageShell title=…>`, and the frame draws exactly that `PageHeader` with exactly that title (PageShell.tsx) —
+   * so the frame counts as the header here. Every other check is unchanged: one import, the title read through `routeLabel`,
+   * never typed, and the count per file. A file that drew BOTH would count two and fail.
+   */
+  it.each(TABLE)('%s draws PageHeader (itself or through PageShell) with the registry name of %s, read, never typed', (file, path, count) => {
     const src = stripComments(repoFile(file));
-    // 18/11 (R11b): the kit's `PageShell` counts as the header too — it draws exactly `<PageHeader title={title}>` (its
-    // own test holds that), and the screens move onto it one per request from R10. The old claim was «imports PageHeader
-    // and draws `<PageHeader title={routeLabel(…)}`»; the new one is the same claim for either of the two.
-    expect(src, 'ما بيستورد PageHeader').toMatch(
+    expect(src, 'ما بيستورد PageHeader ولا PageShell').toMatch(
       /import \{ PageHeader \} from '@\/components\/ui\/PageHeader';|import \{ PageShell \} from '@\/components\/ui\/PageShell';/
     );
     expect(src, 'ما بيستورد routeLabel').toMatch(/import \{ routeLabel \} from '@\/lib\/route-registry';/);

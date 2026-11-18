@@ -928,6 +928,14 @@ export async function releaseNoAnswerRounds(
     // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
     return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit) : 0;
   }
+  /*
+   * REQUEST C2 (18/11): THE ROUNDS' RELEASES STOP WHILE THE PLAN IS ON. «نظام الجولات» stored on beside «إثبات المكالمات وجدول المحاولات» used to keep its three
+   * releases running in the background (12 working hours after a no-answer, a date + 3 h with nothing logged, a re-pull untouched 90 min) — another rule moving orders the
+   * plan holds. With the plan on only the plan's own idle release runs (20 working minutes), under the same bound. The mode the caller handed in says it (`cadence`); a
+   * caller that handed none has it read here. The plan off: the lines below, as ever.
+   */
+  const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds }) : null;
+  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit);
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
   const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
@@ -961,7 +969,7 @@ export async function readReturnsMode(
   // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
   const since = await cadenceSince(client, companyId);
   if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), (await returnsLimits(client, companyId, args.now.getTime())).idleBusinessMinutes, since);
+  return returnsMode(args.now, workClock(args.calendar()), (await limitsOf(client, companyId, args.now.getTime(), !!since)).idleBusinessMinutes, since);
 }
 
 /**
@@ -970,6 +978,14 @@ export async function readReturnsMode(
  * failure, so a failed read is today's numbers.
  */
 export async function returnsLimits(client: Tx, companyId: string, nowMs: number = Date.now()): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+  // REQUEST C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on, the hand and the idle release are the one rule set's — 3 and 20 — WHATEVER «أولوية الطابور» says.
+  // The plan is asked first (a cached read); off, or unreadable, this is the line it always was.
+  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)));
+}
+
+/** `returnsLimits` for a caller that already read the plan (`readReturnsMode` reads it ONCE per mode, so the flag, the floor and the figure cannot drift apart). */
+async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+  if (planOn) return QUEUE_PRIORITY_LIMITS;
   return (await queuePrioritySwitch(client, companyId, nowMs)).enabled ? QUEUE_PRIORITY_LIMITS : RETURNS_MODE;
 }
 

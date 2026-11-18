@@ -184,7 +184,8 @@ describe.each(ROUNDS_STATES)('%s + plan ON — the promise shows', (_label, roun
 
   it('five counted and still open, with a date arrived → PROMISE too', async () => {
     held('p5', { date: '2026-11-15T09:00:00.000Z' });
-    for (const at of ['2026-11-08T07:00:00.000Z', '2026-11-08T07:30:00.000Z', '2026-11-08T09:30:00.000Z', '2026-11-09T07:00:00.000Z', '2026-11-09T15:00:00.000Z']) line('p5', at, 'NO_ANSWER');
+    // UPDATED 2026-11-18 (request C2): #4 at 08:00Z (11:00 Amman, the morning anchor) — it was 07:00Z (10:00), early under C2.
+    for (const at of ['2026-11-08T07:00:00.000Z', '2026-11-08T07:30:00.000Z', '2026-11-08T09:30:00.000Z', '2026-11-09T08:00:00.000Z', '2026-11-09T15:00:00.000Z']) line('p5', at, 'NO_ANSWER');
     const d = await desk();
     expect(find(d, 'p5')).toMatchObject({ dueNow: true, dueReason: 'PROMISE', dueWords: PROMISE_WORDS, noAnswerCount: 5 });
   });

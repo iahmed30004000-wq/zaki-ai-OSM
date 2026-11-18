@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,19 +20,21 @@ const CARDS = {
   IntakeFilterCard: 'فلتر الاستقبال',
   WinbackV2Card: 'الاسترجاع اليومي',
   LeadsV2Card: 'ليدز الصفحات',
-  NoAnswerRoundsCard: 'نظام الجولات',
-  NoAnswerReturnsCard: 'الطلب يرجع للطابور فوراً',
 } as const;
+/*
+ * UPDATED 2026-11-18 (request C2): the page held EIGHT cards, the two old ones («نظام الجولات», «الطلب يرجع للطابور فوراً») together at the bottom under «قواعد قديمة —
+ * بتنشال بالتحديث الجاي». C2 removed them (the owner's plan of 17/11, §3.2: one rule, one card, one counter): the six live cards stay, the old two are on NO page, and one
+ * line under the box says the single rule replaced them. Their doors refuse writes (their own tests).
+ */
+const GONE = { NoAnswerRoundsCard: 'نظام الجولات', NoAnswerReturnsCard: 'الطلب يرجع للطابور فوراً' } as const;
 vi.mock('@/components/settings/CallProofCard', () => ({ CallProofCard: () => <div data-card="CallProofCard" /> }));
 vi.mock('@/components/settings/QueuePriorityCard', () => ({ QueuePriorityCard: () => <div data-card="QueuePriorityCard" /> }));
 vi.mock('@/components/settings/QueueModesCard', () => ({ QueueModesCard: () => <div data-card="QueueModesCard" /> }));
 vi.mock('@/components/settings/IntakeFilterCard', () => ({ IntakeFilterCard: () => <div data-card="IntakeFilterCard" /> }));
 vi.mock('@/components/settings/WinbackV2Card', () => ({ WinbackV2Card: () => <div data-card="WinbackV2Card" /> }));
 vi.mock('@/components/settings/LeadsV2Card', () => ({ LeadsV2Card: () => <div data-card="LeadsV2Card" /> }));
-vi.mock('@/components/settings/NoAnswerRoundsCard', () => ({ NoAnswerRoundsCard: () => <div data-card="NoAnswerRoundsCard" /> }));
-vi.mock('@/components/settings/NoAnswerReturnsCard', () => ({ NoAnswerReturnsCard: () => <div data-card="NoAnswerReturnsCard" /> }));
 
-import { ConfirmationRulesScreen } from './ConfirmationRulesScreen';
+import { ConfirmationRulesScreen, RULE_REPLACED_LINE } from './ConfirmationRulesScreen';
 import { ALL_ROUTES, NAV, canAccessRoute, findRoute } from '@/lib/route-registry';
 import { GUIDED_PATHS } from '@/lib/route-guide';
 import { attachGrants, can } from '@/lib/authorization';
@@ -43,7 +45,7 @@ import { attachGrants, can } from '@/lib/authorization';
  *
  * DEFINITION OF DONE it pins:
  *  1. `/confirmation/rules` opens for a holder of `settings.view` and for nobody else; it is the LAST tab of the confirmation hub.
- *  2. The eight cards are on it — six in the body, the two OLD ones (rounds, returns) together at the bottom under «قواعد قديمة — بتنشال بالتحديث الجاي» — and on no other page.
+ *  2. The six live cards are on it and on no other page; the two OLD ones (rounds, returns) are on NO page since C2 (18/11), and one line under the box says why.
  *  3. «إعدادات النظام» keeps the company's own cards and none of the eight; the address still exists (an old bookmark opens it).
  *  4. The box «القاعدة بالمختصر» is the first thing under the title and prints what the server sent, line by line.
  *  5. The page is a column that can only be as wide as the phone: no fixed width, no horizontal overflow, no `nowrap`.
@@ -83,35 +85,38 @@ describe('1 · who opens it', () => {
   });
 });
 
-describe('2 · the eight cards, in their places', () => {
+describe('2 · the six cards, in their places — and the two old ones on no page (C2)', () => {
   const stands = () => {
     const { container } = render(<ConfirmationRulesScreen lines={LINES} />);
     return container;
   };
   const marks = (root: ParentNode) => [...root.querySelectorAll('[data-card]')].map((n) => n.getAttribute('data-card'));
 
-  it('all eight are drawn, once each', () => {
+  it('all six are drawn, once each — and nothing else', () => {
     const all = marks(stands());
     expect([...all].sort()).toEqual(Object.keys(CARDS).sort());
-    expect(new Set(all).size).toBe(8);
+    expect(new Set(all).size).toBe(6);
   });
 
-  it('the six live cards come first; the two old ones are TOGETHER at the bottom, inside the group that says what they are', () => {
+  it('the two old cards are gone: no group of old rules, no title of theirs, and one line under the box says the single rule replaced them', () => {
     const root = stands();
-    const all = marks(root);
-    expect(all.slice(0, 6).sort()).toEqual(['CallProofCard', 'IntakeFilterCard', 'LeadsV2Card', 'QueueModesCard', 'QueuePriorityCard', 'WinbackV2Card']);
-    expect(all.slice(6)).toEqual(['NoAnswerRoundsCard', 'NoAnswerReturnsCard']);
-    const group = screen.getByRole('region', { name: 'قواعد قديمة — بتنشال بالتحديث الجاي' });
-    expect(marks(group)).toEqual(['NoAnswerRoundsCard', 'NoAnswerReturnsCard']);
-    expect(within(group).getByText(/القاعدة الوحدة اللي فوق هي اللي بتحكم/)).toBeTruthy();
-    expect(within(group).getByText(/«إثبات المكالمات وجدول المحاولات» يكون شغّال/)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'قواعد قديمة — بتنشال بالتحديث الجاي' })).toBeNull();
+    expect(root.textContent).not.toContain('قواعد قديمة');
+    const line = root.querySelector('[data-rule-replaced]') as HTMLElement;
+    expect(line.textContent).toBe(RULE_REPLACED_LINE);
+    for (const title of Object.values(GONE)) expect(RULE_REPLACED_LINE, title).toContain(title);
+    expect(RULE_REPLACED_LINE).toMatch(/القاعدة الوحدة/);
+    // The line sits inside the box, after its list.
+    const box = root.querySelector('[data-rule-summary]')!.parentElement!;
+    expect(box.contains(line)).toBe(true);
   });
 
-  it('the six live cards are NOT inside the old group', () => {
-    stands();
-    const group = screen.getByRole('region', { name: 'قواعد قديمة — بتنشال بالتحديث الجاي' });
-    for (const live of ['CallProofCard', 'QueuePriorityCard', 'QueueModesCard', 'IntakeFilterCard', 'WinbackV2Card', 'LeadsV2Card']) {
-      expect(group.querySelector(`[data-card="${live}"]`), live).toBeNull();
+  it('no screen imports or draws the two old cards, and their files are gone', () => {
+    for (const name of Object.keys(GONE)) {
+      expect(existsSync(join(process.cwd(), `src/components/settings/${name}.tsx`)), name).toBe(false);
+      for (const file of ['src/components/screens/ConfirmationRulesScreen.tsx', 'src/components/screens/SystemSettingsScreen.tsx']) {
+        expect(read(file), `${file}: ${name}`).not.toContain(name);
+      }
     }
   });
 
@@ -130,11 +135,11 @@ describe('2 · the eight cards, in their places', () => {
   });
 });
 
-describe('3 · «إعدادات النظام» keeps its own cards and none of the eight', () => {
+describe('3 · «إعدادات النظام» keeps its own cards and none of the six (nor the two old ones)', () => {
   const system = read('src/components/screens/SystemSettingsScreen.tsx');
 
-  it('no import, no element of any of the eight', () => {
-    for (const name of Object.keys(CARDS)) expect(system, name).not.toContain(name);
+  it('no import, no element of any of the six or the two old ones', () => {
+    for (const name of [...Object.keys(CARDS), ...Object.keys(GONE)]) expect(system, name).not.toContain(name);
   });
 
   it('and still draws the company\'s own: the name, the score, the deductions, the offer after the order, the clean-line settlement and the partners', () => {
@@ -150,7 +155,7 @@ describe('3 · «إعدادات النظام» keeps its own cards and none of t
   });
 
   it('and no screen tells the person to look for one of the eight in «إعدادات النظام»', () => {
-    const cardText = Object.values(CARDS);
+    const cardText = [...Object.values(CARDS), ...Object.values(GONE)];
     const guide = read('src/lib/route-guide-texts.ts');
     const at = guide.indexOf("'/settings/system': {");
     const block = guide.slice(at, guide.indexOf("'/admin/jobs'", at));

@@ -24,13 +24,19 @@ import { forgetCallProofSwitch } from './call-proof-switch';
  *  · `readRuleFacts` reads the two switches, the limits the release uses (`returnsLimits`) and the windows — a failed read is «off».
  * ═══════════════════════════════════════════════════════════════════════
  */
+/*
+ * UPDATED 2026-11-18 (request C2): under the plan the hand and the idle release are the one rule set's 3 and 20 WHATEVER «أولوية الطابور» says (`returnsLimits` — what
+ * `readRuleFacts` hands in), the postponement cap and «لا يرد is not a postponement» hold under the plan too (one more line), #4 is the morning anchor (11:00, it was «ببداية
+ * الدوام»), #5's cap is 19:30 (it was 18:00), and «نظام الجولات» stored on beside the plan is not mentioned (its releases stopped). The old pins said «six lines», «5 and 30 with
+ * the priority off», «ببداية الدوام (10:00)», «المسا (18:00)» and ««نظام الجولات» شغّال كمان … 12 ساعة عمل».
+ */
 const FACTS: RuleFacts = {
   proofOn: true,
   priorityOn: false,
   roundsOn: false,
   returnsOn: false,
-  hand: RETURNS_MODE.handLimit,
-  idleMinutes: RETURNS_MODE.idleBusinessMinutes,
+  hand: QUEUE_PRIORITY_LIMITS.handLimit,
+  idleMinutes: QUEUE_PRIORITY_LIMITS.idleBusinessMinutes,
   workStart: '10:00',
   workEnd: '22:00',
   modes: QUEUE_MODES_DEFAULTS,
@@ -40,45 +46,48 @@ const text = (f: Partial<RuleFacts> = {}) => ruleSummaryLines({ ...FACTS, ...f }
 describe('the plan on, priority off — the numbers are the engine\'s', () => {
   const lines = ruleSummaryLines(FACTS);
 
-  it('is six lines, each one sentence', () => {
-    expect(lines).toHaveLength(6);
+  it('is seven lines, each one sentence', () => {
+    expect(lines).toHaveLength(7);
     for (const line of lines) expect(line.length).toBeGreaterThan(20);
   });
 
-  it('says the hand and the idle limit of the state: 5 and 30 with the priority off — and not 3 and 20', () => {
-    expect(lines[0]).toContain(`${RETURNS_MODE.handLimit} طلبات`);
-    expect(lines[0]).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
-    expect(lines[0]).toContain('أولوية الطابور مطفية');
-    expect(lines[0]).not.toContain(`${QUEUE_PRIORITY_LIMITS.handLimit} طلبات`);
-    expect(lines[0]).not.toContain(`${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة`);
+  it('says the plan\'s hand and idle limit — 3 and 20 — and names no switch for them (they hold whatever «أولوية الطابور» says)', () => {
+    expect(lines[0]).toContain(`${QUEUE_PRIORITY_LIMITS.handLimit} طلبات`);
+    expect(lines[0]).toContain(`${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام`);
+    expect(lines[0]).not.toContain('أولوية الطابور');
+    expect(lines[0]).not.toContain(`${RETURNS_MODE.handLimit} طلبات`);
   });
 
-  it('says the proof seconds, the gaps, the floors, the attempts, the days and the work window — all from the constants', () => {
+  it('says the proof seconds, the gaps, the floors, the attempts, the days and the two anchors — all from the constants', () => {
     expect(lines[1]).toContain(`${MIN_CALL_MS.NO_ANSWER / 1000} ثانية`);
     expect(lines[2]).toContain(`${CADENCE_GAPS_MS.afterFirst / 60_000} دقيقة`);
     expect(CADENCE_GAPS_MS.afterSecond / 3_600_000).toBe(2);
     expect(lines[2]).toContain('ساعتين');
     expect(lines[2]).toContain(`${CADENCE_FLOORS_MS.beforeFourth / 3_600_000} ساعات`);
-    expect(lines[2]).toContain('ببداية الدوام (10:00)');
-    expect(lines[2]).toContain('المسا (18:00)');
+    expect(lines[2]).toContain('تاني يوم الصبح (11:00)');
+    expect(lines[2]).toContain('المسا (19:30)');
+    expect(lines[2]).not.toContain('ببداية الدوام');
     expect(lines[3]).toContain(`المحاولة ${CADENCE_LIMIT} على ${CADENCE_MIN_DAYS} أيام`);
-    expect(lines[5]).toContain(`محاولة 2 من ${CADENCE_LIMIT}`);
+    expect(lines[6]).toContain(`محاولة 2 من ${CADENCE_LIMIT}`);
   });
 
-  it('the evening is the country\'s own: a window that ends at 17:00 puts it at 16:00 (the plan\'s anchor), not at a typed 18:00', () => {
+  it('the anchors are the country\'s own: a 09:00-17:00 window gives 11:00 and 16:00; a start after 11:00 gives the start', () => {
     expect(text({ workStart: '09:00', workEnd: '17:00' })).toContain('المسا (16:00)');
-    expect(text({ workStart: '09:00', workEnd: '17:00' })).toContain('ببداية الدوام (09:00)');
+    expect(text({ workStart: '09:00', workEnd: '17:00' })).toContain('الصبح (11:00)');
+    expect(text({ workStart: '12:00', workEnd: '22:00' })).toContain('الصبح (12:00)');
   });
 
-  it('a country with no readable hours gets the plan\'s fallbacks (10:00 and 18:00)', () => {
+  it('a country with no readable hours gets the plan\'s fallbacks (11:00 and 19:30)', () => {
     const t = text({ workStart: null, workEnd: undefined });
-    expect(t).toContain('ببداية الدوام (10:00)');
-    expect(t).toContain('المسا (18:00)');
+    expect(t).toContain('الصبح (11:00)');
+    expect(t).toContain('المسا (19:30)');
   });
 
-  it('with the priority off it does not promise a share or a postponement limit', () => {
-    expect(lines[4]).toContain('أولوية الطابور مطفية');
-    expect(text()).not.toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات`);
+  it('the postponement cap and «لا يرد is not a postponement» are said with the priority off too; the pull order is the plain one', () => {
+    expect(lines[4]).toContain(`موعد من الزبون: ${POSTPONE_MAX_TIMES} مرات بالأكثر`);
+    expect(lines[4]).toContain('التأجيل بسبب «لا يرد» ممنوع');
+    expect(lines[5]).toContain('أولوية الطابور مطفية');
+    expect(lines[5]).not.toContain('حد لتأجيل');
   });
 });
 
@@ -86,20 +95,19 @@ describe('the plan on, priority on', () => {
   const on = { priorityOn: true, hand: QUEUE_PRIORITY_LIMITS.handLimit, idleMinutes: QUEUE_PRIORITY_LIMITS.idleBusinessMinutes };
   const lines = ruleSummaryLines({ ...FACTS, ...on });
 
-  it('is seven lines; the hand is 3 and the idle 20, as the release uses them', () => {
-    expect(lines).toHaveLength(7);
+  it('is eight lines; the hand is 3 and the idle 20, as the release uses them', () => {
+    expect(lines).toHaveLength(8);
     expect(lines[0]).toContain('3 طلبات');
     expect(lines[0]).toContain('20 دقيقة دوام');
-    expect(lines[0]).toContain('أولوية الطابور شغّالة');
   });
 
   it('says the priority numbers from their constants, and the two windows from the owner\'s settings', () => {
-    expect(lines[4]).toContain(`أقل من ${QUEUE_PRIORITY.freshMinutes} دقيقة`);
+    expect(lines[5]).toContain(`أقل من ${QUEUE_PRIORITY.freshMinutes} دقيقة`);
     expect(QUEUE_PRIORITY.agingHours).toBe(2);
-    expect(lines[4]).toContain('أكتر من ساعتين');
-    expect(lines[4]).toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات`);
-    expect(lines[5]).toBe('من 09:00 لـ11:00 ومن 21:00 لـ00:00: الجديد أول والأقدم أول، بلا حصة.');
-    const moved = ruleSummaryLines({ ...FACTS, ...on, modes: { nightFrom: 8, nightTo: 10, peakFrom: 20, peakTo: 23 } })[5];
+    expect(lines[5]).toContain('أكتر من ساعتين');
+    expect(lines[4]).toContain(`${POSTPONE_MAX_TIMES} مرات بالأكثر`);
+    expect(lines[6]).toBe('من 09:00 لـ11:00 ومن 21:00 لـ00:00: الجديد أول والأقدم أول، بلا حصة.');
+    const moved = ruleSummaryLines({ ...FACTS, ...on, modes: { nightFrom: 8, nightTo: 10, peakFrom: 20, peakTo: 23 } })[6];
     expect(moved).toContain('من 08:00 لـ10:00 ومن 20:00 لـ23:00');
   });
 });
@@ -145,6 +153,11 @@ describe('readRuleFacts reads what the engine reads', () => {
     expect(f).toMatchObject({ proofOn: true, priorityOn: true, hand: 3, idleMinutes: 20, workStart: '09:00', workEnd: '17:00', modes: { nightFrom: 8, peakTo: 23 } });
   });
 
+  it('the plan on, priority off (C2): 3 and 20 — the plan\'s, whatever the priority key says', async () => {
+    const f = await readRuleFacts(client({ callProofAndCadence: ON }) as never, CO, {});
+    expect(f).toMatchObject({ proofOn: true, priorityOn: false, hand: 3, idleMinutes: 20 });
+  });
+
   it('nothing set: both off, the mode\'s own 5 and 30, the default windows', async () => {
     const f = await readRuleFacts(client({}) as never, CO, {});
     expect(f).toMatchObject({ proofOn: false, priorityOn: false, hand: 5, idleMinutes: 30, modes: QUEUE_MODES_DEFAULTS });
@@ -175,9 +188,10 @@ describe('the box tells the truth of every state', () => {
     ['plan off · rounds on · returns on · priority off', { proofOn: false, roundsOn: true, returnsOn: true, ...OFF }, [`بعد ${NO_ANSWER_LIMIT} جولات`, 'بيجهز بعد 3 ساعات عمل', `بإيدها ${RETURNS_MODE.handLimit} طلبات`, `${RETURNS_MODE.idleBusinessMinutes} دقيقة عمل`], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`, `${NO_ANSWER_LIMIT} مرات «لا يرد»`]],
     ['plan off · rounds on · returns on · priority on', { proofOn: false, roundsOn: true, returnsOn: true, priorityOn: true, ...PRI }, [`بإيدها ${QUEUE_PRIORITY_LIMITS.handLimit} طلبات`, `${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة عمل`, 'أولوية الطابور شغّالة'], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`, 'ما بيشتغلوا إلا']],
     ['plan off · rounds off · priority on (inert)', { proofOn: false, priorityOn: true, ...PRI }, ['ما بيشتغلوا إلا مع «إثبات المكالمات»', `${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`], ['بإيدها']],
-    ['plan on · rounds off', { proofOn: true, ...OFF }, [`المحاولة ${CADENCE_LIMIT} على`, `${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`], ['جولات', 'نظام الجولات']],
-    ['plan on · rounds on (its releases still run)', { proofOn: true, roundsOn: true, ...OFF }, [`المحاولة ${CADENCE_LIMIT} على`, '«نظام الجولات» شغّال كمان', '12 ساعة عمل'], [`${NO_ANSWER_LIMIT} جولات`]],
-    ['plan on · rounds on · returns on · priority on', { proofOn: true, roundsOn: true, returnsOn: true, priorityOn: true, ...PRI }, ['3 طلبات', '20 دقيقة دوام', 'أولوية الطابور شغّالة'], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`]],
+    // UPDATED 2026-11-18 (C2): under the plan the hand and idle are always the plan's (PRI), and «نظام الجولات» stored on is not said — its releases stopped (was «شغّال كمان … 12 ساعة عمل»).
+    ['plan on · rounds off', { proofOn: true, ...PRI }, [`المحاولة ${CADENCE_LIMIT} على`, `${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام`], ['جولات', 'جولة', 'نظام الجولات']],
+    ['plan on · rounds on (its releases stop — C2)', { proofOn: true, roundsOn: true, ...PRI }, [`المحاولة ${CADENCE_LIMIT} على`], ['جولة', 'جولات', '12 ساعة عمل', 'شغّال كمان']],
+    ['plan on · rounds on · returns on · priority on', { proofOn: true, roundsOn: true, returnsOn: true, priorityOn: true, ...PRI }, ['3 طلبات', '20 دقيقة دوام', 'أكتر من ساعتين بتتقدّم'], [`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة`, 'جولة', 'جولات']],
   ];
   it.each(rows)('%s', (_name, over, says, never) => {
     const t = text(over);

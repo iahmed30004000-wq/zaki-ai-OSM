@@ -23,6 +23,7 @@ import {
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiArrowUpSLine, RiCloseLine, RiDeleteBinLine, RiFileCopyLine, RiGroupLine, RiKey2Line, RiPencilLine, RiSearchLine, RiShieldCheckLine, RiToolsLine } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { RoleMenuPanel } from '@/components/settings/RoleMenuPanel';
 
 interface RolePerm { permission: string; scope: string; scopeIds?: unknown }
 interface RoleRow {
@@ -514,6 +515,8 @@ export function PermissionsScreen() {
             );
           })}
         </div>
+
+        <RoleMenuPanel />
 
         {/* ── Create/Edit modal ── */}
         <Modal
