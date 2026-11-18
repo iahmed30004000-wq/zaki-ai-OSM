@@ -292,8 +292,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * The restructure moves every hand-written tick box, on/off toggle and compressed option pair onto these in the
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
+   *
+   * 18/11 (R17a): `Checkbox` LEFT the list — «تذكرني» on the login page and «لا تطلب الرمز على هذا الجهاز» on the
+   * second step are the first screens that draw it. The old line said «no screen draws it yet»; that is no longer true.
    */
-  // `Checkbox` LEFT this list on 18/11 (R11b): «إنشاء شحنة» (`ShipmentsNewScreen`) is the first screen that renders it.
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':
