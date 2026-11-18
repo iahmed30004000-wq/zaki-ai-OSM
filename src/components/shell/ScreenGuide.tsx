@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { RiArrowRightLine, RiInformationLine } from '@remixicon/react';
 import { Modal } from '@/components/ui/Modal';
 import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { findRoute, type RouteDef } from '@/lib/route-registry';
 import { roadPosition } from '@/lib/next-stop';
@@ -145,10 +146,12 @@ function GuideSheet({ route, onClose }: { route: RouteDef; onClose: () => void }
               ))}
             </ol>
             {written.watch && (
-              <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                <span className="font-bold">انتبه: </span>
-                {written.watch}
-              </p>
+              <Card plain padding="sm">
+                <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+                  <span className="font-bold">انتبه: </span>
+                  {written.watch}
+                </p>
+              </Card>
             )}
           </>
         )}

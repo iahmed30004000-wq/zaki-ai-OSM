@@ -9,6 +9,7 @@ import type { NotificationType } from '@/lib/notification';
 import { RiCheckLine, RiLoader4Line, RiNotification3Line } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 
 /**
  * The bell.
@@ -146,67 +147,68 @@ export function NotificationBell() {
       </IconButton>
 
       {open && (
-        <div
-          dir="rtl"
-          className="absolute z-40 mt-1 end-0 w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] shadow-overlay overflow-hidden"
-        >
-          <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
-            <span className="text-sm font-bold text-[var(--sys-heading)]">الإشعارات</span>
-            {unread > 0 && (
-              <Button
-                variant="quiet"
-                size="sm"
-                onClick={() => {
-                  void markAll();
-                }}
-                disabled={busy}
-              >
-                {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" />}
-                تعليم الكل كمقروء
-              </Button>
-            )}
-          </div>
+        // The frame holds the corner and the width; the surface is the kit's
+        // plain card (it takes no `dir` and no position of its own).
+        <div dir="rtl" className="absolute z-40 mt-1 end-0 w-[22rem] max-w-[calc(100vw-2rem)]">
+          <Card plain className="shadow-overlay overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
+              <span className="text-sm font-bold text-[var(--sys-heading)]">الإشعارات</span>
+              {unread > 0 && (
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  onClick={() => {
+                    void markAll();
+                  }}
+                  disabled={busy}
+                >
+                  {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" />}
+                  تعليم الكل كمقروء
+                </Button>
+              )}
+            </div>
 
-          <div className="max-h-[22rem] overflow-y-auto">
-            {items === null ? (
-              <p className="px-4 py-6 text-sm text-[var(--sys-muted)] flex items-center justify-center gap-1.5">
-                <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
-              </p>
-            ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-[var(--sys-muted)] text-center">لا إشعارات.</p>
-            ) : (
-              <ul className="divide-y divide-[var(--sys-border)]">
-                {items.map((n) => (
-                  <li key={n.id}>
-                    <button
-                      onClick={() => openItem(n)}
-                      className={`w-full text-start px-4 py-2.5 hover:bg-[var(--sys-surface)] transition-colors ${
-                        n.isRead ? '' : 'bg-[var(--sys-primary-soft)]/60'
-                      }`}
-                    >
-                      <span className="flex items-start gap-2">
-                        {!n.isRead && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-primary)] mt-1.5 shrink-0" aria-hidden="true" />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-note px-1.5 py-0.5 rounded-md ${TONE[n.type as NotificationType] ?? TONE.SYSTEM_ALERT}`}>
-                              {TYPE_AR[n.type as NotificationType] ?? TYPE_AR.SYSTEM_ALERT}
+            <div className="max-h-[22rem] overflow-y-auto">
+              {items === null ? (
+                <p className="px-4 py-6 text-sm text-[var(--sys-muted)] flex items-center justify-center gap-1.5">
+                  <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
+                </p>
+              ) : items.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-[var(--sys-muted)] text-center">لا إشعارات.</p>
+              ) : (
+                <ul className="divide-y divide-[var(--sys-border)]">
+                  {items.map((n) => (
+                    <li key={n.id}>
+                      <button
+                        onClick={() => openItem(n)}
+                        className={`w-full text-start px-4 py-2.5 hover:bg-[var(--sys-surface)] transition-colors ${
+                          n.isRead ? '' : 'bg-[var(--sys-primary-soft)]/60'
+                        }`}
+                      >
+                        <span className="flex items-start gap-2">
+                          {!n.isRead && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--sys-primary)] mt-1.5 shrink-0" aria-hidden="true" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-note px-1.5 py-0.5 rounded-md ${TONE[n.type as NotificationType] ?? TONE.SYSTEM_ALERT}`}>
+                                {TYPE_AR[n.type as NotificationType] ?? TYPE_AR.SYSTEM_ALERT}
+                              </span>
+                              <span className="text-note text-[var(--sys-muted)]">{arDateShort(n.createdAt)}</span>
                             </span>
-                            <span className="text-note text-[var(--sys-muted)]">{arDateShort(n.createdAt)}</span>
+                            <span className={`block text-sm mt-1 ${n.isRead ? 'text-[var(--sys-muted-foreground)]' : 'text-[var(--sys-heading)] font-medium'}`}>
+                              {n.title}
+                            </span>
+                            <span className="block text-note text-[var(--sys-muted)] mt-0.5 break-words">{n.message}</span>
                           </span>
-                          <span className={`block text-sm mt-1 ${n.isRead ? 'text-[var(--sys-muted-foreground)]' : 'text-[var(--sys-heading)] font-medium'}`}>
-                            {n.title}
-                          </span>
-                          <span className="block text-note text-[var(--sys-muted)] mt-0.5 break-words">{n.message}</span>
                         </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </Card>
         </div>
       )}
     </div>

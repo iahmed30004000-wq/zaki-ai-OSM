@@ -14,6 +14,7 @@ import {
 import { signOut } from '@/lib/sign-out';
 import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * A PHONE LEFT ON A COUNTER.
@@ -298,7 +299,9 @@ export function IdleGuard({ idleSignOut = true }: { idleSignOut?: boolean }) {
           data-testid="idle-warning"
           className="fixed inset-x-0 bottom-0 z-[70] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
         >
-          <div className="mx-auto flex max-w-md items-center gap-3 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-card)] p-3 shadow-overlay">
+          {/* The kit's plain card, in the warning's colour: the sheet writes
+              the warning edge after the card's own, so it is the one seen. */}
+          <Card plain className="mx-auto flex max-w-md items-center gap-3 border-[var(--sys-warning)] p-3 shadow-overlay">
             <RiLockLine className="h-5 w-5 shrink-0 text-[var(--sys-warning)]" />
             <p className="flex-1 text-sm text-[var(--sys-foreground)]">
               {phase === 'expired' ? (
@@ -314,7 +317,7 @@ export function IdleGuard({ idleSignOut = true }: { idleSignOut?: boolean }) {
                 أنا هنا
               </Button>
             )}
-          </div>
+          </Card>
         </div>
       )}
     </>

@@ -131,15 +131,23 @@ export function PreviewBanner({ name, roleName, ended = false }: { name: string;
       dir="rtl"
       // The same height above the phone's bottom bar as the assistant's button (AiDock), so neither covers it.
       style={{ bottom: 'calc(var(--sys-mobile-nav-h) + env(safe-area-inset-bottom) + 0.75rem)' }}
-      className="fixed inset-x-0 z-50 mx-auto flex w-fit max-w-full flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-card)] px-3 py-2 text-xs font-bold text-[var(--sys-heading)] shadow-raised"
+      className="fixed inset-x-0 z-50 mx-auto w-fit max-w-full"
     >
-      <RiEyeLine className="h-4 w-4 shrink-0 text-[var(--sys-warning)]" aria-hidden />
-      <span>
-        {ended ? 'انتهت المعاينة: هالحساب ما عاد ينعاين — ارجع لحسابك لتكمّل' : `عم تعاين كـ ${name} (${roleName}) — قراءة بس`}
-      </span>
-      <Button size="sm" variant="outline" onClick={leave} disabled={busy}>
-        رجوع لحسابي
-      </Button>
+      {/* The frame holds the place above the phone's bar; the surface is the
+          kit's plain card in the warning's colour (the sheet writes the
+          warning edge after the card's own). */}
+      <Card
+        plain
+        className="flex flex-wrap items-center gap-2 border-[var(--sys-warning)] px-3 py-2 text-sm font-bold text-[var(--sys-heading)] shadow-raised"
+      >
+        <RiEyeLine className="h-4 w-4 shrink-0 text-[var(--sys-warning)]" aria-hidden />
+        <span>
+          {ended ? 'انتهت المعاينة: هالحساب ما عاد ينعاين — ارجع لحسابك لتكمّل' : `عم تعاين كـ ${name} (${roleName}) — قراءة بس`}
+        </span>
+        <Button size="sm" variant="outline" onClick={leave} disabled={busy}>
+          رجوع لحسابي
+        </Button>
+      </Card>
     </div>
   );
 }

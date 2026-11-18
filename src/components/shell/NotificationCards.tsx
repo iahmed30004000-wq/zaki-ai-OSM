@@ -6,6 +6,7 @@ import { RiCloseLine, RiNotification3Line } from '@remixicon/react';
 import { useNotifications } from './NotificationsProvider';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 
 /**
  * WHAT ARRIVED WHILE YOU WERE LOOKING AT SOMETHING ELSE.
@@ -79,12 +80,14 @@ export function NotificationCards() {
             </span>
           </>
         );
-        const shell = `pointer-events-auto relative rounded-lg border border-s-4 border-[var(--sys-border)] bg-[var(--sys-card)] p-3 pe-8 shadow-overlay ${
+        // The kit's plain card draws the fill, the edge and the corner; the
+        // card keeps its coloured start edge, its room for ✕ and its press.
+        const shell = `pointer-events-auto relative border-s-4 p-3 pe-8 shadow-overlay ${
           TONE[n.type] ?? 'border-s-[var(--sys-muted)]'
         }`;
 
         return (
-          <div key={n.id} className={shell}>
+          <Card plain key={n.id} className={shell}>
             {/* Opening it is reading it: a card that takes you to the work
                 and leaves itself unread in the bell is a second dismissal
                 to perform for the same thing. */}
@@ -103,7 +106,7 @@ export function NotificationCards() {
                 <RiCloseLine className="h-4 w-4" />
               </IconButton>
             </span>
-          </div>
+          </Card>
         );
       })}
     </div>

@@ -6,6 +6,7 @@ import { apiJson } from '@/lib/api-client';
 import { RiArrowLeftLine, RiInformationLine, RiMenuLine, RiSearchLine, RiStore2Line } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { Card } from '@/components/ui/Card';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -318,36 +319,40 @@ export function FirstRunTour() {
             role="dialog"
             aria-label="الجولة الأولى"
             style={{ top: place(rect).top, left: place(rect).left }}
-            className="fixed z-[60] w-[320px] outline-none rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 shadow-raised"
+            className="fixed z-[60] w-[320px] outline-none"
           >
-            <div className="flex items-start gap-3">
-              <current.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sys-primary)]" aria-hidden />
-              <p className="text-sm leading-relaxed text-[var(--sys-heading)]">{current.text}</p>
-            </div>
+            {/* The frame holds the place, the focus and the dialog's name; the
+                surface inside it is the kit's plain card. */}
+            <Card plain padding="md" className="shadow-raised">
+              <div className="flex items-start gap-3">
+                <current.icon className="mt-0.5 h-5 w-5 shrink-0 text-[var(--sys-primary)]" aria-hidden />
+                <p className="text-sm leading-relaxed text-[var(--sys-heading)]">{current.text}</p>
+              </div>
 
-            <p className="mt-3 text-note text-[var(--sys-muted-foreground)] tabular-nums">
-              خطوة {step + 1} من {plan.length}
-            </p>
+              <p className="mt-3 text-note text-[var(--sys-muted-foreground)] tabular-nums">
+                خطوة {step + 1} من {plan.length}
+              </p>
 
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <Button type="button" variant="secondary" onClick={skip}>
-                تخطّي
-              </Button>
-              <Button type="button" onClick={next} disabled={busy}>
-                {step + 1 < plan.length ? 'التالي' : 'خلصت'}
-                <RiArrowLeftLine className="icon-mirror h-4 w-4" aria-hidden />
-              </Button>
-            </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <Button type="button" variant="secondary" onClick={skip}>
+                  تخطّي
+                </Button>
+                <Button type="button" onClick={next} disabled={busy}>
+                  {step + 1 < plan.length ? 'التالي' : 'خلصت'}
+                  <RiArrowLeftLine className="icon-mirror h-4 w-4" aria-hidden />
+                </Button>
+              </div>
 
-            {step === 0 && (
-              <Checkbox
-                id="first-run-tour-never-again"
-                checked={neverAgain}
-                onChange={(checked) => setNeverAgain(checked)}
-                label="ما بدي أشرح مرة ثانية"
-                className="mt-3"
-              />
-            )}
+              {step === 0 && (
+                <Checkbox
+                  id="first-run-tour-never-again"
+                  checked={neverAgain}
+                  onChange={(checked) => setNeverAgain(checked)}
+                  label="ما بدي أشرح مرة ثانية"
+                  className="mt-3"
+                />
+              )}
+            </Card>
           </div>
         </>
       )}

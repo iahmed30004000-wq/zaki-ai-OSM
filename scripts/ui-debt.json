@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawButtons": 663,
+    "rawCheckboxes": 76,
+    "rawSurfaces": 342,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2604
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -1099,61 +1099,25 @@
     "src/components/shell/CommandPalette.tsx": {
       "rawButtons": 2
     },
-    "src/components/shell/EditingStoreBar.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/shell/EntryPicker.tsx": {
       "rawButtons": 7,
       "rawSurfaces": 4,
       "textXs": 5
-    },
-    "src/components/shell/FirstRunTour.tsx": {
-      "rawButtons": 2,
-      "rawCheckboxes": 1,
-      "textXs": 4
     },
     "src/components/shell/Header.tsx": {
       "rawButtons": 4,
       "rawSurfaces": 1,
       "textXs": 1
     },
-    "src/components/shell/IdleGuard.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1
-    },
     "src/components/shell/InstallApp.tsx": {
-      "rawButtons": 2,
-      "textXs": 1
+      "rawButtons": 1
     },
     "src/components/shell/MobileNav.tsx": {
       "rawButtons": 3,
       "textXs": 2
     },
-    "src/components/shell/MyWork.tsx": {
-      "textXs": 1
-    },
     "src/components/shell/NotificationBell.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 1,
-      "textXs": 9
-    },
-    "src/components/shell/NotificationCards.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 3
-    },
-    "src/components/shell/OfflineWatch.tsx": {
-      "textXs": 1
-    },
-    "src/components/shell/PreviewAs.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
-    "src/components/shell/ScreenGuide.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 5
+      "rawButtons": 1
     },
     "src/components/shell/SecondFactor.tsx": {
       "rawButtons": 8,
