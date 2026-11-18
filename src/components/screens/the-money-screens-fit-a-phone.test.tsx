@@ -383,12 +383,22 @@ describe('«التحصيل والكشوف»', () => {
     expect(foot().textContent).toContain('معتمد');
   });
 
-  it('FIN-02 DESK: the five words are the old text links, «إلغاء الاستيراد» first, with no sentence under them', async () => {
+  /*
+   * 18/11 (R13b, the money screens onto the kit): this pinned «the five words are the old text links» — every desk
+   * button carried the raw link look. The words are now the kit's `Button`: the four steps `quiet` (the kit's text
+   * link, size sm), and «إلغاء الاستيراد» — the one that deletes — `danger`. Still five words, still the undo first,
+   * still no sentence under them on a desk.
+   */
+  it('FIN-02 DESK: the five words are kit buttons, «إلغاء الاستيراد» first and the only danger one, with no sentence under them', async () => {
     phone.value = false;
     await draw();
     const buttons = [...foot().querySelectorAll('button')];
     expect(buttons[0].textContent).toBe('إلغاء الاستيراد');
-    for (const b of buttons) expect(b.className).toContain('hover:underline');
+    expect(buttons[0].className).toContain('bg-[var(--sys-destructive)]');
+    for (const b of buttons.slice(1)) {
+      expect(b.className).toContain('bg-transparent');
+      expect(b.className).not.toContain('bg-[var(--sys-destructive)]');
+    }
     expect(foot().textContent).not.toContain('سجّل إيصال الاستلام أولاً');
   });
 
