@@ -4,6 +4,9 @@ import React from 'react';
 import Link from 'next/link';
 import { RiCloseLine, RiNotification3Line } from '@remixicon/react';
 import { useNotifications } from './NotificationsProvider';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 
 /**
  * WHAT ARRIVED WHILE YOU WERE LOOKING AT SOMETHING ELSE.
@@ -59,13 +62,9 @@ export function NotificationCards() {
       aria-live="polite"
     >
       {arriving.length > 1 && (
-        <button
-          type="button"
-          onClick={dismissAll}
-          className="pointer-events-auto self-start rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)] shadow-raised hover:text-[var(--sys-foreground)]"
-        >
+        <Button variant="secondary" size="sm" onClick={dismissAll} className="pointer-events-auto self-start shadow-raised">
           إخفاء الكل ({arriving.length})
-        </button>
+        </Button>
       )}
 
       {arriving.map((n) => {
@@ -74,20 +73,22 @@ export function NotificationCards() {
             <span className="flex items-start gap-2">
               <RiNotification3Line className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-primary)]" aria-hidden />
               <span className="min-w-0">
-                <span className="block truncate text-xs font-bold text-[var(--sys-heading)]">{n.title}</span>
-                <span className="mt-0.5 block text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                <span className="block truncate text-sm font-bold text-[var(--sys-heading)]">{n.title}</span>
+                <span className="mt-0.5 block text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                   {n.message}
                 </span>
               </span>
             </span>
           </>
         );
-        const shell = `pointer-events-auto relative rounded-lg border border-s-4 border-[var(--sys-border)] bg-[var(--sys-card)] p-3 pe-8 shadow-overlay ${
+        // The kit's plain card draws the fill, the edge and the corner; the
+        // card keeps its coloured start edge, its room for ✕ and its press.
+        const shell = `pointer-events-auto relative border-s-4 p-3 pe-8 shadow-overlay ${
           TONE[n.type] ?? 'border-s-[var(--sys-muted)]'
         }`;
 
         return (
-          <div key={n.id} className={shell}>
+          <Card plain key={n.id} className={shell}>
             {/* Opening it is reading it: a card that takes you to the work
                 and leaves itself unread in the bell is a second dismissal
                 to perform for the same thing. */}
@@ -98,16 +99,15 @@ export function NotificationCards() {
             ) : (
               body
             )}
-            <button
-              type="button"
-              onClick={() => dismiss(n.id)}
-              aria-label={`أخفِ ${n.title}`}
-              title="أخفِ"
-              className="absolute end-1 top-1 min-h-11 min-w-11 rounded-lg p-1.5 text-[var(--sys-muted)] hover:text-[var(--sys-foreground)] md:min-h-0 md:min-w-0"
-            >
-              <RiCloseLine className="h-4 w-4" />
-            </button>
-          </div>
+            {/* The corner is held by a wrapper: the kit's button is always
+                positioned relative to itself, and the sheet writes that rule
+                after the one that would pin it to the card's corner. */}
+            <span className="absolute end-1 top-1">
+              <IconButton size="sm" onClick={() => dismiss(n.id)} label={`أخفِ ${n.title}`}>
+                <RiCloseLine className="h-4 w-4" />
+              </IconButton>
+            </span>
+          </Card>
         );
       })}
     </div>

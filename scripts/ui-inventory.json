@@ -2524,7 +2524,7 @@
     "buttons": 0,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 1,
     "links": 0,
@@ -2542,13 +2542,14 @@
   },
   "src/components/shell/FirstRunTour.tsx": {
     "buttons": 2,
-    "inputs": 1,
+    "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 1,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/shell/Header.tsx": {
     "buttons": 4,
@@ -2574,7 +2575,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -2611,24 +2612,26 @@
     "tabs": 0
   },
   "src/components/shell/NotificationBell.tsx": {
-    "buttons": 3,
-    "inputs": 0,
-    "columns": 0,
-    "cards": 0,
-    "modals": 0,
-    "icons": 4,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/shell/NotificationCards.tsx": {
     "buttons": 2,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
+  "src/components/shell/NotificationCards.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/shell/OfflineWatch.tsx": {
     "buttons": 0,
@@ -2644,21 +2647,22 @@
     "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 3,
     "links": 0,
     "tabs": 0
   },
   "src/components/shell/ScreenGuide.tsx": {
-    "buttons": 1,
+    "buttons": 0,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 2,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/shell/SecondFactor.tsx": {
     "buttons": 8,

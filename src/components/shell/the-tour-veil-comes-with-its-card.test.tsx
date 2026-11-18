@@ -113,8 +113,10 @@ describe('the veil and the card are one thing', () => {
 });
 
 describe('Tab stays inside the card', () => {
+  // 18/11 (R17c): «تخطّي» is the kit's Button now, whose words sit in a span inside it — the stop is the
+  // button around them (was `getByText('تخطّي')`, which was the button itself), the same way «التالي» was always read.
   const stops = () => [
-    screen.getByText('تخطّي'),
+    screen.getByText('تخطّي').closest('button')!,
     screen.getByText('التالي').closest('button')!,
     screen.getByRole('checkbox'),
   ];
