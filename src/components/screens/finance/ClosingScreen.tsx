@@ -76,9 +76,12 @@ export function ClosingScreen() {
   }, [load]);
 
   return (
-    <PageShell title={routeLabel('/finance/closing')} width="wide">
-
-      <Card padding="md" className="flex gap-3 items-end">
+    <PageShell
+      title={routeLabel('/finance/closing')}
+      width="wide"
+      // The day is the one control that acts on the whole screen, so it sits in the frame's toolbar row under the name.
+      // It stays a native date FIELD: the closing is ONE day, and the kit's range picker answers a span.
+      toolbar={
         <label>
           <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">يوم الإغلاق</span>
           <input
@@ -90,7 +93,8 @@ export function ClosingScreen() {
             dir="ltr"
           />
         </label>
-      </Card>
+      }
+    >
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
