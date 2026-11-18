@@ -156,7 +156,7 @@ export function WhatsAppAfterNoAnswerCard() {
         )}
 
         {canManage ? (
-          <Button onClick={() => void save()} loading={busy} disabled={!canManage || busy}>
+          <Button type="button" onClick={() => void save()} loading={busy} disabled={!canManage || busy}>
             احفظ
           </Button>
         ) : (
