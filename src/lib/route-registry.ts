@@ -165,6 +165,9 @@ export const NAV: NavGroup[] = [
       // An agent's postponed orders are a tab of «طلباتي»; the old addresses redirect.
       r('/confirmation/follow-up', 'المتابعة', 'CalendarClock', ['confirmation.supervise']),
       r('/confirmation/issues', 'الإشكالات', 'AlertTriangle', ['confirmation.issues']),
+      // «قواعد مركز التأكيد» (18/11): the eight cards of the confirmation rules, moved here from «إعدادات النظام». On `settings.view`, the key those cards' own doors already read —
+      // a holder of it who holds no `confirmation.*` key opens this page, and the cards behave as they always did (each asks its own key again).
+      r('/confirmation/rules', 'قواعد مركز التأكيد', 'ShieldCheck', ['settings.view']),
     ],
   },
   {

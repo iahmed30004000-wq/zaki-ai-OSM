@@ -46,6 +46,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
+import { nextAttemptWords } from '@/lib/attempt-words';
 import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -1504,6 +1505,16 @@ export function ConfirmationMineScreen() {
           {rows.map(({ order, closed }) => {
             const remaining = Math.max(0, data.noAnswerLimit - order.noAnswerCount);
             /*
+              THE «لا يرد» BUTTON AND THE HINT BESIDE IT SAY WHAT THE SERVER KNOWS (the owner, 17/11 — «أزرار بتناقض بطاقاتها»).
+
+              Under the plan (`cadenceOn`) the button prints the attempt THIS press will be — «محاولة 2 من 5», the very words of the card's tag (`nextAttemptWords`,
+              one function) — and it is red only when the server said a press now would close the order (`closesOnNext`). Under the rounds the number of presses
+              left is not the number of rounds left, so the card says nothing it cannot know: no countdown, no red. Only the base rule (neither switch) keeps
+              the client's arithmetic, because there every press counts and the arithmetic is true.
+            */
+            const planned = !!data.cadenceOn;
+            const closesNow = planned ? !!order.closesOnNext : data.rounds ? false : remaining <= 1;
+            /*
               EACH BUTTON OF THE CARD, DRAWN ONCE, PLACED BY THE WIDTH.
 
               A desk lays them in one wrapping row, in the order the work happens in; a phone groups them in
@@ -1542,14 +1553,18 @@ export function ConfirmationMineScreen() {
                 {...lockProps}
                 busy={busyId === order.id}
                 icon={<RiPhoneLockLine className="w-4 h-4" />}
-                danger={remaining <= 1}
+                danger={closesNow}
                 wide={phone}
               >
                 لا يرد
-                <span className="tabular-nums" dir="ltr">
-                  {' '}
-                  {order.noAnswerCount}/{data.noAnswerLimit}
-                </span>
+                {planned ? (
+                  <span className="tabular-nums"> — {nextAttemptWords(order.noAnswerCount, data.noAnswerLimit)}</span>
+                ) : (
+                  <span className="tabular-nums" dir="ltr">
+                    {' '}
+                    {order.noAnswerCount}/{data.noAnswerLimit}
+                  </span>
+                )}
               </Action>
             );
             /*
@@ -1567,21 +1582,27 @@ export function ConfirmationMineScreen() {
                 {...lockProps}
                 busy={busyId === order.id}
                 icon={<RiPhoneLockLine className="w-4 h-4" />}
-                danger={remaining <= 1}
+                danger={closesNow}
                 wide={phone}
               >
                 مغلق أو خارج التغطية
               </Action>
             );
-            const remainingHint = (
-              <span className="text-xs text-[var(--sys-muted)]">
-                {remaining === 0
-                  ? 'بلغ الحد'
-                  : remaining === 1
-                    ? 'المحاولة القادمة تُغلق الطلب تلقائياً'
-                    : `متبقٍ ${remaining} محاولات قبل الإغلاق التلقائي`}
-              </span>
-            );
+            // Said only where it is true: the base rule's arithmetic, or the plan's own fact for this card (`closesOnNext`). Under the rounds, and under the plan when a press now would not close it: nothing.
+            const remainingHint =
+              planned || data.rounds ? (
+                planned && order.closesOnNext ? (
+                  <span className="text-xs text-[var(--sys-muted)]">المحاولة القادمة تُغلق الطلب تلقائياً</span>
+                ) : null
+              ) : (
+                <span className="text-xs text-[var(--sys-muted)]">
+                  {remaining === 0
+                    ? 'بلغ الحد'
+                    : remaining === 1
+                      ? 'المحاولة القادمة تُغلق الطلب تلقائياً'
+                      : `متبقٍ ${remaining} محاولات قبل الإغلاق التلقائي`}
+                </span>
+              );
             /*
               CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
               Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —
@@ -1754,10 +1775,18 @@ export function ConfirmationMineScreen() {
                   <span className="text-xs text-[var(--sys-muted-foreground)]">{sourceLabel(order)}</span>
                   {/* ⚠️ The count in words, because the card's colour must
                       never be the only place it is said. */}
-                  {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && (
+                  {/* Under the plan the server's own line (`dueWords`, below) already says «محاولة N من 5»; the chip would be a second counter beside it («ما ردّ مرّتين (2/5)»). It is drawn only where
+                      that line is not (a colleague's desk, a complete plan) — and then in the same words, from the same function. */}
+                  {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && !(planned && !readOnly && order.dueWords) && (
                     <span className="text-xs font-medium text-[var(--sys-warning)]">
-                      {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}
-                      <span className="tabular-nums" dir="ltr"> ({order.noAnswerCount}/{data.noAnswerLimit})</span>
+                      {planned ? (
+                        <span className="tabular-nums">{nextAttemptWords(order.noAnswerCount, data.noAnswerLimit)}</span>
+                      ) : (
+                        <>
+                          {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}
+                          <span className="tabular-nums" dir="ltr"> ({order.noAnswerCount}/{data.noAnswerLimit})</span>
+                        </>
+                      )}
                     </span>
                   )}
                   {/* «الشغل أول»: what she pulled, in a few words (written by the server) — a new order, a «لا يرد» that came back
@@ -2234,7 +2263,7 @@ export function ConfirmationMineScreen() {
           customerName={callOrder.customer.fullName}
           awayMs={call.awayMs}
           reading={helperReading}
-          closesOnNext={(workable(callOrder.id) ?? callOrder).closesOnNext ?? ((workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit)}
+          closesOnNext={(workable(callOrder.id) ?? callOrder).closesOnNext ?? (!data.rounds && (workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit)}
           confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder, contactFirstText)}
           proofOn={proofOn}
           orderId={callOrder.id}

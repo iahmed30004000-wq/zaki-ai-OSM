@@ -39,6 +39,8 @@ export interface QueueResponse {
    * the same order. Absent with the plan off: the three parts above and the old sentence are drawn.
    */
   waitingPlan?: { parts: { label: string; hint: string; value: number }[]; rule: string };
+  /** «الطلب يرجع للطابور فوراً» on, the plan off: the server's sentence under the card (a postponed order at its date, the mode's idle limit). Absent = the old sentence, which is the mode-OFF rule. */
+  waitingRule?: string;
   /** `heldForHer`: held for her and not yet pulled — counted in the cap with what is in her hands (RV706). */
   owned: { total: number; withoutAttempt: number; heldForHer?: number };
   caps: { withoutAttempt: number; total: number };
@@ -284,6 +286,7 @@ export function PullPanel({
   const rule = !notMyDesk && (
     <p className={`${compact ? 'mt-3' : 'mt-4'} text-xs text-[var(--sys-muted)]`}>
       {data.waitingPlan?.rule ??
+        data.waitingRule ??
         `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي موعده خلال ${data.leadDays} يوم، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد 90 دقيقة عمل.`}
     </p>
   );

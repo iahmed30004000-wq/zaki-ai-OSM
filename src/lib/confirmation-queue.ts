@@ -33,7 +33,10 @@ import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
-import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, RETURNS_MODE, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+
+// The mode's two numbers are DEFINED beside their sibling `QUEUE_PRIORITY_LIMITS` (`queue-priority.ts`, no imports, so a screen and the settings cards can say them) and re-exported here: every importer is unchanged.
+export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -67,7 +70,7 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
  *
  * The ready-time of a «لا يرد» is `ROUND_GAP_BUSINESS_MINUTES` (`no-answer-rounds.ts`): the same three hours that make a round.
  */
-export const RETURNS_MODE = { handLimit: 5, idleBusinessMinutes: 30 } as const;
+// `RETURNS_MODE` = { handLimit: 5, idleBusinessMinutes: 30 } — defined in `queue-priority.ts` (18/11), re-exported above.
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
@@ -1153,7 +1156,7 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
   }
   if (told.length) {
     await tx.notification.createMany({
-      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON })),
+      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes: returns.idleBusinessMinutes })),
     });
   }
   return told.length;

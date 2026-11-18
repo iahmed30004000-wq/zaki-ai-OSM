@@ -1,5 +1,6 @@
 import { DUE_RELEASE_REASON, REPULL_RELEASE_REASON, ROUND_RELEASE_REASON } from './no-answer-rounds';
 import { IDLE_RETURNED_REASON } from './no-answer-returns';
+import { RETURNS_MODE } from './queue-priority';
 
 /**
  * AN ORDER THE SYSTEM TAKES BACK IS TAKEN BY THE SYSTEM — AND SHE IS TOLD (the owner's ruling 4/11).
@@ -44,6 +45,11 @@ import { IDLE_RETURNED_REASON } from './no-answer-returns';
 /** The ninety-minute release's reason, exactly as `releaseStaleClaims` writes it (`AUTO_RELEASE_${90}_BUSINESS_MINUTES`). */
 export const NINETY_MINUTE_RELEASE_REASON = 'AUTO_RELEASE_90_BUSINESS_MINUTES';
 
+/** The idle release's reason with the limit it ACTUALLY used (30, or 20 under «أولوية الطابور») — never a figure typed in a sentence (18/11, finding #9 of the rules map). */
+export function idleWhy(idleBusinessMinutes: number): string {
+  return `ما انسجّلت عليه أي محاولة خلال ${idleBusinessMinutes} دقيقة عمل`;
+}
+
 /** Why the order went back, in her words — the notification's sentence after «رجع ORD-… للطابور:». */
 export const AUTO_RELEASE_WHY: Record<string, string> = {
   [NINETY_MINUTE_RELEASE_REASON]: 'ما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
@@ -51,7 +57,9 @@ export const AUTO_RELEASE_WHY: Record<string, string> = {
   [REPULL_RELEASE_REASON]: 'انسحب من جديد وما انسجّلت عليه محاولة خلال 90 دقيقة عمل',
   [DUE_RELEASE_REASON]: 'مرّت 3 ساعات عمل على موعد الطلب وما انسجّلت عليه محاولة بعد الموعد',
   // «الطلب يرجع للطابور فوراً» (`no-answer-returns.ts`): the only one of that mode's three ways out that she did not press herself.
-  [IDLE_RETURNED_REASON]: 'ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل',
+  // The idle limit is 30 working minutes — or 20 with «أولوية الطابور» on (`returnsLimits`). The sentence of a NEW notice says the figure the release used (`idleWhy`, handed in by `releaseNotice`); this entry is
+  // what a caller that does not know it reads, so it says the default's and no other (the same constant the release uses without the key).
+  [IDLE_RETURNED_REASON]: idleWhy(RETURNS_MODE.idleBusinessMinutes),
 };
 
 /** The actor the timeline writes for a release nobody pressed. */
@@ -139,8 +147,10 @@ export function releaseNotice(v: {
   holderId: string;
   orderNumber: string;
   reason: string;
+  /** The idle limit the release used, for the idle release's sentence. Absent = the default's. */
+  idleMinutes?: number;
 }) {
-  const why = AUTO_RELEASE_WHY[v.reason] ?? 'تحرير تلقائي';
+  const why = v.reason === IDLE_RETURNED_REASON && typeof v.idleMinutes === 'number' ? idleWhy(v.idleMinutes) : (AUTO_RELEASE_WHY[v.reason] ?? 'تحرير تلقائي');
   return {
     companyId: v.companyId,
     storeId: v.storeId,

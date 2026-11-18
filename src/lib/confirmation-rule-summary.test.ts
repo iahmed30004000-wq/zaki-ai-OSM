@@ -1,0 +1,158 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./db', () => ({ db: {} }));
+
+import { readRuleFacts, ruleSummaryLines, type RuleFacts } from './confirmation-rule-summary';
+import { AUTO_RELEASE_BUSINESS_MINUTES, RETURNS_MODE } from './confirmation-queue';
+import { NO_ANSWER_LIMIT } from './confirmation-workflow';
+import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS } from './no-answer-cadence';
+import { MIN_CALL_MS } from './call-proof-words';
+import { POSTPONE_MAX_TIMES, QUEUE_PRIORITY, QUEUE_PRIORITY_LIMITS } from './queue-priority';
+import { QUEUE_MODES_DEFAULTS } from './queue-modes-settings';
+import { forgetQueuePrioritySwitch } from './queue-priority-switch';
+import { forgetCallProofSwitch } from './call-proof-switch';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * «القاعدة بالمختصر» — THE BOX AT THE TOP OF «قواعد مركز التأكيد» (C1, 18/11)
+ *
+ * DEFINITION OF DONE it pins:
+ *  · six or seven short lines when the plan is on; every number in them IS a constant the engine uses (it is read here from the same constants, so a number typed a second time
+ *    in the sentence goes red the day the constant moves);
+ *  · the numbers that depend on a switch tell the truth of the switch's state: «أولوية الطابور» off → hand 5 and idle 30, never 3 and 20;
+ *  · the plan off → the box says so and says the OLD rule's numbers (3 and 90), and does not describe the five attempts;
+ *  · `readRuleFacts` reads the two switches, the limits the release uses (`returnsLimits`) and the windows — a failed read is «off».
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+const FACTS: RuleFacts = {
+  proofOn: true,
+  priorityOn: false,
+  hand: RETURNS_MODE.handLimit,
+  idleMinutes: RETURNS_MODE.idleBusinessMinutes,
+  workStart: '10:00',
+  workEnd: '22:00',
+  modes: QUEUE_MODES_DEFAULTS,
+};
+const text = (f: Partial<RuleFacts> = {}) => ruleSummaryLines({ ...FACTS, ...f }).join('\n');
+
+describe('the plan on, priority off — the numbers are the engine\'s', () => {
+  const lines = ruleSummaryLines(FACTS);
+
+  it('is six lines, each one sentence', () => {
+    expect(lines).toHaveLength(6);
+    for (const line of lines) expect(line.length).toBeGreaterThan(20);
+  });
+
+  it('says the hand and the idle limit of the state: 5 and 30 with the priority off — and not 3 and 20', () => {
+    expect(lines[0]).toContain(`${RETURNS_MODE.handLimit} طلبات`);
+    expect(lines[0]).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
+    expect(lines[0]).toContain('أولوية الطابور مطفية');
+    expect(lines[0]).not.toContain(`${QUEUE_PRIORITY_LIMITS.handLimit} طلبات`);
+    expect(lines[0]).not.toContain(`${QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة`);
+  });
+
+  it('says the proof seconds, the gaps, the floors, the attempts, the days and the work window — all from the constants', () => {
+    expect(lines[1]).toContain(`${MIN_CALL_MS.NO_ANSWER / 1000} ثانية`);
+    expect(lines[2]).toContain(`${CADENCE_GAPS_MS.afterFirst / 60_000} دقيقة`);
+    expect(CADENCE_GAPS_MS.afterSecond / 3_600_000).toBe(2);
+    expect(lines[2]).toContain('ساعتين');
+    expect(lines[2]).toContain(`${CADENCE_FLOORS_MS.beforeFourth / 3_600_000} ساعات`);
+    expect(lines[2]).toContain('ببداية الدوام (10:00)');
+    expect(lines[2]).toContain('المسا (18:00)');
+    expect(lines[3]).toContain(`المحاولة ${CADENCE_LIMIT} على ${CADENCE_MIN_DAYS} أيام`);
+    expect(lines[5]).toContain(`محاولة 2 من ${CADENCE_LIMIT}`);
+  });
+
+  it('the evening is the country\'s own: a window that ends at 17:00 puts it at 16:00 (the plan\'s anchor), not at a typed 18:00', () => {
+    expect(text({ workStart: '09:00', workEnd: '17:00' })).toContain('المسا (16:00)');
+    expect(text({ workStart: '09:00', workEnd: '17:00' })).toContain('ببداية الدوام (09:00)');
+  });
+
+  it('a country with no readable hours gets the plan\'s fallbacks (10:00 and 18:00)', () => {
+    const t = text({ workStart: null, workEnd: undefined });
+    expect(t).toContain('ببداية الدوام (10:00)');
+    expect(t).toContain('المسا (18:00)');
+  });
+
+  it('with the priority off it does not promise a share or a postponement limit', () => {
+    expect(lines[4]).toContain('أولوية الطابور مطفية');
+    expect(text()).not.toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات`);
+  });
+});
+
+describe('the plan on, priority on', () => {
+  const on = { priorityOn: true, hand: QUEUE_PRIORITY_LIMITS.handLimit, idleMinutes: QUEUE_PRIORITY_LIMITS.idleBusinessMinutes };
+  const lines = ruleSummaryLines({ ...FACTS, ...on });
+
+  it('is seven lines; the hand is 3 and the idle 20, as the release uses them', () => {
+    expect(lines).toHaveLength(7);
+    expect(lines[0]).toContain('3 طلبات');
+    expect(lines[0]).toContain('20 دقيقة دوام');
+    expect(lines[0]).toContain('أولوية الطابور شغّالة');
+  });
+
+  it('says the priority numbers from their constants, and the two windows from the owner\'s settings', () => {
+    expect(lines[4]).toContain(`أقل من ${QUEUE_PRIORITY.freshMinutes} دقيقة`);
+    expect(QUEUE_PRIORITY.agingHours).toBe(2);
+    expect(lines[4]).toContain('أكتر من ساعتين');
+    expect(lines[4]).toContain(`حدّو ${POSTPONE_MAX_TIMES} مرات`);
+    expect(lines[5]).toBe('من 09:00 لـ11:00 ومن 21:00 لـ00:00: الجديد أول والأقدم أول، بلا حصة.');
+    const moved = ruleSummaryLines({ ...FACTS, ...on, modes: { nightFrom: 8, nightTo: 10, peakFrom: 20, peakTo: 23 } })[5];
+    expect(moved).toContain('من 08:00 لـ10:00 ومن 20:00 لـ23:00');
+  });
+});
+
+describe('the plan off — the box says so, with the old rule\'s numbers', () => {
+  it('names the 3 closings and the 90 minutes, and does not describe five attempts', () => {
+    const t = text({ proofOn: false });
+    expect(t).toContain('«إثبات المكالمات وجدول المحاولات» مطفي');
+    expect(t).toContain(`بعد ${NO_ANSWER_LIMIT} مرات «لا يرد»`);
+    expect(t).toContain(`${AUTO_RELEASE_BUSINESS_MINUTES} دقيقة عمل`);
+    expect(t).not.toContain('ثانية');
+    expect(t).not.toContain(`المحاولة ${CADENCE_LIMIT} على`);
+  });
+
+  it('priority on while the plan is off: it says the hand and idle are inert without the plan', () => {
+    const t = text({ proofOn: false, priorityOn: true, hand: 3, idleMinutes: 20 });
+    expect(t).toContain('ما بيشتغلوا إلا مع «إثبات المكالمات»');
+  });
+});
+
+describe('Western digits and Arabic words only', () => {
+  it.each([[{}], [{ proofOn: false }], [{ priorityOn: true }]])('%o', (over) => {
+    const t = text(over);
+    expect(t).not.toMatch(/[٠-٩]/);
+    expect(t).not.toMatch(/[A-Za-z]/);
+  });
+});
+
+describe('readRuleFacts reads what the engine reads', () => {
+  let n = 0;
+  // The queue-modes reader caches half a minute per company: every case gets its own company.
+  let CO = '';
+  const client = (settings: object) => ({ company: { findUnique: vi.fn(async () => ({ settings: JSON.stringify(settings) })) } });
+  beforeEach(() => {
+    CO = `co-rules-summary-${++n}`;
+    forgetQueuePrioritySwitch();
+    forgetCallProofSwitch();
+  });
+  const ON = { enabled: true, enabledAt: '2026-11-17T00:00:00.000Z' };
+
+  it('both switches on: proof on, priority on, 3 and 20', async () => {
+    const f = await readRuleFacts(client({ callProofAndCadence: ON, queuePriority: ON, queueModes: { nightFrom: 8, nightTo: 10, peakFrom: 20, peakTo: 23 } }) as never, CO, { workHoursStart: '09:00', workHoursEnd: '17:00' });
+    expect(f).toMatchObject({ proofOn: true, priorityOn: true, hand: 3, idleMinutes: 20, workStart: '09:00', workEnd: '17:00', modes: { nightFrom: 8, peakTo: 23 } });
+  });
+
+  it('nothing set: both off, the mode\'s own 5 and 30, the default windows', async () => {
+    const f = await readRuleFacts(client({}) as never, CO, {});
+    expect(f).toMatchObject({ proofOn: false, priorityOn: false, hand: 5, idleMinutes: 30, modes: QUEUE_MODES_DEFAULTS });
+  });
+
+  it('a read that fails is «off», never «on»', async () => {
+    const broken = { company: { findUnique: vi.fn(async () => { throw new Error('db down'); }) } };
+    const f = await readRuleFacts(broken as never, CO, {});
+    expect(f.proofOn).toBe(false);
+    expect(f.priorityOn).toBe(false);
+    expect(f.hand).toBe(RETURNS_MODE.handLimit);
+  });
+});

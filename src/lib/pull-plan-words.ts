@@ -31,6 +31,16 @@ export function planRule(idleBusinessMinutes: number): string {
   return `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الجديد اللي ما حدا اتصل فيه، وبعده الوعد اللي وصل موعده، وبعده الإعادة اللي حان موعدها، وبعده الباقي الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد ${idleBusinessMinutes} دقيقة دوام.`;
 }
 
+/**
+ * THE SENTENCE UNDER THE CARD WITH «الطلب يرجع للطابور فوراً» ON AND THE PLAN OFF (the rounds + the returns mode, the legacy pair — finding #10 of the rules map, 18/11).
+ * The panel's own old sentence says «المؤجّل اللي موعده خلال 2 يوم» and «بعد 90 دقيقة عمل»: both are the mode-OFF rules. With the mode on a postponed order is pulled AT its date
+ * (the lead is 0) and the untouched release is the mode's idle limit (30, or 20 with «أولوية الطابور») — passed in by the caller from `returnsLimits`, the one function every reader asks.
+ * Mode off: the server sends nothing and the screen keeps its old sentence, word for word.
+ */
+export function returnsModeRule(idleBusinessMinutes: number): string {
+  return `طلب الزبون الراجع اللي تابع إلك بيجيك أول، وبعده الطلب الجديد اللي ما حدا اتصل فيه، وبعده المؤجّل اللي وصل موعده، وبعده الأقدم. أي طلب بلا محاولة اتصال بيرجع للطابور بعد ${idleBusinessMinutes} دقيقة دوام.`;
+}
+
 export function planWords(parts: WaitingByPlan, idleBusinessMinutes: number): PlanWords {
   return {
     parts: [

@@ -43,7 +43,7 @@ vi.mock('@/lib/confirmation-queue', async (orig) => ({
 }));
 
 import { GET } from './route';
-import { planWords, planRule } from '@/lib/pull-plan-words';
+import { planWords, planRule, returnsModeRule } from '@/lib/pull-plan-words';
 import { RETURNS_MODE } from '@/lib/confirmation-queue';
 
 const PLAN_RULE = planRule(RETURNS_MODE.idleBusinessMinutes);
@@ -151,11 +151,28 @@ describe('OFF — byte for byte what it was (the pin)', () => {
     sw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
     rsw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
     const body = await read();
-    expect(Object.keys(body)).toEqual(OFF_KEYS);
+    // 18/11 (C1, finding #10 of the rules map): this case was «the same keys» — and under the legacy mode the old panel sentence («المؤجّل اللي موعده خلال 2 يوم… بعد 90 دقيقة عمل») is FALSE (a postponed
+    // order is pulled at its date, and the untouched release is the mode's idle limit). The answer now carries ONE more key, `waitingRule`, right after `waitingDue`; with the mode fully off it does
+    // not (the pin above), and every other key is what it was.
+    expect(Object.keys(body)).toEqual(OFF_KEYS.flatMap((k) => (k === 'waitingDue' ? [k, 'waitingRule'] : [k])));
+    expect(body.waitingRule).toBe(returnsModeRule(RETURNS_MODE.idleBusinessMinutes));
     expect(queue.waitingByPlan).not.toHaveBeenCalled();
     expect(queue.waitingBreakdown.mock.calls[0][4]).toMatchObject({ readyCut: expect.any(Date) });
     expect(queue.waitingBreakdown.mock.calls[0][4]).not.toHaveProperty('cadence');
     expect(body).not.toHaveProperty('waitingPlan');
     expect(body.waitingDue).toBe(3);
+  });
+
+  it('the legacy mode’s sentence is the mode’s truth: its idle limit, no «90», no «خلال 2 يوم» — and the switch fully off sends no sentence at all (the screen keeps its old one)', async () => {
+    sw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
+    rsw.value = { enabled: true, enabledAt: new Date('2026-11-01T08:00:00.000Z') };
+    const rule = (await read()).waitingRule as string;
+    expect(rule).toContain(`${RETURNS_MODE.idleBusinessMinutes} دقيقة دوام`);
+    expect(rule).toContain('المؤجّل اللي وصل موعده');
+    expect(rule).not.toContain('90');
+    expect(rule).not.toContain('خلال');
+    sw.value = OFF;
+    rsw.value = OFF;
+    expect(await read()).not.toHaveProperty('waitingRule');
   });
 });

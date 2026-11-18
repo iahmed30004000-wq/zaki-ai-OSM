@@ -93,7 +93,8 @@ const LIT = 'bg-[var(--sys-primary)]';
 describe('the menu is fifteen lines', () => {
   it('— fifty-two screens in the registry, fifteen lines in the menu', () => {
     // 15/11: «السلات المهجورة» joined the loose main group beside «الطلبات» (contract oms-lp.v1 §9) — one more screen, one more line.
-    expect(ALL_ROUTES).toHaveLength(53);
+    // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved. One more screen, no more line (it is a tab of an existing hub).
+    expect(ALL_ROUTES).toHaveLength(54);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(16);
   });
 

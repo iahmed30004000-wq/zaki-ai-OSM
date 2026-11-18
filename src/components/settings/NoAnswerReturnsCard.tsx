@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { useCan } from '@/hooks/useCan';
+import { QUEUE_PRIORITY_LIMITS } from '@/lib/queue-priority';
 
 /**
  * «الطلب يرجع للطابور فوراً (تجريبي)» — THE OWNER'S SECOND SWITCH (`no-answer-returns.ts`), beside «نظام الجولات».
@@ -75,7 +76,7 @@ export function NoAnswerReturnsCard() {
           <>
             «لا يرد» أو تحديد موعد = الطلب بيطلع من إيد الموظفة فوراً وبيرجع للطابور: بعد «لا يرد» بيجهز بعد 3 ساعات دوام، ومع الموعد بيجهز بموعده.
             <br />
-            الطلب اللي ما انسجّلت عليه محاولة 30 دقيقة دوام بيرجع للطابور لحاله، والموظفة ما بتمسك أكتر من 5 طلبات (مع المحجوز إلها).
+            الطلب اللي ما انسجّلت عليه محاولة 30 دقيقة دوام بيرجع للطابور لحاله، والموظفة ما بتمسك أكتر من 5 طلبات (مع المحجوز إلها). ومع «أولوية الطابور» شغّالة: {QUEUE_PRIORITY_LIMITS.handLimit} طلبات و{QUEUE_PRIORITY_LIMITS.idleBusinessMinutes} دقيقة دوام.
             <br />
             بيشتغل بس مع «نظام الجولات». أول ما تشغّليه بيرجّع الطلبات المتروكة تدريجياً، شغّليه بعد الدوام. مطفي = الشغل زي ما هو.
           </>

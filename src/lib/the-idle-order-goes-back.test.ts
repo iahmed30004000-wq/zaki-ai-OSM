@@ -125,7 +125,9 @@ import {
   releaseStaleClaims,
   readReturnsMode,
 } from './confirmation-queue';
-import { IDLE_RETURNED_REASON } from './no-answer-returns';
+import { IDLE_RETURNED_REASON, returnsMode } from './no-answer-returns';
+import { workClock } from './no-answer-rounds';
+import { QUEUE_PRIORITY_LIMITS } from './queue-priority';
 import { zonedTimeToInstant } from './business-calendar';
 import { db } from './db';
 
@@ -215,6 +217,34 @@ describe('1 · thirty working minutes with nothing logged: the order goes back',
     expect(world.orders.find((r) => r.id === twin.id)).toMatchObject({ assignedToId: null, assignedAt: null });
     // Another customer’s order named for her stays named for her.
     expect(other.assignedToId).toBe('sara');
+  });
+});
+
+describe('1a · the notice says the limit the release USED (18/11, C1 — finding #9 of the rules map)', () => {
+  // The notice used to say «30 دقيقة عمل» whatever the release used; with «أولوية الطابور» on the idle limit is 20 (`returnsLimits`), and the mode carries the figure it was placed with.
+  it('a release at the priority key’s 20 minutes tells her 20 — not 30', async () => {
+    const o = held(21, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const mode = returnsMode(NOW, workClock(JO), QUEUE_PRIORITY_LIMITS.idleBusinessMinutes);
+    expect(mode.idleBusinessMinutes).toBe(20);
+    expect(await releaseIdleReturns(db as never, scope, mode)).toBe(1);
+    expect(world.notices).toHaveLength(1);
+    expect(world.notices[0].message).toBe(`رجع ${o.orderNumber} للطابور: ما انسجّلت عليه أي محاولة خلال 20 دقيقة عمل`);
+    expect(world.notices[0].message).not.toContain('30');
+  });
+
+  it('and the same order 21 minutes old is NOT released at the mode’s 30 — the figure and the cut are the same number', async () => {
+    held(21, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const mode = returnsMode(NOW, workClock(JO), 30);
+    expect(await releaseIdleReturns(db as never, scope, mode)).toBe(0);
+    expect(world.notices).toHaveLength(0);
+  });
+
+  it('a mode built by hand (no figure) falls back to the default’s sentence, never to a made-up number', async () => {
+    const o = held(31, [], { confirmationStatus: 'NEW', status: 'NEW' });
+    const { idleBusinessMinutes: _drop, ...bare } = returnsMode(NOW, workClock(JO), 30);
+    void _drop;
+    expect(await releaseIdleReturns(db as never, scope, bare)).toBe(1);
+    expect(world.notices[0].message).toBe(`رجع ${o.orderNumber} للطابور: ما انسجّلت عليه أي محاولة خلال 30 دقيقة عمل`);
   });
 });
 
