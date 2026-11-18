@@ -1,5 +1,9 @@
 # Stages — the order of work
 
+> **Corrected to the code on 2026-11-18** (R0 of the restructure). The stage lists below named screens that have since
+> become tabs, buttons or redirects, and said «campaigns not built» about a working screen. The ORDER of the stages and
+> their rules are unchanged; the screen lists are what `src/lib/route-registry.ts` has today (see `architecture.md`).
+
 > **Revised order (approved 2026-09-19).** Stage 0 found that most of the
 > backend this file assumes does not exist, so foundations come first.
 > The stage bodies below still hold; only the sequence changed:
@@ -57,9 +61,9 @@
 >    - Intelligence: analysis with a minimum sample and an explicit "not
 >      enough data". Silence is a stated answer.
 >    - Inventory movements + discount alerts shipped.
->    - Campaigns NOT built: needs ad-platform credentials from the user. A
->      campaigns screen with no cost data cannot answer the only question
->      campaigns are for.
+>    - Campaigns: built (`/growth/campaigns`, a working screen with its sync, import and
+>      bulk doors). It reads ad cost from the platforms the user connected; a campaigns
+>      screen with no cost data cannot answer the only question campaigns are for.
 > 9. Partial delivery ✅ / split ◐ / courier custody ✗
 >    - PARTIAL: the fee is charged IN FULL — the courier travelled. Waived
 >      only when nothing at all was taken. collectedAmount is null on every
@@ -107,14 +111,18 @@ visibility, 403 enforcement, RTL, design tokens.
 Old shell and old routes DELETED in the same commit.
 
 ## Stage 2 — Confirmation centre
-Four screens: queue, mine, postponed, issues.
+Four screens: the queue (the supervisor's view of the pool), mine (the agent's desk, with the pull panel at its top
+and her postponed orders as a tab), follow-up (two tabs: the postponed orders and the win-back of cancelled ones),
+issues. «Postponed» and «win-back» were two screens of their own until 2026-10-24.
 
 ## Stage 3 — Operations
-Five screens: preparation, shipments, labels, tracking, returns.
+Five screens, one parcel's road: preparation, new shipment, batches, tracking, returns. Labels are not a screen:
+printing, the sizes and the courier CSV live on the batches screen, where the batch is.
 
 ## Stage 4 — Inventory and finance
-Nine screens: receiving, balances, movements, collection, matching,
-wallets, transfers, closing, profit.
+Nine screens: balances, movements, courier custody, collection, matching, wallets, transfers, closing, profit.
+Receiving ready goods is not a screen: it is a button on each product's card on the balances screen, and the old
+address redirects there.
 
 ## Stage 5 — Control, growth, apps, settings, admin
 The remaining screens.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BASELINE_PATH, KINDS, inventory, type Counts } from '../../scripts/ui-inventory';
+import { BASELINE_PATH, EXTRA_KINDS, KINDS, inventory, type Counts } from '../../scripts/ui-inventory';
 
 /**
  * THE PROMISE A RESTYLE MAKES.
@@ -23,7 +23,7 @@ import { BASELINE_PATH, KINDS, inventory, type Counts } from '../../scripts/ui-i
  * point: a change to this file is a change somebody had to mean.
  */
 
-type Baseline = Record<string, Counts>;
+type Baseline = Record<string, Partial<Counts>>;
 
 const baseline: Baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
 const now = inventory();
@@ -50,6 +50,24 @@ describe('what is on the screens', () => {
       if (after[kind] !== counts[kind]) moved.push(`${file}: ${counts[kind]} → ${after[kind]}`);
     }
     expect(moved, `تغيّر عدد «${kind}»:\n${moved.join('\n')}`).toEqual([]);
+  });
+});
+
+/**
+ * THE THREE KIT TAGS OF THE RESTRUCTURE (18/11, R0).
+ *
+ * `<IconButton`, `<Checkbox` and `<Switch` do not exist yet, so the baseline carries no key for them and a missing key reads
+ * as zero. The day a screen draws one, `--write` records it; from then a restyle that deletes it is named here like a deleted column.
+ */
+describe('the kit tags that arrive with the restructure', () => {
+  it.each(EXTRA_KINDS)('has the same number of %s, file by file (a missing key is zero)', (kind) => {
+    const moved: string[] = [];
+    for (const file of new Set([...Object.keys(baseline), ...Object.keys(now)])) {
+      const before = baseline[file]?.[kind] ?? 0;
+      const after = now[file]?.[kind] ?? 0;
+      if (before !== after) moved.push(`${file}: ${before} → ${after}`);
+    }
+    expect(moved, `تغيّر عدد «${kind}» — إن كان مقصوداً شغّل: npx tsx scripts/ui-inventory.ts --write\n${moved.join('\n')}`).toEqual([]);
   });
 });
 

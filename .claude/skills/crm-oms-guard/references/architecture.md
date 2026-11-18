@@ -1,7 +1,16 @@
-# Architecture — navigation, roles, screen contracts
+# Architecture — navigation, access, screen contracts
 
 Every screen here is a contract. A screen not listed does not exist.
 A screen listed must exist at the exact path, in the exact group.
+
+> **Corrected to the code on 2026-11-18** (R0 of the restructure). Until then this file described a menu and a set of
+> limits that had been changed one by one since September: screens it named had become tabs, buttons or redirects, and
+> the numbers in the queue contract were not the ones in the code. The RULES below are the contract's, unchanged; the
+> ROUTES, LINES and LIMITS are what `src/lib/route-registry.ts` and `src/lib/confirmation-queue.ts` say today.
+>
+> It is checked, not trusted: `src/lib/the-guard-contract-names-real-routes.test.ts` fails when this file names a
+> path that has no page, and `src/lib/the-regroup-opened-no-door.test.ts` pins every page with the keys that open it.
+> Where this file and the code disagree, the code wins — fix this file in the same pull request.
 
 ## Hierarchy and entry
 
@@ -31,87 +40,78 @@ Rules:
 - Creating a country provisions its default wallet and makes it appear
   in delivery fees and commission rules automatically.
 
-## Navigation — eleven groups, drawn as fifteen lines
+## Navigation — eleven groups, drawn as sixteen lines
 
-The registry (`src/lib/route-registry.ts`) is the one list, and this section
-is its contract: a screen not listed does not exist, and a screen listed
-must exist at the exact path, in the exact group.
+The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
+is its contract. It holds **53 pages in 11 groups**; the menu draws them as **16 lines**.
 
-**Revised again 2026-10-21 (night), on the owner's word** («الموقع كثييير
-معجوق … دمج القوائم بذكاء»): the MENU spends one line per group, not one per
-screen. This changes how the registry is DRAWN and nothing it CONTAINS — every
-screen below keeps its path, its permissions, its title, its guide and its
-notification link, so the guard, the palette, the roads and the phone bar read
-what they always read. `NavGroup.hub` says how a group is drawn:
+How a group is drawn is `NavGroup.hub`, and it is a statement about the MENU only — it never
+changes what a page is, who may open it, or where it lives:
 
-- `tabs` — the group is ONE sidebar line (its `icon` and name) that opens the
-  first screen the person may open; above every screen of the group a strip of
-  pills (`HubTabs`) lists the others — only the ones this person may open, in
-  the order they arranged them. On a road the pills carry the step and the
-  «التالي» link. A group with one screen left to a person takes that
-  screen's own name.
-- `cards` — one line that opens a page of cards (the group's first route:
-  `/settings`); every other screen of the group carries a «← الإعدادات» link
-  back to it. Every settings screen sits on exactly one card.
-- `loose` — no heading, no folding: each screen its own line (الرئيسية and
-  واجهة المتجر).
+- `tabs` — the group is ONE sidebar line (its `icon` and name) that opens the first screen the
+  person may open; above every screen of the group a strip of pills (`HubTabs`) lists the others —
+  only the ones this person may open, in the order they arranged them. On a road the pills carry the
+  step and the «التالي» link. A group with one screen left to a person takes that screen's own name.
+- `cards` — one line that opens a page of cards (the group's first route, `/settings`); every other
+  screen of the group carries a «← الإعدادات» link back to it. Every settings screen sits on exactly
+  one card.
+- `loose` — no heading, no folding: each screen its own line (الرئيسية and واجهة المتجر).
 
-Fifteen lines: the four of الرئيسية, one each for التأكيد, الشحن, المخزون, المال,
-الرقابة, النمو والذكاء, المحادثات, the two of واجهة المتجر, الإعدادات, الإدارة.
+Sixteen lines: the five of الرئيسية, one each for مركز التأكيد, الشحن, المخزون, المال, الرقابة,
+النمو والذكاء and المحادثات, the two of واجهة المتجر, one for الإعدادات, one for الإدارة.
 
-**Revised 2026-10-21, on the owner's word** («حاسو معجوق وصعب … الخطوة
-يتودي للثانية»). No address moved — only the grouping, the order inside two
-groups, and three names. A bookmark, a notification and a saved menu
-arrangement (which is a list of PATHS) all still mean what they meant.
+Three fields of a route are menu facts and nothing else:
 
-Two things the earlier text did not say:
+- **`step`** — «1.», «2.»… before the label. A road is numbered in «الشحن» (five stops) and in «المال»
+  (the first four). A hint for reading the menu, never a rule: every screen opens on its own permission,
+  in any order, and the number belongs to the screen, not to its row.
+- **`foldedUnder`** — the screen is the DETAIL of another and is not a menu line for whoever can open
+  that one (today: لوحة الأداء, folded under the dashboard). A person who cannot open the parent keeps
+  it as a line: folding is for the menu, never for access.
+- **`offMenu`** — the screen's real door is not the menu (today: المساعد الذكي, whose door is the bubble
+  on every screen).
 
-- **A road is numbered.** In «الشحن» and «المال» the screens that are stops of
-  one errand carry `step` and are drawn «1.», «2.»… — a hint for reading the
-  menu, never a rule: every screen still opens on its own permission, in any
-  order, and the number belongs to the screen, not to its row.
-- **Operations sit with the work; configuration sits in settings.** The
-  WhatsApp inbox is in المحادثات and its setup is in الإعدادات. The model
-  follows the same rule: the assistant, the intelligence centre and the
-  bench are work; the provider, the key, the local server and the house
-  prompts are setup.
+An address never moves because the menu was rearranged: a bookmark, a notification and a saved menu
+arrangement (which is a list of PATHS) all keep meaning what they meant. A screen that stopped being a
+page keeps its old address as a permanent redirect (`next.config.ts`).
 
-**1. الرئيسية**
+**1. الرئيسية** — loose, five lines
 ```
 لوحة التحكم              /dashboard
 الطلبات                  /orders
+السلات المهجورة           /abandoned-carts   (the carts the landing pages send; same key as the orders)
 العملاء                  /customers
 المنتجات                 /products
 ```
 
-**2. مركز التأكيد**
+**2. مركز التأكيد** — tabs
 ```
-الطلبات الجديدة           /confirmation/queue
-طلباتي                   /confirmation/mine
-الطلبات المؤجلة           /confirmation/postponed
-استرجاع الملغى            /confirmation/winback
+الطلبات الجديدة           /confirmation/queue      (the SUPERVISOR's view of the pool; an agent is sent to طلباتي)
+طلباتي                   /confirmation/mine       (the pull panel is at its top)
+المتابعة                  /confirmation/follow-up  (two tabs: the postponed orders and the cancelled-before ones)
 الإشكالات                /confirmation/issues
 ```
+«الطلبات المؤجلة» and «استرجاع الملغى» are no longer screens: they are the two tabs of المتابعة, and an
+agent's own postponed orders are a tab of طلباتي.
 
-**3. الشحن** — one parcel's road. Was «التشغيل».
+**3. الشحن** — tabs; one parcel's road, numbered
 ```
 1. التجهيز                /ops/preparation
 2. إنشاء شحنة              /ops/shipments/new
-3. دفعات الشحن             /ops/batches        (labels, sizes and the courier CSV live here)
+3. دفعات الشحن             /ops/batches        (labels, sizes, PDF and the courier CSV live here)
 4. متابعة الشحن            /ops/tracking
 5. المرتجعات               /ops/returns
 ```
 
-**4. المخزون**
+**4. المخزون** — tabs
 ```
-أرصدة المخزون             /inventory/balances
+أرصدة المخزون             /inventory/balances   («استلام بضاعة جاهزة» is a button on each product's card here)
 تشغيلات الإنتاج           /manufacturing
-استلام بضاعة جاهزة         /inventory/receiving
 حركات المخزون             /inventory/movements
 ```
 
-**5. المال** — the first four are one errand: see what each courier holds,
-take it in (by statement or by hand), match, close the day.
+**5. المال** — tabs. The first four are one errand: see what each courier holds, take it in (by
+statement or by hand), match, close the day.
 ```
 1. عهدة المندوبين           /finance/agents
 2. التحصيل والكشوف          /finance/collection
@@ -122,207 +122,229 @@ take it in (by statement or by hand), match, close the day.
    الأرباح                 /finance/profit
 ```
 
-**6. الرقابة**
+**6. الرقابة** — tabs
 ```
 طلبات التعديل             /control/change-requests
 تنبيهات الخصم             /control/discount-alerts   (a price cut given to a customer)
-خصومات الموظفين           /control/penalties         (money off a salary — was «الخصومات»)
+خصومات الموظفين           /control/penalties         (money off a salary)
 سجل التدقيق               /control/audit
 القائمة السوداء           /control/blacklist
 ```
 
-**7. النمو والذكاء** — was «النمو». A hub of tabs.
+**7. النمو والذكاء** — tabs
 ```
-لوحة الأداء               /growth/performance
+لوحة الأداء               /growth/performance      (folded under the dashboard for whoever can open it)
 الحملات                  /growth/campaigns
-المساعد الذكي             /assistant
+المساعد الذكي             /assistant               (off the menu: the bubble is its door)
 مركز الذكاء               /growth/intelligence
 منصّة التجريب             /growth/bench
 ```
 
-**7ب. المحادثات** — the two inboxes, a group of their own since the menu was
-folded: somebody who wrote to us is not a growth question. A hub of tabs.
+**8. المحادثات** — tabs; the two inboxes. Somebody who wrote to us is not a growth question.
 ```
 صندوق الواتساب            /growth/whatsapp/inbox
 طلبات تلجرام              /growth/telegram/orders
 ```
 
-**8. واجهة المتجر** — how the shop LOOKS and what it SAYS (added 2026-10-11).
-Two entries, where eleven stood: the other eight are the tabs of `/store`
-and their old addresses redirect to the tab that holds them.
+**9. واجهة المتجر** — loose; how the shop LOOKS and what it SAYS. Another agent owns this code.
 ```
 المتجر                    /store
 صفحات الهبوط              /store/landing-pages
 ```
-`/store` lists every shop on one card each. The old
-`/store/single-product` address redirects to `/store` permanently.
+`/store` lists every shop on one card each, and the shop's own screens are the tabs of `/store`
+(`src/lib/store-admin.ts`), not menu entries. The old single-product address redirects permanently.
 
-**9. الإعدادات** — how the system RUNS. A hub of cards: ONE menu line that
-opens `/settings`, a page of eight cards (البلدان والمتاجر · الشحن · العمولات ·
-القنوات والتتبّع · واتساب وتلجرام · الذكاء الاصطناعي · التطبيقات · النظام),
-each linking only to the screens the person may open. `/settings` is also
-where an ad platform's OAuth round trip lands (`/settings?connect=…`).
+**10. الإعدادات** — how the system RUNS. A hub of cards: ONE menu line that opens `/settings`, a page of
+cards, each linking only to the screens the person may open; a card with nothing they may open is not
+drawn. `/settings` is also where an ad platform's OAuth round trip lands.
 ```
-الإعدادات                 /settings           (the front door; the union of the permissions below)
-البلدان والمتاجر والمحافظ  /settings/geo
+الإعدادات                 /settings           (the front door; the union of the keys of the screens it fronts)
+البلدان والمتاجر           /settings/geo
 شركات الشحن وأجورها        /settings/couriers  (a courier and its fees are one screen)
 العمولات                  /settings/commission
 قنوات الطلبات              /settings/channels
-بكسل التتبع والحملات       /settings/tracking
-إعدادات واتساب            /settings/whatsapp
-إعدادات تلجرام            /settings/telegram
-الذكاء الاصطناعي والنصوص    /settings/ai        (moved here from النمو)
-متجر التطبيقات            /apps/store         (was a group of its own)
-التطبيقات المثبتة          /apps/installed     (was a group of its own)
+بكسل الإعلانات             /settings/tracking
+الربط                    /settings/links     (WhatsApp and Telegram, one card each, each for the key that owns it)
+الذكاء الاصطناعي والنصوص    /settings/ai
+متجر التطبيقات            /apps/store
+التطبيقات المثبتة          /apps/installed
 إعدادات النظام            /settings/system
-المهام المجدولة            /admin/jobs         (moved here from الإدارة)
+المهام المجدولة            /admin/jobs
 ```
 
-**10. الإدارة**
+**11. الإدارة** — tabs
 ```
 الموظفين                  /admin/users
 الصلاحيات                 /admin/permissions
-الملف الشخصي              /admin/profile
+الملف الشخصي              /admin/profile     (every active user; reached from the header, not a line for most)
 ```
+
+Detail pages under a registered screen (`/products/[id]`, `/abandoned-carts/[id]`,
+`/admin/users/[id]`, `/store/landing-pages/[id]`) are not registry entries: they open on their parent's
+permission and are never menu lines.
 
 ## Distinctions that must not collapse
 
-- `/assistant` is a CHAT assistant: ask about a product, an order, a
-  how-to. Conversational. Already built. Rewire only.
-- `/growth/intelligence` is BUSINESS ANALYSIS over operational data:
-  pricing, offers, cross-sell, seasons, next product, expansion,
-  stop-the-bleed, customers. Proposes actions. Never merged with
-  `/assistant`.
-- Apps appear ONCE — in الإعدادات, beside what they configure. (Until
-  2026-10-21 they were a group of their own with two entries; what the old
-  rule protected was the ONCE, and that holds.)
-- Countries, stores and wallets live together in `/settings/geo` only.
-- WhatsApp, Telegram and the AI: the operational screens in النمو والذكاء /
-  المحادثات, the configuration in الإعدادات. Never both in one place.
+- `/assistant` is a CHAT assistant: ask about a product, an order, a how-to. Conversational.
+  `/growth/intelligence` is BUSINESS ANALYSIS over operational data: pricing, offers, cross-sell,
+  seasons, next product, expansion, stop-the-bleed, customers. Proposes actions. They are separate
+  routes and stay so, even though each carries a little of the other's work (an «اسأل» box inside
+  the intelligence centre) — do not merge them.
+- Apps appear ONCE — in الإعدادات, beside what they configure.
+- Countries and stores live together in `/settings/geo`. A country provisions its default wallet when
+  it is created; wallets are then created, styled and stopped on `/finance/wallets`, beside the ledger
+  they belong to.
+- An OPERATION sits with the work and its CONFIGURATION sits in settings: the WhatsApp inbox is in
+  المحادثات and its setup is a card of `/settings/links`; the assistant is work, the provider and the
+  key are setup. Two known exceptions are documented, not endorsed: the Telegram product aliases are
+  edited on the Telegram orders screen, and ad accounts are linked from the campaigns screen.
 
-## Role visibility — enforced at the API, 403 not hidden
+## Access — by permission key, enforced at the API, 403 not hidden
 
-```
-moderator
-  /orders  — create, and edit own orders only before claim
-  /confirmation/issues
-  /customers  — read only, no export
-  NEVER /confirmation/queue. Pulling orders is not the moderator's job.
+**A page opens when the user holds ANY key listed for it** (`null` = every active user). Access is
+decided by keys and never by role name: a custom role is judged by what it holds. The role values in
+`UserRole` (thirteen today) are labels for system templates in the database; the API behind each screen
+asks the same keys again.
 
-confirmation_agent
-  /confirmation/queue (pull-next only, no list)
-  /confirmation/mine
-  /confirmation/postponed
+| Page | Keys (any one opens it) |
+|---|---|
+| `/dashboard` | dashboard.view |
+| `/orders` · `/abandoned-carts` | orders.view |
+| `/customers` | customers.view · customers.view_basic |
+| `/products` | products.view |
+| `/confirmation/queue` · `/confirmation/follow-up` | confirmation.supervise |
+| `/confirmation/mine` | confirmation.work · confirmation.pull |
+| `/confirmation/issues` | confirmation.issues |
+| `/ops/preparation` · `/ops/shipments/new` · `/ops/batches` · `/ops/tracking` · `/ops/returns` | ops.prepare · ops.ship · ops.batches · ops.track · ops.returns |
+| `/inventory/balances` · `/inventory/movements` | inventory.view |
+| `/manufacturing` | production.view |
+| `/finance/agents` | settlement.view · settlement.review |
+| `/finance/collection` | settlement.upload · settlement.view |
+| `/finance/matching` | settlement.review |
+| `/finance/closing` · `/finance/wallets` · `/finance/transfers` | finance.cashbox_view |
+| `/finance/profit` | finance.view |
+| `/control/change-requests` · `/control/discount-alerts` · `/control/penalties` · `/control/audit` · `/control/blacklist` | control.change_requests · control.discount_alerts · penalties.view · audit.view · control.blacklist |
+| `/growth/performance` | reports.view |
+| `/growth/campaigns` | campaigns.view |
+| `/growth/intelligence` · `/growth/bench` | growth.intelligence |
+| `/assistant` | ai.use |
+| `/growth/whatsapp/inbox` · `/growth/telegram/orders` | whatsapp.view · telegram.view |
+| `/store` | storefront.view · storefront.manage · geo.manage |
+| `/store/landing-pages` | landing_pages.view |
+| `/settings` | geo.view · settings.view · commission.view · whatsapp.manage · telegram.connect · apps.view |
+| `/settings/geo` | geo.view |
+| `/settings/couriers` · `/settings/channels` · `/settings/tracking` · `/settings/ai` · `/settings/system` · `/admin/jobs` | settings.view |
+| `/settings/commission` | commission.view |
+| `/settings/links` | whatsapp.manage · telegram.connect |
+| `/apps/store` · `/apps/installed` | apps.view |
+| `/admin/users` · `/admin/permissions` | users.view · roles.view |
+| `/admin/profile` | every active user |
 
-confirmation_supervisor
-  all confirmation routes with list view
-  /control/change-requests
-  /control/discount-alerts
-  /growth/performance limited to own team
+(The table groups rows that share a rule; the exact key list of every page is pinned, one by one, in
+`src/lib/the-regroup-opened-no-door.test.ts`.)
 
-warehouse
-  /ops/preparation, /ops/batches, /ops/returns, /inventory/*
-  no phone and no address in any payload
+What the contract means by role, kept as INTENT — the keys above are what is enforced:
 
-shipping
-  /ops/shipments/new, /ops/batches, /ops/tracking
-  /control/change-requests
-
-accountant
-  /finance/*, /control/audit read only
-
-manager   everything except write on /admin/permissions
-owner     everything
-```
+- The moderator types orders and fixes entry issues, reads customers (no export), and NEVER reaches
+  `/confirmation/queue`: pulling orders is not the moderator's job, and she never holds
+  `confirmation.supervise`.
+- The confirmation agent works `/confirmation/mine` (the pull is at its top, her postponed orders are
+  one of its tabs). She does not see the supervisor's queue.
+- The supervisor and the team leader see the confirmation routes with the list view, the change
+  requests and discount alerts, and `/growth/performance`.
+- The warehouse prepares, batches and receives returns and works the inventory screens. The contract
+  said «no phone and no address in any payload»; the key `ops.edit_in_batch` (off by default) lets the
+  packing table edit them, so a payload for a holder of that key carries them. Do not widen it.
+- Shipping creates shipments, sends batches and follows tracking, and sees change requests.
+- The accountant and the settlement officer hold the finance screens (two deliberately different pairs
+  of hands) and read the audit log.
+- The manager holds everything except write on `/admin/permissions`; the owner holds everything.
 
 ## Screen contracts
 
-**/confirmation/queue** — Agents see NO list. One button "pull next" and a
-waiting counter. Priority: postponed due within lead days, then oldest.
-Cannot pull while owning an order with zero logged attempts. Caps: 40
-owned with no attempt, 120 owned total. Auto-release after 90 business
-minutes with no attempt. Supervisors see the full list of the same data.
+**/confirmation/queue** — the supervisor's view of the pool, with the full list of the same data. Agents
+do NOT see a list: an agent pulls the next order from the panel at the top of `/confirmation/mine`, and an
+old address sends her there. Priority (`pickNextCandidate`): what is held for her; then a NEW order, oldest
+first; then a postponed order due within `POSTPONE_LEAD_DAYS`; then the oldest of the rest — with the
+cadence on, the customer's promised date and the oldest-due retry come first. Limits, in
+`src/lib/confirmation-queue.ts` and NOWHERE ELSE: `CLAIM_CAPS` — 40 owned with no attempt, 500 owned in
+total; `PULL_PACE` — at most 40 pulls in any rolling hour; `RETURNS_MODE.handLimit` — 5, where the
+«returns» mode is on. She cannot pull while holding an order she has not tried to contact. A claim with no
+attempt auto-releases after `AUTO_RELEASE_BUSINESS_MINUTES` (90 business minutes: frozen outside work hours
+and on weekend days).
 
-**/confirmation/mine** — Two sections: in-confirmation, and
-already-confirmed (read only, with a raise-change-request action per row).
-Order actions: call, WhatsApp, SMS, no-answer with a 1/2/3 counter where
-the third auto-closes under its own distinct reason, postpone with date
-and preferred time and reason, confirm, cancel, discount, raise issue.
-Sub-status selector only for states that define one. Customer risk panel:
-returns over orders across 6 months or the last 10 orders; tiers at 15%
-and 40%; high risk requires prepayment or supervisor approval and is
-excluded from automated confirmation.
+**/confirmation/mine** — the agent's desk, in tabs: the orders to ring now, the orders waiting after a
+no-answer, the orders already confirmed (read only, with a raise-change-request action per row), and her
+postponed orders. Order actions: call, WhatsApp, SMS, no-answer, postpone with date and preferred time and
+reason, confirm, cancel, discount, raise issue. What happens after a no-answer — rounds, an instant return
+to the queue, the five-attempt schedule — is behind company switches: read `no-answer-rounds.ts` and
+`no-answer-returns.ts` before changing it. Sub-status selector only for states that define one. Customer risk
+panel: returns over orders across 6 months or the last 10 orders; tiers at 15% and 40%; high risk requires
+prepayment or supervisor approval and is excluded from automated confirmation. A contact is logged before a
+decision (`needsContactFirst`), and an order without a region cannot be confirmed (`needsRegionFirst`).
 
-**/confirmation/postponed** — order, customer, due date, days remaining,
-preferred time, reason, postpone count. Only rows due within lead days
-are actionable.
+**/confirmation/follow-up** — the supervisor's. Tab «مؤجلة»: order, customer, due date, days remaining,
+preferred time, reason, postpone count; only rows due within the lead days are actionable. Tab «ملغاة سابقاً»:
+the win-back — a lost order offered back at a discount (money, so supervisors only); the agent meets the result
+as an ordinary new order in her queue.
 
-**/confirmation/issues** — Moderator-entered orders only. A store-sourced
-order can never raise an entry issue. Actions: correct and return to
-queue, or void (owner only). An issue is never counted as a cancellation
-against the agent, and the order keeps its original created_at.
+**/confirmation/issues** — Moderator-entered orders only. A store-sourced order can never raise an entry
+issue. Actions: correct and return to queue, or void (owner only). An issue is never counted as a
+cancellation against the agent, and the order keeps its original created_at.
 
-**/ops/preparation** — Grouped BY PRODUCT, collapsible. Per product:
-orders, required, available, shortage. Per order: mark ready, postpone
-for stock. Reservation is per line; an order with one unreserved line
-cannot become READY_TO_SHIP. Honours allow_negative_stock per country.
+**/ops/preparation** — Grouped BY PRODUCT, collapsible. Per product: orders, required, available, shortage
+(all from the API; the screen adds nothing). Per order: open it, cancel it, print its waybill, review a
+pending change request. Reservation is per line, and an order with one unreserved line cannot become
+READY_TO_SHIP. Honours allow_negative_stock per country. Postponing an order for stock is done on
+`/ops/shipments/new`, not here.
 
-**/ops/shipments/new** — Filters: date range, courier, governorate,
-product. Select-all skips blocked rows. Blocking warnings until
-acknowledged: duplicate in batch, previous shipment in transit, recent
-return, stock shortage when negative stock is disallowed. COD breakdown
-per row before sending. An exceptions panel lists undispatchable rows.
+**/ops/shipments/new** — Filters: date range, courier, governorate, product. Select-all skips blocked rows.
+Blocking warnings until acknowledged: duplicate in batch, previous shipment in transit, recent return, stock
+shortage when negative stock is disallowed. COD breakdown per row before sending. An exceptions panel lists
+undispatchable rows. A ready-to-ship view and a held-back view; the CSV of the ready orders for the courier.
 
-**/ops/labels** *(no longer a screen — folded into `/ops/batches`, which carries all of this)* — Filters: date range, courier, governorate, print status.
-The label carries the courier barcode AND a QR of our order reference.
-Sizes in millimetres, custom allowed. PDF and CSV export. The URL uses a
-batch token, never a list of ids, with per-order authorization on the
-server.
+**/ops/batches** — Where a batch is worked: labels (the courier barcode AND a QR of our order reference;
+sizes in millimetres, custom allowed), PDF and CSV and Excel export, the scan check, sending to the courier,
+pasting barcodes, closing the shipment, out for delivery, and editing, cancelling or postponing a parcel
+while the batch is open. The URL carries a batch token, never a list of ids, with per-order authorization on
+the server. «Printing labels» is no longer a screen of its own.
 
-**/ops/tracking** — Search by order id, barcode, customer, phone.
-Days-in-transit counter with per-governorate late thresholds. Actions:
-contact with a template that varies by stall reason, request edit,
-transfer courier, return. Collection status is a column separate from
+**/ops/tracking** — Search by order id, barcode, customer, phone. Days-in-transit counter with per-governorate
+late thresholds. Actions: contact with a template that varies by stall reason, request edit, transfer courier,
+return, and the door outcomes (delivered, partial, refused). Collection status is a column separate from
 delivery status.
 
-**/ops/returns** — Scan barcode or select. Receiving form: actual
-received, damaged, missing computed, courier fee yes or no with automatic
-calculation by region and courier when yes, and a mandatory
-count-and-inspect acknowledgement. Nothing enters stock before it.
+**/ops/returns** — Scan barcode or select. Receiving form: actual received, damaged, missing computed, courier
+fee yes or no with automatic calculation by region and courier when yes, and a mandatory count-and-inspect
+acknowledgement. Nothing enters stock before it.
 
-**/finance/collection** — Statement upload with a file hash; no duplicate
-import. Receipt lines: MANY per statement, each with its own wallet,
-currency and amount. Their sum must equal the statement total, otherwise
+**/finance/collection** — Statement upload with a file hash; no duplicate import. Receipt lines: MANY per
+statement, each with its own wallet, currency and amount. Their sum must equal the statement total, otherwise
 the gap is flagged and requires a written explanation before approval.
 
-**/finance/matching** — Runs on demand AFTER the receipt is recorded.
-Single key: merchant reference, then courier barcode. Never phone. Three
-queues with editable actions: matched, mismatched, missing. A partially
-delivered order is compared against the post-event expected amount.
+**/finance/matching** — Runs on demand AFTER the receipt is recorded. Single key: merchant reference, then
+courier barcode. Never phone. The outcome is read as queues with editable actions: matched, mismatched, in the
+statement but not in the system, excluded, and in the system but not in the statement. A second mode, «يدوي —
+بلا كشف», matches by hand a courier that sends no statement. A partially delivered order is compared against
+the post-event expected amount.
 
-**/finance/wallets** — Wallet belongs to a country; currency chosen per
-wallet and may differ from the country currency. Every movement requires
-wallet, direction, amount, party, category and note. No delete — a
-reversing entry with a reason.
+**/finance/wallets** — Wallet belongs to a country; currency chosen per wallet and may differ from the country
+currency. Every movement requires wallet, direction, amount, party, category and note. No delete of a movement
+— a reversing entry with a reason.
 
-**/finance/transfers** — Wallet to wallet, same or different country,
-manual exchange rate entered by the user, stored with the transfer, never
-recalculated.
+**/finance/transfers** — Wallet to wallet, same or different country, manual exchange rate entered by the user,
+stored with the transfer, never recalculated. A transfer is reversed whole: both legs.
 
-**/finance/closing** — Per wallet: book balance, manually entered actual
-balance, computed difference, mandatory explanation when non-zero. The
-user who records movements cannot approve the closing.
+**/finance/closing** — Per wallet: book balance, manually entered actual balance, computed difference,
+mandatory explanation when non-zero. The user who records movements cannot approve the closing.
 
-**/settings/geo** — Countries with currency, minor unit, work hours,
-weekend days, order prefix, allow_negative_stock. Stores under countries.
-Wallets under countries.
+**/settings/geo** — Countries with currency, minor unit, work hours, weekend days, order prefix,
+allow_negative_stock. Stores under countries.
 
-**/settings/delivery-fees** *(no longer a screen — folded into `/settings/couriers`, a courier and its fees being one subject)* — A separate table per courier per country per
-governorate, with fee and late-threshold days. A manual override requires
-a reason and is written to the audit log.
+**/settings/couriers** — A courier and its fees are ONE screen. Fees: a separate table per courier per country
+per governorate, with fee and late-threshold days. A manual override requires a reason and is written to the
+audit log.
 
-**/admin/permissions** — Role templates plus per-user overrides. Each
-permission carries a scope: own | store | country | selected | all, and an
-optional amount ceiling. Scope is applied inside the query, never by
-hiding columns. Hidden by default: product cost, ad spend, net profit,
-commission rule amounts.
+**/admin/permissions** — Role templates plus per-user overrides. Each permission carries a scope: own | store |
+country | selected | all, and an optional amount ceiling. Scope is applied inside the query, never by hiding
+columns. Hidden by default: product cost, ad spend, net profit, commission rule amounts.

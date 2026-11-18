@@ -38,9 +38,23 @@ export interface Counts {
   icons: number;
   links: number;
   tabs: number;
+  /** The three kit tags of the restructure (R2). They did not exist when this census was written, so a file that has none carries no key for them. */
+  iconButtons: number;
+  checkboxes: number;
+  switches: number;
 }
 
 export const KINDS = ['buttons', 'inputs', 'columns', 'cards', 'modals', 'icons', 'links', 'tabs'] as const;
+
+/**
+ * KINDS THAT ARE NOT IN THE BASELINE UNTIL A SCREEN DRAWS THEM (18/11, R0).
+ *
+ * `<IconButton`, `<Checkbox` and `<Switch` are kit components the restructure adds. Counting them from today means a later
+ * restyle that deletes one is caught like a deleted column — and because no screen draws them yet, every file counts zero,
+ * so the baseline file stays as it is and `ui-inventory.test.ts` stays green WITHOUT `--write`. A zero is never written;
+ * a missing key reads as zero.
+ */
+export const EXTRA_KINDS = ['iconButtons', 'checkboxes', 'switches'] as const;
 
 /**
  * The icons in use, by name, so a renamed import is not mistaken for a
@@ -101,6 +115,10 @@ function count(src: string): Counts {
      */
     links: n(/<Link[\s>]/g) + n(/<a\s+[^>]*href/g),
     tabs: n(/role="tab"/g),
+    // `[\s/>]` and not `[\s>]` like the older kinds: the new tags are mostly written self-closing, `<Checkbox/>`.
+    iconButtons: n(/<IconButton[\s/>]/g),
+    checkboxes: n(/<Checkbox[\s/>]/g),
+    switches: n(/<Switch[\s/>]/g),
   };
 }
 
@@ -114,34 +132,60 @@ function files(dir: string): string[] {
   return out;
 }
 
-export function inventory(): Record<string, Counts> {
-  const result: Record<string, Counts> = {};
+/**
+ * EVERY SCREEN FILE THIS CENSUS LOOKS AT — repo-relative, forward slashes, sorted.
+ *
+ * Exported so `scripts/ui-debt.ts` walks the SAME files and applies the SAME skips instead of keeping a second list that
+ * would drift from this one.
+ */
+export function uiFilePaths(): string[] {
+  const out: string[] = [];
   for (const base of SCAN) {
     for (const file of files(join(ROOT, base))) {
       const rel = relative(ROOT, file).split('\\').join('/');
       if (SKIP.some((s) => `/${rel}`.includes(s))) continue;
-      const counts = count(readFileSync(file, 'utf8'));
-      // A file with nothing to count is a file this promise says nothing
-      // about; listing it would be noise that has to be maintained.
-      if (KINDS.every((k) => counts[k] === 0)) continue;
-      result[rel] = counts;
+      out.push(rel);
     }
   }
+  return out.sort();
+}
+
+export function inventory(): Record<string, Counts> {
+  const result: Record<string, Counts> = {};
+  for (const rel of uiFilePaths()) {
+    // CRLF or LF, the same numbers: a checkout on Windows must not disagree with CI.
+    const counts = count(readFileSync(join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n'));
+    // A file with nothing to count is a file this promise says nothing
+    // about; listing it would be noise that has to be maintained.
+    if ([...KINDS, ...EXTRA_KINDS].every((k) => counts[k] === 0)) continue;
+    result[rel] = counts;
+  }
   return result;
+}
+
+/** What goes into the baseline file: the extra kinds only where they are above zero. */
+export function forBaseline(now: Record<string, Counts>): Record<string, Partial<Counts>> {
+  const out: Record<string, Partial<Counts>> = {};
+  for (const [file, counts] of Object.entries(now)) {
+    const row: Partial<Counts> = { ...counts };
+    for (const k of EXTRA_KINDS) if (row[k] === 0) delete row[k];
+    out[file] = row;
+  }
+  return out;
 }
 
 export const BASELINE_PATH = join(ROOT, 'scripts', 'ui-inventory.json');
 
 if (process.argv[1] && process.argv[1].includes('ui-inventory')) {
   const now = inventory();
-  const totals = KINDS.reduce(
+  const totals = [...KINDS, ...EXTRA_KINDS].reduce(
     (acc, k) => ({ ...acc, [k]: Object.values(now).reduce((s, c) => s + c[k], 0) }),
     {} as Counts
   );
   if (process.argv.includes('--write')) {
-    writeFileSync(BASELINE_PATH, `${JSON.stringify(now, null, 2)}\n`, 'utf8');
+    writeFileSync(BASELINE_PATH, `${JSON.stringify(forBaseline(now), null, 2)}\n`, 'utf8');
     console.log(`baseline written: ${Object.keys(now).length} files`);
   }
   console.log(`${Object.keys(now).length} files`);
-  for (const k of KINDS) console.log(`  ${k.padEnd(9)} ${totals[k]}`);
+  for (const k of [...KINDS, ...EXTRA_KINDS]) console.log(`  ${k.padEnd(12)} ${totals[k]}`);
 }
