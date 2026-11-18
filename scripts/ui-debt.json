@@ -478,10 +478,6 @@
       "rawSurfaces": 4,
       "textXs": 16
     },
-    "src/components/screens/CustomersScreen.tsx": {
-      "rawSurfaces": 3,
-      "textXs": 11
-    },
     "src/components/screens/DashboardScreen.tsx": {
       "rawButtons": 1,
       "rawSurfaces": 2,
