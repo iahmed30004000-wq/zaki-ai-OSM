@@ -1191,12 +1191,12 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 11,
-    "inputs": 5,
+    "buttons": 9,
+    "inputs": 4,
     "columns": 6,
     "cards": 0,
     "modals": 0,
-    "icons": 19,
+    "icons": 16,
     "links": 1,
     "tabs": 2
   },
@@ -1858,6 +1858,16 @@
     "cards": 0,
     "modals": 1,
     "icons": 4,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/confirmation/DeskHead.tsx": {
+    "buttons": 2,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 3,
     "links": 0,
     "tabs": 0
   },
