@@ -245,7 +245,7 @@ describe('the requests — frozen from main’s screen, byte for byte, 18/11', (
   it('create · rename · stop · delete · restart', async () => {
     await draw();
     fireEvent.click(screen.getAllByRole('button', { name: 'محفظة جديدة' })[0]);
-    let d = await screen.findByRole('dialog');
+    const d = await screen.findByRole('dialog');
     await waitFor(() => expect(within(d).getByText('سوريا — USD')).toBeTruthy());
     fireEvent.change(within(d).getByPlaceholderText('مثال: الصندوق النقدي، حساب البنك العربي'), { target: { value: ' صندوق جديد ' } });
     fireEvent.change(within(d).getByPlaceholderText('USD'), { target: { value: 'jod' } });
