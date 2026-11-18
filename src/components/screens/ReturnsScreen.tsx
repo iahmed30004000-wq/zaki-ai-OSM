@@ -9,7 +9,7 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
 import { useTell } from '@/components/ui/Confirm';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { RiCheckLine, RiInboxUnarchiveLine, RiTimeLine } from '@remixicon/react';
@@ -307,43 +307,47 @@ export function ReturnsScreen() {
   ];
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/ops/returns')} />
-
-      {/* Drawn from the first moment, with or without the numbers: a desk that scans must never open without its box. */}
-      <ListToolbar
-        search={term}
-        onSearch={setTerm}
-        placeholder="امسح أو اكتب المرجع أو الاسم…"
-        searchAutoFocus
-        searchDir="ltr"
-        // A phone is the scanner a warehouse already owns. It keeps
-        // scanning: a returned pallet is twenty parcels, not one.
-        searchExtra={
-          <>
-            <ScanButton
-              title="امسح بوليصة المرتجع — QR أو باركود"
-              continuous
-              onScan={(code) => {
-                // Putting it in the box IS the search — the list reloads whenever the
-                // box changes, so there is one request and one code path, the same
-                // one a typed search takes.
-                setTerm(code);
-                return code;
-              }}
-            />
-            {receiveAllTotal > 0 && (
-              <Button size="md" className="shrink-0" onClick={() => setReceivingAll(true)}>
-                استلام الكل ({receiveAllTotal})
-              </Button>
-            )}
-          </>
-        }
-        filters={filters ?? []}
-        activeCount={activeCount}
-        onReset={reset}
-      />
-
+    <PageShell
+      title={routeLabel('/ops/returns')}
+      width="wide"
+      // The frame's row of questions (R11e): the search, the scan, «استلام الكل» and the dropdowns. It was the first block of
+      // the content; it is the same place on the screen, now the one every screen keeps its filters in.
+      // Drawn from the first moment, with or without the numbers: a desk that scans must never open without its box.
+      filters={
+        <ListToolbar
+          search={term}
+          onSearch={setTerm}
+          placeholder="امسح أو اكتب المرجع أو الاسم…"
+          searchAutoFocus
+          searchDir="ltr"
+          // A phone is the scanner a warehouse already owns. It keeps
+          // scanning: a returned pallet is twenty parcels, not one.
+          searchExtra={
+            <>
+              <ScanButton
+                title="امسح بوليصة المرتجع — QR أو باركود"
+                continuous
+                onScan={(code) => {
+                  // Putting it in the box IS the search — the list reloads whenever the
+                  // box changes, so there is one request and one code path, the same
+                  // one a typed search takes.
+                  setTerm(code);
+                  return code;
+                }}
+              />
+              {receiveAllTotal > 0 && (
+                <Button size="md" className="shrink-0" onClick={() => setReceivingAll(true)}>
+                  استلام الكل ({receiveAllTotal})
+                </Button>
+              )}
+            </>
+          }
+          filters={filters ?? []}
+          activeCount={activeCount}
+          onReset={reset}
+        />
+      }
+    >
       {list.error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{list.error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
 
@@ -507,7 +511,7 @@ export function ReturnsScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 

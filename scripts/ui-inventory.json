@@ -1510,13 +1510,14 @@
   },
   "src/components/screens/ReturnsScreen.tsx": {
     "buttons": 10,
-    "inputs": 5,
+    "inputs": 2,
     "columns": 17,
-    "cards": 0,
+    "cards": 2,
     "modals": 2,
     "icons": 2,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 3
   },
   "src/components/screens/SettingsHomeScreen.tsx": {
     "buttons": 0,

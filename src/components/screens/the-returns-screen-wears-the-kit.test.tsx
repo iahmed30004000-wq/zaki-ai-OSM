@@ -296,6 +296,20 @@ describe('(b) every press reaches the same handler with the same arguments', () 
   });
 });
 
+describe('the frame', () => {
+  it('one h1, the registry’s name; the page is wide; the search box sits in the frame’s row of filters, above the list', async () => {
+    const { routeLabel } = await import('@/lib/route-registry');
+    await draw();
+    const h1s = document.querySelectorAll('h1');
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0].textContent).toBe(routeLabel('/ops/returns'));
+    const frame = h1s[0].closest(`.${['max', 'w', '6xl'].join('-')}`) as HTMLElement;
+    expect(frame).not.toBeNull();
+    const search = frame.querySelector('input:not([type="checkbox"])') as HTMLElement;
+    expect(search.compareDocumentPosition(table()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe('(g) a phone: nothing wider than the screen', () => {
   const px = (cls: string) => Number(/\[(\d+)px\]/.exec(cls)?.[1] ?? 0);
   it.each([

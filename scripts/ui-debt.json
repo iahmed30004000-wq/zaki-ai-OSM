@@ -477,10 +477,7 @@
       "textXs": 3
     },
     "src/components/screens/ReturnsScreen.tsx": {
-      "rawButtons": 5,
-      "rawCheckboxes": 3,
-      "rawSurfaces": 2,
-      "textXs": 8
+      "textXs": 2
     },
     "src/components/screens/SettingsHomeScreen.tsx": {
       "rawSurfaces": 1,
