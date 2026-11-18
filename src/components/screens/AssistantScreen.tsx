@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { useApp } from '@/context/AppContext';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiCheckboxCircleLine, RiLightbulbLine, RiRobot2Line, RiSendPlaneLine, RiShieldFlashLine, RiSparkling2Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { arTime } from '@/lib/format';
 import { userCan } from '@/lib/can';
 
@@ -156,15 +157,13 @@ export function AssistantScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={routeLabel('/assistant')}
+      <PageShell title={routeLabel('/assistant')}
             description="يجيب من أرقام متجرك وحدها. ما لا يجده في البيانات يقول إنه لا يعرفه، ولا يخترع رقماً."
             actions={
               maySeeSummary ? (
               <><Button
             size="sm"
-            onClick={handleGenerateSummary}
+            onClick={() => { void handleGenerateSummary(); }}
             loading={generating}
             className="flex items-center space-x-1.5"
           >
@@ -173,10 +172,10 @@ export function AssistantScreen() {
           </Button></>
               ) : undefined
             }
-          />
+          >
 
         {summaryReason && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">{summaryReason}</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">{summaryReason}</p>
         )}
 
         {/* The daily summary — the one thing this screen has that the dock does not. */}
@@ -191,7 +190,7 @@ export function AssistantScreen() {
                       <RiSparkling2Line className="w-5 h-5 text-[var(--sys-primary)]" />
                       <span>ملخّص اليوم ({summaryData.date})</span>
                     </span>
-                    <span className="text-xs font-mono font-medium text-[var(--sys-muted)]">
+                    <span className="text-note font-mono font-medium text-[var(--sys-muted)]">
                       المزوّد متصل
                     </span>
                   </div>
@@ -199,53 +198,53 @@ export function AssistantScreen() {
                 subtitle="ملخّصٌ محسوبٌ من الطلبات الحقيقيّة وكلفة البضاعة — لا تقديرات."
               />
               <CardContent className="space-y-4">
-                <p className="text-sm font-medium text-[var(--sys-heading)] leading-relaxed bg-[var(--sys-card)]/80 p-4 rounded-lg border border-[var(--sys-primary-soft)]/60 shadow-raised">
-                  {summaryData.summaryText}
-                </p>
+                <Card plain padding="md" className="text-sm font-medium text-[var(--sys-heading)] leading-relaxed">
+                  <p>{summaryData.summaryText}</p>
+                </Card>
 
                 {/* Ground-truth Metrics Pill Bar */}
                 {metrics && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-center text-xs">
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">الطلبات</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-center text-note">
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">الطلبات</span>
                       <strong className="text-[var(--sys-heading)] font-bold">{metrics.total_orders}</strong>
-                    </div>
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">المؤكَّدة</span>
+                    </Card>
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">المؤكَّدة</span>
                       <strong className="text-[var(--sys-primary)] font-bold">{metrics.confirmed_orders}</strong>
-                    </div>
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">المُسلَّمة</span>
+                    </Card>
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">المُسلَّمة</span>
                       <strong className="text-[var(--sys-success)] font-bold">{metrics.delivered_orders}</strong>
-                    </div>
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">إيراد المُسلَّم</span>
+                    </Card>
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">إيراد المُسلَّم</span>
                       <Money value={metrics.revenue} className="text-[var(--sys-heading)] font-bold" />
-                    </div>
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">صافي الربح</span>
+                    </Card>
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">صافي الربح</span>
                       <Money
                         value={metrics.net_profit}
                         tone={Number(metrics.net_profit) < 0 ? 'lost' : 'collected'}
                         className="font-black"
                       />
-                    </div>
-                    <div className="bg-[var(--sys-card)] p-2.5 rounded-lg border border-[var(--sys-border)]">
-                      <span className="text-xs text-[var(--sys-muted)] block">نسبة التأكيد</span>
+                    </Card>
+                    <Card plain padding="sm">
+                      <span className="text-note text-[var(--sys-muted)] block">نسبة التأكيد</span>
                       <strong className="text-[var(--sys-primary)] font-bold">{metrics.confirmation_rate}%</strong>
-                    </div>
+                    </Card>
                   </div>
                 )}
 
                 {/* 3 Pillars: Observations, Risks, Recommendations */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                   {/* Key Observations */}
-                  <div className="bg-[var(--sys-surface)]/70 border border-[var(--sys-muted-foreground)]/30 rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-[var(--sys-muted-foreground)] flex items-center space-x-1.5 mb-2.5">
+                  <Card plain padding="md">
+                    <h4 className="text-note font-bold text-[var(--sys-muted-foreground)] flex items-center space-x-1.5 mb-2.5">
                       <RiLightbulbLine className="w-4 h-4 text-[var(--sys-muted-foreground)]" />
                       <span>ملاحظات</span>
                     </h4>
-                    <ul className="space-y-2 text-xs text-[var(--sys-foreground)]">
+                    <ul className="space-y-2 text-note text-[var(--sys-foreground)]">
                       {observations.map((obs, i) => (
                         <li key={i} className="flex items-start space-x-1.5">
                           <span className="text-[var(--sys-destructive)] font-bold">•</span>
@@ -253,15 +252,15 @@ export function AssistantScreen() {
                         </li>
                       ))}
                     </ul>
-                  </div>
+                  </Card>
 
                   {/* Risks */}
                   <div className="bg-[var(--sys-destructive-soft)]/70 border border-[var(--sys-destructive-border)] rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-[var(--sys-destructive)] flex items-center space-x-1.5 mb-2.5">
+                    <h4 className="text-note font-bold text-[var(--sys-destructive)] flex items-center space-x-1.5 mb-2.5">
                       <RiShieldFlashLine className="w-4 h-4 text-[var(--sys-destructive)]" />
                       <span>مخاطر تحتاج تدخّلاً</span>
                     </h4>
-                    <ul className="space-y-2 text-xs text-[var(--sys-foreground)]">
+                    <ul className="space-y-2 text-note text-[var(--sys-foreground)]">
                       {risks.map((risk, i) => (
                         <li key={i} className="flex items-start space-x-1.5">
                           <span className="text-[var(--sys-destructive)] font-bold">•</span>
@@ -273,11 +272,11 @@ export function AssistantScreen() {
 
                   {/* Recommendations */}
                   <div className="bg-[var(--sys-success-soft)]/70 border border-[var(--sys-success)]/30 rounded-lg p-4">
-                    <h4 className="text-xs font-bold text-[var(--sys-success)] flex items-center space-x-1.5 mb-2.5">
+                    <h4 className="text-note font-bold text-[var(--sys-success)] flex items-center space-x-1.5 mb-2.5">
                       <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
                       <span>توصيات</span>
                     </h4>
-                    <ul className="space-y-2 text-xs text-[var(--sys-foreground)]">
+                    <ul className="space-y-2 text-note text-[var(--sys-foreground)]">
                       {recommendations.map((rec, i) => (
                         <li key={i} className="flex items-start space-x-1.5">
                           <span className="text-[var(--sys-destructive)] font-bold">•</span>
@@ -318,7 +317,7 @@ export function AssistantScreen() {
                 )}
 
                 <div
-                  className={`max-w-xl rounded-lg px-4 py-3 text-xs leading-relaxed shadow-raised ${
+                  className={`max-w-xl rounded-lg px-4 py-3 text-sm leading-relaxed shadow-raised ${
                     m.role === 'user'
                       ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] rounded-tr-none'
                       : 'bg-[var(--sys-surface)] text-[var(--sys-heading)] rounded-tl-none whitespace-pre-wrap'
@@ -326,7 +325,7 @@ export function AssistantScreen() {
                 >
                   <p>{m.content}</p>
                   <span
-                    className={`text-xs block mt-1 text-right ${
+                    className={`text-note block mt-1 text-right ${
                       m.role === 'user' ? 'text-[var(--sys-primary-foreground)]/80' : 'text-[var(--sys-muted)]'
                     }`}
                   >
@@ -335,7 +334,7 @@ export function AssistantScreen() {
                 </div>
 
                 {m.role === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-[var(--sys-surface-strong)] text-[var(--sys-primary)] flex items-center justify-center shrink-0 font-bold text-xs">
+                  <div className="w-8 h-8 rounded-full bg-[var(--sys-surface-strong)] text-[var(--sys-primary)] flex items-center justify-center shrink-0 font-bold text-note">
                     U
                   </div>
                 )}
@@ -343,7 +342,7 @@ export function AssistantScreen() {
             ))}
 
             {chatLoading && (
-              <div className="flex items-center space-x-2 text-xs text-[var(--sys-muted)]">
+              <div className="flex items-center space-x-2 text-note text-[var(--sys-muted)]">
                 <RiRobot2Line className="w-4 h-4 text-[var(--sys-primary)] animate-spin" />
                 <span>يقرأ أرقام متجرك…</span>
               </div>
@@ -351,16 +350,19 @@ export function AssistantScreen() {
           </CardContent>
 
           {/* Quick Prompts Bar */}
-          <div className="px-4 py-2 bg-[var(--sys-surface)] border-t border-[var(--sys-border)] flex items-center space-x-2 rtl:space-x-reverse overflow-x-auto text-xs">
+          <div className="px-4 py-2 bg-[var(--sys-surface)] border-t border-[var(--sys-border)] flex items-center space-x-2 rtl:space-x-reverse overflow-x-auto text-note">
             <span className="text-[var(--sys-muted)] shrink-0 font-medium">جرّب أن تسأل:</span>
             {suggestedQuestions.map((sq, i) => (
-              <button
+              <Button
                 key={i}
-                onClick={() => handleSendMessage(sq)}
-                className="min-h-11 md:min-h-0 inline-flex items-center shrink-0 px-2.5 py-1 rounded-full bg-[var(--sys-card)] border border-[var(--sys-border)] text-[var(--sys-foreground)] hover:bg-[var(--sys-surface)] hover:border-[var(--sys-border)] transition-colors cursor-pointer"
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => { void handleSendMessage(sq); }}
+                className="shrink-0"
               >
                 {sq}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -378,15 +380,15 @@ export function AssistantScreen() {
                 placeholder="اسأل عن الإيراد، أو أكثر المنتجات ربحاً، أو أداء المودريتورات، أو التشغيل…"
                 value={inputQuery}
                 onChange={(e) => setInputQuery(e.target.value)}
-                className="flex-1 px-4 py-2 text-xs bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
+                className="flex-1 px-4 py-2 text-sm bg-[var(--sys-surface)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)]"
               />
-              <Button type="submit" size="sm" loading={chatLoading}>
+              <IconButton type="submit" variant="primary" size="sm" loading={chatLoading} label="ابعت السؤال">
                 <RiSendPlaneLine className="icon-mirror w-4 h-4" />
-              </Button>
+              </IconButton>
             </form>
           </div>
         </Card>
-      </div>
+      </PageShell>
     </>
   );
 }
