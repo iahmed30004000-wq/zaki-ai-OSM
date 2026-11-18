@@ -2759,6 +2759,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/ui/IconButton.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/ui/Input.tsx": {
     "buttons": 1,
     "inputs": 3,
@@ -2856,6 +2866,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/ui/StatTile.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
     "links": 0,
     "tabs": 0
   },

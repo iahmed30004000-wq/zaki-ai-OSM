@@ -8,9 +8,28 @@ import clsx from 'clsx';
 import { CARD_CLASS } from '@/lib/theme-shape';
 import { figureScale, figureText } from '@/lib/kpi-figure';
 
+/** What a card pads itself with: none · 12px · 16px · 24px. */
+const CARD_PADDING = { none: '', sm: 'p-3', md: 'p-4', lg: 'p-6' } as const;
+
 interface CardProps {
   children: React.ReactNode;
   className?: string;
+  /**
+   * The card's own padding. `none` (the default, and what every card
+   * written before 18/11 means) leaves it to `CardHeader` and
+   * `CardContent`, which pad themselves; a card with a padding of its own
+   * holds its content directly, so do not combine the two.
+   */
+  padding?: keyof typeof CARD_PADDING;
+  /**
+   * A DENSE OR NESTED SURFACE: the card's fill, edge and corner, WITHOUT what
+   * the theme adds to a page-level card (the cut corner, the arch, the
+   * glyph in the far corner). A row, a block inside a card or a tile in a
+   * strip is not a page, and a 22px crescent on every row of a list is the
+   * defect the `zk-card` class exists to avoid on inputs and badges.
+   * Page-level surfaces stay a plain `Card`.
+   */
+  plain?: boolean;
 }
 
 /**
@@ -38,7 +57,7 @@ interface CardProps {
  *
  * A card that leads somewhere puts a real button or link INSIDE itself.
  */
-export function Card({ children, className }: CardProps) {
+export function Card({ children, className, padding = 'none', plain = false }: CardProps) {
   return (
     <div
       className={clsx(
@@ -53,8 +72,9 @@ export function Card({ children, className }: CardProps) {
          * The three palettes the product came with change nothing here.
          * See src/lib/theme-shape.ts.
          */
-        CARD_CLASS,
+        !plain && CARD_CLASS,
         'bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)] transition-shadow',
+        CARD_PADDING[padding],
         className
       )}
     >
