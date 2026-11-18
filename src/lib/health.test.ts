@@ -200,9 +200,11 @@ describe('one engine, not one per screen', () => {
    * A count of new orders is neither good nor bad. A chip on it would teach
    * people to ignore the chips that mean something.
    */
+  // 18/11 (R9): the seven tiles moved from the dashboard to the performance board (`FromTheDashboard`) and are drawn with the kit's
+  // `StatTile`; the chip is its caption. Was: `dash()` and `{s.health && (`.
   it('and only the tile that has a bar carries one', () => {
-    const src = dash();
-    expect(src).toMatch(/\{s\.health && \(/);
+    const src = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
+    expect(src).toMatch(/caption=\{s\.health && <HealthChip health=\{s\.health\} \/>\}/);
     const tiles = src.slice(src.indexOf('const statusTiles = ['), src.indexOf('];', src.indexOf('const statusTiles = [')));
     expect((tiles.match(/health:/g) ?? []).length, 'حكمٌ على عددٍ لا بار له').toBe(1);
     expect(tiles).toContain('health: verdicts.rejectionRate');

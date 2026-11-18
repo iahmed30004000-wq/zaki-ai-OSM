@@ -88,15 +88,7 @@
       "textXs": 3
     },
     "src/components/inventory/OpeningStockCount.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 2,
-      "rawDatePickers": 1,
-      "textXs": 9
-    },
-    "src/components/inventory/ReceiveDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 6
+      "rawDatePickers": 1
     },
     "src/components/labels/LabelSize.tsx": {
       "textXs": 10
@@ -283,10 +275,6 @@
     "src/components/orders/OrderStages.tsx": {
       "rawSurfaces": 1,
       "textXs": 5
-    },
-    "src/components/orders/OrdersSummary.tsx": {
-      "rawSurfaces": 1,
-      "textXs": 1
     },
     "src/components/orders/ProductLinesEditor.tsx": {
       "rawButtons": 5,
@@ -478,11 +466,6 @@
       "rawSurfaces": 4,
       "textXs": 16
     },
-    "src/components/screens/DashboardScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 10
-    },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,
@@ -507,9 +490,8 @@
       "textXs": 5
     },
     "src/components/screens/InventoryBalancesScreen.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 5,
-      "textXs": 20
+      "rawButtons": 1,
+      "rawSurfaces": 1
     },
     "src/components/screens/InventoryMovementsScreen.tsx": {
       "rawButtons": 1,
@@ -546,12 +528,6 @@
     },
     "src/components/screens/ManufacturingScreen.tsx": {
       "textXs": 3
-    },
-    "src/components/screens/OrdersScreen.tsx": {
-      "rawButtons": 3,
-      "rawCheckboxes": 2,
-      "rawSurfaces": 1,
-      "textXs": 21
     },
     "src/components/screens/PenaltiesScreen.tsx": {
       "rawButtons": 7,
@@ -690,9 +666,8 @@
       "textXs": 23
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 5,
-      "textXs": 35
+      "rawButtons": 1,
+      "textXs": 9
     },
     "src/components/screens/WhatsAppSettingsScreen.tsx": {
       "rawButtons": 2,
