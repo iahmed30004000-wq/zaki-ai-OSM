@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { ORIGIN } from '@/lib/batch-grade';
 
 /**
@@ -86,12 +88,14 @@ export function ReceiveDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 tabular-nums">
+        <Card plain padding="sm">
+        <p className="text-sm text-[var(--sys-foreground)] tabular-nums">
           الرصيد الحالي: <b>{product.remaining}</b> وحدة
         </p>
+        </Card>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الكمية المستلمة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الكمية المستلمة</span>
           <input
             type="number"
             min="1"
@@ -115,7 +119,7 @@ export function ReceiveDialog({
           the line below says which of the two it will be.
         */}
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
             تكلفة الوحدة في هذه الدفعة {product.lastUnitCost === null && <b className="text-[var(--sys-destructive)]">(مطلوبة)</b>}
           </span>
           <input
@@ -129,7 +133,7 @@ export function ReceiveDialog({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
+          <span className="block text-note text-[var(--sys-muted)] mt-1">
             {product.lastUnitCost === undefined ? (
               <>تُفتح دفعة جديدة بهذه التكلفة، فلا تتأثر تكلفة البضاعة القديمة. واتركها فارغةً لتدخل بكلفة آخر دفعة إن وُجدت، وإلا طلب منك النظام كتابتها.</>
             ) : product.lastUnitCost !== null ? (
@@ -143,7 +147,7 @@ export function ReceiveDialog({
         {/* A free sample is real, so the door is not shut — it asks for a sentence. */}
         {unitCost.trim() === '0' && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-destructive)] mb-1">
+            <span className="block text-note font-medium text-[var(--sys-destructive)] mb-1">
               كلفتُها صفر — لماذا؟
             </span>
             <input
@@ -157,7 +161,7 @@ export function ReceiveDialog({
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملاحظة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">ملاحظة</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -170,23 +174,19 @@ export function ReceiveDialog({
             production screen uses (`ORIGIN.RECEIVED.why`), because two screens
             explaining one fact in two wordings is how a reader learns to trust
             neither. */}
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           كل استلام يفتح دفعةً باسمه، وتظهر في «تشغيلات الإنتاج» موسومةً بأنها استلام لا تشغيلة: {ORIGIN.RECEIVED.why}
         </p>
 
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'جارٍ الاستلام…' : 'استلام'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

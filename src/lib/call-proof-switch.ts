@@ -44,7 +44,8 @@ interface Stored {
   enabledAt: string | null;
 }
 
-const cache = new Map<string, { value: CallProofSwitch; at: number }>();
+/** `failed`: the read behind this value threw (request C2) — the value is still OFF, as ever; only `callProofReadFailed` asks the mark. */
+const cache = new Map<string, { value: CallProofSwitch; at: number; failed?: true }>();
 
 /** A stored value as this build understands it — anything but a plain «on, since a valid date» is off. */
 export function parseCallProofSwitch(raw: unknown): CallProofSwitch {
@@ -59,14 +60,32 @@ export async function callProofSwitch(client: Client, companyId: string, nowMs: 
   const hit = cache.get(companyId);
   if (hit && nowMs - hit.at < CALL_PROOF_SWITCH_CACHE_MS) return hit.value;
   let value: CallProofSwitch = CALL_PROOF_OFF;
+  let failed = false;
   try {
-    const company = await client.company.findUnique({ where: { id: companyId }, select: { settings: true } });
+    // Request C2: only the QUERY failing is «unreadable» (`callProofReadFailed`) — a database that did not answer. A client with no company table (a test's fake) and a
+    // settings document that does not parse are OFF and not «failed», exactly as before: those are not a moment's hiccup, and refusing every «لا يرد» over them would be worse.
+    const company = client.company
+      ? await client.company.findUnique({ where: { id: companyId }, select: { settings: true } }).catch((e: unknown) => {
+          failed = true;
+          throw e;
+        })
+      : null;
     value = parseCallProofSwitch((company?.settings ? JSON.parse(company.settings) : {})[CALL_PROOF_SETTINGS_KEY]);
   } catch {
     value = CALL_PROOF_OFF;
   }
-  cache.set(companyId, { value, at: nowMs });
+  cache.set(companyId, failed ? { value, at: nowMs, failed: true } : { value, at: nowMs });
   return value;
+}
+
+/**
+ * DID THE LAST READ OF THE SWITCH FAIL? (request C2, finding #23 of the rules map). A failed read is OFF for ten seconds — and OFF, at the no-answer door, is the old
+ * «three closes» rule, so a database hiccup could close an order the plan would have kept. The door asks this AFTER `callProofOn` and refuses a «لا يرد» with 503 instead
+ * of guessing. It reads the cache only (no query) and answers for the entry `callProofSwitch` just wrote; the cache, its ten seconds and the OFF value are unchanged.
+ */
+export function callProofReadFailed(companyId: string, nowMs: number = Date.now()): boolean {
+  const hit = cache.get(companyId);
+  return !!hit && hit.failed === true && nowMs - hit.at < CALL_PROOF_SWITCH_CACHE_MS;
 }
 
 /** Is the proof on for this company? The one question the doors ask. */

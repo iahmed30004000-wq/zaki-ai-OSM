@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { STATE_LABEL_AR } from './order-state';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
-import { CONFIRMATION_STATUS_AR } from './confirmation-workflow';
+import { CONFIRMATION_STATUS_AR, NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { NOT_MENTIONED_ACTIVITY_AR } from './not-mentioned';
 import { EXCHANGE_APPLIED_ACTION } from './settlement-difference';
 import { SWAP_ACTION } from './superseded';
@@ -18,6 +18,9 @@ import { MANAGER_RETURNED_REASON, NINETY_MINUTE_RELEASE_REASON, SYSTEM_ACTOR_AR,
 import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 import { readingLine } from './call-outcome';
+import { cadenceSince } from './no-answer-cadence-switch';
+import { CADENCE_LIMIT, cadenceCalOf, cadenceLineNumbers } from './no-answer-cadence';
+import { attemptWords } from './attempt-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -396,8 +399,48 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
  * The words of a claim-history line's reason. Only «رجع للطابور فوراً» has two: the line's own metadata says which rule wrote it (`ruleOfLine`), a line with no mark — every line the
  * older doors wrote — reads the older word, and every other reason reads its one word.
  */
-function claimReasonWords(row: { reason: string | null; metadata: string | null }): string | null {
+/**
+ * Request C2 (DoD 6: no screen prints «جولة» under the plan): an OLD rounds release (written before the plan stopped them) reads without the word while the plan is on. With
+ * the plan off the line reads as it always did (`CLAIM_REASON_AR`).
+ */
+const ROUND_RELEASE_UNDER_PLAN_AR = 'تحرير تلقائي — مرّت مدة التحرير بلا ردّ، ورجع للطابور';
+
+/** What the timeline needs of the plan: the number each «لا يرد» line counted as, or null for a press that did not count. Null as a whole = the plan is off. */
+type TimelinePlan = Map<object, number | null>;
+
+/**
+ * ONE COUNTER ON THE TIMELINE TOO (request C2, decision 9). With «إثبات المكالمات وجدول المحاولات» on, the order's lines are folded by the plan's own function
+ * (`cadenceLineNumbers`, the door's and the desk's fold, with the dues the lines stored) and each «لا يرد» line reads «محاولة N من 5» — the attempt it COUNTED as — or
+ * «ضغطة ما انحسبت» when it did not; another result reads «اتصال» with no number (the line's running `attemptNumber` is not an attempt of the plan). The plan off, or no
+ * line, or no country on the order: null, and every title is main's.
+ */
+async function planOfTimeline(
+  tx: Tx,
+  orderId: string,
+  contacts: readonly { companyId: string; createdAt: Date; result: string; attemptNumber: number; nextFollowUpAt: Date | null }[]
+): Promise<TimelinePlan | null> {
+  if (!contacts.length) return null;
+  const since = await cadenceSince(tx, contacts[0].companyId);
+  if (!since) return null;
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: { country: { select: { timezone: true, weekendDays: true, workHoursStart: true, workHoursEnd: true } } },
+  });
+  if (!order?.country) return null;
+  return cadenceLineNumbers(contacts, cadenceCalOf(since, order.country)) as TimelinePlan;
+}
+
+/** The words before «عبر …» of a contact line: main's «محاولة اتصال N» with the plan off; the plan's counted attempt with it on. */
+function contactLineWords(row: { attemptNumber: number; result: string }, plan: TimelinePlan | null): string {
+  if (!plan) return `محاولة اتصال ${row.attemptNumber}`;
+  if (!(NO_ANSWER_RESULTS as readonly string[]).includes(row.result)) return 'اتصال';
+  const n = plan.get(row);
+  return typeof n === 'number' ? attemptWords(n, CADENCE_LIMIT) : 'ضغطة ما انحسبت محاولة';
+}
+
+function claimReasonWords(row: { reason: string | null; metadata: string | null }, plan: TimelinePlan | null = null): string | null {
   if (!row.reason) return null;
+  if (plan && row.reason === ROUND_RELEASE_REASON) return ROUND_RELEASE_UNDER_PLAN_AR;
   if (row.reason === NO_ANSWER_RETURNED_REASON && ruleOfLine(row) === 'plan') return PLAN_RETURNED_WORDS_AR;
   return ar(CLAIM_REASON_AR, row.reason);
 }
@@ -439,6 +482,8 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
     : [];
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
   const claimRows = claims.map((row) => managerReturnWords(onTheLineWords(row, nameOf), nameOf));
+  // Request C2 (decision 9, one counter): null with «إثبات المكالمات وجدول المحاولات» off — then every line below is main's.
+  const plan = await planOfTimeline(tx, orderId, contacts);
 
   const CLAIM_LABEL: Record<string, string> = {
     CLAIMED: 'استلام الطلب',
@@ -475,7 +520,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
         kind: 'OWNERSHIP' as const,
         at: row.createdAt,
         title: CLAIM_LABEL[row.action] ?? row.action,
-        detail: claimReasonWords(row),
+        detail: claimReasonWords(row, plan),
         actorId: automatic ? null : row.userId,
         actorName: automatic ? SYSTEM_ACTOR_AR : nameOf.get(row.userId) ?? null,
       };
@@ -484,7 +529,7 @@ export async function orderTimeline(tx: Tx, orderId: string): Promise<TimelineEv
       id: `ct_${row.id}`,
       kind: 'CONTACT' as const,
       at: row.createdAt,
-      title: `محاولة اتصال ${row.attemptNumber} عبر ${ar(CONTACT_METHOD_AR, row.contactMethod)} — ${ar(CONTACT_RESULT_AR, row.result)}`,
+      title: `${contactLineWords(row, plan)} عبر ${ar(CONTACT_METHOD_AR, row.contactMethod)} — ${ar(CONTACT_RESULT_AR, row.result)}`,
       detail: row.note,
       actorId: row.employeeId,
       actorName: nameOf.get(row.employeeId) ?? null,

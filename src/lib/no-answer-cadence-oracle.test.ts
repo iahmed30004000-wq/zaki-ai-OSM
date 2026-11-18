@@ -16,6 +16,10 @@ import { cadencePress, cadenceStep, type CadenceCal, type CadenceState } from '.
  * PROPERTY: for any window of at least an hour and any rest set that leaves a work day, #5 is always inside [start, end) on a work day, at least 3 h after #4 — over a grid of #4 presses in four zones.
  * Blockers: a mismatch anywhere. The oracle must NOT call `zonedParts`, `zonedTimeToInstant`, `dueAfter`, `cadenceStep` or the module's window reader — it imports `cadencePress`, `cadenceStep` (the property
  * test feeds it a hand-built state) and the type only; the anchor is spelled out again here.
+ *
+ * UPDATED 2026-11-18 (request C2, the owner's plan of 17/11 §3.1): the two anchors moved — #4 is due at the MORNING anchor, 11:00 clamped into [start, end − 1 h] (it was the
+ * start of work), and #5's cap is 19:30 (it was 18:00). The oracle spells both again (`MORNING_AT`, `EVENING_CAP`), walks to the morning anchor for #4, and every hand-written
+ * expectation below is the new instant; the rest of the walk, the grids and the property are unchanged.
  * ═══════════════════════════════════════════════════════════════════════
  *
  * `no-answer-cadence.ts` places the due instants with `zonedParts` / `zonedTimeToInstant` (arithmetic on the local calendar). This oracle owns a formatter and WALKS: every supported zone's
@@ -40,7 +44,9 @@ const HOUR = 3_600_000;
 const NO_ANSWER_LIKE = ['NO_ANSWER', 'BUSY', 'UNREACHABLE'];
 /** The fallback window and the cap of #5's anchor, spelled again here on purpose (the oracle imports no constant of the module). */
 const FALLBACK = { start: '10:00', end: '22:00' };
-const EVENING_CAP = '18:00';
+const EVENING_CAP = '19:30';
+/** #4's clock (request C2): 11:00, clamped into [start, end − 1 h] — spelled again here on purpose. */
+const MORNING_AT = '11:00';
 /** A walk of sixteen days of quarter-hours: far more than any due needs (the longest wait is a week of rest days). */
 const MAX_WALK = 16 * 96;
 
@@ -163,7 +169,7 @@ function dueOracle(times: number[], tz: string, rules: Rules): number {
       if (q < floor) continue;
       const l = localOf(q, tz);
       // the last clause is the independent first-day guard: #4 is never on the local date of #1
-      if (l.hhmm === win.start && !rest.includes(l.wd) && l.date !== firstDate) return q;
+      if (l.hhmm === morningOf(win) && !rest.includes(l.wd) && l.date !== firstDate) return q;
     }
     throw new Error(`oracle: no #4 within sixteen days (${tz})`);
   }
@@ -189,6 +195,10 @@ const clockOfMinutes = (t: number): string => `${String(Math.floor(t / 60)).padS
 /** #5's evening anchor (ruling 16): the earlier of 18:00 and an hour before the end of work — but never before the start of work. */
 function anchorOf(win: { start: string; end: string }): string {
   return clockOfMinutes(Math.max(minutesOf(win.start), Math.min(minutesOf(EVENING_CAP), minutesOf(win.end) - 60)));
+}
+/** #4's morning anchor (request C2): 11:00 clamped into [start, end − 1 h] — never before the start. */
+function morningOf(win: { start: string; end: string }): string {
+  return clockOfMinutes(Math.max(minutesOf(win.start), Math.min(minutesOf(MORNING_AT), minutesOf(win.end) - 60)));
 }
 
 interface Line { at: number; result: string }
@@ -331,27 +341,31 @@ describe('the oracle itself is sane', () => {
   it('knows the 8-hour cliff, the 3-hour floor and the rest weekend (Friday and Saturday off, Jordan’s hours)', () => {
     const none: Rules = { name: 'none', rest: [], rowStart: '10:00', rowEnd: '22:00' };
     const upTo3 = (t3: number) => [t3 - 150 * 60_000, t3 - 120 * 60_000, t3];
-    // 02:00:00.000 → exactly 8 h to 10:00 counts; one millisecond later waits for tomorrow's 10:00
-    expect(dueOracle(upTo3(amman(3, 2)), AMMAN, none)).toBe(amman(3, 10));
-    expect(dueOracle(upTo3(amman(3, 2) + 1), AMMAN, none)).toBe(amman(4, 10));
-    // 15:00:00.000 → the 3 h floor equals the anchor; one millisecond later the floor binds
+    // C2: 03:00:00.000 → exactly 8 h to 11:00 counts; one millisecond later waits for tomorrow's 11:00
+    // (#1 and #2 the evening before, so the first-day guard is not what moves it)
+    const evenBefore = (t3: number) => [amman(2, 20), amman(2, 20, 30), t3];
+    expect(dueOracle(evenBefore(amman(3, 3)), AMMAN, none)).toBe(amman(3, 11));
+    expect(dueOracle(evenBefore(amman(3, 3) + 1), AMMAN, none)).toBe(amman(4, 11));
+    // …and with #1 on the same local date the guard sends it to the next day's 11:00
+    expect(dueOracle(upTo3(amman(3, 3)), AMMAN, none)).toBe(amman(4, 11));
+    // C2: 16:30:00.000 → the 3 h floor equals the 19:30 anchor; one millisecond later the floor binds
     const t1 = amman(2, 9);
     const four = (t4: number) => [t1, t1 + 30 * 60_000, t1 + 150 * 60_000, t4];
-    expect(dueOracle(four(amman(10, 15)), AMMAN, none)).toBe(amman(10, 18));
-    expect(dueOracle(four(amman(10, 15) + 1), AMMAN, none)).toBe(amman(10, 18) + 1);
-    // Thursday 19/11 14:00 with Friday and Saturday off → Sunday 22/11 10:00; Thursday 19:00 → Sunday 18:00
+    expect(dueOracle(four(amman(10, 16, 30)), AMMAN, none)).toBe(amman(10, 19, 30));
+    expect(dueOracle(four(amman(10, 16, 30) + 1), AMMAN, none)).toBe(amman(10, 19, 30) + 1);
+    // Thursday 19/11 14:00 with Friday and Saturday off → Sunday 22/11 11:00; Thursday 19:00 (floor 22:00 = the end) → Sunday 19:30
     const fridaySaturday: Rules = { name: 'fs', rest: [5, 6], rowStart: '10:00', rowEnd: '22:00' };
-    expect(dueOracle(upTo3(amman(19, 14)), AMMAN, fridaySaturday)).toBe(amman(22, 10));
-    expect(dueOracle([amman(17, 10), amman(17, 10, 30), amman(17, 12, 30), amman(19, 19)], AMMAN, fridaySaturday)).toBe(amman(22, 18));
+    expect(dueOracle(upTo3(amman(19, 14)), AMMAN, fridaySaturday)).toBe(amman(22, 11));
+    expect(dueOracle([amman(17, 10), amman(17, 10, 30), amman(17, 12, 30), amman(19, 19)], AMMAN, fridaySaturday)).toBe(amman(22, 19, 30));
     // a Thursday-evening first press: #2 skips the weekend, and #3 (raw 22:30) waits for Sunday too
     expect(dueOracle([amman(19, 21, 55)], AMMAN, fridaySaturday)).toBe(amman(22, 10));
     expect(dueOracle([amman(19, 20), amman(19, 20, 30)], AMMAN, fridaySaturday)).toBe(amman(22, 10));
     // Jordan's own hours: 16:30 → raw 17:00 is the end → Sunday 09:00 across the weekend
     expect(dueOracle([amman(19, 16, 30)], AMMAN, RULESETS[1])).toBe(amman(22, 9));
-    // Berlin, 25/10/2026 (the clocks go back at 03:00 CEST): 8 h after 02:30 CEST is 09:30 CET, so #4 would be 10:00 CET the SAME date: the first-day guard sends it to the 26th
+    // Berlin, 25/10/2026 (the clocks go back at 03:00 CEST): 8 h after 02:30 CEST is 09:30 CET, so #4 would be 11:00 CET the SAME date: the first-day guard sends it to the 26th
     const BER = 'Europe/Berlin';
     const b1 = Date.UTC(2026, 9, 24, 22, 0);
-    expect(new Date(dueOracle([b1, b1 + 30 * 60_000, b1 + 150 * 60_000], BER, none)).toISOString()).toBe('2026-10-26T09:00:00.000Z');
+    expect(new Date(dueOracle([b1, b1 + 30 * 60_000, b1 + 150 * 60_000], BER, none)).toISOString()).toBe('2026-10-26T10:00:00.000Z');
   });
 });
 
@@ -396,9 +410,9 @@ function gridRun(cells: Array<{ tz: string; anchor: string }>, presses: Array<[s
         ];
         // The press that puts the NEXT due on an edge: after #1 the next press is #2 (its raw due is +2 h), after #2 it is #3 (its 8 h floor lands on a start), after #3 it is #4 (the 3 h floor and the 18:00)
         if (counted === 1) for (const edge of [win.start, win.end]) for (const [c, x] of around(edge, 120)) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
-        if (counted === 2) for (const [c, x] of around(win.start, 480)) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
+        if (counted === 2) for (const [c, x] of [...around(win.start, 480), ...around(morningOf(win), 480)]) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
         if (counted === 3) {
-          for (const [c, x] of [['14:59', 59_999], ['15:00', 0], ['15:00', 1], ['17:59', 59_999], ['18:00', 0]] as Array<[string, number]>) clocks.push([dueDate, c, x]);
+          for (const [c, x] of [['16:29', 59_999], ['16:30', 0], ['16:30', 1], ['19:29', 59_999], ['19:30', 0], ['14:59', 59_999], ['15:00', 0], ['17:59', 59_999], ['18:00', 0]] as Array<[string, number]>) clocks.push([dueDate, c, x]);
           // ruling 16: the presses whose 3 h floor lands exactly on the window's end (±1 ms), on the anchor, and the presses at the anchor and just after it (the next anchor is tomorrow's)
           for (const [c, x] of [...around(win.end, 180), ...around(anchorOf(win), 180), ...around(anchorOf(win), 0), ...around(win.end, 0)]) for (const date of [dueDate, nextDay]) clocks.push([date, c, x]);
         }
@@ -489,7 +503,7 @@ describe('the module and the oracle agree', () => {
             const [t1, t3] = [times[0], times[2]];
             const due = localOf(want.nextDue, tz);
             expect(want.nextDue).toBeGreaterThanOrEqual(t3 + 8 * HOUR); // at least 8 elapsed hours
-            expect(due.hhmm).toBe(win.start);
+            expect(due.hhmm).toBe(morningOf(win)); // C2: the morning anchor
             expect(rest).not.toContain(due.wd);
             expect(due.date).not.toBe(localOf(t1, tz).date); // never on the first attempt's local date
             expect(want.nextDue).toBeLessThan(t3 + (8 + 24 * (2 + rest.length)) * HOUR);
@@ -531,18 +545,26 @@ describe('ruling 16 (15/11 22:30): #5 lands inside the country’s work hours', 
   }
   const oracleFifth = (t4: number, tz: string, rules: Rules): number => dueOracle([t4 - 10 * HOUR, t4 - 9 * HOUR, t4 - 8 * HOUR, t4], tz, rules);
 
-  it('the anchor: Syria 18:00, Jordan 16:00, a 09-12 day 11:00, a short window and an evening window start at their start', () => {
-    expect(anchorOf(windowOf(SYRIA))).toBe('18:00');
+  // UPDATED 2026-11-18 (C2): the cap is 19:30 — Syria 19:30 (was 18:00), the evening window 19:30 (was its start 19:00), the fallback 19:30; Jordan, 09-12, 08:15-16:45 and the short window unchanged.
+  it('the anchor: Syria 19:30, Jordan 16:00, a 09-12 day 11:00, a short window starts at its start, an evening window 19:30', () => {
+    expect(anchorOf(windowOf(SYRIA))).toBe('19:30');
     expect(anchorOf(windowOf(JORDAN))).toBe('16:00');
     expect(anchorOf({ start: '09:00', end: '12:00' })).toBe('11:00');
     expect(anchorOf({ start: '08:15', end: '16:45' })).toBe('15:45');
     expect(anchorOf({ start: '09:00', end: '09:45' })).toBe('09:00'); // end − 1 h is 08:45, before the start
-    expect(anchorOf({ start: '19:00', end: '23:00' })).toBe('19:00'); // 18:00 is before the start
-    expect(anchorOf(windowOf(rulesOf([], 'garbage', '25:61')))).toBe('18:00'); // the fallback 10:00-22:00
+    expect(anchorOf({ start: '19:00', end: '23:00' })).toBe('19:30'); // 19:30 is inside
+    expect(anchorOf({ start: '20:00', end: '23:00' })).toBe('20:00'); // 19:30 is before the start
+    expect(anchorOf(windowOf(rulesOf([], 'garbage', '25:61')))).toBe('19:30'); // the fallback 10:00-22:00
+    // and the morning anchor (C2): 11:00 clamped into [start, end − 1 h]
+    expect(morningOf(windowOf(SYRIA))).toBe('11:00');
+    expect(morningOf(windowOf(JORDAN))).toBe('11:00');
+    expect(morningOf({ start: '12:30', end: '20:15' })).toBe('12:30');
+    expect(morningOf({ start: '09:00', end: '11:30' })).toBe('10:30');
+    expect(morningOf({ start: '09:00', end: '09:45' })).toBe('09:00');
   });
 
-  it('Syria (10-22, no rest day): #5 stays at 18:00 — the same instant as before the ruling, and at 3 h after a late #4', () => {
-    for (const [t4, want] of [[amman(16, 10), amman(16, 18)], [amman(16, 18), amman(17, 18)], [amman(16, 17, 30), amman(16, 20, 30)], [amman(16, 19), amman(17, 18)]]) {
+  it('Syria (10-22, no rest day): #5 at 19:30 (C2) — and at 3 h after a late #4, and tomorrow when the floor reaches the end', () => {
+    for (const [t4, want] of [[amman(16, 10), amman(16, 19, 30)], [amman(16, 18), amman(16, 21)], [amman(16, 17, 30), amman(16, 20, 30)], [amman(16, 19), amman(17, 19, 30)], [amman(16, 16, 30), amman(16, 19, 30)]]) {
       expect(moduleFifth(t4, AMMAN, SYRIA)).toBe(want);
       expect(oracleFifth(t4, AMMAN, SYRIA)).toBe(want);
     }
@@ -583,17 +605,21 @@ describe('ruling 16 (15/11 22:30): #5 lands inside the country’s work hours', 
     expect(moduleFifth(amman(16, 8), AMMAN, short)).toBe(amman(17, 9)); // floor 11:00 is past the end; the first anchor after it is tomorrow's
     expect(moduleFifth(amman(16, 5), AMMAN, short)).toBe(amman(16, 9)); // E = 09:00 today, the floor (08:00) is before it
     expect(oracleFifth(amman(16, 8), AMMAN, short)).toBe(amman(17, 9));
+    // C2: the evening window 19-23 now anchors at 19:30 (inside it); one that starts at 20:00 anchors at its start
     const evening = rulesOf([6], '19:00', '23:00');
-    expect(moduleFifth(amman(19, 10), AMMAN, evening)).toBe(amman(19, 19)); // Thursday 10:00 → Thursday 19:00
-    expect(moduleFifth(amman(19, 20), AMMAN, evening)).toBe(amman(20, 19)); // Thursday 20:00, pressed after the anchor: Friday 19:00 (Friday is a work day here, only Saturday is off)
-    expect(oracleFifth(amman(19, 20), AMMAN, evening)).toBe(amman(20, 19));
-    expect(moduleFifth(amman(20, 20), AMMAN, evening)).toBe(amman(22, 19)); // Friday 20:00 → Saturday is off → Sunday 19:00
+    expect(moduleFifth(amman(19, 10), AMMAN, evening)).toBe(amman(19, 19, 30)); // Thursday 10:00 → Thursday 19:30
+    expect(moduleFifth(amman(19, 20), AMMAN, evening)).toBe(amman(20, 19, 30)); // Thursday 20:00, pressed after the anchor: Friday 19:30 (Friday is a work day here, only Saturday is off)
+    expect(oracleFifth(amman(19, 20), AMMAN, evening)).toBe(amman(20, 19, 30));
+    expect(moduleFifth(amman(20, 20), AMMAN, evening)).toBe(amman(22, 19, 30)); // Friday 20:00 → Saturday is off → Sunday 19:30
+    const late = rulesOf([6], '20:00', '23:00');
+    expect(moduleFifth(amman(19, 10), AMMAN, late)).toBe(amman(19, 20)); // the anchor is the start: 19:30 is before it
+    expect(oracleFifth(amman(19, 10), AMMAN, late)).toBe(amman(19, 20));
   });
 
-  it('a country with no readable hours keeps the fallbacks: 18:00', () => {
+  it('a country with no readable hours keeps the fallbacks: 19:30 (C2)', () => {
     const none = rulesOf([], 'x', 'y');
-    expect(moduleFifth(amman(16, 10), AMMAN, none)).toBe(amman(16, 18));
-    expect(oracleFifth(amman(16, 10), AMMAN, none)).toBe(amman(16, 18));
+    expect(moduleFifth(amman(16, 10), AMMAN, none)).toBe(amman(16, 19, 30));
+    expect(oracleFifth(amman(16, 10), AMMAN, none)).toBe(amman(16, 19, 30));
   });
 
   it('PROPERTY: for every window and every rest set that leaves a work day, #5 is inside [start, end) on a work day, never within 3 h of #4, and the oracle and the module agree — four zones, a grid of #4 presses', () => {

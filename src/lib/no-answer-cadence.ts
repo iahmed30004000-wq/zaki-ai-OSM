@@ -1,6 +1,7 @@
 import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { attemptWords, nextAttemptWords } from './attempt-words';
+import { CONFIRMATION_RULE } from './confirmation-rule';
 import { parseHhMm } from './employee-shift';
 import type { AttemptFact } from './no-answer-rounds';
 import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueVerdict } from './work-first';
@@ -16,8 +17,8 @@ import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueV
  *
  *   #1  now                                  → #2 is due 30 minutes later (elapsed time), brought INSIDE WORK TIME (below)
  *   #2  from its due on                      → #3 is due 2 hours later (elapsed time, so a DST jump inside the two hours does not move it), brought inside work time the same way
- *   #3  from its due on                      → #4 is due at the Country's workHoursStart on the first WORKING day, and not before 8 HOURS (elapsed; exactly 8 counts) after #3
- *   #4  from its due on                      → #5 is due at the first EVENING ANCHOR (below) local STRICTLY after #4 on a working day, and not before 3 HOURS (elapsed) after #4 — always inside work time
+ *   #3  from its due on                      → #4 is due at the MORNING ANCHOR (11:00 clamped into [start, end − 1 h]; request C2 — it was the start of work) on the first WORKING day, and not before 8 HOURS (elapsed; exactly 8 counts) after #3
+ *   #4  from its due on                      → #5 is due at the first EVENING ANCHOR (below; min(19:30, end − 1 h) since request C2) local STRICTLY after #4 on a working day, and not before 3 HOURS (elapsed) after #4 — always inside work time
  *   #5  → with attempts on two local days or more, the fifth COUNTED press closes the order (the door does that, `endOrder`; here it is `cadenceCloses`).
  *
  * WORK TIME (the planner's ruling 12 of 15/11 — «no work after 22:00») is a working day (not one of the Country's rest days) AND a local clock in [workHoursStart, workHoursEnd): the end is
@@ -56,20 +57,39 @@ import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueV
  * ═══════════════════════════════════════════════════════════════════════
  */
 
+/*
+ * ── REQUEST C2 (18/11): THE NUMBERS ARE THE ONE RULE SET'S (`confirmation-rule.ts`), AND #4 / #5 HAVE NEW ANCHORS ──
+ *
+ * Every figure below is read from `CONFIRMATION_RULE` (no caller changed its import). Two clocks moved, by the owner's plan of 17/11 (§3.1, the answer rate by hour):
+ *   · #4 is due at the MORNING ANCHOR (`cadenceMorningAnchor`) = 11:00 clamped into the Country's window [start, end − 1 h] — it was the start of work;
+ *   · #5 is due at the EVENING ANCHOR (`cadenceEveningAnchor`) = min(19:30, end − 1 h), raised to the start — it was min(18:00, end − 1 h).
+ * #2 and #3, the floors, the day guard, the close and the counting are unchanged. And HISTORY KEEPS ITS VERDICTS: when the lines are folded (`cadenceState`), the due a
+ * counted line STORED (`nextFollowUpAt`, which the door writes on every counted press but the fifth) is the due the next line is checked against; the anchors are only
+ * computed for a line that stored none (or a fact that does not carry the field). So every press written before C2 replays to the very state it had.
+ */
+
 /** Five counted attempts — the cadence's limit (`NO_ANSWER_LIMIT` in `confirmation-workflow.ts` stays 3: that is the switch-off rule). */
-export const CADENCE_LIMIT = 5;
+export const CADENCE_LIMIT = CONFIRMATION_RULE.attempts;
 /** The fifth attempt closes the order only across this many different local days. */
-export const CADENCE_MIN_DAYS = 2;
+export const CADENCE_MIN_DAYS = CONFIRMATION_RULE.minDays;
 /** Elapsed time, not wall-clock: after the first attempt and after the second. */
-export const CADENCE_GAPS_MS = { afterFirst: 1_800_000, afterSecond: 7_200_000 } as const;
+export const CADENCE_GAPS_MS = {
+  afterFirst: CONFIRMATION_RULE.gapsMinutes.afterFirst * 60_000,
+  afterSecond: CONFIRMATION_RULE.gapsMinutes.afterSecond * 60_000,
+} as const;
 /** Minimum ELAPSED time before the 4th / 5th may count: 8 h after #3 (planner 15/11, ruling 4), 3 h after #4 (ruling 3). */
-export const CADENCE_FLOORS_MS = { beforeFourth: 28_800_000, beforeFifth: 10_800_000 } as const;
+export const CADENCE_FLOORS_MS = {
+  beforeFourth: CONFIRMATION_RULE.floorsHours.beforeFourth * 3_600_000,
+  beforeFifth: CONFIRMATION_RULE.floorsHours.beforeFifth * 3_600_000,
+} as const;
 /** The start of work when the Country's `workHoursStart` is missing or unreadable (the planner's 10:00; Syria's live row becomes 10:00-22:00). #4 is due at the start. */
 export const CADENCE_WORKDAY_START = '10:00';
 /** The end of work (exclusive) when the Country's `workHoursEnd` is missing or unreadable: «no work after 22:00» (planner, ruling 12 of 15/11). */
 export const CADENCE_WORKDAY_END = '22:00';
-/** The CAP of #5's evening anchor: 18:00 local, on a working day — the anchor is `min(18:00, workHoursEnd − 1 hour)` (see `cadenceEveningAnchor`). */
-export const CADENCE_EVENING_FROM = '18:00';
+/** The CAP of #5's evening anchor: 19:30 local since request C2 (it was 18:00), on a working day — the anchor is `min(19:30, workHoursEnd − 1 hour)` (see `cadenceEveningAnchor`). */
+export const CADENCE_EVENING_FROM = CONFIRMATION_RULE.evening;
+/** #4's clock since request C2: 11:00 local (it was the start of work), clamped into the window — see `cadenceMorningAnchor`. */
+export const CADENCE_MORNING_AT = CONFIRMATION_RULE.morning;
 /** The anchor stays this long before the end of work (planner, ruling 16): one hour. */
 const EVENING_BEFORE_END_MIN = 60;
 
@@ -126,9 +146,22 @@ function warnBadHours(start: unknown, end: unknown): void {
  * that starts after 18:00 — so the anchor is ALWAYS inside [start, end). «HH:mm», from a window that already went through `cadenceWorkWindow`.
  */
 export function cadenceEveningAnchor(window: { start: string; end: string }): string {
+  return anchorInside(CADENCE_EVENING_FROM, window);
+}
+
+/**
+ * #4's MORNING ANCHOR for a work window (request C2): 11:00 clamped into [start, end − 1 hour] — `max(start, min(11:00, end − 1 hour))`, the evening anchor's own
+ * formula with the morning's clock. A start after 11:00 → the start; a day that ends before 12:00 → an hour before its end; a window shorter than an hour → the start.
+ * Never after the evening anchor (its clock is earlier and the formula is the same). «HH:mm», from a window that already went through `cadenceWorkWindow`.
+ */
+export function cadenceMorningAnchor(window: { start: string; end: string }): string {
+  return anchorInside(CADENCE_MORNING_AT, window);
+}
+
+/** `max(start, min(clock, end − 1 hour))` as «HH:mm» — the one formula both anchors use, so each is ALWAYS inside [start, end). */
+function anchorInside(clock: string, window: { start: string; end: string }): string {
   const minutes = (hhmm: string): number => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
-  const cap = minutes(CADENCE_EVENING_FROM);
-  const t = Math.max(minutes(window.start), Math.min(cap, minutes(window.end) - EVENING_BEFORE_END_MIN));
+  const t = Math.max(minutes(window.start), Math.min(minutes(clock), minutes(window.end) - EVENING_BEFORE_END_MIN));
   return `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`;
 }
 
@@ -223,10 +256,11 @@ function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
     return insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, start, rest, false, cal.timeZone);
   }
   if (counted === 3) {
-    // The Country's start of work on the first working day at least 8 hours (elapsed) after #3 — `>=`: exactly 8 hours counts.
-    const due = firstClockOnWorkday(new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFourth), start, rest, false, cal.timeZone);
+    // The MORNING ANCHOR (request C2: 11:00 clamped into the window; it was the start of work) on the first working day at least 8 hours (elapsed) after #3 — `>=`: exactly 8 hours counts.
+    const morning = clockOf(cadenceMorningAnchor(window));
+    const due = firstClockOnWorkday(new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFourth), morning, rest, false, cal.timeZone);
     // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (defence in depth now: see the header — #2 and #3 inside work time already put #4 a day on).
-    return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, start, rest, true, cal.timeZone) : due;
+    return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, morning, rest, true, cal.timeZone) : due;
   }
   // counted 4: the first evening anchor local STRICTLY after #4 on a working day, but never less than 3 hours (elapsed) after it — and if that lands outside work time (the 3 h floor can carry it
   // past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
@@ -254,15 +288,51 @@ export function cadenceStep(state: CadenceState, at: Date, cal: CadenceCal): { n
   return { next: { counted: times, days, dueAt }, counted: true };
 }
 
-/** An order's plan from its lines: only the no-answer ones, in the order the door decided them (`attemptNumber`, then time), folded through `cadenceStep`. */
-export function cadenceState(facts: readonly AttemptFact[], cal: CadenceCal): CadenceState {
+/**
+ * A line as the plan folds it: the attempt fact, plus the due the door STORED on it (`OrderContactAttempt.nextFollowUpAt`) when the reader selected it. Absent (`undefined`)
+ * = the reader did not select it: the due is computed, as before C2.
+ */
+export type CadenceFact = AttemptFact & { nextFollowUpAt?: Date | string | null };
+
+/** The due a line stored, when it is a real date — null for none, for a reader that did not select it, and for garbage. */
+function storedDue(f: CadenceFact): Date | null {
+  if (f.nextFollowUpAt === undefined || f.nextFollowUpAt === null) return null;
+  const d = new Date(f.nextFollowUpAt);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * THE FOLD, with each no-answer line's verdict: only the no-answer lines, in the order the door decided them (`attemptNumber`, then time), through `cadenceStep`.
+ * HISTORY KEEPS ITS VERDICTS (request C2, decision 3): after a COUNTED line that stored a due, the state's due IS the stored one — the anchors are only computed for a
+ * line without it. A press written before C2 therefore replays to the state the door decided then, under whichever anchors it used.
+ */
+function cadenceFold(facts: readonly CadenceFact[], cal: CadenceCal): { state: CadenceState; lines: { fact: CadenceFact; counted: number | null }[] } {
   const at = (f: AttemptFact): number => new Date(f.createdAt).getTime();
-  const lines = facts
+  const sorted = facts
     .filter((f) => (NO_ANSWER_RESULTS as readonly string[]).includes(f.result) && !Number.isNaN(at(f)))
     .sort((a, b) => (a.attemptNumber ?? 0) - (b.attemptNumber ?? 0) || at(a) - at(b));
   let state = CADENCE_START;
-  for (const f of lines) state = cadenceStep(state, new Date(f.createdAt), cal).next;
-  return state;
+  const lines: { fact: CadenceFact; counted: number | null }[] = [];
+  for (const f of sorted) {
+    const step = cadenceStep(state, new Date(f.createdAt), cal);
+    const kept = step.counted && step.next.dueAt !== null ? storedDue(f) : null;
+    state = kept ? { ...step.next, dueAt: kept } : step.next;
+    lines.push({ fact: f, counted: step.counted ? state.counted.length : null });
+  }
+  return { state, lines };
+}
+
+/** An order's plan from its lines (see `cadenceFold`). */
+export function cadenceState(facts: readonly CadenceFact[], cal: CadenceCal): CadenceState {
+  return cadenceFold(facts, cal).state;
+}
+
+/**
+ * EACH NO-ANSWER LINE'S NUMBER IN THE PLAN — the counted attempt it was («محاولة N من 5»), or null for a press that did not count (early, before the switch, after
+ * the fifth). The order timeline prints it (request C2, decision 9: one counter). Lines that are not a no-answer are not in the map.
+ */
+export function cadenceLineNumbers<F extends CadenceFact>(facts: readonly F[], cal: CadenceCal): Map<F, number | null> {
+  return new Map(cadenceFold(facts, cal).lines.map((l) => [l.fact as F, l.counted] as const));
 }
 
 /**
@@ -279,7 +349,7 @@ export function cadenceCloses(state: CadenceState): boolean {
  * state closes the order.
  */
 export function cadencePress(
-  stored: readonly AttemptFact[],
+  stored: readonly CadenceFact[],
   press: { at: Date; result: string },
   cal: CadenceCal
 ): { counted: boolean; dueAt: Date | null; next: CadenceState; closes: boolean } {
@@ -332,7 +402,7 @@ export function cadencePressWords(a: { counted: boolean; closed: boolean; releas
  * A fact at the moment of the read: the desk has no timer.
  */
 export function cadenceDesk(
-  facts: readonly AttemptFact[],
+  facts: readonly CadenceFact[],
   cal: CadenceCal,
   now: Date
 ): { counted: number; dueAt: Date | null; due: boolean; waiting: boolean; closesOnNext: boolean } {

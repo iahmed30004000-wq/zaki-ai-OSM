@@ -312,9 +312,9 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    *
    * 18/11 (R17b): `IconButton` left — the assistant's bubble and the search palette, both in the shell
    * layout, are the first to render it.
+   *
+   * 18/11 (R10d): `StatTile` left — «العملاء» (`CustomersScreen`) draws its five figures of the book with it.
    */
-  'src/components/ui/StatTile.tsx:StatTile':
-    'بلاطةُ الرقم الواحد باسمه وسطر سياق — بُنيت مع عدّة R2a لشاشة «اليوم» الجديدة ولم تنتقل إليها أيّ شاشة بعد (تخرج من القائمة بأول شاشة ترسمها).',
 };
 
 describe('كلُّ مكوّنٍ إمّا تعرضه شاشة أو يُقال إنه بُني ولم يُوصَل', () => {
@@ -485,6 +485,9 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
  * should delete them on a sweep's word.
  */
 const NO_CALLER_FOUND: Record<string, string> = {
+  // Request C2, 18/11 (its DoD 4): the two old cards left «قواعد مركز التأكيد»; their doors keep GET and refuse every write (409 RULE_RETIRED) until C4 deletes them with their engine.
+  '/api/settings/no-answer-rounds': 'بطاقة «نظام الجولات» انشالت بـC2 — الباب باقٍ يقرأ ويرفض الكتابة لحد ما C4 يشيله مع محرّكه',
+  '/api/settings/no-answer-returns': 'بطاقة «الطلب يرجع للطابور فوراً» انشالت بـC2 — الباب باقٍ يقرأ ويرفض الكتابة لحد ما C4 يشيله مع محرّكه',
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
   '/api/analytics/daily': 'سلسلةُ الطلبات اليومية للرسم الواحد في «اليوم» (R9) — الباب جاهز والشاشة تأتي بعده عند سونيت',
   '/api/orders/confirmation/team/[userId]': 'صفُّ موظفٍ واحد لدرج جدول الفريق (R14a) — الباب جاهز والدرج يأتي بعده عند سونيت',
@@ -651,6 +654,8 @@ function deadLibExports(): string[] {
  * work is not allowed to touch.
  */
 const PLANNED_BUT_UNUSED: Record<string, string> = {
+  'src/lib/no-answer-rounds-switch.ts:saveRoundsSwitch': 'C2 (18/11): بابه صار يرفض الكتابة — كود المحرّك باقٍ لحد C4 (14 يوم استقرار وكلمة المالك)',
+  'src/lib/no-answer-returns-switch.ts:saveReturnsSwitch': 'C2 (18/11): بابه صار يرفض الكتابة — كود المحرّك باقٍ لحد C4 (14 يوم استقرار وكلمة المالك)',
   'src/lib/no-answer-returns.ts:firstRetryByDue': 'مواصفة ترتيب الإعادات التي تثبّتها فحوص no-answer-retry-order؛ الإنتاج يقرأ نفس الترتيب عبر firstRetryWithDue (الخطوة D1) — تبقى الدالة المرجع',
   'src/lib/confirmation-workflow.ts:HUMAN_ONLY_REJECTION_REASONS': 'قاعدة «السيرفر ما يختار سبباً عن إنسان» لا يفرضها كود بعد — RV132',
   'src/lib/product-grade.ts:REFUSED_BANDS': 'سجلّ القرارات المرفوضة مخطّط له — RV132',

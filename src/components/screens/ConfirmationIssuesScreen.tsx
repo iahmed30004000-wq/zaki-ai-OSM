@@ -5,7 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
 import { useRegions } from '@/hooks/useRegions';
 import { arDateTime } from '@/lib/format';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiForbidLine, RiLoader4Line, RiPencilLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -17,6 +17,8 @@ import { userCan } from '@/lib/can';
 import { CustomerHistoryOffer } from '@/components/orders/CustomerHistory';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { LoadFailed } from '@/components/ui/LoadFailed';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * /confirmation/issues — entry issues on moderator-entered orders only.
@@ -247,8 +249,9 @@ export function ConfirmationIssuesScreen() {
     'w-full h-11 md:h-10 px-3 rounded-lg border-2 border-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] text-sm focus:outline-none';
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/confirmation/issues')} />
+    // The frame (R8g): `max-w-4xl` is the shell's `medium`, and the list keeps its own 12px rhythm inside it.
+    <PageShell title={routeLabel('/confirmation/issues')} width="medium">
+    <div className="space-y-3">
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
@@ -274,7 +277,7 @@ export function ConfirmationIssuesScreen() {
         const isVoiding = voiding === issue.id;
 
         return (
-          <article key={issue.id} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-2">
+          <Card key={issue.id} padding="md" className="space-y-2">
             <header className="flex flex-wrap items-center gap-2">
               <span className="w-8 h-8 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] flex items-center justify-center">
                 <RiAlertLine className="w-4 h-4 text-[var(--sys-destructive)]" />
@@ -325,7 +328,7 @@ export function ConfirmationIssuesScreen() {
             )}
 
             {isEditing && draft && (
-              <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-3">
+              <Card plain padding="sm" className="space-y-3">
                 <p className="text-xs text-[var(--sys-muted-foreground)]">
                   صحّح البيانات هنا — الحقل المؤشَّر بالأحمر هو ما أبلغ عنه موظف التأكيد.
                 </p>
@@ -389,30 +392,32 @@ export function ConfirmationIssuesScreen() {
                 </div>
 
                 {changeSummary(issue, draft).length > 0 && (
-                  <div className="text-xs text-[var(--sys-foreground)] bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-2.5 space-y-0.5">
+                  <Card plain className="text-xs text-[var(--sys-foreground)] p-2.5 space-y-0.5">
                     <p className="text-[var(--sys-muted-foreground)]">سيُسجَّل في الطلب:</p>
                     {changeSummary(issue, draft).map((line) => (
                       <p key={line} dir="rtl">• {line}</p>
                     ))}
-                  </div>
+                  </Card>
                 )}
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => saveCorrection(issue)}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => { void saveCorrection(issue); }}
                     disabled={busy === issue.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                   >
                     {busy === issue.id ? 'جارٍ الحفظ…' : 'احفظ التصحيح وأعده للطابور'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => { setEditing(null); setDraft(null); setError(null); }}
-                    className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)]"
                   >
                     إلغاء
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             )}
 
             {isVoiding && (
@@ -428,19 +433,21 @@ export function ConfirmationIssuesScreen() {
                   />
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => confirmVoid(issue)}
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => { void confirmVoid(issue); }}
                     disabled={busy === issue.id}
-                    className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
                   >
                     تأكيد الإبطال
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => { setVoiding(null); setVoidReason(''); setError(null); }}
-                    className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)]"
                   >
                     تراجع
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -453,28 +460,27 @@ export function ConfirmationIssuesScreen() {
             {!isEditing && !isVoiding && (
               <footer className="flex flex-wrap gap-2 pt-2 border-t border-[var(--sys-border)]">
                 {canCorrect && (
-                <button
-                  onClick={() => openCorrection(issue)}
-                  className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5"
-                >
+                <Button variant="primary" size="sm" onClick={() => openCorrection(issue)}>
                   <RiPencilLine className="w-4 h-4" />
                   صحّح البيانات
-                </button>
+                </Button>
                 )}
                 {canVoid && (
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => { setVoiding(issue.id); setVoidReason(''); setError(null); }}
-                  className="min-h-11 md:min-h-0 inline-flex items-center px-3 py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)] inline-flex items-center gap-1.5"
                 >
                   <RiForbidLine className="w-4 h-4" />
                   إبطال الطلب (المالك فقط)
-                </button>
+                </Button>
                 )}
               </footer>
             )}
-          </article>
+          </Card>
         );
       })}
     </div>
+    </PageShell>
   );
 }
