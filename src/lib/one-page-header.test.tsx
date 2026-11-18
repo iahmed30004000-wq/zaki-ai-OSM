@@ -94,10 +94,10 @@ describe('one page header', () => {
   });
 
   /*
-   * 18/11 (R12e): «draws PageHeader» became «draws PageHeader, or PageShell, which draws it». The restructure moves each screen
-   * onto the kit's frame `PageShell` (R2c), and the frame's header IS `PageHeader` with the same `title` (PageShell.tsx) — so the
-   * name is still read from the registry and still one h1. Old: the file must import and draw `<PageHeader title={routeLabel…}`.
-   * New: the same, with `PageShell` accepted in its place. The count, the routeLabel title and «no typed title» are held as before.
+   * 18/11 (R8g, «الإشكالات» on the kit): this test said «draws PageHeader» and read only `<PageHeader`. A screen that moves onto
+   * the frame draws `<PageShell title=…>`, and the frame draws exactly that `PageHeader` with exactly that title (PageShell.tsx) —
+   * so the frame counts as the header here. Every other check is unchanged: one import, the title read through `routeLabel`,
+   * never typed, and the count per file. A file that drew BOTH would count two and fail.
    */
   it.each(TABLE)('%s draws PageHeader (itself or through PageShell) with the registry name of %s, read, never typed', (file, path, count) => {
     const src = stripComments(repoFile(file));

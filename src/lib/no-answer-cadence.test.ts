@@ -7,6 +7,7 @@ import {
   CADENCE_GAPS_MS,
   CADENCE_LIMIT,
   CADENCE_MIN_DAYS,
+  CADENCE_MORNING_AT,
   CADENCE_START,
   CADENCE_WORKDAY_END,
   CADENCE_WORKDAY_START,
@@ -16,6 +17,7 @@ import {
   cadenceCloses,
   cadenceDesk,
   cadenceEveningAnchor,
+  cadenceMorningAnchor,
   cadencePress,
   cadencePressWords,
   cadenceState,
@@ -60,6 +62,9 @@ import type { DueVerdict } from './work-first';
  *
  * Edge cases that matter: #4 at 09:00 in a 09-12 day (the 3 h floor is the end itself → tomorrow); the floor a millisecond inside the end; an anchor before the start; 6 rest days of 7; a country with no hours.
  * Blockers: any #5 outside its country's hours; Syria's #5 moving off 18:00; a warn per row; customer data in a log line; the switch-off path changing (nothing here is reachable with the key OFF).
+ *
+ * UPDATED 2026-11-18 (request C2): the anchors moved — #4 is due at the MORNING ANCHOR max(start, min(11:00, end − 1 h)) (it was workHoursStart), and #5's evening anchor
+ * is min(19:30, end − 1 h) (it was min(18:00, …)): Syria/fallback 10-22 → #4 11:00, #5 19:30; Jordan 09-17 → #4 11:00, #5 16:00. Items 1 and 11 above keep their old clocks as history.
  *
  * `no-answer-cadence-oracle.test.ts` holds the same rule a SECOND time, written the other way round.
  * ═══════════════════════════════════════════════════════════════════════
@@ -145,10 +150,12 @@ describe('cadenceCalOf: the one builder of the plan’s world', () => {
     expect(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: null, workHoursEnd: null }).workHoursEnd).toBeUndefined();
   });
 
-  it('the hours it carries ARE the hours the plan uses: the same lines under 09:00 and under 10:00 give #4 an hour apart', () => {
+  it('the hours it carries ARE the hours the plan uses: the same lines under 12:00 and under 10:00 give #4 an hour apart (12:00 vs the 11:00 morning anchor)', () => {
+    // UPDATED 2026-11-18 (request C2): was 09:00 vs 10:00 (the start of work), now 12:00 vs 11:00 — the anchors moved (11:00 morning, 19:30 evening); 09:00 and 10:00 both anchor at 11:00 now, so a start after 11:00 shows the row's hours.
     const lines = (c: CadenceCal) => upToThird(c, amman(3, 14)).dueAt!;
-    expect(hhmm(lines(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: '09:00', workHoursEnd: '17:00' })))).toBe('2026-11-04 09:00');
-    expect(hhmm(lines(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: '10:00', workHoursEnd: '22:00' })))).toBe('2026-11-04 10:00');
+    expect(hhmm(lines(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: '12:00', workHoursEnd: '20:00' })))).toBe('2026-11-04 12:00');
+    expect(hhmm(lines(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: '10:00', workHoursEnd: '22:00' })))).toBe('2026-11-04 11:00');
+    expect(hhmm(lines(cadenceCalOf(SINCE, { timezone: AMMAN, workHoursStart: '09:00', workHoursEnd: '17:00' })))).toBe('2026-11-04 11:00');
   });
 });
 
@@ -190,14 +197,16 @@ describe('cadenceWorkWindow: the one reader of the Country’s two work hours', 
 });
 
 describe('the constants', () => {
-  it('five attempts over two days, 30 minutes and 2 hours, the 8 h and 3 h floors, the 10:00-22:00 fallback window and #5 from 18:00 — and the switch-off limit is still 3', () => {
+  it('five attempts over two days, 30 minutes and 2 hours, the 8 h and 3 h floors, the 10:00-22:00 fallback window, #4 at 11:00 and #5 from 19:30 — and the switch-off limit is still 3', () => {
+    // UPDATED 2026-11-18 (request C2): was 18:00, now 19:30 (and the new morning clock 11:00) — the anchors moved (11:00 morning, 19:30 evening).
     expect(CADENCE_LIMIT).toBe(5);
     expect(CADENCE_MIN_DAYS).toBe(2);
     expect(CADENCE_GAPS_MS).toEqual({ afterFirst: 30 * 60_000, afterSecond: 2 * 3_600_000 });
     expect(CADENCE_FLOORS_MS).toEqual({ beforeFourth: 8 * 3_600_000, beforeFifth: 3 * 3_600_000 });
     expect(CADENCE_WORKDAY_START).toBe('10:00');
     expect(CADENCE_WORKDAY_END).toBe('22:00');
-    expect(CADENCE_EVENING_FROM).toBe('18:00');
+    expect(CADENCE_EVENING_FROM).toBe('19:30');
+    expect(CADENCE_MORNING_AT).toBe('11:00');
     expect(NO_ANSWER_LIMIT).toBe(3);
   });
 });
@@ -317,7 +326,8 @@ describe('#2 and #3 are due INSIDE work time (planner ruling 12): [workHoursStar
       const c = cal(AMMAN, SINCE, undefined, hours);
       expect(dueOfSecond(c, [3, 21, 50, 0, 0])).toEqual(amman(4, 10));
       expect(dueOfSecond(c, [3, 11, 0, 0, 0])).toEqual(amman(3, 11, 30));
-      expect(hhmm(upToThird(c, amman(3, 14)).dueAt!)).toBe('2026-11-04 10:00');
+      // UPDATED 2026-11-18 (request C2): was 10:00, now 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+      expect(hhmm(upToThird(c, amman(3, 14)).dueAt!)).toBe('2026-11-04 11:00');
     }
   });
 
@@ -333,83 +343,96 @@ describe('#2 and #3 are due INSIDE work time (planner ruling 12): [workHoursStar
   });
 });
 
-describe('#3 → #4: the Country’s workHoursStart on the first working day at least 8 hours (elapsed) later', () => {
+describe('#3 → #4: the morning anchor (11:00 clamped into the Country’s window) on the first working day at least 8 hours (elapsed) later', () => {
+  // UPDATED 2026-11-18 (request C2): was 10:00 (the start of work), now 11:00; the 8 h cliff moved from 02:00 to 03:00 — the anchors moved (11:00 morning, 19:30 evening).
   it.each([
-    ['08:59', [3, 8, 59, 0, 0], '2026-11-04 10:00'],
-    ['09:00', [3, 9, 0, 0, 0], '2026-11-04 10:00'],
-    ['14:00', [3, 14, 0, 0, 0], '2026-11-04 10:00'],
-    ['23:59:59.999', [3, 23, 59, 59, 999], '2026-11-04 10:00'],
-    ['00:00:00.000 (8 h to 08:00: today’s 10:00)', [3, 0, 0, 0, 0], '2026-11-03 10:00'],
-    ['00:05 (today’s 10:00)', [3, 0, 5, 0, 0], '2026-11-03 10:00'],
-    ['01:59:59.999 (a millisecond under 8 h to 10:00)', [3, 1, 59, 59, 999], '2026-11-03 10:00'],
-    ['02:00:00.000 (EXACTLY 8 h to 10:00 counts)', [3, 2, 0, 0, 0], '2026-11-03 10:00'],
-    ['02:00:00.001 (a millisecond over: tomorrow’s 10:00, 32 h)', [3, 2, 0, 0, 1], '2026-11-04 10:00'],
+    ['08:59', [3, 8, 59, 0, 0], '2026-11-04 11:00'],
+    ['09:00', [3, 9, 0, 0, 0], '2026-11-04 11:00'],
+    ['14:00', [3, 14, 0, 0, 0], '2026-11-04 11:00'],
+    ['23:59:59.999', [3, 23, 59, 59, 999], '2026-11-04 11:00'],
+    ['00:00:00.000 (8 h to 08:00: today’s 11:00)', [3, 0, 0, 0, 0], '2026-11-03 11:00'],
+    ['00:05 (today’s 11:00)', [3, 0, 5, 0, 0], '2026-11-03 11:00'],
+    ['02:59:59.999 (a millisecond under 8 h to 11:00)', [3, 2, 59, 59, 999], '2026-11-03 11:00'],
+    ['03:00:00.000 (EXACTLY 8 h to 11:00 counts)', [3, 3, 0, 0, 0], '2026-11-03 11:00'],
+    ['03:00:00.001 (a millisecond over: tomorrow’s 11:00, 32 h)', [3, 3, 0, 0, 1], '2026-11-04 11:00'],
   ] as const)('#3 pressed at %s → %s', (_n, [d, h, mi, s, m], due) => {
     const state = upToThird(cal(), amman(d, h, mi, s, m));
     expect(hhmm(state.dueAt!)).toBe(due);
   });
 
-  it('the 8 hours are ELAPSED time: exactly at 10:00 a press counts, one millisecond before it is early', () => {
-    const s3 = upToThird(cal(), amman(3, 2, 0, 0, 0));
-    expect(s3.dueAt).toEqual(amman(3, 10));
-    expect(s3.dueAt!.getTime() - amman(3, 2).getTime()).toBe(CADENCE_FLOORS_MS.beforeFourth);
+  it('the 8 hours are ELAPSED time: exactly at 11:00 a press counts, one millisecond before it is early', () => {
+    // UPDATED 2026-11-18 (request C2): was #3 02:00 → 10:00, now #3 03:00 → 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+    const s3 = upToThird(cal(), amman(3, 3, 0, 0, 0));
+    expect(s3.dueAt).toEqual(amman(3, 11));
+    expect(s3.dueAt!.getTime() - amman(3, 3).getTime()).toBe(CADENCE_FLOORS_MS.beforeFourth);
     expect(cadenceStep(s3, ms(s3.dueAt!, -1), cal()).counted).toBe(false);
     expect(cadenceStep(s3, s3.dueAt!, cal()).counted).toBe(true);
   });
 
+  // UPDATED 2026-11-18 (request C2): was a cliff at 01:00 → 09:00 (Jordan's start), now 03:00 → 11:00 — the anchors moved (11:00 morning, 19:30 evening); 11:00 is inside 09:00-16:00, so Jordan's morning anchor is 11:00 too.
   it.each([
-    ['00:59:59.999 (a millisecond under 8 h to 09:00)', [3, 0, 59, 59, 999], '2026-11-03 09:00'],
-    ['01:00:00.000 (EXACTLY 8 h to 09:00 counts)', [3, 1, 0, 0, 0], '2026-11-03 09:00'],
-    ['01:00:00.001 (a millisecond over: tomorrow’s 09:00)', [3, 1, 0, 0, 1], '2026-11-04 09:00'],
-    ['14:00', [3, 14, 0, 0, 0], '2026-11-04 09:00'],
-  ] as const)('Jordan’s row, #3 pressed at %s → #4 at %s: the cliff moves with the start of work (8 h before it)', (_n, [d, h, mi, s, m], due) => {
+    ['02:59:59.999 (a millisecond under 8 h to 11:00)', [3, 2, 59, 59, 999], '2026-11-03 11:00'],
+    ['03:00:00.000 (EXACTLY 8 h to 11:00 counts)', [3, 3, 0, 0, 0], '2026-11-03 11:00'],
+    ['03:00:00.001 (a millisecond over: tomorrow’s 11:00)', [3, 3, 0, 0, 1], '2026-11-04 11:00'],
+    ['14:00', [3, 14, 0, 0, 0], '2026-11-04 11:00'],
+  ] as const)('Jordan’s row, #3 pressed at %s → #4 at %s: the cliff is 8 h before the country’s morning anchor', (_n, [d, h, mi, s, m], due) => {
     expect(hhmm(upToThird(cal(AMMAN, SINCE, undefined, JORDAN_HOURS), amman(d, h, mi, s, m)).dueAt!)).toBe(due);
   });
 
   it('carries month ends, year ends and leap days', () => {
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 11, 30, 20)).dueAt!)).toBe('2026-12-01 10:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 12, 31, 20)).dueAt!)).toBe('2027-01-01 10:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2027, 1, 31, 20)).dueAt!)).toBe('2027-02-01 10:00');
-    expect(hhmm(upToThird(cal(), local(AMMAN, 2028, 2, 29, 20)).dueAt!)).toBe('2028-03-01 10:00');
+    // UPDATED 2026-11-18 (request C2): was 10:00, now 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 11, 30, 20)).dueAt!)).toBe('2026-12-01 11:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2026, 12, 31, 20)).dueAt!)).toBe('2027-01-01 11:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2027, 1, 31, 20)).dueAt!)).toBe('2027-02-01 11:00');
+    expect(hhmm(upToThird(cal(), local(AMMAN, 2028, 2, 29, 20)).dueAt!)).toBe('2028-03-01 11:00');
   });
 
-  it('Berlin, Saturday 22:00 on the night before the spring-forward → Sunday 10:00 CEST', () => {
+  it('Berlin, Saturday 22:00 on the night before the spring-forward → Sunday 11:00 CEST', () => {
+    // UPDATED 2026-11-18 (request C2): was Sunday 10:00 CEST (08:00Z), now 11:00 CEST (09:00Z) — the anchors moved (11:00 morning, 19:30 evening).
     const BER = 'Europe/Berlin';
     const due = upToThird(cal(BER, new Date('2026-03-01T00:00:00Z')), local(BER, 2026, 3, 28, 22)).dueAt!;
-    expect(hhmm(due, BER)).toBe('2026-03-29 10:00');
-    expect(due.toISOString()).toBe('2026-03-29T08:00:00.000Z');
+    expect(hhmm(due, BER)).toBe('2026-03-29 11:00');
+    expect(due.toISOString()).toBe('2026-03-29T09:00:00.000Z');
   });
 
-  it('the clock is the COUNTRY’S start of work: a row that says 09:00 gives 09:00, one that says 10:00 gives 10:00, one with nothing (or garbage) gives the fallback 10:00', () => {
+  it('the clock is the MORNING ANCHOR clamped into the COUNTRY’S window: 09:00, 10:00 and 08:30 starts give 11:00, a 12:30 start gives 12:30, a day ending 11:30 gives 10:30, nothing (or garbage) gives the fallback’s 11:00', () => {
+    // UPDATED 2026-11-18 (request C2): was the start of work (09:00, 10:00, 08:30, fallback 10:00), now 11:00 clamped into [start, end − 1 h] — the anchors moved (11:00 morning, 19:30 evening).
     const at = (hours: Hours) => hhmm(upToThird(cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: [], ...hours }), amman(3, 14)).dueAt!);
-    expect(at({ workHoursStart: '09:00', workHoursEnd: '17:00' })).toBe('2026-11-04 09:00');
-    expect(at({ workHoursStart: '10:00', workHoursEnd: '22:00' })).toBe('2026-11-04 10:00');
-    expect(at({ workHoursStart: '08:30', workHoursEnd: '16:00' })).toBe('2026-11-04 08:30');
-    expect(at({})).toBe('2026-11-04 10:00');
-    expect(at({ workHoursStart: 'garbage', workHoursEnd: '17:00' })).toBe('2026-11-04 10:00');
-    expect(at({ workHoursStart: '22:00', workHoursEnd: '06:00' })).toBe('2026-11-04 10:00');
+    expect(at({ workHoursStart: '09:00', workHoursEnd: '17:00' })).toBe('2026-11-04 11:00');
+    expect(at({ workHoursStart: '10:00', workHoursEnd: '22:00' })).toBe('2026-11-04 11:00');
+    expect(at({ workHoursStart: '08:30', workHoursEnd: '16:00' })).toBe('2026-11-04 11:00');
+    expect(at({ workHoursStart: '12:30', workHoursEnd: '20:15' })).toBe('2026-11-04 12:30');
+    expect(at({ workHoursStart: '09:00', workHoursEnd: '11:30' })).toBe('2026-11-04 10:30');
+    expect(at({})).toBe('2026-11-04 11:00');
+    expect(at({ workHoursStart: 'garbage', workHoursEnd: '17:00' })).toBe('2026-11-04 11:00');
+    expect(at({ workHoursStart: '22:00', workHoursEnd: '06:00' })).toBe('2026-11-04 11:00');
   });
 });
 
-describe('#4 → #5: the first 18:00 strictly after on a working day, and never less than 3 hours (elapsed) later', () => {
+describe('#4 → #5: the first 19:30 strictly after on a working day, and never less than 3 hours (elapsed) later', () => {
+  // UPDATED 2026-11-18 (request C2): was 18:00 (cliff at 15:00, strictly-after at 18:00), now 19:30 (cliff at 16:30, strictly-after at 19:30) — the anchors moved (11:00 morning, 19:30 evening).
   it.each([
     ['17:59:59.999 (the floor: 20:59:59.999)', [10, 17, 59, 59, 999], '2026-11-10 20:59'],
-    ['18:00:00.000 (strictly after → tomorrow)', [10, 18, 0, 0, 0], '2026-11-11 18:00'],
-    ['18:00:00.001', [10, 18, 0, 0, 1], '2026-11-11 18:00'],
-    ['23:59', [10, 23, 59, 0, 0], '2026-11-11 18:00'],
-    ['00:00', [10, 0, 0, 0, 0], '2026-11-10 18:00'],
-    ['09:00', [10, 9, 0, 0, 0], '2026-11-10 18:00'],
-    ['14:59:59.999 (a millisecond under 3 h to 18:00)', [10, 14, 59, 59, 999], '2026-11-10 18:00'],
-    ['15:00:00.000 (EXACTLY 3 h to 18:00: the floor equals the anchor)', [10, 15, 0, 0, 0], '2026-11-10 18:00'],
-    ['16:30 (the floor: 19:30)', [10, 16, 30, 0, 0], '2026-11-10 19:30'],
+    ['18:00:00.000 (before the anchor, but the floor 21:00 binds)', [10, 18, 0, 0, 0], '2026-11-10 21:00'],
+    ['18:59:59.999 (the floor 21:59:59.999 is still inside, the end is exclusive)', [10, 18, 59, 59, 999], '2026-11-10 21:59'],
+    ['19:00:00.000 (the floor is exactly the end 22:00: outside → tomorrow’s 19:30)', [10, 19, 0, 0, 0], '2026-11-11 19:30'],
+    ['19:30:00.000 (strictly after → tomorrow)', [10, 19, 30, 0, 0], '2026-11-11 19:30'],
+    ['19:30:00.001', [10, 19, 30, 0, 1], '2026-11-11 19:30'],
+    ['23:59', [10, 23, 59, 0, 0], '2026-11-11 19:30'],
+    ['00:00', [10, 0, 0, 0, 0], '2026-11-10 19:30'],
+    ['09:00', [10, 9, 0, 0, 0], '2026-11-10 19:30'],
+    ['16:29:59.999 (a millisecond under 3 h to 19:30)', [10, 16, 29, 59, 999], '2026-11-10 19:30'],
+    ['16:30:00.000 (EXACTLY 3 h to 19:30: the floor equals the anchor)', [10, 16, 30, 0, 0], '2026-11-10 19:30'],
+    ['17:00 (the floor: 20:00)', [10, 17, 0, 0, 0], '2026-11-10 20:00'],
   ] as const)('#4 at %s → %s', (_n, [d, h, mi, s, m], due) => {
     expect(hhmm(upToFourth(cal(), amman(d, h, mi, s, m)).dueAt!)).toBe(due);
   });
 
-  it('#4 at 15:00:00.001 → the floor binds: the due is #4 + 3 h to the millisecond (18:00:00.001)', () => {
-    const t4 = amman(10, 15, 0, 0, 1);
+  it('#4 at 16:30:00.001 → the floor binds: the due is #4 + 3 h to the millisecond (19:30:00.001)', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 15:00:00.001 → 18:00:00.001, now 16:30:00.001 → 19:30:00.001 — the anchors moved (11:00 morning, 19:30 evening).
+    const t4 = amman(10, 16, 30, 0, 1);
     expect(upToFourth(cal(), t4).dueAt).toEqual(ms(t4, CADENCE_FLOORS_MS.beforeFifth));
-    expect(upToFourth(cal(), t4).dueAt).toEqual(amman(10, 18, 0, 0, 1));
+    expect(upToFourth(cal(), t4).dueAt).toEqual(amman(10, 19, 30, 0, 1));
   });
 
   it('a #4 counted at 17:55 makes #5 due three hours later, 20:55 (the planner’s floor reverses the old «five minutes later»)', () => {
@@ -417,17 +440,19 @@ describe('#4 → #5: the first 18:00 strictly after on a working day, and never 
     expect(s.dueAt).toEqual(amman(10, 20, 55));
   });
 
-  it('a late #4 (the morning after it was due) is still due at that evening’s 18:00', () => {
+  it('a late #4 (the morning after it was due) is still due at that evening’s 19:30', () => {
+    // UPDATED 2026-11-18 (request C2): was 18:00, now 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const s = chain(cal(), [amman(3, 10), amman(3, 10, 30), amman(3, 12, 30), amman(5, 8)]);
-    expect(hhmm(s.dueAt!)).toBe('2026-11-05 18:00');
+    expect(hhmm(s.dueAt!)).toBe('2026-11-05 19:30');
   });
 
-  it('Auckland, Chatham and Kathmandu read 18:00 on the intended local date', () => {
+  it('Auckland, Chatham and Kathmandu read 19:30 on the intended local date', () => {
+    // UPDATED 2026-11-18 (request C2): was 18:00, now 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     for (const tz of ['Pacific/Auckland', 'Pacific/Chatham', 'Asia/Kathmandu', 'Australia/Lord_Howe', 'Asia/Beirut']) {
       const c = cal(tz, new Date('2026-01-01T00:00:00Z'));
       for (const [mo, d] of [[3, 29], [4, 5], [9, 27], [10, 25], [11, 1]] as const) {
         const s = upToFourth(c, local(tz, 2026, mo, d, 12));
-        expect(hhmm(s.dueAt!, tz)).toBe(`2026-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')} 18:00`);
+        expect(hhmm(s.dueAt!, tz)).toBe(`2026-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')} 19:30`);
       }
     }
   });
@@ -436,45 +461,49 @@ describe('#4 → #5: the first 18:00 strictly after on a working day, and never 
 describe('rest days: #4 and #5 never land on one (Jordan’s live week: Friday and Saturday off)', () => {
   const rest = cal(AMMAN, SINCE, REST_FRI_SAT);
 
+  // UPDATED 2026-11-18 (request C2): was 10:00 (Thursday 14:00 → Sunday 68 h, Thursday 23:50 → 58 h), now 11:00 (69 h, 59 h) — the anchors moved (11:00 morning, 19:30 evening).
   it.each([
-    ['T3 Thursday 14:00 → Sunday 10:00 (68 h)', [19, 14, 0], '2026-11-22 10:00'],
-    ['T3 Wednesday 23:50 → Thursday 10:00', [18, 23, 50], '2026-11-19 10:00'],
-    ['T3 Thursday 23:50 → Sunday 10:00 (58 h)', [19, 23, 50], '2026-11-22 10:00'],
-    ['T3 Friday 10:00 (pressed ON a rest day) → Sunday 10:00', [20, 10, 0], '2026-11-22 10:00'],
-    ['T3 Saturday 15:00 → Sunday 10:00', [21, 15, 0], '2026-11-22 10:00'],
-    ['T3 Sunday 00:30 (8 h to 08:30) → Sunday 10:00', [22, 0, 30], '2026-11-22 10:00'],
-    ['T3 Sunday 14:00 → Monday 10:00 (no rest day in the way)', [22, 14, 0], '2026-11-23 10:00'],
+    ['T3 Thursday 14:00 → Sunday 11:00 (69 h)', [19, 14, 0], '2026-11-22 11:00'],
+    ['T3 Wednesday 23:50 → Thursday 11:00', [18, 23, 50], '2026-11-19 11:00'],
+    ['T3 Thursday 23:50 → Sunday 11:00 (59 h)', [19, 23, 50], '2026-11-22 11:00'],
+    ['T3 Friday 10:00 (pressed ON a rest day) → Sunday 11:00', [20, 10, 0], '2026-11-22 11:00'],
+    ['T3 Saturday 15:00 → Sunday 11:00', [21, 15, 0], '2026-11-22 11:00'],
+    ['T3 Sunday 00:30 (8 h to 08:30) → Sunday 11:00', [22, 0, 30], '2026-11-22 11:00'],
+    ['T3 Sunday 14:00 → Monday 11:00 (no rest day in the way)', [22, 14, 0], '2026-11-23 11:00'],
   ] as const)('#4: %s', (_n, [d, h, mi], due) => {
     expect(hhmm(upToThird(rest, amman(d, h, mi)).dueAt!)).toBe(due);
   });
 
+  // UPDATED 2026-11-18 (request C2): was Sunday 18:00, now Sunday 19:30 — the anchors moved (11:00 morning, 19:30 evening); Thursday 16:30's floor now equals the anchor.
   it.each([
-    ['T4 Thursday 16:30 → Thursday 19:30 (the 3 h floor, a working day)', [19, 16, 30], '2026-11-19 19:30'],
-    ['T4 Thursday 19:00 → Sunday 18:00 (Friday and Saturday skipped)', [19, 19, 0], '2026-11-22 18:00'],
-    ['T4 Friday 10:30 (a late press on a rest day) → Sunday 18:00', [20, 10, 30], '2026-11-22 18:00'],
-    ['T4 Sunday 10:00 → Sunday 18:00', [22, 10, 0], '2026-11-22 18:00'],
+    ['T4 Thursday 16:30 → Thursday 19:30 (the 3 h floor IS the anchor, a working day)', [19, 16, 30], '2026-11-19 19:30'],
+    ['T4 Thursday 19:00 → Sunday 19:30 (the floor 22:00 is the end; Friday and Saturday skipped)', [19, 19, 0], '2026-11-22 19:30'],
+    ['T4 Friday 10:30 (a late press on a rest day) → Sunday 19:30', [20, 10, 30], '2026-11-22 19:30'],
+    ['T4 Sunday 11:00 → Sunday 19:30', [22, 11, 0], '2026-11-22 19:30'],
   ] as const)('#5: %s', (_n, [d, h, mi], due) => {
     expect(hhmm(upToFourth(rest, amman(d, h, mi)).dueAt!)).toBe(due);
   });
 
-  it('a press on a rest day before its (Sunday) due is early; at Sunday 10:00 to the millisecond it counts', () => {
+  it('a press on a rest day before its (Sunday) due is early; at Sunday 11:00 to the millisecond it counts', () => {
+    // UPDATED 2026-11-18 (request C2): was Sunday 10:00, now Sunday 11:00 — the anchors moved (11:00 morning, 19:30 evening).
     const s3 = upToThird(rest, amman(19, 14));
     expect(cadenceStep(s3, amman(20, 10), rest).counted).toBe(false);
     expect(cadenceStep(s3, amman(21, 12), rest).counted).toBe(false);
-    expect(cadenceStep(s3, amman(22, 9, 59, 59, 999), rest).counted).toBe(false);
-    expect(cadenceStep(s3, amman(22, 10), rest).counted).toBe(true);
+    expect(cadenceStep(s3, amman(22, 10, 59, 59, 999), rest).counted).toBe(false);
+    expect(cadenceStep(s3, amman(22, 11), rest).counted).toBe(true);
   });
 
-  it('a Thursday-evening chain with Friday and Saturday off, step by step: #1 Thu 20:00 → #2 Thu 20:30 → #3 waits for SUNDAY 10:00 → #4 Monday 10:00 (8 h after Sunday’s #3) → #5 Monday 18:00 — it closes over three local days', () => {
+  it('a Thursday-evening chain with Friday and Saturday off, step by step: #1 Thu 20:00 → #2 Thu 20:30 → #3 waits for SUNDAY 10:00 → #4 Monday 11:00 (8 h after Sunday’s #3) → #5 Monday 19:30 — it closes over three local days', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 Monday 10:00 → #5 Monday 18:00, now #4 Monday 11:00 → #5 Monday 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const s1 = chain(rest, [amman(19, 20)]);
     expect(s1.dueAt).toEqual(amman(19, 20, 30)); // inside work time on a working day: exactly +30 min
     const s2 = chain(rest, [amman(19, 20), amman(19, 20, 30)]);
     expect(hhmm(s2.dueAt!)).toBe('2026-11-22 10:00'); // raw Thursday 22:30 is outside work time: Friday and Saturday are rest days, so Sunday’s start
     const s3 = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(22, 10)]);
-    expect(hhmm(s3.dueAt!)).toBe('2026-11-23 10:00'); // Sunday 10:00 + 8 h = 18:00: the first start of work at or after it is Monday’s
-    const s4 = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(22, 10), amman(23, 10)]);
-    expect(hhmm(s4.dueAt!)).toBe('2026-11-23 18:00');
-    const s5 = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(22, 10), amman(23, 10), amman(23, 18)]);
+    expect(hhmm(s3.dueAt!)).toBe('2026-11-23 11:00'); // Sunday 10:00 + 8 h = 18:00: the first morning anchor at or after it is Monday’s
+    const s4 = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(22, 10), amman(23, 11)]);
+    expect(hhmm(s4.dueAt!)).toBe('2026-11-23 19:30');
+    const s5 = chain(rest, [amman(19, 20), amman(19, 20, 30), amman(22, 10), amman(23, 11), amman(23, 19, 30)]);
     expect(s5.days).toBe(3);
     expect(cadenceCloses(s5)).toBe(true);
   });
@@ -521,20 +550,23 @@ describe('rest days: #4 and #5 never land on one (Jordan’s live week: Friday a
     ['an empty list', []],
     ['all seven days (nowhere to skip to)', [0, 1, 2, 3, 4, 5, 6]],
     ['only invalid entries (7, -1, 5.5, "x")', [7, -1, 5.5, 'x'] as unknown as number[]],
-  ])('%s skips nothing: Thursday 14:00 → Friday 10:00', (_n, days) => {
-    expect(hhmm(upToThird(cal(AMMAN, SINCE, days), amman(19, 14)).dueAt!)).toBe('2026-11-20 10:00');
+  ])('%s skips nothing: Thursday 14:00 → Friday 11:00', (_n, days) => {
+    // UPDATED 2026-11-18 (request C2): was Friday 10:00, now Friday 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+    expect(hhmm(upToThird(cal(AMMAN, SINCE, days), amman(19, 14)).dueAt!)).toBe('2026-11-20 11:00');
     expect(hhmm(upToFourth(cal(AMMAN, SINCE, days), amman(20, 17, 55)).dueAt!)).toBe('2026-11-20 20:55');
   });
 
   it('invalid entries beside valid ones are dropped, the valid ones stay: [5, 6, 9, -1] reads as [5, 6]', () => {
-    expect(hhmm(upToThird(cal(AMMAN, SINCE, [5, 6, 9, -1]), amman(19, 14)).dueAt!)).toBe('2026-11-22 10:00');
+    // UPDATED 2026-11-18 (request C2): was Sunday 10:00, now Sunday 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+    expect(hhmm(upToThird(cal(AMMAN, SINCE, [5, 6, 9, -1]), amman(19, 14)).dueAt!)).toBe('2026-11-22 11:00');
   });
 
   it('six rest days: the plan terminates on the one working day', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 Saturday 10:00, #5 18:00, now #4 Saturday 11:00, #5 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const sixOff = cal(AMMAN, SINCE, [0, 1, 2, 3, 4, 5]);
-    expect(hhmm(upToThird(sixOff, amman(19, 14)).dueAt!)).toBe('2026-11-21 10:00');
-    expect(hhmm(upToFourth(sixOff, amman(21, 10)).dueAt!)).toBe('2026-11-21 18:00');
-    expect(hhmm(upToFourth(sixOff, amman(21, 19)).dueAt!)).toBe('2026-11-28 18:00');
+    expect(hhmm(upToThird(sixOff, amman(19, 14)).dueAt!)).toBe('2026-11-21 11:00');
+    expect(hhmm(upToFourth(sixOff, amman(21, 11)).dueAt!)).toBe('2026-11-21 19:30');
+    expect(hhmm(upToFourth(sixOff, amman(21, 19)).dueAt!)).toBe('2026-11-28 19:30');
   });
 
   it('six rest days: #2 and #3 wait for the one working day as well (Saturday), and a Saturday inside the window is untouched', () => {
@@ -548,20 +580,22 @@ describe('rest days: #4 and #5 never land on one (Jordan’s live week: Friday a
 describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole plan inside Jordan’s own hours — #5 included (ruling 16)', () => {
   const jordan = cal(AMMAN, SINCE, REST_FRI_SAT, JORDAN_HOURS);
 
-  it('Thursday 16:40 → #2 Sunday 09:00 → #3 Sunday 11:00 → #4 Monday 09:00 → #5 Monday 16:00', () => {
+  it('Thursday 16:40 → #2 Sunday 09:00 → #3 Sunday 11:00 → #4 Monday 11:00 → #5 Monday 16:00', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 Monday 09:00 (Jordan's start), now Monday 11:00 — the anchors moved (11:00 morning, 19:30 evening); Jordan's #5 stays 16:00.
     const s1 = chain(jordan, [amman(19, 16, 40)]);
     expect(hhmm(s1.dueAt!)).toBe('2026-11-22 09:00'); // raw 17:10 is after Jordan’s 17:00
     const s2 = chain(jordan, [amman(19, 16, 40), amman(22, 9)]);
     expect(s2.dueAt).toEqual(amman(22, 11)); // inside: exactly +2 h
     const s3 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11)]);
-    expect(hhmm(s3.dueAt!)).toBe('2026-11-23 09:00'); // the country’s own start of work, 8 h after Sunday 11:00 is 19:00
-    const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 9)]);
+    expect(hhmm(s3.dueAt!)).toBe('2026-11-23 11:00'); // the morning anchor (11:00 inside Jordan’s 09:00-16:00), 8 h after Sunday 11:00 is 19:00
+    const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 11)]);
     // ruling 16: #5 is anchored to Jordan’s own hours — an hour before 17:00 — and no longer lands at 18:00, an hour after Jordan’s work ends
     expect(hhmm(s4.dueAt!)).toBe('2026-11-23 16:00');
   });
 
   it('the whole chain to a close: the fifth is due at 16:00, a press at 16:00 closes the order, one millisecond before does not count', () => {
-    const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 9)]);
+    // UPDATED 2026-11-18 (request C2): was #4 pressed Monday 09:00, now Monday 11:00 — the anchors moved (11:00 morning, 19:30 evening).
+    const s4 = chain(jordan, [amman(19, 16, 40), amman(22, 9), amman(22, 11), amman(23, 11)]);
     expect(cadenceStep(s4, ms(amman(23, 16), -1), jordan).counted).toBe(false);
     const closing = cadenceStep(s4, amman(23, 16), jordan);
     expect(closing.counted).toBe(true);
@@ -597,30 +631,32 @@ describe('Jordan’s live row (09:00-17:00, Friday and Saturday off): the whole 
   });
 });
 
-describe('cadenceEveningAnchor: #5’s clock is min(18:00, end − 1 h), never before the start (ruling 16)', () => {
+describe('cadenceEveningAnchor: #5’s clock is min(19:30, end − 1 h), never before the start (ruling 16, request C2)', () => {
+  // UPDATED 2026-11-18 (request C2): was a cap of 18:00 (Syria/fallback/whole day 18:00, the cap-equality end 19:00, a start after 18:00), now 19:30 (end 20:30, a start after 19:30) — the anchors moved (11:00 morning, 19:30 evening).
   it.each([
-    ['Syria 10:00-22:00', '10:00', '22:00', '18:00'],
+    ['Syria 10:00-22:00', '10:00', '22:00', '19:30'],
     ['Jordan 09:00-17:00', '09:00', '17:00', '16:00'],
-    ['the fallback window (no hours on the row)', CADENCE_WORKDAY_START, CADENCE_WORKDAY_END, '18:00'],
+    ['the fallback window (no hours on the row)', CADENCE_WORKDAY_START, CADENCE_WORKDAY_END, '19:30'],
     ['a 09:00-12:00 day', '09:00', '12:00', '11:00'],
-    ['19:00 end: one hour before is exactly the cap', '08:00', '19:00', '18:00'],
+    ['20:30 end: one hour before is exactly the cap', '08:00', '20:30', '19:30'],
     ['18:59 end: 17:59', '08:00', '18:59', '17:59'],
     ['an odd 08:15-16:45 day', '08:15', '16:45', '15:45'],
     ['a window of exactly one hour: the anchor is the start (end − 1 h = start)', '09:00', '10:00', '09:00'],
     ['a window under an hour: end − 1 h is before the start → the start', '09:00', '09:45', '09:00'],
-    ['a window that starts after 18:00: the cap is before the start → the start', '19:00', '23:00', '19:00'],
+    ['a window that starts after 19:30: the cap is before the start → the start', '20:00', '23:00', '20:00'],
     ['the day’s first hour', '00:00', '00:30', '00:00'],
-    ['the whole day', '00:00', '23:59', '18:00'],
+    ['the whole day', '00:00', '23:59', '19:30'],
   ])('%s → %s…%s anchors at %s', (_n, start, end, want) => {
     expect(cadenceEveningAnchor({ start, end })).toBe(want);
   });
 
   it('through the plan: the same four attempts end in a different #5 under Syria’s and Jordan’s hours — the row’s hours ARE what the plan uses', () => {
+    // UPDATED 2026-11-18 (request C2): was 18:00 for Syria and the fallbacks, now 19:30 — the anchors moved (11:00 morning, 19:30 evening); Jordan stays 16:00.
     const fifth = (hours: Hours) => hhmm(upToFourth(cadenceCalOf(SINCE, { timezone: AMMAN, weekendDays: [], ...hours }), amman(10, 9)).dueAt!);
-    expect(fifth({ workHoursStart: '10:00', workHoursEnd: '22:00' })).toBe('2026-11-10 18:00');
+    expect(fifth({ workHoursStart: '10:00', workHoursEnd: '22:00' })).toBe('2026-11-10 19:30');
     expect(fifth({ workHoursStart: '09:00', workHoursEnd: '17:00' })).toBe('2026-11-10 16:00');
-    expect(fifth({})).toBe('2026-11-10 18:00'); // no readable hours: the fallbacks, so 18:00
-    expect(fifth({ workHoursStart: '22:00', workHoursEnd: '06:00' })).toBe('2026-11-10 18:00'); // a night shift is the fallback too
+    expect(fifth({})).toBe('2026-11-10 19:30'); // no readable hours: the fallbacks, so 19:30
+    expect(fifth({ workHoursStart: '22:00', workHoursEnd: '06:00' })).toBe('2026-11-10 19:30'); // a night shift is the fallback too
   });
 
   it('a 09:00-12:00 day: #4 at 09:00 → #4 + 3 h is exactly the end (outside), so tomorrow 11:00; one millisecond earlier it is inside', () => {
@@ -643,6 +679,34 @@ describe('cadenceEveningAnchor: #5’s clock is min(18:00, end − 1 h), never b
     const c = cal(AMMAN, SINCE, [0, 1, 2, 3, 4, 5], JORDAN_HOURS); // only Saturday works
     expect(hhmm(upToFourth(c, amman(21, 9)).dueAt!)).toBe('2026-11-21 16:00');
     expect(hhmm(upToFourth(c, amman(21, 14)).dueAt!)).toBe('2026-11-28 16:00'); // the floor 17:00 is the end → next Saturday
+  });
+});
+
+describe('cadenceMorningAnchor: #4’s clock is max(start, min(11:00, end − 1 h)) (request C2)', () => {
+  // ADDED 2026-11-18 (request C2): #4 was due at the start of work, now at the morning anchor — the anchors moved (11:00 morning, 19:30 evening).
+  it.each([
+    ['Syria 10:00-22:00', '10:00', '22:00', '11:00'],
+    ['Jordan 09:00-17:00', '09:00', '17:00', '11:00'],
+    ['the fallback window (no hours on the row)', CADENCE_WORKDAY_START, CADENCE_WORKDAY_END, '11:00'],
+    ['a start after 11:00 → the start', '12:30', '20:15', '12:30'],
+    ['a day that ends before 12:00 → an hour before its end', '09:00', '11:30', '10:30'],
+    ['a window under an hour → the start', '09:00', '09:45', '09:00'],
+  ])('%s → %s…%s anchors at %s', (_n, start, end, want) => {
+    expect(cadenceMorningAnchor({ start, end })).toBe(want);
+  });
+
+  it('the morning anchor is never after the evening anchor, and both are inside [start, end)', () => {
+    const windows = [
+      ['10:00', '22:00'], ['09:00', '17:00'], ['12:30', '20:15'], ['09:00', '11:30'], ['09:00', '09:45'], ['09:00', '12:00'],
+      ['20:00', '23:00'], ['00:00', '23:59'], ['00:00', '00:30'], ['08:15', '16:45'], ['11:00', '12:00'], ['19:45', '21:00'],
+    ] as const;
+    for (const [start, end] of windows) {
+      const morning = cadenceMorningAnchor({ start, end });
+      const evening = cadenceEveningAnchor({ start, end });
+      expect(morning <= evening, `${start}-${end}: ${morning} vs ${evening}`).toBe(true);
+      expect(morning >= start && morning < end).toBe(true);
+      expect(evening >= start && evening < end).toBe(true);
+    }
   });
 });
 
@@ -729,10 +793,11 @@ describe('five attempts over two local days, even on a 25-hour DST day (and the 
     return s;
   }
 
+  // UPDATED 2026-11-18 (request C2): was #4 at the next day's 10:00, now 11:00 — the anchors moved (11:00 morning, 19:30 evening).
   it.each([
-    ['Europe/Berlin', [2026, 10, 25], '2026-10-26 10:00'],
-    ['America/New_York', [2026, 11, 1], '2026-11-02 10:00'],
-    ['Pacific/Auckland', [2026, 4, 5], '2026-04-06 10:00'],
+    ['Europe/Berlin', [2026, 10, 25], '2026-10-26 11:00'],
+    ['America/New_York', [2026, 11, 1], '2026-11-02 11:00'],
+    ['Pacific/Auckland', [2026, 4, 5], '2026-04-06 11:00'],
   ] as const)('%s: #1 at 00:00 on the long day, #2 and #3 wait for work time (10:00, 12:00) → #4 is on the NEXT local day, five counted, two days, it closes', (tz, [y, mo, d], due4) => {
     const c = cal(tz, new Date('2026-01-01T00:00:00Z'));
     const t1 = local(tz, y, mo, d, 0, 0);
@@ -745,7 +810,8 @@ describe('five attempts over two local days, even on a 25-hour DST day (and the 
     expect(cadenceCloses(s)).toBe(true);
   });
 
-  it('the first-day guard, on a state the steps can no longer produce (defence in depth): #1 00:00, #2 00:30, #3 02:30 CEST on Berlin’s 25-hour day → #4 is pushed to the NEXT day’s 10:00, not 10:00 CET on the same day', () => {
+  it('the first-day guard, on a state the steps can no longer produce (defence in depth): #1 00:00, #2 00:30, #3 02:30 CEST on Berlin’s 25-hour day → #4 is pushed to the NEXT day’s 11:00, not 11:00 CET on the same day', () => {
+    // UPDATED 2026-11-18 (request C2): was the next day's 10:00 CET (09:00Z), now 11:00 CET (10:00Z) — the anchors moved (11:00 morning, 19:30 evening).
     // With #2 and #3 inside work time, #4 (8 h or more after #3, and #3 not before the start of work) can never fall on #1's local day through `cadenceStep` itself: the guard stays
     // because the planner confirmed it, and because a state that did not come from the steps (older data, a hand-built one) must still cost the order a day. So it is exercised by hand.
     const BER = 'Europe/Berlin';
@@ -757,9 +823,9 @@ describe('five attempts over two local days, even on a 25-hour DST day (and the 
     const hand: CadenceState = { counted: [t1, t2], days: 1, dueAt: null };
     const r = cadenceStep(hand, t3, c);
     expect(r.counted).toBe(true);
-    // 8 h after 02:30 CEST is 09:30 CET: without the guard #4 would be due at 10:00 CET on the 25th, #1's own day
-    expect(hhmm(r.next.dueAt!, BER)).toBe('2026-10-26 10:00');
-    expect(r.next.dueAt!.toISOString()).toBe('2026-10-26T09:00:00.000Z');
+    // 8 h after 02:30 CEST is 09:30 CET: without the guard #4 would be due at 11:00 CET on the 25th, #1's own day
+    expect(hhmm(r.next.dueAt!, BER)).toBe('2026-10-26 11:00');
+    expect(r.next.dueAt!.toISOString()).toBe('2026-10-26T10:00:00.000Z');
   });
 
   const ZONES = ['Asia/Amman', 'Asia/Damascus', 'Europe/Berlin', 'America/New_York', 'Asia/Beirut', 'Australia/Lord_Howe', 'Pacific/Auckland', 'Pacific/Chatham', 'Asia/Kathmandu'];
@@ -816,8 +882,9 @@ describe('the floor, the cap and the early rule', () => {
   });
 
   it('the sixth press after the fifth never counts, and counted stays 5', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 at 10:00 and #5 at 18:00, now 11:00 and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const t = amman(3, 11);
-    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)]);
+    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11), amman(4, 19, 30)]);
     expect(s5.counted).toHaveLength(5);
     expect(s5.dueAt).toBeNull();
     const six = cadenceStep(s5, amman(5, 12), cal());
@@ -904,10 +971,11 @@ describe('cadenceState: the lines of an order, folded', () => {
 
 describe('cadenceCloses', () => {
   it('four counted: no; five over two days: yes; five on ONE day (hand-built): no', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 at 10:00 and #5 at 18:00, now 11:00 and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const t = amman(3, 11);
-    const s4 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)]);
+    const s4 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11)]);
     expect(cadenceCloses(s4)).toBe(false);
-    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)]);
+    const s5 = chain(cal(), [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11), amman(4, 19, 30)]);
     expect(cadenceCloses(s5)).toBe(true);
     expect(cadenceCloses({ counted: Array.from({ length: 5 }, () => t), days: 1, dueAt: null })).toBe(false);
   });
@@ -938,14 +1006,16 @@ describe('cadencePress: the door’s question', () => {
     const first = cadencePress([], { at: t, result: 'NO_ANSWER' }, cal());
     expect(first).toMatchObject({ counted: true, closes: false });
     expect(first.dueAt).toEqual(ms(t, 1_800_000));
-    const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
-    const fifth = cadencePress(four, { at: amman(4, 18), result: 'UNREACHABLE' }, cal());
+    // UPDATED 2026-11-18 (request C2): was #4 at 10:00 and #5 at 18:00, now 11:00 and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
+    const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
+    const fifth = cadencePress(four, { at: amman(4, 19, 30), result: 'UNREACHABLE' }, cal());
     expect(fifth).toMatchObject({ counted: true, dueAt: null, closes: true });
   });
 
   it('a sixth no-answer after a refused close asks the close again', () => {
+    // UPDATED 2026-11-18 (request C2): was #4 at 10:00 and #5 at 18:00, now 11:00 and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
     const t = amman(3, 11);
-    const five = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10), amman(4, 18)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
+    const five = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11), amman(4, 19, 30)].map((d, i) => row(d, 'NO_ANSWER', i + 1));
     const sixth = cadencePress(five, { at: amman(5, 10), result: 'NO_ANSWER' }, cal());
     expect(sixth).toMatchObject({ counted: false, closes: true });
   });
@@ -1123,8 +1193,9 @@ describe('cadenceDesk: where a held order stands, on the server’s clock', () =
   const row = (createdAt: Date, attemptNumber: number, result = 'NO_ANSWER') => ({ createdAt, result, attemptNumber });
   const t = amman(3, 11);
   const one = [row(t, 1)];
-  const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 10)].map((d, i) => row(d, i + 1));
-  const five = [...four, row(amman(4, 18), 5)];
+  // UPDATED 2026-11-18 (request C2): was #4 at 10:00 and #5 at 18:00, now 11:00 and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
+  const four = [t, ms(t, 1_800_000), ms(t, 1_800_000 + 7_200_000), amman(4, 11)].map((d, i) => row(d, i + 1));
+  const five = [...four, row(amman(4, 19, 30), 5)];
 
   it('a due exactly NOW is due; one millisecond before it is waiting (and a press then would not count)', () => {
     const due = ms(t, 1_800_000);
@@ -1140,7 +1211,7 @@ describe('cadenceDesk: where a held order stands, on the server’s clock', () =
   });
 
   it('closesOnNext: four counted with the due reached → true; with the due ahead → false; five counted and still open → true (a press asks again)', () => {
-    const dueFour = amman(4, 18);
+    const dueFour = amman(4, 19, 30);
     expect(cadenceDesk(four, cal(), dueFour).closesOnNext).toBe(true);
     expect(cadenceDesk(four, cal(), ms(dueFour, -1)).closesOnNext).toBe(false);
     expect(cadenceDesk(four, cal(), amman(4, 12)).closesOnNext).toBe(false);
@@ -1266,11 +1337,12 @@ describe('cadenceCardWords: the line a held card prints', () => {
     expect(cadenceCardWords({ counted: 5, due: false, waiting: false, dueAt: null }, t, AMMAN)).toBeNull();
   });
 
-  it('Western digits, never «جولة», and the due it prints is the constants’ own clock: 10:00 for #4, 18:00 for #5', () => {
-    const s = cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 10) }, amman(3, 12), AMMAN)!;
+  it('Western digits, never «جولة», and the due it prints is the constants’ own clock: 11:00 for #4, 19:30 for #5', () => {
+    // UPDATED 2026-11-18 (request C2): was 10:00 (CADENCE_WORKDAY_START) for #4 and 18:00 for #5, now 11:00 (CADENCE_MORNING_AT) and 19:30 — the anchors moved (11:00 morning, 19:30 evening).
+    const s = cadenceCardWords({ counted: 3, due: false, waiting: true, dueAt: amman(4, 11) }, amman(3, 12), AMMAN)!;
     expect(s).not.toMatch(/[٠-٩A-Za-z]/);
     expect(s).not.toContain('جولة');
-    expect(s).toContain(CADENCE_WORKDAY_START);
-    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 18) }, t, AMMAN)).toContain(CADENCE_EVENING_FROM);
+    expect(s).toContain(CADENCE_MORNING_AT);
+    expect(cadenceCardWords({ counted: 4, due: false, waiting: true, dueAt: amman(3, 19, 30) }, t, AMMAN)).toContain(CADENCE_EVENING_FROM);
   });
 });

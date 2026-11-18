@@ -53,7 +53,8 @@ describe('the figures screens open on today', () => {
   it('the audit log and the performance board start from todayRange; the dashboard and the campaigns start on the «today» period', () => {
     expect(read('src/components/screens/AuditScreen.tsx')).toMatch(/useState<Range>\(todayRange\)/);
     expect(read('src/components/screens/PerformanceScreen.tsx')).toMatch(/useState\(todayRange\)/);
-    expect(read('src/components/screens/DashboardScreen.tsx')).toMatch(/'all'>\('today'\)/);
+    // 18/11 (R9): the dashboard holds the kit box's option now (`FIVE_OPTIONS`), opening on «اليوم». Was its own pills, `'all'>('today')`.
+    expect(read('src/components/screens/DashboardScreen.tsx')).toMatch(/useState<DateOption>\('today'\)/);
     expect(read('src/components/screens/CampaignsScreen.tsx')).toMatch(/useState<string>\('today'\)/);
   });
 });

@@ -171,6 +171,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/dashboard/DailyChart.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 3,
+    "cards": 3,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/dashboard/DetailsLinks.tsx": {
     "buttons": 0,
     "inputs": 0,
@@ -255,9 +265,9 @@
     "buttons": 3,
     "inputs": 6,
     "columns": 3,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
-    "icons": 2,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   },
@@ -265,7 +275,7 @@
     "buttons": 2,
     "inputs": 4,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 0,
     "links": 0,
@@ -1159,7 +1169,7 @@
     "buttons": 6,
     "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 4,
     "links": 0,
@@ -1219,20 +1229,20 @@
     "buttons": 4,
     "inputs": 10,
     "columns": 5,
-    "cards": 0,
+    "cards": 2,
     "modals": 2,
     "icons": 4,
     "links": 0,
     "tabs": 0
   },
   "src/components/screens/DashboardScreen.tsx": {
-    "buttons": 3,
+    "buttons": 2,
     "inputs": 0,
-    "columns": 6,
-    "cards": 4,
+    "columns": 0,
+    "cards": 1,
     "modals": 0,
-    "icons": 6,
-    "links": 3,
+    "icons": 2,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/DiscountAlertsScreen.tsx": {
@@ -1289,7 +1299,7 @@
     "buttons": 9,
     "inputs": 4,
     "columns": 0,
-    "cards": 1,
+    "cards": 5,
     "modals": 1,
     "icons": 1,
     "links": 2,
@@ -1377,24 +1387,27 @@
     "tabs": 0
   },
   "src/components/screens/ManufacturingScreen.tsx": {
-    "buttons": 9,
+    "buttons": 8,
     "inputs": 10,
     "columns": 12,
-    "cards": 2,
+    "cards": 4,
     "modals": 1,
     "icons": 6,
     "links": 4,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/OrdersScreen.tsx": {
-    "buttons": 19,
-    "inputs": 11,
+    "buttons": 18,
+    "inputs": 9,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 19,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 2
   },
   "src/components/screens/PenaltiesScreen.tsx": {
     "buttons": 7,
@@ -1410,10 +1423,10 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 12,
-    "cards": 6,
+    "cards": 8,
     "modals": 0,
-    "icons": 7,
-    "links": 0,
+    "icons": 9,
+    "links": 2,
     "tabs": 1
   },
   "src/components/screens/PermissionsScreen.tsx": {
@@ -1717,14 +1730,15 @@
     "tabs": 0
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
-    "buttons": 7,
+    "buttons": 4,
     "inputs": 3,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
-    "icons": 17,
+    "icons": 16,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/screens/WhatsAppSettingsScreen.tsx": {
     "buttons": 2,
@@ -2287,14 +2301,15 @@
     "tabs": 0
   },
   "src/components/settings/MenuOrderCard.tsx": {
-    "buttons": 12,
-    "inputs": 4,
+    "buttons": 4,
+    "inputs": 1,
     "columns": 0,
-    "cards": 3,
+    "cards": 2,
     "modals": 0,
-    "icons": 12,
+    "icons": 7,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 3
   },
   "src/components/settings/MessageTemplatesCard.tsx": {
     "buttons": 5,
@@ -2303,26 +2318,6 @@
     "cards": 0,
     "modals": 0,
     "icons": 6,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/settings/NoAnswerReturnsCard.tsx": {
-    "buttons": 0,
-    "inputs": 1,
-    "columns": 0,
-    "cards": 1,
-    "modals": 0,
-    "icons": 0,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/settings/NoAnswerRoundsCard.tsx": {
-    "buttons": 0,
-    "inputs": 1,
-    "columns": 0,
-    "cards": 1,
-    "modals": 0,
-    "icons": 0,
     "links": 0,
     "tabs": 0
   },
@@ -2399,6 +2394,16 @@
   "src/components/settings/QueuePriorityCard.tsx": {
     "buttons": 0,
     "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/settings/RoleMenuPanel.tsx": {
+    "buttons": 0,
+    "inputs": 2,
     "columns": 0,
     "cards": 1,
     "modals": 0,

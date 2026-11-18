@@ -20,6 +20,7 @@ import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { arDateShort, arDateTime } from '@/lib/format';
 import { CALL_OPENED_EVENT } from '@/lib/contact-line';
 import { CALL_PROOF_WORDS, secondsLeft, type CallProofState } from '@/lib/call-proof-words';
+import { NO_ANSWER_NOT_A_POSTPONE_HINT } from '@/lib/postpone-reasons';
 import { RiCalendarScheduleLine, RiCheckLine, RiCloseCircleLine, RiPhoneLine, RiPhoneLockLine, RiRefreshLine, RiTimerLine } from '@remixicon/react';
 
 // The list and its words live with the rule, in `confirmation-workflow`. A
@@ -558,6 +559,8 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
                 {ar ? 'تحديد موعد المتابعة إلزامي لهذا الإجراء.' : 'A next follow-up date is required for this action.'}
               </p>
               <Input label={ar ? 'موعد المتابعة *' : 'Next Follow-Up *'} type="datetime-local" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)} />
+              {/* Request C2: with the plan on (the proof's answer is here only then), a date is never «لا يرد» — this form sends no such reason; the line says where «لا يرد» goes. */}
+              {proof && <p className="text-note text-[var(--sys-muted-foreground)]">{NO_ANSWER_NOT_A_POSTPONE_HINT}</p>}
               <Textarea label={ar ? 'ملاحظة المتابعة' : 'Follow-up note'} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
             </>
           )}

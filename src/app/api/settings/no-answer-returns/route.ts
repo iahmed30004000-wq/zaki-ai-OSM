@@ -3,10 +3,10 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { logAudit } from '@/lib/audit';
 import { roundsOn } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
-import { forgetReturnsSwitch, returnsSwitch, saveReturnsSwitch } from '@/lib/no-answer-returns-switch';
+import { forgetReturnsSwitch, returnsSwitch } from '@/lib/no-answer-returns-switch';
+import { RETIRED_SWITCH_AR, RETIRED_SWITCH_CODE } from '@/lib/retired-switch';
 
 /**
  * GET/PUT /api/settings/no-answer-returns — «الطلب يرجع للطابور فوراً (تجريبي)», the owner's switch (`no-answer-returns.ts`).
@@ -20,12 +20,14 @@ import { forgetReturnsSwitch, returnsSwitch, saveReturnsSwitch } from '@/lib/no-
  * switch itself on the day the rounds do. Turning it OFF is always allowed.
  *
  * The body is `{ enabled: boolean }` and nothing else: the moment it went on is the server's clock, never the client's.
+ *
+ * REQUEST C2 (18/11): THE CARD LEFT «قواعد مركز التأكيد» AND THIS DOOR TAKES NO MORE WRITES — on or off. GET is as it was; PUT asks who you are and what you hold (as
+ * before) and then refuses with 409 `RULE_RETIRED`: nothing is saved, nothing is audited (`retired-switch.ts`). The stored value is left as it is.
  */
 function view(sw: { enabled: boolean; enabledAt: Date | null }) {
   return { enabled: sw.enabled, enabledAt: sw.enabledAt ? sw.enabledAt.toISOString() : null };
 }
 
-const ROUNDS_OFF_MESSAGE = 'لازم «نظام الجولات» يكون شغّال أول — هالمفتاح ما بيشتغل إلا معه.';
 
 export async function GET() {
   try {
@@ -42,37 +44,11 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT() {
   try {
-    const { user, companyId } = await requireContext();
+    await requireContext();
     await requirePermission('settings.manage');
-
-    const body = (await req.json().catch(() => null)) as { enabled?: unknown } | null;
-    if (!body || typeof body.enabled !== 'boolean' || Object.keys(body).some((k) => k !== 'enabled')) {
-      const errorAr = 'أرسل «مفعّل» نعم أو لا فقط.';
-      return NextResponse.json({ error: errorAr, errorAr, code: 'INVALID_SWITCH' }, { status: 400 });
-    }
-
-    const rounds = roundsOn(await roundsSwitch(db, companyId));
-    if (body.enabled && !rounds) {
-      return NextResponse.json({ error: ROUNDS_OFF_MESSAGE, errorAr: ROUNDS_OFF_MESSAGE, code: 'ROUNDS_OFF' }, { status: 409 });
-    }
-
-    forgetReturnsSwitch(companyId);
-    const before = await returnsSwitch(db, companyId);
-    const saved = await saveReturnsSwitch(companyId, body.enabled);
-
-    await logAudit({
-      companyId,
-      userId: user.id,
-      action: 'NO_ANSWER_RETURNS_SWITCHED',
-      entity: 'Company',
-      entityId: companyId,
-      previousData: view(before),
-      newData: view(saved),
-    });
-
-    return NextResponse.json({ returns: view(saved), roundsOn: rounds });
+    return NextResponse.json({ error: RETIRED_SWITCH_AR, errorAr: RETIRED_SWITCH_AR, code: RETIRED_SWITCH_CODE }, { status: 409 });
   } catch (error) {
     return apiErrorResponse(error);
   }

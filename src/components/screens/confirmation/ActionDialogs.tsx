@@ -8,7 +8,7 @@ import { ProductPicker } from '@/components/ui/ProductPicker';
 import { useProducts } from '@/hooks/useProducts';
 import { useRegions } from '@/hooks/useRegions';
 import { Modal } from '@/components/ui/Modal';
-import { POSTPONE_REASONS } from '@/lib/postpone-reasons';
+import { NO_ANSWER_NOT_A_POSTPONE_HINT, POSTPONE_REASONS } from '@/lib/postpone-reasons';
 import { Button } from '@/components/ui/Button';
 
 /**
@@ -97,6 +97,7 @@ export function PostponeDialog({
   postponeCount,
   busy,
   noAnswerLock,
+  planOn,
   onClose,
   onSubmit,
 }: {
@@ -104,6 +105,11 @@ export function PostponeDialog({
   orderNumber: string;
   postponeCount: number;
   busy?: boolean;
+  /**
+   * Request C2: «إثبات المكالمات وجدول المحاولات» is on — the reason «لا يرد» is not offered at all (the door refuses it with 409), and one line says why. Absent/false =
+   * today's dialog. The desk passes its `proofOn` (the same switch).
+   */
+  planOn?: boolean;
   /**
    * «إثبات المكالمات» on: why the reason «لا يرد» cannot be picked yet (no «اتصال» press of hers, or the thirty seconds are not over) — the same sentence the
    * card prints, given by the screen. The option is disabled and the sentence shown; the server refuses it anyway. Absent/null = today's dialog.
@@ -135,7 +141,7 @@ export function PostponeDialog({
         id={formId}
         onSubmit={(e) => {
           e.preventDefault();
-          if (noAnswerLock && value.reason === 'NO_ANSWER') return;
+          if ((noAnswerLock || planOn) && value.reason === 'NO_ANSWER') return;
           onSubmit(value);
         }}
         className="space-y-3"
@@ -175,13 +181,17 @@ export function PostponeDialog({
             onChange={(e) => setValue({ ...value, reason: e.target.value })}
             className={FIELD_CLS}
           >
-            {POSTPONE_REASONS.map((r) => (
+            {POSTPONE_REASONS.filter((r) => !planOn || r.value !== 'NO_ANSWER').map((r) => (
               <option key={r.value} value={r.value} disabled={!!noAnswerLock && r.value === 'NO_ANSWER'}>
                 {r.label}
               </option>
             ))}
           </select>
-          {noAnswerLock && <p className="mt-1 text-xs text-[var(--sys-warning)]">{noAnswerLock}</p>}
+          {planOn ? (
+            <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">{NO_ANSWER_NOT_A_POSTPONE_HINT}</p>
+          ) : (
+            noAnswerLock && <p className="mt-1 text-xs text-[var(--sys-warning)]">{noAnswerLock}</p>
+          )}
         </Field>
         <Field label="ملاحظة (اختياري)">
           <input
