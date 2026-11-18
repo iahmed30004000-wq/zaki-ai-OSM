@@ -19,6 +19,8 @@ export async function activeStores() {
       id: true,
       companyId: true,
       countryId: true,
+      // The bench mark (`test-store.ts`): a job that must not count a bench store asks it here (B2: period commission).
+      isTest: true,
       country: {
         select: {
           id: true, name: true, code: true, minorUnit: true, currencyCode: true,

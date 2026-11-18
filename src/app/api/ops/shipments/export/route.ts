@@ -12,6 +12,8 @@ import { assertReadyToShip, type StateSource } from '@/lib/order-state';
 import { guardLines } from '@/lib/reservation';
 import { activeFeeRowWhere, deliveryFeeBlock } from '@/lib/operations';
 import { zodMessage } from '@/lib/zod-message';
+import { isBenchStore } from '@/lib/bench-store';
+import { BENCH_STOPS_AR, BENCH_STOPS_CODE } from '@/lib/test-store';
 
 /**
  * GET /api/ops/shipments/export?courier&q&region&from&to — «جاهزة للشحن» as a CSV file (the owner, 3/11).
@@ -85,6 +87,10 @@ async function fileOf(q: URLSearchParams, picked: string[] | null) {
     if (!can(user, 'ops.ship')) return NextResponse.json({ error: NO_SHIP, errorAr: NO_SHIP }, { status: 403 });
     if (!can(user, 'customers.view')) return NextResponse.json({ error: NO_CONTACTS, errorAr: NO_CONTACTS }, { status: 403 });
     if (!storeId) return NextResponse.json({ error: 'اختر المتجر أولاً.', errorAr: 'اختر المتجر أولاً.' }, { status: 400 });
+    // A bench's orders stop at confirmation (`test-store.ts`): no courier's sheet is made of them.
+    if (await isBenchStore(db, { companyId, storeId })) {
+      return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
+    }
 
     const courierId = q.get('courier');
     // Only the ticked orders may go without a courier: the whole tab's file is still the courier's sheet.

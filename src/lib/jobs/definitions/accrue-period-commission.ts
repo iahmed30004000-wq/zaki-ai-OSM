@@ -25,7 +25,13 @@ export const accruePeriodCommission: JobDefinition = {
     const skipped: Record<string, number> = {};
     const now = new Date();
 
-    for (const store of await activeStores()) {
+    /*
+     * NOT A BENCH STORE (B2, 18/11 — `test-store.ts`). A period rule can count CONFIRMATIONS («150 مؤكَّد باليوم»), and a
+     * bench order is confirmed and then goes nowhere: paying for it is paying for a test. Every other accrual waits for
+     * DELIVERED (`accrueForOrder`), which a bench order never reaches, so this is the one place commission could be
+     * earned on one. The figure of a real store is untouched: the rule, the count and the sum are the same functions.
+     */
+    for (const store of (await activeStores()).filter((s) => !s.isTest)) {
       for (const span of SPANS) {
         const { start, end } = lastClosedSpan(span, now);
         const result = await db.$transaction((tx) =>
