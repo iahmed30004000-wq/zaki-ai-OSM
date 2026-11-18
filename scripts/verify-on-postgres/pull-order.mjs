@@ -26,7 +26,7 @@
  */
 import * as prismaPackage from '@prisma/client';
 import { argv, assertScratchUrl, relaunchUnderTsx, scratchUrl } from './lib.mjs';
-import { COMPANY_OFF, COMPANY_ON, EXPECTED_HAND_OUT, EXPECTED_REFUSALS, USERS, buildScenario, diffHandOut } from './scenario.mjs';
+import { COMPANY_OFF, COMPANY_ON, EXPECTED_HAND_FULL, EXPECTED_HAND_OUT, EXPECTED_REFUSALS, USERS, buildScenario, diffHandOut } from './scenario.mjs';
 
 // The repo's TypeScript is imported below, so this file must run under the tsx command; if it was started with plain `node`, it starts itself again that way.
 relaunchUnderTsx(import.meta.url);
@@ -146,7 +146,9 @@ async function retryQuery(desk, now) {
 
 /**
  * Part 3: the real `pullNextOrder`, until it refuses; then everything it touched is put back.
- *   3a  the desk AS SEEDED — her hand holds an order with no attempt, so the real gate («سجّل محاولة اتصال … قبل سحب طلب جديد») answers.
+ *   3·0 (request C2) a desk whose hand is FULL as seeded under the plan — three open orders, the one rule's hand whatever «أولوية الطابور» says — is refused CAP_TOTAL with
+ *       «وصلت للحد (3)»; then she decides the orders of her hand that she already rang (they leave it, finished) — the untouched one stays.
+ *   3a  the desk with an order in her hand that has no attempt — the real gate («سجّل محاولة اتصال … قبل سحب طلب جديد») answers.
  *   3b  after she TOUCHED what she holds without an attempt, and finishing every order she pulls (a decision ends it) — so the hand never fills
  *       and the sequence is the whole pool's, handed out by the real door: the list to compare with Part 1.
  */
@@ -173,7 +175,18 @@ async function realPulls(desk) {
     return outcomes;
   };
   try {
-    const seeded = await pulls('3a · كما هي بالـseed', false);
+    const full = EXPECTED_HAND_FULL[desk.email];
+    if (full) {
+      const open = { ...desk.scope, claimedById: desk.user.id, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED', 'POSTPONED'] } };
+      const held = await probe.order.count({ where: open });
+      const atFull = await pulls(`3·0 · اليد مليانة بالـseed (${held} طلبات بإيدها، والقاعدة شغّالة و«أولوية الطابور» مطفية)`, false);
+      const r0 = atFull[0];
+      check(`3·0 · the hand of the plan is ${full} — ${desk.label}`, held === full && atFull.length === 1 && !r0.ok && r0.code === EXPECTED_REFUSALS.handFull ? [] : [`expected ${full} held and one refusal ${EXPECTED_REFUSALS.handFull} · got ${held} held and ${atFull.map((o) => (o.ok ? o.order : o.code)).join(', ')}`]);
+      // She decides the ones she already rang (a decision ends them): they leave her hand; the one with no attempt stays for 3a. Put back in `finally` like everything else.
+      const rung = await probe.order.findMany({ where: { ...open, contactAttempts: { some: {} } }, select: { id: true } });
+      for (const o of rung) await probe.order.update({ where: { id: o.id }, data: { claimedById: null, currentOwnerId: null, confirmationStatus: 'CONFIRMED', status: 'CONFIRMED', confirmedAt: new Date() } });
+    }
+    const seeded = await pulls(full ? '3a · بعد ما خلّصت اللي رنّت عليهم' : '3a · كما هي بالـseed', false);
     check(`3a · the door's answer at seed — ${desk.label}`, seeded.length === 1 && !seeded[0].ok && seeded[0].code === EXPECTED_REFUSALS.atSeed ? [] : [`expected one refusal ${EXPECTED_REFUSALS.atSeed} · got ${seeded.map((o) => (o.ok ? o.order : o.code)).join(', ')}`]);
     const untouched = await probe.order.findMany({
       where: { ...desk.scope, claimedById: desk.user.id, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER'] }, contactAttempts: { none: {} } },

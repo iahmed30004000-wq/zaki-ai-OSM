@@ -32,7 +32,7 @@ vi.mock('./no-answer-returns-switch', () => ({ returnsSwitch: async () => return
 vi.mock('./queue-priority-switch', () => ({ queuePrioritySwitch: async () => ((asked.priority += 1), { enabled: priority.enabled, enabledAt: null }) }));
 
 import { CONFIRMATION_RULE } from './confirmation-rule';
-import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS, CADENCE_START, cadenceCloses, cadenceStep, type CadenceCal } from './no-answer-cadence';
+import { CADENCE_FLOORS_MS, CADENCE_GAPS_MS, CADENCE_LIMIT, CADENCE_MIN_DAYS, CADENCE_START, cadenceCloses, cadenceState, cadenceStep, type CadenceCal, type CadenceFact } from './no-answer-cadence';
 import { POSTPONE_MAX_TIMES, QUEUE_PRIORITY, QUEUE_PRIORITY_LIMITS } from './queue-priority';
 import { MIN_CALL_MS } from './call-proof-words';
 import { RETURNS_MODE, releaseNoAnswerRounds, returnsLimits } from './confirmation-queue';
@@ -156,6 +156,25 @@ describe('line 4 — after «لا يرد»: +30 min → +2 h → next day 11:00 
     s = step(s, s.dueAt!, c);
     expect(cadenceStep(s, dam(16, 10), c).counted).toBe(false);
     expect(cadenceStep(s, dam(16, 11), c).counted).toBe(true);
+  });
+});
+
+describe('decision 3 — only a COUNTED line\'s stored date is a due (the reviewer\'s break b23)', () => {
+  const c = cal('10:00', '22:00');
+  it('a «لا يرد» line written BEFORE the switch, carrying a typed date, sets no due: 0 counted, no due, and the next press is #1 at once', () => {
+    const before: CadenceFact = { createdAt: new Date(ON_AT.getTime() - 3_600_000), result: 'NO_ANSWER', attemptNumber: 1, nextFollowUpAt: dam(20, 12) };
+    const s = cadenceState([before], c);
+    expect(s.counted).toHaveLength(0);
+    expect(s.dueAt).toBeNull();
+    expect(cadenceStep(s, dam(15, 13), c).counted).toBe(true);
+  });
+
+  it('an EARLY line after the switch carrying a date (a client\'s, or a door that read the switch off in its ten seconds) does not move the due either', () => {
+    const one: CadenceFact = { createdAt: dam(15, 13), result: 'NO_ANSWER', attemptNumber: 1, nextFollowUpAt: dam(15, 13, 30) };
+    const early: CadenceFact = { createdAt: dam(15, 13, 5), result: 'NO_ANSWER', attemptNumber: 2, nextFollowUpAt: dam(20, 12) };
+    const s = cadenceState([one, early], c);
+    expect(s.counted).toHaveLength(1);
+    expect(s.dueAt).toEqual(dam(15, 13, 30));
   });
 });
 

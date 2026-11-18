@@ -150,8 +150,19 @@ export const EXPECTED_HAND_OUT = {
   [USERS.agentOff.email]: ['OFF-NEW-1', 'OFF-NO-ANSWER'],
 };
 
-/** The real door's first answer to a desk AS SEEDED (her hand holds an order with no attempt), and its last answer once the pool is empty. */
-export const EXPECTED_REFUSALS = { atSeed: 'UNTOUCHED_ORDER', whenEmpty: 'QUEUE_EMPTY' };
+/**
+ * The real door's first answer to a desk AS SEEDED (her hand holds an order with no attempt), and its last answer once the pool is empty.
+ * `handFull` (request C2, 18/11): with «إثبات المكالمات وجدول المحاولات» on the hand is the one rule's THREE whatever «أولوية الطابور» says (the seed leaves that key off) —
+ * a desk that holds three orders at seed is refused with it FIRST, before the untouched-order gate is even asked.
+ */
+export const EXPECTED_REFUSALS = { atSeed: 'UNTOUCHED_ORDER', whenEmpty: 'QUEUE_EMPTY', handFull: 'CAP_TOTAL' };
+
+/**
+ * Request C2: the desks whose hand is FULL as seeded under the plan — the number of open orders in it, which IS the hand limit (3). Agent 1 holds SY-HELD-NEW,
+ * SY-HELD-RETRY and SY-HELD-PROMISE. The kit then has her decide the two she already rang (they leave her hand, finished), so the untouched-order gate (3a) and the
+ * hand-out (3b) are proved exactly as before. A desk not listed here is not full (agent 2 holds one, the OFF company has no hand of three).
+ */
+export const EXPECTED_HAND_FULL = { [USERS.agent1On.email]: 3 };
 
 /** The differences between two lists of order keys, one sentence each; an empty array means they are the same list in the same order. */
 export function diffHandOut(actual, expected) {
