@@ -286,6 +286,9 @@ describe('4 · the deleting press is danger; a row in a dialog wears no theme de
     const dialog = await screen.findByRole('dialog');
     const line = within(dialog).getByText(/ORD-1/).closest('li')!;
     for (const el of line.querySelectorAll('div')) expect(el.className.split(' ')).not.toContain(CARD_CLASS);
+    // The line's figure is in the LINE's own currency (5 USD), not another one — the Money line did not move.
+    expect(line.textContent).toMatch(/5(\.0+)?\s*USD/);
+    expect(line.textContent).not.toMatch(/JOD|SYP/);
     const go = within(dialog).getByRole('button', { name: 'اعتمد' }) as HTMLButtonElement;
     expect(go.disabled).toBe(true);
     expect(within(dialog).getByRole('button', { name: 'رجوع' }).getAttribute('type')).toBe('button');
