@@ -356,9 +356,9 @@ export function MenuOrderCard() {
     <div dir="rtl" id="menu-order" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-xs font-black text-[var(--sys-foreground)]">ترتيب القائمة</h3>
+          <h3 className="text-sm font-black text-[var(--sys-foreground)]">ترتيب القائمة</h3>
           {/* What each part arranges, in the order the page shows them; then how, and the one thing hiding never does. */}
-          <p className="mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             رتّب أربع شاشات الهاتف، والمجموعات الكبيرة، والشاشات جوّا كل مجموعة. اسحب من المقبض، أو استعمل السهمين. ثبّت أو اخفِ ما لا تستعمله. الإخفاء لا يفتح ولا يغلق أي صلاحية.
           </p>
         </div>
@@ -377,7 +377,7 @@ export function MenuOrderCard() {
       {maySetRoleBase && (
         <Card>
           <CardContent>
-            <label className="block text-xs text-[var(--sys-muted-foreground)] mb-1">الترتيب لـ</label>
+            <label className="block text-note text-[var(--sys-muted-foreground)] mb-1">الترتيب لـ</label>
             <Select value={forRole} onChange={(e) => void loadRole(e.target.value)}>
               <option value="">قائمتي أنا</option>
               {roles.map((r) => (
@@ -388,7 +388,7 @@ export function MenuOrderCard() {
             </Select>
             {forRole && (
               <>
-                <p className="mt-1.5 text-xs text-[var(--sys-warning)]">
+                <p className="mt-1.5 text-note text-[var(--sys-warning)]">
                   هذا أساس الدور — بيشوفه كلّ واحد فيه إلا إذا رتّب لحاله.
                 </p>
                 {/*
@@ -411,12 +411,12 @@ export function MenuOrderCard() {
       )}
 
       {notice && (
-        <p className="text-xs text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-border)] rounded-lg px-2.5 py-1.5">
+        <p className="text-note text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-border)] rounded-lg px-2.5 py-1.5">
           {notice}
         </p>
       )}
       {error && (
-        <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
+        <p className="text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg px-2.5 py-1.5">
           {error}
         </p>
       )}
@@ -441,7 +441,7 @@ export function MenuOrderCard() {
                   // Keyed by its PLACE, not by its screen: a select that is remounted each time its value changes
                   // loses the keyboard focus after one arrow press.
                   <div key={`slot-${i}`} className="flex items-center gap-2 py-2">
-                    <span className="w-5 shrink-0 text-center text-xs tabular-nums text-[var(--sys-muted)]">{i + 1}</span>
+                    <span className="w-5 shrink-0 text-center text-note tabular-nums text-[var(--sys-muted)]">{i + 1}</span>
                     <Select
                       aria-label={name}
                       value={path}
@@ -485,8 +485,8 @@ export function MenuOrderCard() {
                 );
               })}
             </div>
-            <p className="mt-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{slotNote}</p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="mt-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{slotNote}</p>
+            <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
               لما تفتح شاشة مش من الأربعة، بتاخد الخانة الأخيرة وإنت فيها.
             </p>
           </CardContent>
@@ -757,7 +757,7 @@ function SortableRow({
         }
       >
         {route.label}
-        {pinned && <span className="text-xs text-[var(--sys-primary)]"> · مثبّت</span>}
+        {pinned && <span className="text-note text-[var(--sys-primary)]"> · مثبّت</span>}
       </span>
       <button
         type="button"
@@ -836,7 +836,7 @@ function RoleOpeningTheme({ roleId }: { roleId: string }) {
 
   return (
     <div className="mt-3 border-t border-[var(--sys-border)] pt-2.5">
-      <label className="block text-xs text-[var(--sys-muted-foreground)] mb-1">
+      <label className="block text-note text-[var(--sys-muted-foreground)] mb-1">
         المظهر الذي يفتح عليه هذا الدور
       </label>
       <Select value={theme} onChange={(e) => void save(e.target.value)}>
@@ -847,12 +847,12 @@ function RoleOpeningTheme({ roleId }: { roleId: string }) {
           </option>
         ))}
       </Select>
-      <p className="mt-1.5 text-xs text-[var(--sys-muted-foreground)]">
+      <p className="mt-1.5 text-note text-[var(--sys-muted-foreground)]">
         أساسٌ لا قيد: أوّلُ ما يختارُ الواحدُ مظهرَه، يُقرأُ اختيارُه هو ولا يُقرأُ هذا.
       </p>
-      {state === 'saved' && <p className="mt-1 text-xs text-[var(--sys-success)]">انحفظ.</p>}
+      {state === 'saved' && <p className="mt-1 text-note text-[var(--sys-success)]">انحفظ.</p>}
       {state === 'failed' && (
-        <p className="mt-1 text-xs text-[var(--sys-destructive)]">تعذّر الحفظ — جرّب مرّة ثانية.</p>
+        <p className="mt-1 text-note text-[var(--sys-destructive)]">تعذّر الحفظ — جرّب مرّة ثانية.</p>
       )}
     </div>
   );
