@@ -93,6 +93,24 @@ export const SYS_VARS = [
   'chart-6',
   'sidebar',
   'sidebar-foreground',
+  /*
+   * THE MENU PAINTS ONLY FROM THE MENU'S OWN TOKENS (18/11/2026, R4).
+   *
+   * The menu used to borrow five CONTENT colours: the tagline under the
+   * wordmark (`muted-foreground`), the «AI» of the wordmark (`primary`), its
+   * dividers (`border`), the hover wash (`primary-soft`) and the label on
+   * hover (`heading`). On a palette whose menu is the page's colour that is
+   * invisible; on «نظيف», a light page with a dark menu, they measured 2.07,
+   * 2.34 and 1.34:1. So the menu has its own five. In the thirteen older
+   * palettes each takes the value the menu read before — nothing they show
+   * moved — except «إسلامي هادي»'s hover wash, which was 4.27:1 under the
+   * label and is the nearest lighter wash that clears 4.5.
+   */
+  'sidebar-muted',
+  'sidebar-border',
+  'sidebar-hover',
+  'sidebar-heading',
+  'sidebar-accent',
   'scrollbar',
   'scrollbar-hover',
   /*
@@ -163,6 +181,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#C97A94',
       sidebar: '#0A1A2E',
       'sidebar-foreground': '#9FB6C2',
+      'sidebar-muted': '#9FB6C2',
+      'sidebar-border': '#1C3A52',
+      'sidebar-hover': '#0e2a3e',
+      'sidebar-heading': '#E6F1F4',
+      'sidebar-accent': '#36B5CC',
       'scrollbar': '#1C3A52',
       'scrollbar-hover': '#597183',
       'sidebar-scrollbar': '#1C3A52',
@@ -208,6 +231,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#c1758e',
       sidebar: '#F4F8FA',
       'sidebar-foreground': '#4A6272',
+      'sidebar-muted': '#4A6272',
+      'sidebar-border': '#D5E1E6',
+      'sidebar-hover': '#e9f1f4',
+      'sidebar-heading': '#0C3252',
+      'sidebar-accent': '#1A6382',
       'scrollbar': '#D5E1E6',
       'scrollbar-hover': '#99acba',
       'sidebar-scrollbar': '#D5E1E6',
@@ -253,6 +281,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#b97088',
       sidebar: '#EFE9DE',
       'sidebar-foreground': '#566369',
+      'sidebar-muted': '#566369',
+      'sidebar-border': '#D8CEBC',
+      'sidebar-hover': '#e4e2d9',
+      'sidebar-heading': '#0C3252',
+      'sidebar-accent': '#1A6382',
       'scrollbar': '#D8CEBC',
       'scrollbar-hover': '#9b9f9c',
       'sidebar-scrollbar': '#D8CEBC',
@@ -325,6 +358,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#6262DA',
       sidebar: '#0A0A12',
       'sidebar-foreground': '#A2C1C3',
+      'sidebar-muted': '#A2C1C3',
+      'sidebar-border': '#3D3D46',
+      'sidebar-hover': '#0B313D',
+      'sidebar-heading': '#E7EEEE',
+      'sidebar-accent': '#00F0FF',
       'scrollbar': '#42424B',
       'scrollbar-hover': '#6E6E74',
       'sidebar-scrollbar': '#42424B',
@@ -370,6 +408,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#6262DA',
       sidebar: '#0D1838',
       'sidebar-foreground': '#C3B9A2',
+      'sidebar-muted': '#C3B9A2',
+      'sidebar-border': '#404966',
+      'sidebar-hover': '#2F3444',
+      'sidebar-heading': '#EEECE7',
+      'sidebar-accent': '#D4AF5A',
       'scrollbar': '#454E6A',
       'scrollbar-hover': '#70778C',
       'sidebar-scrollbar': '#454E6A',
@@ -428,6 +471,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#2929AE',
       sidebar: '#F9F6EF',
       'sidebar-foreground': '#48706B',
+      'sidebar-muted': '#3F635E',
+      'sidebar-border': '#DBDBDB',
+      'sidebar-hover': '#E1EBEA',
+      'sidebar-heading': '#1D2A29',
+      'sidebar-accent': '#0E5E55',
       'scrollbar': '#D6D6D6',
       'scrollbar-hover': '#ADADAD',
       'sidebar-scrollbar': '#D6D6D6',
@@ -473,6 +521,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#6262DA',
       sidebar: '#080C22',
       'sidebar-foreground': '#A6A2C3',
+      'sidebar-muted': '#A6A2C3',
+      'sidebar-border': '#3C4059',
+      'sidebar-hover': '#1F2151',
+      'sidebar-heading': '#E8E7EE',
+      'sidebar-accent': '#8B7BFF',
       'scrollbar': '#41455E',
       'scrollbar-hover': '#6D7083',
       'sidebar-scrollbar': '#41455E',
@@ -518,6 +571,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#2929AE',
       sidebar: '#F0E4C7',
       'sidebar-foreground': '#44626A',
+      'sidebar-muted': '#44626A',
+      'sidebar-border': '#D8D2C4',
+      'sidebar-hover': '#D5D9CE',
+      'sidebar-heading': '#1D272A',
+      'sidebar-accent': '#0F4C5C',
       'scrollbar': '#D3CDC0',
       'scrollbar-hover': '#ABA69B',
       'sidebar-scrollbar': '#D3CDC0',
@@ -563,6 +621,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#6262DA',
       sidebar: '#1A0C30',
       'sidebar-foreground': '#C3A2AF',
+      'sidebar-muted': '#C3A2AF',
+      'sidebar-border': '#4C3F5E',
+      'sidebar-hover': '#431644',
+      'sidebar-heading': '#EEE7EA',
+      'sidebar-accent': '#FF3D8B',
       'scrollbar': '#504462',
       'scrollbar-hover': '#796F86',
       'sidebar-scrollbar': '#504462',
@@ -632,6 +695,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#93AEC0',
       sidebar: '#07202D',
       'sidebar-foreground': '#A6C8D4',
+      'sidebar-muted': '#A6C8D4',
+      'sidebar-border': '#20506A',
+      'sidebar-hover': '#0C3C4A',
+      'sidebar-heading': '#EAF7F8',
+      'sidebar-accent': '#4DD9DB',
       'scrollbar': '#20506A',
       'scrollbar-hover': '#5E8FA6',
       'sidebar-scrollbar': '#20506A',
@@ -702,6 +770,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#F6D27A',
       sidebar: '#0D2140',
       'sidebar-foreground': '#A9B4C8',
+      'sidebar-muted': '#A2ADC3',
+      'sidebar-border': '#21406D',
+      'sidebar-hover': '#0A2A38',
+      'sidebar-heading': '#F4ECDC',
+      'sidebar-accent': '#36B5CC',
       'scrollbar': '#21406D',
       'scrollbar-hover': '#4A6FA5',
       'sidebar-scrollbar': '#21406D',
@@ -747,6 +820,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#6262DA',
       sidebar: '#15100D',
       'sidebar-foreground': '#C3B8A2',
+      'sidebar-muted': '#C3B8A2',
+      'sidebar-border': '#4A4440',
+      'sidebar-hover': '#3C2E1B',
+      'sidebar-heading': '#EEECE7',
+      'sidebar-accent': '#E0B252',
       'scrollbar': '#4F4845',
       'scrollbar-hover': '#777370',
       'sidebar-scrollbar': '#4F4845',
@@ -792,6 +870,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#2929AE',
       sidebar: '#FCF5F1',
       'sidebar-foreground': '#70485D',
+      'sidebar-muted': '#70485D',
+      'sidebar-border': '#DBD9D7',
+      'sidebar-hover': '#E5D9DC',
+      'sidebar-heading': '#2A1D24',
+      'sidebar-accent': '#5B2340',
       'scrollbar': '#D6D4D2',
       'scrollbar-hover': '#ADABAA',
       'sidebar-scrollbar': '#D6D4D2',
@@ -829,6 +912,12 @@ export const SYSTEM_THEMES: SystemTheme[] = [
    * `primary` fill there; use the menu's own pair or a lighter wash. The
    * tokens below are the menu's own so that nothing has to borrow a text
    * colour for it.
+   *
+   * 18/11/2026 (R4) — DONE: the menu now paints from its own five tokens
+   * (`sidebar-muted`, `-border`, `-hover`, `-heading`, `-accent`; see
+   * `SYS_VARS`). The lit row keeps the `primary` fill with white on it: the
+   * LABEL reads 6.7:1 there, which is what the brief measured and kept; the
+   * 2.34:1 is the bar's edge against the menu, not text.
    * ══════════════════════════════════════════════════════════════════════
    */
   {
@@ -868,6 +957,11 @@ export const SYSTEM_THEMES: SystemTheme[] = [
       'chart-6': '#C0527A',
       sidebar: '#1B2433',
       'sidebar-foreground': '#C9D0DB',
+      'sidebar-muted': '#98A2B3',
+      'sidebar-border': '#2E3A4E',
+      'sidebar-hover': '#263246',
+      'sidebar-heading': '#FFFFFF',
+      'sidebar-accent': '#6FBAD3',
       'scrollbar': '#D5DAE2',
       'scrollbar-hover': '#A3ABB9',
       'sidebar-scrollbar': '#3A465A',

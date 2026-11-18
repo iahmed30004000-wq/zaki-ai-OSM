@@ -52,9 +52,24 @@ const clean = () => themeByKey('clean');
  * TO CHANGE ONE ON PURPOSE (R5 retuning, a contrast fix): edit the palette, run this file, paste the new
  * fingerprint here with a dated comment saying which palette moved and why. Never to «make it pass».
  */
+/*
+ * 18/11/2026 (R4): the menu got five tokens of its own, added to EVERY palette. They are new names, not
+ * changed values, so the print is taken over the names that existed before R4 and the thirteen prints below
+ * did not move — which is itself the proof that no older value changed. The five are pinned in
+ * `system-themes.test.ts` (menu contrast) instead.
+ */
+const R4_MENU_TOKENS = ['sidebar-muted', 'sidebar-border', 'sidebar-hover', 'sidebar-heading', 'sidebar-accent'];
 const fingerprint = (t: { key: string; dark: boolean; vars: Record<string, string> }) =>
   createHash('sha256')
-    .update(JSON.stringify([t.key, t.dark, Object.entries(t.vars).sort(([a], [b]) => (a < b ? -1 : 1))]))
+    .update(
+      JSON.stringify([
+        t.key,
+        t.dark,
+        Object.entries(t.vars)
+          .filter(([n]) => !R4_MENU_TOKENS.includes(n))
+          .sort(([a], [b]) => (a < b ? -1 : 1)),
+      ])
+    )
     .digest('hex')
     .slice(0, 16);
 

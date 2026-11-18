@@ -236,6 +236,78 @@ describe('legible in the theme it lives in', () => {
     }
   });
 
+  /**
+   * 18/11/2026 (R4) — THE MENU'S OWN FIVE, MEASURED ON THE MENU.
+   *
+   * The menu borrowed five content colours (the tagline, the «AI», the
+   * dividers, the hover wash, the label on hover). On «نظيف» — a light page
+   * with a dark menu — the reviewer measured them at 2.07, 2.34 and 1.34:1.
+   * Each now has a menu token, and each is pinned against the surface it is
+   * drawn on in the menu, not on the page.
+   */
+  it('the menu’s own quiet text, accent and hover are readable on the menu, in every theme', () => {
+    for (const theme of SYSTEM_THEMES) {
+      const v = theme.vars;
+      for (const text of ['sidebar-foreground', 'sidebar-muted', 'sidebar-accent'] as const) {
+        expect(contrast(v[text], v.sidebar), `${theme.key}: ${text} على القائمة`).toBeGreaterThan(READABLE);
+      }
+      for (const text of ['sidebar-heading', 'sidebar-foreground'] as const) {
+        expect(contrast(v[text], v['sidebar-hover']), `${theme.key}: ${text} على التمرير`).toBeGreaterThan(READABLE);
+      }
+    }
+  });
+
+  it('and the three looks the owner named are measured by name, so a palette list cannot drop one', () => {
+    for (const key of ['clean', 'ops', 'islamic-epic']) {
+      const v = themeByKey(key).vars;
+      expect(themeByKey(key).key).toBe(key);
+      expect(contrast(v['sidebar-muted'], v.sidebar), key).toBeGreaterThan(READABLE);
+      expect(contrast(v['sidebar-accent'], v.sidebar), key).toBeGreaterThan(READABLE);
+      expect(contrast(v['sidebar-foreground'], v['sidebar-hover']), key).toBeGreaterThan(READABLE);
+    }
+  });
+
+  /*
+   * The menu paints from the menu's tokens only. A content token in Sidebar.tsx is a colour measured
+   * against the PAGE drawn on the MENU — the exact fault above. The one exception is the lit row's
+   * pair, `bg-[var(--sys-primary)]` with its own text colour on the same line (pinned below and in
+   * the wordmark test). Names are built from pieces so this file adds no class to the stylesheet.
+   */
+  const CONTENT_TOKENS = ['muted-foreground', 'muted', 'heading', 'border', 'primary-soft'].map((n) => `--sys-${n})`);
+  const sidebarCode = () =>
+    stripComments(readFileSync(join(process.cwd(), 'src/components/shell/Sidebar.tsx'), 'utf8'));
+
+  it('and Sidebar.tsx paints from no content token — only the lit row’s own pair', () => {
+    const offenders: string[] = [];
+    for (const line of sidebarCode().split('\n')) {
+      for (const t of CONTENT_TOKENS) if (line.includes(t)) offenders.push(`${t}: ${line.trim().slice(0, 90)}`);
+      // `primary` may be a background (the lit row, the badge) — never a text or a border colour on the menu.
+      if (/(?:text|border|ring|fill|stroke)-\[var\(--sys-primary\)\]/.test(line)) {
+        offenders.push(`primary as text: ${line.trim().slice(0, 90)}`);
+      }
+      if (line.includes('bg-[var(--sys-primary)]')) {
+        expect(line, 'خلفية اللون المميّز بلا نصّه').toContain('text-[var(--sys-primary-foreground)]');
+      }
+    }
+    expect(offenders, 'القائمة تستعير لوناً من الصفحة').toEqual([]);
+  });
+
+  it('and the guard can tell: one borrowed colour is caught', () => {
+    const planted = `${sidebarCode()}\n<span className="text-[var(--sys-muted-foreground)]" />`;
+    expect(planted.split('\n').some((l) => CONTENT_TOKENS.some((t) => l.includes(t)))).toBe(true);
+    const primaryText = '<span className="text-[var(--sys-primary)]">AI</span>';
+    expect(/(?:text|border|ring|fill|stroke)-\[var\(--sys-primary\)\]/.test(primaryText)).toBe(true);
+  });
+
+  it('and the five measured faults are each painted from a menu token now', () => {
+    const src = sidebarCode();
+    expect(src, 'الـAI').toMatch(/Zaki <span className="text-\[var\(--sys-sidebar-accent\)\]">AI/);
+    expect(src, 'السطر تحت الاسم').toMatch(/block text-xs text-\[var\(--sys-sidebar-muted\)\]/);
+    expect(src, 'الخط تحت الرأس').toContain('border-b border-[var(--sys-sidebar-border)]');
+    expect(src, 'التمرير').toContain('hover:bg-[var(--sys-sidebar-hover)]');
+    expect(src, 'الاسم عند التمرير').toContain('hover:text-[var(--sys-sidebar-heading)]');
+  });
+
   it('and the sidebar is actually painted from those two, not from a text colour', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/shell/Sidebar.tsx'), 'utf8');
     const surface = /bg-\[var\(--sys-sidebar\)\][^']*text-\[var\(--sys-sidebar-foreground\)\]/;
