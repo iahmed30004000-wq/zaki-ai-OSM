@@ -2066,14 +2066,15 @@
     "tabs": 0
   },
   "src/components/screens/finance/WalletsScreen.tsx": {
-    "buttons": 23,
+    "buttons": 18,
     "inputs": 19,
     "columns": 11,
-    "cards": 0,
+    "cards": 5,
     "modals": 5,
     "icons": 15,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 5
   },
   "src/components/screens/ops/PickingAssistant.tsx": {
     "buttons": 1,
