@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { PARKED, PARKED_AR, RESOLUTION_AR, RESOLUTIONS } from '@/lib/settlement-difference';
 import { EXPLANATION_SENTENCE, explanationOf } from '@/lib/decision-words';
 import { FoldCard } from '@/components/screens/finance/FoldCard';
+import { Button } from '@/components/ui/Button';
 
 /**
  * بتّ جماعي — ONE ANSWER FOR THE LINES THAT CARRY THE SAME WORD OF THE COMPANY.
@@ -106,7 +107,7 @@ export function BulkDecide({
     >
       <div className="flex flex-wrap gap-3 items-end">
         <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">أسطر بكلمة واحدة للشركة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">أسطر بكلمة واحدة للشركة</span>
           <select
             value={group.key}
             onChange={(e) => setKey(e.target.value)}
@@ -120,7 +121,7 @@ export function BulkDecide({
           </select>
         </label>
         <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البتّ</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البتّ</span>
           <select
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
@@ -135,7 +136,7 @@ export function BulkDecide({
           </select>
         </label>
         <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">التفسير</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">التفسير</span>
           <input
             type="text"
             value={note}
@@ -144,16 +145,15 @@ export function BulkDecide({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
           />
         </label>
-        <button
+        <Button
           type="button"
           disabled={busy}
           onClick={() => void submit()}
-          className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
         >
           {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : null}
           بتّ الأسطر
-        </button>
-        {error && <p className="w-full text-xs text-[var(--sys-destructive)]">{error}</p>}
+        </Button>
+        {error && <p className="w-full text-note text-[var(--sys-destructive)]">{error}</p>}
       </div>
     </FoldCard>
   );

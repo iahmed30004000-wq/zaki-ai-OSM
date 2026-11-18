@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { RiPushpinLine, RiSearchLine } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * «بدي أثبّت هاد عشان أفهم — زر تثبيت وفلاتر وسيرش بوكس» (the owner, 8/11) — THE THREE THINGS ABOVE A LONG QUEUE.
@@ -56,7 +58,7 @@ export function QueueTools({
   return (
     <div className="flex flex-wrap items-end gap-2 border-b border-[var(--sys-border)] px-4 py-2">
       <label className="min-w-[200px] flex-1">
-        <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">ابحث بهالقسم</span>
+        <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">ابحث بهالقسم</span>
         <span className="relative block">
           <RiSearchLine className="pointer-events-none absolute start-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sys-muted)]" />
           <input
@@ -72,7 +74,7 @@ export function QueueTools({
 
       {kinds.length > 1 && (
         <label>
-          <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">{kindLabel}</span>
+          <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">{kindLabel}</span>
           <select
             value={view.kind}
             onChange={(e) => onView({ ...view, kind: e.target.value })}
@@ -89,44 +91,34 @@ export function QueueTools({
       )}
 
       {openCount > 0 && (
-        <label className="inline-flex h-11 md:h-10 items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-          <input
-            type="checkbox"
-            checked={view.onlyOpen}
-            onChange={(e) => onView({ ...view, onlyOpen: e.target.checked })}
-          />
-          بلا بتّ فقط ({openCount})
-        </label>
+        <Checkbox
+          checked={view.onlyOpen}
+          onChange={(checked) => onView({ ...view, onlyOpen: checked })}
+          label={<>بلا بتّ فقط ({openCount})</>}
+        />
       )}
 
+      {/* A press that holds a state: `aria-pressed` says it, and the look follows it — framed while the headings are pinned, quiet when not. */}
       {pin && (
-        <button
+        <Button
           type="button"
+          variant={pin.pinned ? 'secondary' : 'quiet'}
           aria-pressed={pin.pinned}
           onClick={() => pin.onChange(!pin.pinned)}
           title={pin.pinned ? 'عناوين الجدول ثابتة وانت بتمرّر — اضغط لتفكّها' : 'ثبّت عناوين الجدول لتضل ظاهرة وانت بتمرّر'}
-          className={`inline-flex h-11 md:h-10 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium ${
-            pin.pinned
-              ? 'border-[var(--sys-primary)] bg-[var(--sys-surface)] text-[var(--sys-primary)]'
-              : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
-          }`}
         >
           <RiPushpinLine className="h-4 w-4" />
           {pin.pinned ? 'العناوين مثبّتة' : 'ثبّت العناوين'}
-        </button>
+        </Button>
       )}
 
-      <span className="ms-auto text-xs text-[var(--sys-muted-foreground)]" aria-live="polite">
+      <span className="ms-auto text-note text-[var(--sys-muted-foreground)]" aria-live="polite">
         {narrowed ? `يعرض ${shown} من ${total}` : `${total} سطر`}
       </span>
       {narrowed && (
-        <button
-          type="button"
-          onClick={() => onView(NO_VIEW)}
-          className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-3 text-xs text-[var(--sys-muted-foreground)]"
-        >
+        <Button type="button" variant="secondary" onClick={() => onView(NO_VIEW)}>
           امسح البحث والفلتر
-        </button>
+        </Button>
       )}
     </div>
   );

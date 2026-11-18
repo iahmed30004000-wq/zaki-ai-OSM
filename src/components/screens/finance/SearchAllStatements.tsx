@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { RiLoader4Line, RiSearchLine } from '@remixicon/react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { Money } from '@/components/ui/Money';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -73,15 +74,15 @@ function HitCard({ hit, openable }: { hit: StatementHit; openable: boolean }) {
           <span dir="ltr">{s.reference}</span>
           {s.company && <> — {s.company}</>}
         </span>
-        <span className={`text-xs px-2 py-1 rounded-sm border ${STATE_TONE[s.state] ?? NO_TONE}`}>{s.stateAr}</span>
+        <span className={`text-note px-2 py-1 rounded-sm border ${STATE_TONE[s.state] ?? NO_TONE}`}>{s.stateAr}</span>
       </span>
-      <span className="block text-xs text-[var(--sys-muted-foreground)]">{arDate(s.at)}</span>
+      <span className="block text-note text-[var(--sys-muted-foreground)]">{arDate(s.at)}</span>
       <span className="mt-1 flex flex-wrap items-center gap-2">
-        <span className={`text-xs px-2 py-1 rounded-full border ${hit.queue ? TONE[hit.queue] : NO_TONE}`}>{hit.resultAr}</span>
-        {hit.answerAr && <span className="text-xs text-[var(--sys-muted-foreground)]">البتّ: {hit.answerAr}</span>}
+        <span className={`text-note px-2 py-1 rounded-full border ${hit.queue ? TONE[hit.queue] : NO_TONE}`}>{hit.resultAr}</span>
+        {hit.answerAr && <span className="text-note text-[var(--sys-muted-foreground)]">البتّ: {hit.answerAr}</span>}
       </span>
       {(hit.order || hit.barcode || hit.merchantRef) && (
-        <span className="block text-xs text-[var(--sys-muted-foreground)]">
+        <span className="block text-note text-[var(--sys-muted-foreground)]">
           {hit.order && (
             <>
               طلب <span dir="ltr">{hit.order.orderNumber}</span>
@@ -100,7 +101,7 @@ function HitCard({ hit, openable }: { hit: StatementHit; openable: boolean }) {
         </span>
       )}
       {figures.some(([, v]) => v !== null) && (
-        <span className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-xs">
+        <span className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-note">
           {figures
             .filter(([, v]) => v !== null)
             .map(([k, v]) => (
@@ -111,7 +112,7 @@ function HitCard({ hit, openable }: { hit: StatementHit; openable: boolean }) {
         </span>
       )}
       {!openable && (
-        <span className="block pt-1 text-xs text-[var(--sys-warning)]">
+        <span className="block pt-1 text-note text-[var(--sys-warning)]">
           هذا الكشف مش بقائمة كشوف الشاشة — افتحه من «التحصيل والكشوف».
         </span>
       )}
@@ -171,21 +172,15 @@ export function SearchAllStatements({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-2 ${
-          phone ? 'w-full justify-center' : ''
-        }`}
-      >
+      <Button type="button" variant="secondary" onClick={() => setOpen(true)} className={phone ? 'w-full' : undefined}>
         <RiSearchLine className="w-4 h-4" />
         بحث بكل الكشوف
-      </button>
+      </Button>
 
       {open && (
         <Modal isOpen onClose={() => setOpen(false)} title="بحث بكل الكشوف">
           <div className="space-y-3">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               {maySeeContact
                 ? 'ابحث برقم الطلب أو الباركود أو مرجع الشركة أو اسم الزبون أو هاتفو — بكل كشوف المتجر.'
                 : 'ابحث برقم الطلب أو الباركود أو مرجع الشركة — بكل كشوف المتجر.'}
@@ -199,7 +194,7 @@ export function SearchAllStatements({
               className="space-y-2"
             >
               <label className="block">
-                <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البحث</span>
+                <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البحث</span>
                 <input
                   type="search"
                   dir="auto"
@@ -224,18 +219,14 @@ export function SearchAllStatements({
                   }}
                   className="shrink-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-sm text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] inline-flex items-center gap-1.5"
                 />
-                <button
-                  type="submit"
-                  disabled={!ready || searching}
-                  className="flex-1 h-11 md:h-10 px-4 justify-center rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
-                >
+                <Button type="submit" disabled={!ready || searching} className="flex-1">
                   {searching ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSearchLine className="w-4 h-4" />}
                   ابحث
-                </button>
+                </Button>
               </div>
             </form>
 
-            {!ready && clean.length > 0 && <p className="text-xs text-[var(--sys-muted-foreground)]">{TOO_SHORT_AR}</p>}
+            {!ready && clean.length > 0 && <p className="text-note text-[var(--sys-muted-foreground)]">{TOO_SHORT_AR}</p>}
 
             {error && (
               <div role="alert">

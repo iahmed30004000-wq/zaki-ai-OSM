@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Card } from '@/components/ui/Card';
 
 /**
  * A CARD THAT IS ONE LINE UNTIL IT IS ASKED FOR (the owner, 12/11, on the two summary cards of the matching screen:
@@ -40,23 +41,25 @@ export function FoldCard({
   const [own, setOwn] = useState(false);
   const open = kept ?? own;
   return (
-    <details
-      open={open}
-      className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden"
-      onToggle={(e) => {
-        const next = e.currentTarget.open;
-        setOwn(next);
-        onOpenChange?.(next);
-      }}
-    >
-      <summary aria-expanded={open} className="w-full flex items-center justify-between px-4 py-3 text-right cursor-pointer select-none">
-        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-sm font-medium text-[var(--sys-heading)]">{title}</span>
-          {holds && <span className="text-xs text-[var(--sys-muted)]">{holds}</span>}
-        </span>
-        <span className="text-xs text-[var(--sys-muted)]">{open ? 'إخفاء' : 'عرض'}</span>
-      </summary>
-      <div className="border-t border-[var(--sys-border)] p-3 space-y-2">{children}</div>
-    </details>
+    // The kit's plain card (18/11, R13c1): a fold is a nested block of the screen, so no theme ornament lands on it.
+    <Card plain className="overflow-hidden">
+      <details
+        open={open}
+        onToggle={(e) => {
+          const next = e.currentTarget.open;
+          setOwn(next);
+          onOpenChange?.(next);
+        }}
+      >
+        <summary aria-expanded={open} className="w-full flex items-center justify-between px-4 py-3 text-right cursor-pointer select-none">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-sm font-medium text-[var(--sys-heading)]">{title}</span>
+            {holds && <span className="text-note text-[var(--sys-muted)]">{holds}</span>}
+          </span>
+          <span className="text-note text-[var(--sys-muted)]">{open ? 'إخفاء' : 'عرض'}</span>
+        </summary>
+        <div className="border-t border-[var(--sys-border)] p-3 space-y-2">{children}</div>
+      </details>
+    </Card>
   );
 }
