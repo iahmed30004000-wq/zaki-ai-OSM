@@ -276,6 +276,23 @@ describe('(b) every press reaches the same handler with the same arguments', () 
     tick(/احتساب أجرة إرجاع/);
     const boxes = Array.from(dialog().querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
     expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+    // R11e: each box has its own id, so the kit's label points at it and no other (an empty or shared id breaks a press on the words).
+    expect(boxes.map((b) => b.id)).toEqual(['returns-fee-o2', 'returns-ack-o2']);
+  });
+
+  it('the «استلام الكل» tick box has its own id too', async () => {
+    await draw();
+    fireEvent.click(screen.getByRole('button', { name: 'استلام الكل (2)' }));
+    expect((dialog().querySelector('input[type="checkbox"]') as HTMLInputElement).id).toBe('returns-receive-all-ack');
+  });
+
+  it('the yes/no pair says which answer is chosen', async () => {
+    await open('ORD-o1');
+    const yes = within(dialog()).getByRole('button', { name: 'نعم وصلت' });
+    const no = within(dialog()).getByRole('button', { name: 'لا ما وصلت' });
+    expect([yes.getAttribute('aria-pressed'), no.getAttribute('aria-pressed')]).toEqual(['false', 'false']);
+    fireEvent.click(no);
+    expect([yes.getAttribute('aria-pressed'), no.getAttribute('aria-pressed')]).toEqual(['false', 'true']);
   });
 });
 
