@@ -69,7 +69,7 @@ export default function RegisterPage() {
         <div className="text-center space-y-2">
           <img src="/brand/mark.png" alt="" aria-hidden className="h-20 w-20 object-contain" />
           <h1 className="text-2xl font-semibold text-[var(--sys-heading)]">إنشاء حساب جديد</h1>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             Zaki AI OMS — نظام إدارة المبيعات والطلبات والأرباح
           </p>
         </div>
@@ -77,14 +77,14 @@ export default function RegisterPage() {
         <Card className="shadow-raised">
           <CardContent className="p-6 space-y-4">
             {error && (
-              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
+              <div className="p-3 bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
                 <RiErrorWarningLine className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             {success && (
-              <div className="p-3 bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-xs rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
+              <div className="p-3 bg-[var(--sys-success-soft)] border border-[var(--sys-success-soft)] text-[var(--sys-success)] text-note rounded-lg flex items-center space-x-2 rtl:space-x-reverse">
                 <RiShieldCheckLine className="w-4 h-4 shrink-0" />
                 <span>{success}</span>
               </div>
@@ -121,7 +121,7 @@ export default function RegisterPage() {
                   {passwordChecks.map((c) => (
                     <span
                       key={c.label}
-                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
+                      className={`inline-flex items-center gap-1 text-note px-2 py-0.5 rounded-full border ${
                         c.ok
                           ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success-soft)]'
                           : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]'
@@ -153,17 +153,19 @@ export default function RegisterPage() {
               </Button>
             </form>
 
-            <div className="p-3 bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg flex items-start space-x-2 rtl:space-x-reverse text-xs text-[var(--sys-foreground)]">
-              <RiTimerLine className="w-4 h-4 text-[var(--sys-warning)] shrink-0 mt-0.5" />
-              <span>
-                بعد التسجيل يكون حسابك بحالة <strong className="text-[var(--sys-heading)]">بانتظار الموافقة</strong>،
-                ويقوم مدير النظام بتعيين دورك وتنشيط حسابك قبل الوصول للوحدات.
-              </span>
-            </div>
+            <Card plain padding="sm" className="text-note text-[var(--sys-foreground)]">
+              <p className="flex items-start space-x-2 rtl:space-x-reverse">
+                <RiTimerLine className="w-4 h-4 text-[var(--sys-warning)] shrink-0 mt-0.5" />
+                <span>
+                  بعد التسجيل يكون حسابك بحالة <strong className="text-[var(--sys-heading)]">بانتظار الموافقة</strong>،
+                  ويقوم مدير النظام بتعيين دورك وتنشيط حسابك قبل الوصول للوحدات.
+                </span>
+              </p>
+            </Card>
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-center text-note text-[var(--sys-muted-foreground)]">
           لديك حساب؟{' '}
           <Link href="/login" className="text-[var(--sys-primary)] font-semibold hover:underline">
             تسجيل الدخول
