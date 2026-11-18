@@ -140,7 +140,9 @@ async function bodyFor(fill: (u: ReturnType<typeof userEvent.setup>) => Promise<
   // submit button is disabled until then (`disabled={saving || !countryId}`),
   // so waiting on that is waiting on the real precondition.
   await waitFor(() => expect(screen.getByText(`${COUNTRY.name} — ${COUNTRY.currencyCode}`)).toBeTruthy());
-  await waitFor(() => expect((screen.getByText('إنشاء') as HTMLButtonElement).disabled).toBe(false));
+  // 18/11 (R13e): «إنشاء» is the kit's `Button`, which wraps its words in a span — the text is found on the span, and the
+  // disabled rule is read off the button around it (it was `getByText('إنشاء')` read as the button itself).
+  await waitFor(() => expect((screen.getByText('إنشاء').closest('button') as HTMLButtonElement).disabled).toBe(false));
 
   await user.type(screen.getByPlaceholderText('مثال: الصندوق النقدي، حساب البنك العربي'), 'الصندوق النقدي');
   await fill(user);

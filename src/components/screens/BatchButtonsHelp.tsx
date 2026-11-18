@@ -149,10 +149,10 @@ export function BatchButtonsHelp({ facts }: { facts: BatchHelpFacts }) {
   const items = batchHelpItems(facts);
   return (
     <details className="pt-1">
-      <summary className="cursor-pointer text-xs text-[var(--sys-muted)]">شو بيعمل كل زر ومتى بتضغطو؟</summary>
+      <summary className="cursor-pointer text-note text-[var(--sys-muted)]">شو بيعمل كل زر ومتى بتضغطو؟</summary>
       <ul className="space-y-1 pt-1">
         {items.map((i) => (
-          <li key={i.key} className="text-xs text-[var(--sys-muted-foreground)]">
+          <li key={i.key} className="text-sm text-[var(--sys-muted-foreground)]">
             <span className="font-medium text-[var(--sys-foreground)]">{i.name}</span>
             <span className="block">متى: {i.when}</span>
             <span className="block">شو بيعمل: {i.does}</span>

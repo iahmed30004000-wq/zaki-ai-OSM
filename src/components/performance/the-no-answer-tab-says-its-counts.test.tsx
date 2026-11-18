@@ -34,8 +34,10 @@ describe('the tab', () => {
       },
       report: {
         byHour: [rate('9', 1, 3, 0), rate('13', 0, 0, 5)],
-        byAttempt: [rate('1', 1, 7, 2), rate('2', 0, 0, 0), rate('3', 0, 0, 0), rate('4+', 0, 0, 0)],
+        // UPDATED 2026-11-18 (request C3): the buckets were «1 · 2 · 3 · 4+» («الرابعة فما فوق»); they are «1 … 5 · 6+» («المحاولة N», «أكثر من 5»).
+        byAttempt: [rate('1', 1, 7, 2), rate('2', 0, 0, 0), rate('3', 0, 0, 0), rate('4', 0, 0, 0), rate('5', 2, 6, 0), rate('6+', 0, 0, 0)],
         total: rate('الكل', 3, 11, 3),
+        numbering: { mode: 'SPLIT', fromDay: '2026-11-18' },
         truncated: false,
       },
       rules: { stuckBusinessDays: 2, freshNewHours: 2 },
@@ -48,6 +50,11 @@ describe('the tab', () => {
     // A base of zero is a dash, never «0%».
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.getByText(/3 من 14 \(21%\)/)).toBeTruthy();
+    // The attempts are numbered 1 to 5 and «أكثر من 5» — the old «الرابعة فما فوق» is gone — and the plan's floor is said under them.
+    for (const n of [1, 2, 3, 4, 5]) expect(screen.getAllByText(`المحاولة ${n}`).length, String(n)).toBeGreaterThan(0);
+    expect(screen.getAllByText('أكثر من 5').length).toBeGreaterThan(0);
+    expect(screen.queryByText('الرابعة فما فوق')).toBeNull();
+    expect(screen.getByText(/من يوم 2026-11-18 الرقم هو المحاولة اللي انحسبت/)).toBeTruthy();
   });
 
   it('a refusal is said in the server’s words — never drawn as zeros', async () => {

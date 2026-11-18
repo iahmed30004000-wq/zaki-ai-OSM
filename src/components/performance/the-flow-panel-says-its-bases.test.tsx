@@ -480,12 +480,14 @@ describe('on the tab — the board never waits for it, never fails with it, and 
     expect(heading.compareDocumentPosition(boardTile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('asks four things, once each: the board, the report, the measurement (step G1) and the flow — and a new window asks for the flow alone', async () => {
+  // UPDATED 2026-11-18 (request C3): it said «asks four things» — the tab now also asks for «القياس كل أسبوع» (`part=weekly`), once, on its own; a new window still asks for the flow alone.
+  it('asks five things, once each: the weekly measures (C3), the board, the report, the measurement (step G1) and the flow — and a new window asks for the flow alone', async () => {
     render(<NoAnswerWatch />);
     await screen.findByText('سلاسة الشغل');
     await screen.findAllByText('سارة');
-    const kinds = (u: string) => (u.includes('part=flow') ? 'flow' : u.includes('part=board') ? 'board' : u.includes('part=measure') ? 'measure' : 'report');
-    expect(calls.map(kinds).sort()).toEqual(['board', 'flow', 'measure', 'report']);
+    const kinds = (u: string) =>
+      u.includes('part=flow') ? 'flow' : u.includes('part=board') ? 'board' : u.includes('part=measure') ? 'measure' : u.includes('part=weekly') ? 'weekly' : 'report';
+    expect(calls.map(kinds).sort()).toEqual(['board', 'flow', 'measure', 'report', 'weekly']);
     calls.length = 0;
     fireEvent.click(screen.getByRole('button', { name: 'آخر 7 أيام' }));
     await waitFor(() => expect(flowCalls()).toHaveLength(1));

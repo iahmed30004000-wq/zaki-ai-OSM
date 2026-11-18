@@ -295,8 +295,10 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    *
    * 18/11 (R17a): `Checkbox` LEFT the list — «تذكرني» on the login page and «لا تطلب الرمز على هذا الجهاز» on the
    * second step are the first screens that draw it. The old line said «no screen draws it yet»; that is no longer true.
+   *
+   * 18/11 (R15b): `Switch` LEFT the list — «البلد مفعّل» and «السماح بالمخزون السالب» on «البلدان والمتاجر» are the first
+   * screen that draws it. The old line said «no screen draws it yet»; that is no longer true.
    */
-  // `Switch` LEFT this list on 18/11 (R15c): «شركات الشحن وأجورها» draws it for «نشطة / موقوفة» on every courier row.
   // `Segmented` LEFT this list on 18/11 (R10e): «صندوق الواتساب» draws it for «مفتوحة / مغلقة».
   // 18/11 (R12a): `Segmented` left this list — «مصدر المنتج» in the new-product form of ProductsScreen draws it too.
 

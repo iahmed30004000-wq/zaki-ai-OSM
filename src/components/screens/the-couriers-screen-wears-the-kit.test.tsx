@@ -90,7 +90,10 @@ beforeEach(() => {
       sent.push({ url: u, method, body: init?.body });
       const ok = (data: unknown) => ({ ok: true, status: 200, json: async () => data }) as unknown as Response;
       if (method !== 'GET') {
-        if (pending === null && u.startsWith('/api/delivery-providers/c1') && method === 'PATCH' && init?.body?.includes('isActive')) {
+        const held =
+          (u.startsWith('/api/delivery-providers/c1') && method === 'PATCH' && !!init?.body?.includes('isActive')) ||
+          (u === '/api/delivery-providers/c1/credentials' && method === 'DELETE');
+        if (pending === null && held) {
           // Holds the on/off request open until the test lets it go, to see the screen locked meanwhile.
           await new Promise<void>((resolve) => { pending = resolve; });
         }
@@ -213,6 +216,21 @@ describe('on / off', () => {
     expect((within(await rowOf('شركة موقوفة')).getByRole('button', { name: 'احذف' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { pending?.(); });
     await waitFor(() => expect(other.disabled).toBe(false));
+  });
+
+  it('NEGATIVE: «أسنِدها لهذا المتجر» is locked while another request of the screen is out', async () => {
+    providers = [COMPANY, LOOSE];
+    render(<CouriersScreen />);
+    const place = (await screen.findByRole('button', { name: 'أسنِدها لهذا المتجر' })) as HTMLButtonElement;
+    expect(place.disabled).toBe(false);
+    const on = within(await rowOf('شركة التجربة')).getByRole('switch') as HTMLInputElement;
+    await act(async () => { fireEvent.click(on); });
+    await waitFor(() => expect(pending).not.toBeNull());
+    expect(place.disabled).toBe(true);
+    await act(async () => { fireEvent.click(place); });
+    expect(writes().filter((w) => w.body?.includes('assignToCurrentStore'))).toEqual([]);
+    await act(async () => { pending?.(); });
+    await waitFor(() => expect(place.disabled).toBe(false));
   });
 });
 
@@ -398,6 +416,20 @@ describe('the account panel — the secrets keep their behaviour (decision 5)', 
     expect(screen.queryByRole('button', { name: /تغيير الحساب/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /اختبر الاتصال/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'حذف الحساب' })).toBeNull();
+  });
+
+  it('NEGATIVE: «حذف الحساب» is locked while its DELETE is out — a second press sends nothing', async () => {
+    confirmMock.mockResolvedValue(true);
+    render(<CourierCredentials providerId="c1" />);
+    const bin = (await screen.findByRole('button', { name: 'حذف الحساب' })) as HTMLButtonElement;
+    expect(bin.disabled).toBe(false);
+    await act(async () => { fireEvent.click(bin); });
+    await waitFor(() => expect(pending).not.toBeNull());
+    expect(bin.disabled).toBe(true);
+    await act(async () => { fireEvent.click(bin); });
+    expect(writes().filter((w) => w.method === 'DELETE')).toHaveLength(1);
+    await act(async () => { pending?.(); });
+    await waitFor(() => expect((screen.getByRole('button', { name: 'حذف الحساب' }) as HTMLButtonElement).disabled).toBe(false));
   });
 
   it('«اختبر الاتصال» sends the same POST and is not a submit', async () => {
