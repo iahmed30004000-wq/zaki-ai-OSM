@@ -3,8 +3,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Rows, type Column } from '@/components/ui/Rows';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { apiJson } from '@/lib/api-client';
-import { RiLoader4Line, RiScales3Line } from '@remixicon/react';
+import { RiScales3Line } from '@remixicon/react';
 
 /**
  * THE SIGNED PHYSICAL COUNT OF STOCK A STORE STARTED FROM.
@@ -62,11 +64,14 @@ export function OpeningStockCountBanner({ onCounted }: { onCounted: () => void }
 
   if (state.count) {
     return (
-      <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 py-2 text-xs text-[var(--sys-muted-foreground)]">
+      <Card plain className="px-3 py-2">
+        {/* The three lines inside stay byte-identical (R12c: the opening count's figures are not touched, not even re-indented). */}
+        <p className="text-note text-[var(--sys-muted-foreground)]">
         العدّ الافتتاحيّ: عدَّه <span className="font-semibold text-[var(--sys-heading)]">{state.count.countedByName}</span>{' '}
         في {state.count.countedAt.slice(0, 10)} · {state.count._count.batches} بنداً
         {state.count.note ? ` · ${state.count.note}` : ''}
-      </p>
+        </p>
+      </Card>
     );
   }
 
@@ -75,16 +80,13 @@ export function OpeningStockCountBanner({ onCounted }: { onCounted: () => void }
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--sys-warning)]/50 bg-[var(--sys-warning-soft)] px-3 py-2.5">
-        <p className="text-xs leading-relaxed text-[var(--sys-warning)]">
+        <p className="text-note leading-relaxed text-[var(--sys-warning)]">
           لم يُسجَّل عدٌّ افتتاحيٌّ لمخزون هذا المتجر. يُسجَّل مرّةً واحدةً لحظةَ بدء العمل على النظام،
           ويوقّعه من عدَّ بيده.
         </p>
-        <button
-          onClick={() => setOpen(true)}
-          className="h-11 md:h-10 shrink-0 rounded-lg bg-[var(--sys-warning)] px-3 text-xs font-medium text-[var(--sys-primary-foreground)] inline-flex items-center gap-1.5"
-        >
+        <Button type="button" className="shrink-0" onClick={() => setOpen(true)}>
           <RiScales3Line className="h-4 w-4" aria-hidden /> سجّل العدّ الافتتاحيّ
-        </button>
+        </Button>
       </div>
 
       {open && (
@@ -143,7 +145,7 @@ function OpeningCountDialog({
         <span className="block">
           <span className="block text-[var(--sys-heading)]">{p.name}</span>
           {p.sku && (
-            <span className="block text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
+            <span className="block text-note text-[var(--sys-muted-foreground)]" dir="ltr">
               {p.sku}
             </span>
           )}
@@ -247,14 +249,14 @@ function OpeningCountDialog({
   return (
     <Modal isOpen onClose={onClose} title="العدّ الافتتاحيّ للمخزون" maxWidth="4xl">
       <div className="space-y-3">
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           ما على الرفِّ فعلاً لحظةَ العدّ، بالكميّة والكلفة. الكلفةُ تُلتقط الآن ولا تُصحَّح لاحقاً —
           فكلُّ ما يُباع من وحدةٍ كلفتُها صفرٌ يُقرأ ربحاً صافياً إلى الأبد.
         </p>
 
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">من عدَّ المخزون *</span>
+            <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">من عدَّ المخزون *</span>
             <input
               value={countedByName}
               onChange={(e) => setCountedByName(e.target.value)}
@@ -264,7 +266,7 @@ function OpeningCountDialog({
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">وقت العدّ *</span>
+            <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">وقت العدّ *</span>
             <input
               type="datetime-local"
               value={countedAt}
@@ -273,7 +275,7 @@ function OpeningCountDialog({
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">ملاحظة</span>
+            <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">ملاحظة</span>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -284,9 +286,9 @@ function OpeningCountDialog({
         </div>
 
         {products.length === 0 ? (
-          <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-sm text-[var(--sys-muted-foreground)]">
-            لا منتجات في هذا المتجر بعد — أضف المنتجات قبل عدّ مخزونها.
-          </p>
+          <Card plain padding="sm">
+            <p className="text-sm text-[var(--sys-muted-foreground)]">لا منتجات في هذا المتجر بعد — أضف المنتجات قبل عدّ مخزونها.</p>
+          </Card>
         ) : (
           <div className="max-h-[45vh] overflow-y-auto">
             <Rows<Product> columns={columns} rows={products} keyOf={(p) => p.id} />
@@ -296,7 +298,7 @@ function OpeningCountDialog({
         {/* Said before submitting, not after: an omission is a fact about the
             count, and a blank is not a counted zero. */}
         {blanks > 0 && products.length > 0 && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             {filled.length} منتجاً معدود · <span className="text-[var(--sys-warning)]">{blanks} بلا كميّة</span> —
             المتروكُ فارغاً ليس صفراً، وهو خارج العدّ. اكتب صفراً صريحاً لما عدَدتَه ولم تجد منه شيئاً.
           </p>
@@ -309,19 +311,12 @@ function OpeningCountDialog({
         )}
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-3 text-sm text-[var(--sys-muted-foreground)]"
-          >
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            onClick={() => void submit()}
-            disabled={!ready || busy}
-            className="h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
-          >
-            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden /> : 'سجّل العدّ'}
-          </button>
+          </Button>
+          <Button type="button" onClick={() => { void submit(); }} disabled={!ready} loading={busy}>
+            سجّل العدّ
+          </Button>
         </div>
       </div>
     </Modal>

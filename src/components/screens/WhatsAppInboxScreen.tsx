@@ -6,8 +6,12 @@ import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi, qs } from '@/lib/screen-api';
 import { findRoute, routeLabel } from '@/lib/route-registry';
 import { RiArrowRightSLine, RiChat3Line, RiCheckDoubleLine, RiCheckLine, RiCloseLine, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSendPlaneLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiUserLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
 import { arTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -311,11 +315,11 @@ export function WhatsAppInboxScreen() {
     return (
       <>
         <div className="p-8">
-          <div className="max-w-md mx-auto mt-20 text-center p-8 bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)]">
+          <Card className="max-w-md mx-auto mt-20 text-center p-8">
             <RiShieldFlashLine className="w-6 h-6 mx-auto text-[var(--sys-primary)]" />
             <h2 className="mt-4 font-bold text-[var(--sys-heading)]">ليس لديك صلاحية لعرض واتساب</h2>
-            <p className="mt-2 text-xs text-[var(--sys-muted-foreground)]">تواصل مع مدير الشركة لمنحك صلاحية whatsapp.view</p>
-          </div>
+            <p className="mt-2 text-note text-[var(--sys-muted-foreground)]">تواصل مع مدير الشركة لمنحك صلاحية whatsapp.view</p>
+          </Card>
         </div>
       </>
     );
@@ -326,28 +330,32 @@ export function WhatsAppInboxScreen() {
       {/* The window minus the header AS IT IS: the bar grows when it wraps, so a fixed 72 left the inbox
           taller than the window by the extra row and the page scrolled under it. */}
       <div className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
-        {/* Header */}
-        <PageHeader title={routeLabel('/growth/whatsapp/inbox')}
-            description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
-            actions={
-              <>{conn?.connection && (
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
-              <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
-              {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
-            </span>
-          )}</>
-            }
-          />
+        {/* The header is the kit's PageShell (R10e, 18/11). It is drawn WITHOUT children on purpose: the panes below
+            must take the rest of this measured column (`flex-1`), and PageShell's own body is not a flex item —
+            so the panes are its next sibling in the column, not its child. */}
+        <PageShell
+          title={routeLabel('/growth/whatsapp/inbox')}
+          description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
+          width="full"
+          actions={
+            <>{conn?.connection && (
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-note font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
+                <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
+                {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
+              </span>
+            )}</>
+          }
+        />
 
         {/* No connection state */}
         {!loading && conn && conn.status !== 'CONNECTED' ? (
           <div className="flex-1 flex items-center justify-center px-6">
-            <div className="text-center p-8 bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)] max-w-md">
+            <Card className="text-center p-8 max-w-md">
               <div className="w-14 h-14 mx-auto rounded-full bg-[var(--sys-surface)] flex items-center justify-center">
                 <RiChat3Line className="w-6 h-6 text-[var(--sys-muted-foreground)]" />
               </div>
               <h2 className="mt-4 font-bold text-[var(--sys-heading)]">لم يتم ربط WhatsApp بعد</h2>
-              <p className="mt-2 text-xs text-[var(--sys-muted-foreground)] leading-relaxed">
+              <p className="mt-2 text-note text-[var(--sys-muted-foreground)] leading-relaxed">
                 {conn.envConfigured
                   ? 'تم إعداد البيانات لكن الاتصال غير مفعّل. جرّب إعادة الاتصال من الإعدادات.'
                   : 'متغيّرات البيئة على الخادم غير مكتملة. صفحةُ الإعداد تسرد المطلوبَ بأسمائه وخطواتِ التفعيل.'}
@@ -358,13 +366,13 @@ export function WhatsAppInboxScreen() {
                   إعداد WhatsApp
                 </Link>
               )}
-            </div>
+            </Card>
           </div>
         ) : (
           /* 3-pane inbox */
           <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
             {/* ── Column 1: conversations list ── */}
-            <div className={`bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)] flex flex-col min-h-0 ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+            <Card className={`flex flex-col min-h-0 ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-3 border-b border-[var(--sys-surface-strong)] space-y-2">
                 <div className="relative">
                   <RiSearchLine className="absolute top-2.5 left-3 w-4 h-4 text-[var(--sys-muted)] rtl:right-3 rtl:left-auto" />
@@ -376,31 +384,33 @@ export function WhatsAppInboxScreen() {
                     className="w-full pl-9 rtl:pr-9 rtl:pl-3 py-2 text-xs rounded-lg border border-[var(--sys-border-input)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
                   />
                 </div>
-                <div className="flex gap-1 text-xs font-semibold">
-                  {(['OPEN', 'CLOSED'] as const).map((s) => (
-                    <button key={s} onClick={() => setStatusFilter(s)}
-                      className={`min-h-11 md:min-h-0 inline-flex items-center px-3 py-1 rounded-full ${statusFilter === s ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]' : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]'}`}>
-                      {s === 'OPEN' ? 'مفتوحة' : 'مغلقة'}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  size="sm"
+                  aria-label="حالة المحادثات"
+                  options={[
+                    { value: 'OPEN', label: 'مفتوحة' },
+                    { value: 'CLOSED', label: 'مغلقة' },
+                  ]}
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v as 'OPEN' | 'CLOSED')}
+                />
               </div>
               <div className="flex-1 overflow-y-auto min-h-0">
                 {loading ? (
-                  <div className="p-6 text-center text-xs text-[var(--sys-muted-foreground)]">جارٍ التحميل...</div>
+                  <div className="p-6 text-center text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل...</div>
                 ) : error && !offline ? (
-                  <div className="p-4 m-3 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs flex flex-col gap-2">
+                  <div className="p-4 m-3 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note flex flex-col gap-2">
                     <span className="flex items-center gap-1.5"><RiErrorWarningLine className="w-4 h-4" />{error}</span>
-                    <button onClick={() => { setError(null); loadConversations(); }} className="inline-flex items-center gap-1 text-[var(--sys-heading)] font-semibold">
+                    <Button variant="quiet" size="sm" onClick={() => { setError(null); loadConversations(); }} className="self-start">
                       <RiRefreshLine className="w-4 h-4" /> إعادة المحاولة
-                    </button>
+                    </Button>
                   </div>
                 ) : offline ? (
-                  <div className="p-4 m-3 rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-xs">
+                  <div className="p-4 m-3 rounded-lg bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)] text-[var(--sys-warning)] text-note">
                     لا يوجد اتصال بالشبكة — سيتم تحديث الصندوق تلقائيًا عند عودة الاتصال
                   </div>
                 ) : conversations.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-[var(--sys-muted-foreground)]">
+                  <div className="p-8 text-center text-note text-[var(--sys-muted-foreground)]">
                     {statusFilter === 'OPEN' ? 'لا توجد محادثات مفتوحة بعد' : 'لا توجد محادثات مغلقة'}
                   </div>
                 ) : (
@@ -417,44 +427,43 @@ export function WhatsAppInboxScreen() {
                             <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-bold flex items-center justify-center">{c.unreadCount}</span>
                           )}
                         </div>
-                        <p className="text-xs text-[var(--sys-muted-foreground)] truncate mt-0.5">{c.lastMessagePreview || '—'}</p>
-                        {c.assignedTo && <p className="text-xs text-[var(--sys-muted)] mt-0.5">مُسندة إلى: {c.assignedTo.name}</p>}
+                        <p className="text-note text-[var(--sys-muted-foreground)] truncate mt-0.5">{c.lastMessagePreview || '—'}</p>
+                        {c.assignedTo && <p className="text-note text-[var(--sys-muted)] mt-0.5">مُسندة إلى: {c.assignedTo.name}</p>}
                       </div>
                     </button>
                   ))
                 )}
               </div>
-            </div>
+            </Card>
 
             {/* ── Column 2: conversation ── */}
-            <div className={`bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)] flex flex-col min-h-0 ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
+            <Card className={`flex flex-col min-h-0 ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
               {!selected ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-[var(--sys-muted-foreground)]">اختر محادثة لعرضها</div>
+                <div className="flex-1 flex items-center justify-center text-note text-[var(--sys-muted-foreground)]">اختر محادثة لعرضها</div>
               ) : (
                 <>
                   <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--sys-surface-strong)]">
-                    <button
-                      className="lg:hidden text-[var(--sys-muted-foreground)]"
+                    <IconButton
+                      size="sm"
+                      className="lg:hidden shrink-0"
                       onClick={() => setMobileView('list')}
-                      aria-label="عد إلى المحادثات"
-                      title="عد إلى المحادثات"
-                    ><RiArrowRightSLine className="icon-mirror w-5 h-5" /></button>
+                      label="عد إلى المحادثات"
+                    ><RiArrowRightSLine className="icon-mirror w-5 h-5" /></IconButton>
                     <div className="w-9 h-9 rounded-full bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] flex items-center justify-center text-xs font-bold">
                       {(selected.customerName || selected.customerPhone).slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-[var(--sys-heading)] truncate">{selected.customerName || selected.customerPhone}</p>
-                      <p className="text-xs text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
+                      <p className="text-note text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
                     </div>
-                    <button onClick={toggleStatus}
-                      className={`min-h-11 md:min-h-0 inline-flex items-center shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold ${selected.status === 'OPEN' ? 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]' : 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]'}`}>
+                    <Button variant="secondary" size="sm" onClick={toggleStatus} className="shrink-0">
                       {selected.status === 'OPEN' ? 'إغلاق المحادثة' : 'إعادة فتح'}
-                    </button>
+                    </Button>
                   </div>
 
                   {canAssign && (
                     <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--sys-surface)] bg-[var(--sys-surface)]">
-                      <span className="text-xs text-[var(--sys-muted-foreground)] shrink-0">مُسندة إلى:</span>
+                      <span className="text-note text-[var(--sys-muted-foreground)] shrink-0">مُسندة إلى:</span>
                       <select
                         value={selected.assignedUserId || ''}
                         disabled={assigning}
@@ -470,7 +479,7 @@ export function WhatsAppInboxScreen() {
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-2 bg-[var(--sys-surface)]" dir="ltr">
                     {msgsLoading ? (
-                      <div className="text-center text-xs text-[var(--sys-muted-foreground)] py-8">جارٍ التحميل...</div>
+                      <div className="text-center text-note text-[var(--sys-muted-foreground)] py-8">جارٍ التحميل...</div>
                     ) : messages.length === 0 ? (
                       <EmptyState
                         title="لا رسائل في هذه المحادثة"
@@ -502,12 +511,12 @@ export function WhatsAppInboxScreen() {
                   {canSend && selected.status === 'OPEN' && (
                     <div className="border-t border-[var(--sys-surface-strong)] p-3 space-y-2">
                       {sendError && (
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-xs">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note">
                           <span className="flex items-center gap-1.5"><RiErrorWarningLine className="w-4 h-4 shrink-0" />{sendError}</span>
                           {retryText && (
-                            <button onClick={retrySend} className="shrink-0 inline-flex items-center gap-1 font-semibold text-[var(--sys-heading)]">
+                            <Button variant="quiet" size="sm" onClick={() => { void retrySend(); }} className="shrink-0">
                               <RiRefreshLine className="w-4 h-4" /> إعادة الإرسال
-                            </button>
+                            </Button>
                           )}
                         </div>
                       )}
@@ -522,27 +531,27 @@ export function WhatsAppInboxScreen() {
                           placeholder="اكتب رسالة..."
                           className="flex-1 resize-none max-h-32 px-3 py-2.5 text-sm rounded-lg border border-[var(--sys-border-input)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
                         />
-                        <button onClick={sendMessage} disabled={sending || !composing.trim()}
-                          className="shrink-0 w-10 h-11 md:h-10 rounded-full bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] flex items-center justify-center disabled:opacity-40 hover:opacity-90">
-                          {sending ? <RiRefreshLine className="w-4 h-4 animate-spin" /> : <RiSendPlaneLine className="icon-mirror w-4 h-4" />}
-                        </button>
+                        <IconButton variant="primary" label="إرسال" onClick={() => { void sendMessage(); }} loading={sending} disabled={sending || !composing.trim()}
+                          className="shrink-0">
+                          <RiSendPlaneLine className="icon-mirror w-4 h-4" />
+                        </IconButton>
                       </div>
                     </div>
                   )}
                   {selected.status === 'CLOSED' && (
-                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-xs text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
+                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
                   )}
                   {!canSend && (
-                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-xs text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
+                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
                   )}
                 </>
               )}
-            </div>
+            </Card>
 
             {/* ── Column 3: customer panel ── */}
-            <div className={`bg-[var(--sys-card)] rounded-lg border border-[var(--sys-border)] overflow-y-auto min-h-0 hidden lg:block`}>
+            <Card className="overflow-y-auto min-h-0 hidden lg:block">
               {!selected ? (
-                <div className="flex items-center justify-center h-full text-xs text-[var(--sys-muted-foreground)]">لوحة العميل</div>
+                <div className="flex items-center justify-center h-full text-note text-[var(--sys-muted-foreground)]">لوحة العميل</div>
               ) : (
                 <div className="p-4 space-y-5">
                   <div className="text-center">
@@ -550,28 +559,28 @@ export function WhatsAppInboxScreen() {
                       {(selected.customerName || selected.customerPhone).slice(0, 2)}
                     </div>
                     <p className="mt-2 font-bold text-sm text-[var(--sys-heading)]">{selected.customerName || 'عميل غير مرتبط'}</p>
-                    <p className="text-xs text-[var(--sys-muted-foreground)] flex items-center justify-center gap-1 mt-1" dir="ltr">
+                    <p className="text-note text-[var(--sys-muted-foreground)] flex items-center justify-center gap-1 mt-1" dir="ltr">
                       <RiPhoneLine className="w-4 h-4" /> {selected.customerPhone}
                     </p>
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-[var(--sys-muted)] mb-2">المحادثات</p>
-                    <p className="text-xs text-[var(--sys-muted-foreground)]">{convCountByPhone[selected.customerPhone] || 1} محادثة (مفتوحة)</p>
+                    <p className="text-note font-bold text-[var(--sys-muted)] mb-2">المحادثات</p>
+                    <p className="text-note text-[var(--sys-muted-foreground)]">{convCountByPhone[selected.customerPhone] || 1} محادثة (مفتوحة)</p>
                     {selected.customerId ? (
                       <Link href={`/customers?search=${encodeURIComponent(selected.customerPhone)}`} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[var(--sys-primary)] hover:underline">
                         <RiUserLine className="w-4 h-4" /> فتح العميل
                       </Link>
                     ) : (
-                      <p className="mt-2 text-xs text-[var(--sys-muted)]">عميل غير مرتبط</p>
+                      <p className="mt-2 text-note text-[var(--sys-muted)]">عميل غير مرتبط</p>
                     )}
                   </div>
 
                   <div>
-                    <p className="text-xs font-bold text-[var(--sys-muted)] mb-2">الطلبات الأخيرة</p>
+                    <p className="text-note font-bold text-[var(--sys-muted)] mb-2">الطلبات الأخيرة</p>
                     {selected.customerId ? (
                       recentOrders.length === 0 ? (
-                        <p className="text-xs text-[var(--sys-muted-foreground)]">
+                        <p className="text-note text-[var(--sys-muted-foreground)]">
                           لا طلبَ لهذا الرقم بعد — المحادثة سابقةٌ لأوّل طلب.
                         </p>
                       ) : (
@@ -586,12 +595,12 @@ export function WhatsAppInboxScreen() {
                         </div>
                       )
                     ) : (
-                      <p className="text-xs text-[var(--sys-muted)] flex items-center gap-1"><RiShoppingBagLine className="w-4 h-4" /> لا يوجد عميل مرتبط</p>
+                      <p className="text-note text-[var(--sys-muted)] flex items-center gap-1"><RiShoppingBagLine className="w-4 h-4" /> لا يوجد عميل مرتبط</p>
                     )}
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           </div>
         )}
       </div>
