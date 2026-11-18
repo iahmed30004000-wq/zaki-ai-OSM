@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiLoader4Line, RiSparkling2Line } from '@remixicon/react';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * THE ROUND, SUGGESTED — beside the list, never instead of it.
@@ -42,21 +44,20 @@ export function PickingAssistant() {
   };
 
   return (
-    <section className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3">
+    // 18/11 (R11a): a block of the page, so the kit's `Card` (padding sm is the p-3 it had).
+    <Card padding="sm">
       {/* A phone: the sentence has the whole width (it was squeezed to 185px beside the button) and the button is a
           full-width press under it. A desk: side by side, as ever. */}
       <div className={phone ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}>
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           اسأل المساعد عن ترتيب الجولة والنواقص. لا يرى اسم زبون ولا عنواناً، ولا يحجز ولا يحرّك مخزوناً.
         </p>
-        <button
-          onClick={ask}
-          disabled={busy}
-          className={`shrink-0 flex h-11 items-center gap-1.5 px-3 md:h-auto md:py-1.5 rounded-lg border border-[var(--sys-border)] text-xs text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)] disabled:opacity-60 cursor-pointer${phone ? ' justify-center' : ''}`}
-        >
+        {/* 18/11 (R11a): the kit's framed button. The screen keeps its own busy flag (it draws «جارٍ…»), so the press does
+            not hand the button its promise. A flex column stretches it to the full width on a phone, as before. */}
+        <Button type="button" variant="secondary" size="sm" className="shrink-0" onClick={() => { void ask(); }} disabled={busy}>
           {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSparkling2Line className="w-4 h-4 text-[var(--sys-primary)]" />}
           {busy ? 'جارٍ…' : 'رتّب لي الجولة'}
-        </button>
+        </Button>
       </div>
 
       {failed && <p className="mt-2 text-sm text-[var(--sys-destructive)]">{failed}</p>}
@@ -66,6 +67,6 @@ export function PickingAssistant() {
           {answer.suggestion}
         </p>
       )}
-    </section>
+    </Card>
   );
 }
