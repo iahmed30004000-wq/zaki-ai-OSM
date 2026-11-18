@@ -1730,14 +1730,16 @@
     "tabs": 0
   },
   "src/components/screens/UserDetailScreen.tsx": {
-    "buttons": 16,
-    "inputs": 10,
+    "buttons": 15,
+    "inputs": 8,
     "columns": 5,
-    "cards": 8,
+    "cards": 11,
     "modals": 1,
     "icons": 25,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 2
   },
   "src/components/screens/UsersScreen.tsx": {
     "buttons": 10,
