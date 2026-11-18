@@ -4,7 +4,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/Confirm';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiImageEditLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
@@ -254,13 +257,14 @@ export function WalletsScreen() {
   // so the way out must not sit under a fold that says «إيقاف». It is drawn beside the balance, and only while stopped.
   const restartButton =
     wallet && !renaming && !wallet.isActive && mayManage ? (
-      <button
-        onClick={() => patchWallet({ isActive: true }, 'أُعيد تشغيل المحفظة')}
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => { void patchWallet({ isActive: true }, 'أُعيد تشغيل المحفظة'); }}
         disabled={busy}
-        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-success)]/60 text-[var(--sys-success)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
       >
         <RiShutDownLine className="w-4 h-4" /> أعِد تشغيلها
-      </button>
+      </Button>
     ) : null;
   // Rename, stop and delete are maintenance, not the day's work: they fold into «متقدم». Nothing is removed.
   const upkeep =
@@ -270,61 +274,57 @@ export function WalletsScreen() {
         className={phone ? 'w-full' : undefined}
         holds={wallet.isActive ? 'تعديل الاسم · الشكل · إيقاف · حذف' : 'تعديل الاسم · الشكل · حذف'}
       >
-        <button
-          onClick={() => { setRenaming(true); setNewName(wallet.name); }}
-          aria-label="عدّل الاسم" title="عدّل الاسم"
-          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-primary)]"
-        >
+        <IconButton size="sm" label="عدّل الاسم" onClick={() => { setRenaming(true); setNewName(wallet.name); }}>
           <RiPencilLine className="w-4 h-4" />
-        </button>
+        </IconButton>
         {/* The wallet's face — a picture, or an icon and a colour. Drawn for the same key as the rename beside it. */}
-        <button
-          onClick={() => setLookOpen(true)}
-          className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-border)] text-[var(--sys-muted-foreground)] text-xs font-medium inline-flex items-center gap-1.5 hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-        >
+        <Button variant="secondary" size="sm" onClick={() => setLookOpen(true)}>
           <RiImageEditLine className="w-4 h-4" /> تعديل شكل المحفظة
-        </button>
+        </Button>
         {wallet.isActive && (
-          <button
-            onClick={() => patchWallet({ isActive: false }, 'أُوقِفت المحفظة')}
+          <IconButton
+            size="sm"
+            label="أوقف المحفظة"
+            onClick={() => { void patchWallet({ isActive: false }, 'أُوقِفت المحفظة'); }}
             disabled={busy}
-            title="أوقف المحفظة" aria-label="أوقف المحفظة"
-            className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 disabled:opacity-40 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-warning-soft)] hover:text-[var(--sys-warning)]"
           >
             <RiShutDownLine className="w-4 h-4" />
-          </button>
+          </IconButton>
         )}
-        <button aria-label="احذف"
-          onClick={removeWallet}
+        <IconButton
+          variant="danger"
+          size="sm"
+          label="احذف"
+          onClick={() => { void removeWallet(); }}
           disabled={busy}
-          title="احذف"
-          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)] disabled:opacity-40"
         >
           <RiDeleteBinLine className="w-4 h-4" />
-        </button>
+        </IconButton>
       </AdvancedGroup>
     ) : null;
   // Offered only while it is still true. A wallet that has started moving is reconciled by the daily closing, and the
   // server refuses this outright — so showing the button there would be an invitation to a red error.
   const countButton =
     wallet && !renaming && wallet.movements === 0 && !wallet.openingCount && mayCash ? (
-      <button
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={() => setCountOpen(true)}
         disabled={busy}
         title="سجّل العدّ الافتتاحيّ"
-        className="h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-warning)]/60 text-[var(--sys-warning)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-40"
       >
         <RiScales3Line className="w-4 h-4" /> العدّ الافتتاحيّ
-      </button>
+      </Button>
     ) : null;
   const recordButton = mayCash ? (
-    <button
+    <Button
+      variant="primary"
+      size="sm"
       disabled={!wallet?.isActive}
       onClick={() => setRecordOpen(true)}
-      className="h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
     >
       <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
-    </button>
+    </Button>
   ) : null;
   /*
    * «حركة جديدة» AT THE TOP, BESIDE «محفظة جديدة» (the owner, 13/11, over a phone screenshot: «زر حركة جديدة بالاعلى»).
@@ -336,15 +336,14 @@ export function WalletsScreen() {
   const recordable = (wallets ?? []).filter((w) => w.isActive);
   const topRecordButton =
     mayCash && wallets && wallets.length > 0 ? (
-      <button
+      <Button
+        variant="primary"
         disabled={recordable.length === 0}
         onClick={() => setTopOpen(true)}
-        className={`h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50 ${
-          phone ? 'flex-1 justify-center' : 'shrink-0'
-        }`}
+        className={phone ? 'flex-1 justify-center' : 'shrink-0'}
       >
         <RiAddCircleLine className="w-4 h-4" /> حركة جديدة
-      </button>
+      </Button>
     ) : null;
 
   /*
@@ -383,7 +382,7 @@ export function WalletsScreen() {
             <>
               {m.note ?? '—'}
               {m.reversalReason && (
-                <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
+                <span className="block text-note text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
               )}
             </>
           ),
@@ -397,9 +396,9 @@ export function WalletsScreen() {
         { key: 'c1', label: "الطرف", primary: true,
           render: (m) => (
             <>{m.party}
-              {m.note && <span className="block text-xs text-[var(--sys-muted)]">{m.note}</span>}
+              {m.note && <span className="block text-note text-[var(--sys-muted)]">{m.note}</span>}
               {m.reversalReason && (
-                <span className="block text-xs text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
+                <span className="block text-note text-[var(--sys-destructive)]">قيد عكسي: {m.reversalReason}</span>
               )}</>
           ) },
         { key: 'c2', label: "البند",
@@ -414,13 +413,12 @@ export function WalletsScreen() {
 
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/finance/wallets')} />
+    <PageShell title={routeLabel('/finance/wallets')} width="wide">
 
       {/* On a phone the sentence takes the whole line and the button sits under it: side by side the sentence was
           squeezed into five lines with the button floating in the middle of them. */}
       <div className={phone ? 'flex flex-col gap-2' : 'flex items-center justify-between gap-3'}>
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           المحفظة تتبع متجراً واحداً وتحمل عملته. حركاتها سجل دائم: ما مرّ بها مبلغ يُوقَف
           ولا يُحذف — ولا يُحذف فعلياً إلا ما لم يمرّ به شيء.
         </p>
@@ -430,14 +428,13 @@ export function WalletsScreen() {
           <span className={phone ? 'flex gap-2' : 'flex items-center gap-2 shrink-0'}>
             {topRecordButton}
             {mayManage && (
-              <button
+              <Button
+                variant="primary"
                 onClick={() => setCreating(true)}
-                className={`h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 ${
-                  phone ? 'flex-1 justify-center' : 'shrink-0'
-                }`}
+                className={phone ? 'flex-1 justify-center' : 'shrink-0'}
               >
                 <RiAddCircleLine className="w-4 h-4" /> محفظة جديدة
-              </button>
+              </Button>
             )}
           </span>
         )}
@@ -471,9 +468,9 @@ export function WalletsScreen() {
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center justify-between">
                       <span className="text-sm font-medium text-[var(--sys-heading)]">{w.name}</span>
-                      {!w.isActive && <span className="text-xs text-[var(--sys-muted)] border border-[var(--sys-border)] rounded-full px-2 py-0.5">موقوفة</span>}
+                      {!w.isActive && <span className="text-note text-[var(--sys-muted)] border border-[var(--sys-border)] rounded-full px-2 py-0.5">موقوفة</span>}
                     </span>
-                    <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="block text-note text-[var(--sys-muted-foreground)]">
                       {[w.country?.name, w.currencyCode].filter(Boolean).join(' · ')}
                     </span>
                   </span>
@@ -489,7 +486,7 @@ export function WalletsScreen() {
                       minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)}
                       className="mt-1 block text-lg font-semibold text-[var(--sys-heading)]"
                     />
-                    <span className="mt-1 grid grid-cols-3 gap-2 text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="mt-1 grid grid-cols-3 gap-2 text-note text-[var(--sys-muted-foreground)]">
                       <span>افتتاحي <Money value={w.opening} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
                       <span>وارد <Money value={w.in} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
                       <span>صادر <Money value={w.out} currency={null} minorUnit={digitsFor(w.currencyCode, w.balance, w.opening, w.in, w.out)} className="block text-[var(--sys-foreground)]" /></span>
@@ -500,7 +497,7 @@ export function WalletsScreen() {
                     <span className="block text-2xl font-semibold text-[var(--sys-heading)] tabular-nums mt-2">
                       {w.balance} <span className="text-sm font-normal text-[var(--sys-muted-foreground)]">{w.currencyCode}</span>
                     </span>
-                    <span className="block text-xs text-[var(--sys-muted-foreground)] mt-1 tabular-nums">
+                    <span className="block text-note text-[var(--sys-muted-foreground)] mt-1 tabular-nums">
                       افتتاحي {w.opening} · وارد {w.in} · صادر {w.out}
                     </span>
                   </>
@@ -509,12 +506,12 @@ export function WalletsScreen() {
                     typed, and it is a term in every daily closing after it.
                     Said on the card because that is where the number is. */}
                 {w.openingCount ? (
-                  <span className="mt-1 block text-xs text-[var(--sys-success)]">
+                  <span className="mt-1 block text-note text-[var(--sys-success)]">
                     عُدَّ بمعرفة {w.openingCount.countedByName} · {w.openingCount.countedAt.slice(0, 10)}
                   </span>
                 ) : (
                   w.movements === 0 && (
-                    <span className="mt-1 block text-xs text-[var(--sys-warning)]">
+                    <span className="mt-1 block text-note text-[var(--sys-warning)]">
                       رصيدٌ افتتاحيٌّ غير معدود
                     </span>
                   )
@@ -526,7 +523,7 @@ export function WalletsScreen() {
           {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
           {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
 
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+          <Card plain className="overflow-hidden">
             {/* The wallet's own actions live here, on the one that is
                 selected — not repeated on every card, where they would be
                 twelve buttons for one decision. */}
@@ -538,21 +535,17 @@ export function WalletsScreen() {
                     onChange={(e) => setNewName(e.target.value)}
                     className="h-11 md:h-8 w-44 rounded-lg border border-[var(--sys-border-input)] px-2 text-sm"
                   />
-                  <button
-                    onClick={() => patchWallet({ name: newName.trim() }, 'تم تغيير الاسم')}
+                  <IconButton
+                    size="sm"
+                    label="احفظ"
+                    onClick={() => { void patchWallet({ name: newName.trim() }, 'تم تغيير الاسم'); }}
                     disabled={busy || newName.trim().length < 2}
-                    aria-label="احفظ" title="احفظ"
-                    className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-success)] hover:bg-[var(--sys-success-soft)] disabled:opacity-40"
                   >
                     <RiCheckLine className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setRenaming(false)}
-                    aria-label="ألغِ" title="ألغِ"
-                    className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]"
-                  >
+                  </IconButton>
+                  <IconButton size="sm" label="ألغِ" onClick={() => setRenaming(false)}>
                     <RiCloseLine className="w-4 h-4" />
-                  </button>
+                  </IconButton>
                 </span>
               ) : (
                 <h2 className="flex items-center gap-2 text-sm font-medium text-[var(--sys-heading)]">
@@ -610,21 +603,18 @@ export function WalletsScreen() {
                 }
                 actions={(m) => (
                   <>{m.wasReversed ? (
-                          <span className="text-xs text-[var(--sys-muted)]">عُكِست</span>
+                          <span className="text-note text-[var(--sys-muted)]">عُكِست</span>
                         ) : m.isReversal ? (
-                          <span className="text-xs text-[var(--sys-muted)]">قيد عكسي</span>
+                          <span className="text-note text-[var(--sys-muted)]">قيد عكسي</span>
                         ) : !mayCash ? null : (
-                          <button
-                            onClick={() => setReverseFor(m)}
-                            className="text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1"
-                          >
+                          <Button variant="quiet" size="sm" onClick={() => setReverseFor(m)}>
                             <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> قيد عكسي
-                          </button>
+                          </Button>
                         )}</>
                 )}
               />
             )}
-          </div>
+          </Card>
         </>
       )}
 
@@ -708,7 +698,7 @@ export function WalletsScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -770,14 +760,14 @@ function OpeningCountDialog({
   return (
     <Modal isOpen onClose={onClose} title={`العدّ الافتتاحيّ — ${wallet.name}`}>
       <div className="space-y-3">
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           المبلغ الموجود فعلاً في المحفظة لحظةَ العدّ. يُسجَّل مرّةً واحدةً ولا يُعاد، وهو حدٌّ في
           كلِّ إغلاقٍ يوميٍّ بعده — فإن بدأت الحركاتُ صار العدُّ شأنَ الإغلاق اليوميّ لا شأنَ هذه
           الشاشة.
         </p>
 
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">
+          <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">
             المبلغ المعدود ({wallet.currencyCode}) *
           </span>
           <input
@@ -789,7 +779,7 @@ function OpeningCountDialog({
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">من عدَّ المبلغ *</span>
+          <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">من عدَّ المبلغ *</span>
           <input
             value={countedByName}
             onChange={(e) => setCountedByName(e.target.value)}
@@ -797,13 +787,13 @@ function OpeningCountDialog({
             maxLength={120}
             className="h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-sm"
           />
-          <span className="mt-1 block text-xs text-[var(--sys-muted-foreground)]">
+          <span className="mt-1 block text-note text-[var(--sys-muted-foreground)]">
             اسمُ من عدَّ بيده، لا اسمُك — أنت مُسجَّلٌ أصلاً بوصفك من أدخل العدّ.
           </span>
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">وقت العدّ *</span>
+          <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">وقت العدّ *</span>
           <input
             type="datetime-local"
             value={countedAt}
@@ -813,7 +803,7 @@ function OpeningCountDialog({
         </label>
 
         <label className="block">
-          <span className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">ملاحظة</span>
+          <span className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">ملاحظة</span>
           <textarea
             rows={2}
             value={note}
@@ -830,19 +820,16 @@ function OpeningCountDialog({
         )}
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-3 text-sm text-[var(--sys-muted-foreground)]"
-          >
+          <Button variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => void submit()}
             disabled={!ready || busy}
-            className="h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden /> : 'سجّل العدّ'}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>
@@ -889,7 +876,7 @@ function RecordFromTop({
   const picked = wallets.find((w) => w.id === pickedId) ?? null;
   const chooser = (
     <label className="block">
-      <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المحفظة</span>
+      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المحفظة</span>
       <select
         value={picked?.id ?? ''}
         onChange={(e) => setPickedId(e.target.value)}
@@ -907,11 +894,11 @@ function RecordFromTop({
       <Modal isOpen onClose={onClose} title="حركة جديدة">
         <div className="space-y-3">
           {chooser}
-          <p className="text-xs text-[var(--sys-muted)]">اختر المحفظة أول، وبعدها بيطلع نموذج الحركة.</p>
+          <p className="text-note text-[var(--sys-muted)]">اختر المحفظة أول، وبعدها بيطلع نموذج الحركة.</p>
           <div className="flex gap-2 justify-end pt-1">
-            <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+            <Button variant="secondary" type="button" onClick={onClose}>
               إلغاء
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -1076,12 +1063,12 @@ function RecordDialog({
       >
         {chooser}
         {/* Whose money moves, by its face — the title above says the name, and a wallet is recognised by what it looks like. */}
-        <div className="flex items-center gap-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5">
+        <Card plain className="flex items-center gap-3 p-2.5">
           <WalletPicture wallet={wallet} size="sm" />
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
+          <span className="text-note text-[var(--sys-muted-foreground)]">
             {[wallet.country?.name, wallet.currencyCode].filter(Boolean).join(' · ')}
           </span>
-        </div>
+        </Card>
 
         <div className="flex gap-2">
           {(['IN', 'OUT'] as const).map((d) => (
@@ -1127,7 +1114,7 @@ function RecordDialog({
         </label>
 
         {otherCurrency && (
-          <p className="text-xs text-[var(--sys-warning)]">
+          <p className="text-note text-[var(--sys-warning)]">
             انتبه: عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCurrency}) — المبلغ بينخصم من الربح بنفس رقمو بلا تحويل.
           </p>
         )}
@@ -1147,7 +1134,7 @@ function RecordDialog({
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
-            <span className="block text-xs text-[var(--sys-warning)] mt-1">
+            <span className="block text-note text-[var(--sys-warning)] mt-1">
               عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCode}) — اكتب كم بيساوي المبلغ بعملة المتجر، وهاد الرقم اللي بينحسب على نصيب الشريك.
             </span>
           </label>
@@ -1156,7 +1143,7 @@ function RecordDialog({
         {isDraw ? (
           <div>
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الشريك</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الشريك</span>
               <select
                 value={partnerId}
                 onChange={(e) => setPartnerId(e.target.value)}
@@ -1170,14 +1157,14 @@ function RecordDialog({
               </select>
             </label>
             {statementFailed && (
-              <p className="text-xs text-[var(--sys-destructive)] mt-1">تعذّر تحميل الشركاء — سكّر النافذة وافتحها من جديد.</p>
+              <p className="text-note text-[var(--sys-destructive)] mt-1">تعذّر تحميل الشركاء — سكّر النافذة وافتحها من جديد.</p>
             )}
             {statement && partners.length === 0 && (
               <p className="text-xs text-[var(--sys-warning)] mt-1">ما في شركاء فعّالين — سجّلهم من «إعدادات النظام».</p>
             )}
             {/* «نصيبه من الصافي X · سحب لحد هلق Y · بعد هالسحب: مكسور عليه Z» — and the draw goes through either way. */}
             {statement && partner && (
-              <p className="text-xs text-[var(--sys-muted)] mt-1">
+              <p className="text-note text-[var(--sys-muted)] mt-1">
                 {partner.entitlement === null ? (
                   'الصافي ما انقسم لأن مجموع النسب مش 100 — السحب بيتسجّل وبيتحسب لما تنصلّح النسب.'
                 ) : (
@@ -1203,7 +1190,7 @@ function RecordDialog({
         ) : (
           <label className="block">
             {/* An expense's statement is the party its movement is written under, so the one box serves both. */}
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'البيان' : 'الطرف'}</span>
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{isExpense ? 'البيان' : 'الطرف'}</span>
             <input
               value={party}
               onChange={(e) => setParty(e.target.value)}
@@ -1216,7 +1203,7 @@ function RecordDialog({
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البند</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البند</span>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -1247,9 +1234,9 @@ function RecordDialog({
               );
             })}
           </select>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {mayExpense ? EXPENSE_HERE_HINT : OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
+          <span className="block text-note text-[var(--sys-muted)] mt-1">{COURIER_MONEY_HINT} {mayExpense ? EXPENSE_HERE_HINT : OWN_LEDGER_HINT} التحويلات من شاشة التحويلات.</span>
           {mayPartners && (
-            <span className="block text-xs text-[var(--sys-muted)] mt-1">
+            <span className="block text-note text-[var(--sys-muted)] mt-1">
               سحب الشريك من «سحب شريك»: بيتحسب على نصيبه من صافي الربح، ولو زاد بيتسجّل «مكسور عليه» وما بينمنع.
             </span>
           )}
@@ -1258,7 +1245,7 @@ function RecordDialog({
         {isExpense && (
           <>
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">نوع المصروف</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">نوع المصروف</span>
               <select
                 value={expenseType}
                 onChange={(e) => setExpenseType(e.target.value as ExpenseCategory)}
@@ -1270,12 +1257,12 @@ function RecordDialog({
                 ))}
               </select>
               {EXPENSE_FORM_HINT[expenseType] && (
-                <span className="block text-xs text-[var(--sys-muted)] mt-1">{EXPENSE_FORM_HINT[expenseType]}</span>
+                <span className="block text-note text-[var(--sys-muted)] mt-1">{EXPENSE_FORM_HINT[expenseType]}</span>
               )}
             </label>
 
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">التاريخ</span>
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">التاريخ</span>
               <input
                 type="date"
                 value={expenseDate}
@@ -1289,7 +1276,7 @@ function RecordDialog({
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">{isExpense || isDraw ? 'الملاحظة (اختيارية)' : 'الملاحظة (إلزامية)'}</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{isExpense || isDraw ? 'الملاحظة (اختيارية)' : 'الملاحظة (إلزامية)'}</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -1302,16 +1289,16 @@ function RecordDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end pt-1">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button variant="secondary" type="button" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             type="submit"
             disabled={saving || (isDraw && !drawReady)}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ الحفظ…' : isDraw ? 'تسجيل السحب' : isExpense ? 'تسجيل المصروف' : 'تسجيل'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -1354,28 +1341,28 @@ function ReverseDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)]">
           سيُسجَّل قيد معاكس بمبلغ <b className="tabular-nums">{movement.amount}</b> {wallet.currencyCode}{' '}
           ({movement.direction === 'IN' ? 'صادر' : 'وارد'}) مرتبطاً بالحركة الأصلية.
           القيد الأصلي لا يُحذف ولا يُعدَّل.
-        </p>
+        </Card>
 
         {movement.referenceType === 'EXPENSE' && (
-          <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+          <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)]">
             هذه حركة مصروف: عكسها يُلغي المصروف من الربح أيضاً، ويبقى في سجل المصاريف مكتوباً «ملغى».
             يحتاج صلاحية «تعديل المالية».
-          </p>
+          </Card>
         )}
 
         {movement.referenceType === 'TRANSFER' && (
-          <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+          <Card plain padding="sm" className="text-sm text-[var(--sys-foreground)]">
             هذه حركة تحويل: القيد العكسي يعكس التحويل كله بمرة واحدة — الطرفين، كل واحد في محفظته — ويظهر في «التحويلات»
             مكتوباً عليه «معكوس». الطرف المعكوس من قبل يُترك كما هو.
-          </p>
+          </Card>
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">سبب القيد العكسي (إلزامي)</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -1390,16 +1377,12 @@ function ReverseDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button variant="secondary" type="button" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="danger" type="submit" disabled={saving}>
             {saving ? 'جارٍ التسجيل…' : 'تسجيل القيد العكسي'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -1500,7 +1483,7 @@ function CreateWalletDialog({
         className="space-y-3"
       >
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البلد</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البلد</span>
           <select
             value={countryId}
             onChange={(e) => {
@@ -1520,7 +1503,7 @@ function CreateWalletDialog({
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">اسم المحفظة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">اسم المحفظة</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -1533,7 +1516,7 @@ function CreateWalletDialog({
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">العملة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">العملة</span>
           <input
             value={currency}
             onChange={(e) => setCurrency(e.target.value.toUpperCase())}
@@ -1543,7 +1526,7 @@ function CreateWalletDialog({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
+          <span className="block text-note text-[var(--sys-muted)] mt-1">
             ثلاثة أحرف (USD) أو أربعة (USDT). لا يمكن تغييرها لاحقاً — كل حركة تُسجَّل بها.
             {country && currency && currency !== country.currencyCode && (
               <span className="block text-[var(--sys-warning)] mt-0.5">
@@ -1554,7 +1537,7 @@ function CreateWalletDialog({
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الرصيد الافتتاحي</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الرصيد الافتتاحي</span>
           <input
             type="number"
             step="0.001"
@@ -1564,7 +1547,7 @@ function CreateWalletDialog({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
+          <span className="block text-note text-[var(--sys-muted)] mt-1">
             ما في المحفظة الآن قبل أي حركة. ليس حركة بحد ذاته، فلا يظهر في السجل.
           </span>
         </label>
@@ -1572,16 +1555,12 @@ function CreateWalletDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button variant="secondary" type="button" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving || !countryId}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="primary" type="submit" disabled={saving || !countryId}>
             {saving ? 'جارٍ الإنشاء…' : 'إنشاء'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

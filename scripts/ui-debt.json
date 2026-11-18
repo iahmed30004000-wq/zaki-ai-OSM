@@ -69,9 +69,7 @@
       "textXs": 1
     },
     "src/components/growth/AskAi.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 3,
-      "textXs": 14
+      "rawSurfaces": 1
     },
     "src/components/growth/CampaignsBoard.tsx": {
       "rawButtons": 1,
@@ -156,19 +154,10 @@
     "src/components/landing-flow/PageSummary.tsx": {
       "textXs": 5
     },
-    "src/components/ops/BatchBarcodePaste.tsx": {
-      "rawButtons": 3,
-      "rawCheckboxes": 1,
-      "textXs": 8
-    },
     "src/components/ops/DelayShipmentDialog.tsx": {
       "rawButtons": 2,
       "rawDatePickers": 1,
       "textXs": 1
-    },
-    "src/components/ops/PrepEditSheet.tsx": {
-      "rawButtons": 4,
-      "textXs": 5
     },
     "src/components/orders/AiOrderModal.tsx": {
       "rawCheckboxes": 1,
@@ -342,16 +331,8 @@
       "rawSurfaces": 3,
       "textXs": 20
     },
-    "src/components/screens/AssistantScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 8,
-      "textXs": 21
-    },
     "src/components/screens/AuditScreen.tsx": {
       "textXs": 5
-    },
-    "src/components/screens/BatchButtonsHelp.tsx": {
-      "textXs": 2
     },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
@@ -385,11 +366,6 @@
       "rawDatePickers": 1,
       "textXs": 42
     },
-    "src/components/screens/ConfirmationPostponedScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/CouriersScreen.tsx": {
       "rawButtons": 11,
       "rawSurfaces": 4,
@@ -404,10 +380,7 @@
       "textXs": 21
     },
     "src/components/screens/GeoSettingsScreen.tsx": {
-      "rawButtons": 14,
-      "rawCheckboxes": 4,
-      "rawSurfaces": 8,
-      "textXs": 31
+      "rawSurfaces": 2
     },
     "src/components/screens/InstalledAppsScreen.tsx": {
       "rawButtons": 2,
@@ -415,8 +388,7 @@
       "textXs": 19
     },
     "src/components/screens/IntelligenceScreen.tsx": {
-      "rawSurfaces": 4,
-      "textXs": 5
+      "rawSurfaces": 1
     },
     "src/components/screens/InventoryBalancesScreen.tsx": {
       "rawButtons": 1,
@@ -502,9 +474,8 @@
       "textXs": 1
     },
     "src/components/screens/ShippingBatchesScreen.tsx": {
-      "rawButtons": 14,
-      "rawSurfaces": 3,
-      "textXs": 27
+      "rawSurfaces": 1,
+      "textXs": 1
     },
     "src/components/screens/StoreDesignScreen.tsx": {
       "textXs": 2
@@ -573,10 +544,7 @@
       "textXs": 4
     },
     "src/components/screens/UserDetailScreen.tsx": {
-      "rawButtons": 8,
-      "rawCheckboxes": 2,
-      "rawSurfaces": 3,
-      "textXs": 74
+      "rawButtons": 1
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
       "rawButtons": 1,
@@ -587,14 +555,8 @@
       "rawSurfaces": 2,
       "textXs": 11
     },
-    "src/components/screens/WinbackDaily.tsx": {
-      "rawButtons": 1,
-      "textXs": 3
-    },
     "src/components/screens/WinbackScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 3,
-      "textXs": 11
+      "textXs": 2
     },
     "src/components/screens/ai/AiSpendCapCard.tsx": {
       "rawSurfaces": 1,
@@ -684,11 +646,6 @@
       "rawCheckboxes": 1,
       "textXs": 6
     },
-    "src/components/screens/finance/ReverseTransferDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 2
-    },
     "src/components/screens/finance/SearchAllStatements.tsx": {
       "rawButtons": 3,
       "textXs": 10
@@ -701,19 +658,15 @@
       "textXs": 11
     },
     "src/components/screens/finance/TransfersScreen.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 6,
-      "textXs": 24
+      "textXs": 1
     },
     "src/components/screens/finance/WalletLookDialog.tsx": {
-      "rawButtons": 7,
-      "textXs": 6
+      "rawButtons": 2
     },
     "src/components/screens/finance/WalletsScreen.tsx": {
-      "rawButtons": 23,
-      "rawSurfaces": 5,
+      "rawButtons": 2,
       "rawDatePickers": 2,
-      "textXs": 51
+      "textXs": 3
     },
     "src/components/screens/tracking/CloseLegacyDialog.tsx": {
       "rawCheckboxes": 1,
@@ -854,18 +807,8 @@
       "rawCheckboxes": 1,
       "textXs": 3
     },
-    "src/components/settings/StoreBrandField.tsx": {
-      "rawButtons": 2,
-      "textXs": 3
-    },
-    "src/components/settings/StoreIdentityCard.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 1,
-      "textXs": 6
-    },
     "src/components/settings/StorefrontSettings.tsx": {
-      "rawSurfaces": 4,
-      "textXs": 8
+      "rawSurfaces": 2
     },
     "src/components/settings/TelegramSourcesCard.tsx": {
       "rawButtons": 3,
@@ -899,23 +842,21 @@
       "rawSurfaces": 4
     },
     "src/components/shell/Header.tsx": {
-      "rawButtons": 4,
-      "rawSurfaces": 1,
-      "textXs": 1
+      "rawButtons": 1,
+      "rawSurfaces": 1
     },
     "src/components/shell/InstallApp.tsx": {
       "rawButtons": 1
     },
     "src/components/shell/MobileNav.tsx": {
-      "rawButtons": 3,
-      "textXs": 2
+      "rawButtons": 2
     },
     "src/components/shell/NotificationBell.tsx": {
       "rawButtons": 1
     },
     "src/components/shell/Sidebar.tsx": {
       "rawButtons": 4,
-      "textXs": 3
+      "textXs": 1
     },
     "src/components/store-admin/PanelHeader.tsx": {
       "rawButtons": 1,

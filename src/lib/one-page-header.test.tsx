@@ -60,6 +60,8 @@ const TABLE: [string, string, number, string | null][] = [
   ['src/components/screens/PreparationScreen.tsx', '/ops/preparation', 1, 'src/app/(system)/(shell)/ops/preparation/page.tsx'],
   ['src/components/screens/ReturnsScreen.tsx', '/ops/returns', 1, 'src/app/(system)/(shell)/ops/returns/page.tsx'],
   ['src/components/screens/ShipmentsNewScreen.tsx', '/ops/shipments/new', 1, 'src/app/(system)/(shell)/ops/shipments/new/page.tsx'],
+  // 18/11 (R11c): «دفعات الشحن» typed its title («دفعات الشحن») and was not in this table; it reads it from the registry now.
+  ['src/components/screens/ShippingBatchesScreen.tsx', '/ops/batches', 1, 'src/app/(system)/(shell)/ops/batches/page.tsx'],
   ['src/components/screens/TrackingScreen.tsx', '/ops/tracking', 1, 'src/app/(system)/(shell)/ops/tracking/page.tsx'],
   // A tab of «المتابعة», drawn `embedded` there (no title); its old address redirects to «المتابعة».
   ['src/components/screens/WinbackScreen.tsx', '/confirmation/follow-up', 1, null],

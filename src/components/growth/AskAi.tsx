@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { apiJson } from '@/lib/api-client';
 import { RiBrainLine, RiCpuLine, RiEqualizer2Line, RiLoader4Line, RiSendPlaneLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * ASKING THE AI ABOUT THIS COMPANY.
@@ -101,12 +103,12 @@ export function AskAi({
   };
 
   return (
-    <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+    <Card>
       <header className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-[var(--sys-border)]">
         <RiBrainLine className="w-4 h-4 text-[var(--sys-primary)]" />
         <h2 className="text-sm font-bold text-[var(--sys-heading)]">اسأل الذكاء عن أرقامك</h2>
         <span
-          className="inline-flex items-center gap-1.5 text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg px-2 py-0.5"
+          className="inline-flex items-center gap-1.5 text-note text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg px-2 py-0.5"
           title={info.housePrompt ? `برومبت ثابت: ${info.housePrompt}` : 'لا برومبت ثابت'}
         >
           <RiCpuLine className="w-4 h-4 text-[var(--sys-muted)]" />
@@ -114,7 +116,7 @@ export function AskAi({
         </span>
         <Link
           href="/settings/ai"
-          className="ms-auto inline-flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
+          className="ms-auto inline-flex items-center gap-1 text-note text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
         >
           <RiEqualizer2Line className="w-4 h-4" />
           غيّر النموذج
@@ -123,7 +125,7 @@ export function AskAi({
 
       <div className="p-4 space-y-3">
         {!info.ready && (
-          <p className="text-xs text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-2.5">
+          <p className="text-note text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-2.5">
             لم يُضبط مفتاح الذكاء بعد. اختر المزوّد وأدخل المفتاح من{' '}
             <Link href="/settings/ai" className="underline font-semibold">
               إعدادات الذكاء الاصطناعي
@@ -133,34 +135,32 @@ export function AskAi({
         )}
 
         <div>
-          <p className="text-xs text-[var(--sys-muted-foreground)] mb-1.5">ما الذي يُسمح له بقراءته:</p>
+          <p className="text-note text-[var(--sys-muted-foreground)] mb-1.5">ما الذي يُسمح له بقراءته:</p>
           {info.sources.length === 0 && (
-            <p className="text-xs text-[var(--sys-muted-foreground)] mb-1.5">ما في مصدر متاح لصلاحيتك هون.</p>
+            <p className="text-note text-[var(--sys-muted-foreground)] mb-1.5">ما في مصدر متاح لصلاحيتك هون.</p>
           )}
           <div className="flex flex-wrap gap-1.5">
             {info.sources.map((s) => {
               const on = picked.includes(s.id);
               return (
-                <button
+                <Button
                   key={s.id}
                   type="button"
+                  size="sm"
+                  variant={on ? 'primary' : 'secondary'}
+                  aria-pressed={on}
                   onClick={() => toggle(s.id)}
                   title={s.detail}
-                  className={`min-h-11 md:min-h-0 inline-flex items-center px-2.5 py-1 text-xs rounded-lg border transition-colors ${
-                    on
-                      ? 'bg-[var(--sys-primary-soft)] border-[var(--sys-primary-soft)] text-[var(--sys-primary)] font-semibold'
-                      : 'bg-[var(--sys-card)] border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)]/40'
-                  }`}
                 >
                   {s.label}
-                </button>
+                </Button>
               );
             })}
           </div>
           {/* What is held back is named, with the reason — a chip that silently
               is not there reads as a feature the system never had. */}
           {(info.withheld ?? []).length > 0 && (
-            <p className="text-xs text-[var(--sys-muted)] mt-1.5">
+            <p className="text-note text-[var(--sys-muted)] mt-1.5">
               مش متاح هون:{' '}
               {(info.withheld ?? []).map((w) => `${w.label} (${w.why})`).join('، ')}
             </p>
@@ -178,36 +178,36 @@ export function AskAi({
           rows={3}
           maxLength={2000}
           placeholder="الصق برومبتك هنا، أو اسأل مباشرة — مثلاً: أي منتج أخسره من كثرة الرفض ولماذا؟"
-          className="w-full px-2.5 py-2 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]"
+          className="w-full px-2.5 py-2 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]"
         />
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
-            onClick={ask}
+            size="sm"
+            onClick={() => { void ask(); }}
             disabled={busy || !question.trim() || picked.length === 0}
-            className="inline-flex items-center gap-1.5 h-11 md:h-10 px-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-semibold hover:bg-[var(--sys-primary)] disabled:opacity-50"
           >
             {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSendPlaneLine className="icon-mirror w-4 h-4" />}
             حلّل
-          </button>
-          <span className="text-xs text-[var(--sys-muted)]">Ctrl + Enter</span>
+          </Button>
+          <span className="text-note text-[var(--sys-muted)]">Ctrl + Enter</span>
           {picked.length === 0 && (
-            <span className="text-xs text-[var(--sys-warning)]">اختر مصدر بيانات واحداً على الأقل.</span>
+            <span className="text-note text-[var(--sys-warning)]">اختر مصدر بيانات واحداً على الأقل.</span>
           )}
         </div>
 
 
         {answer && (
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-            <p className="text-xs text-[var(--sys-foreground)] whitespace-pre-wrap leading-relaxed">{answer}</p>
-            <p className="text-xs text-[var(--sys-muted)] mt-2">
+          <Card plain padding="sm">
+            <p className="text-sm text-[var(--sys-foreground)] whitespace-pre-wrap leading-relaxed">{answer}</p>
+            <p className="text-note text-[var(--sys-muted)] mt-2">
               مبني على أرقام الثلاثين يوماً الماضية المعروضة أعلاه — راجِعه قبل التنفيذ.
             </p>
-            {note && <p className="text-xs text-[var(--sys-muted)] mt-1">{note}</p>}
-          </div>
+            {note && <p className="text-note text-[var(--sys-muted)] mt-1">{note}</p>}
+          </Card>
         )}
       </div>
-    </section>
+    </Card>
   );
 }

@@ -339,5 +339,14 @@ describe('and the wiring is the one that keeps it so', () => {
     const targets = (src.match(/<Link|<button|<InstallAppLine/g) ?? []).length;
     const tapped = (src.match(/\$\{TAP\}/g) ?? []).length;
     expect(tapped).toBe(targets);
+    /*
+     * 18/11 (R17d): the sheet's ✕ is the kit's `IconButton`, which is 44px square on a phone by the kit itself
+     * (`h-11 w-11` below `md`, at every size), so it carries no `TAP`. It is counted here so it cannot slip past
+     * this guard: each one must be a kit square, never one given a smaller box by hand.
+     */
+    // The opening tag, up to the `>` on its own line (an arrow `=>` inside it is not the end).
+    const kit = src.match(/<IconButton[\s\S]*?\n\s*>/g) ?? [];
+    expect(kit.length, 'الإغلاق رجع زر خام بلا TAP أو اختفى').toBe(1);
+    for (const tag of kit) expect(tag, 'زر العدّة انعطى مقاس بإيدو').not.toMatch(/\b(?:min-)?[hw]-(?:\d|\[)/);
   });
 });

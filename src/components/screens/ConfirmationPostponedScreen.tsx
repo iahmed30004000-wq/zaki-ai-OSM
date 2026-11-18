@@ -6,6 +6,8 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { routeLabel } from '@/lib/route-registry';
 import { RiInboxUnarchiveLine, RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pager } from '@/components/ui/Pager';
 import { ListToolbar, withChosen, type ToolbarFilter } from '@/components/ui/ListToolbar';
@@ -206,7 +208,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
           {done}
         </p>
       )}
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+      <Card plain className="overflow-hidden">
         {/* Eight columns on a 375px screen is every cell wrapped to four
             lines and one row filling the phone. The same definition draws
             a table on a desk and a card in a hand — and the card leads
@@ -312,22 +314,22 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
               label: 'إلى الطابور',
               render: (o) =>
                 o.actionable && o.mayHandBack !== false ? (
-                  <button
+                  <Button
                     type="button"
-                    onClick={() => void toQueue(o)}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void toQueue(o);
+                    }}
                     disabled={busyId === o.id}
+                    loading={busyId === o.id}
                     title="أعِدْه إلى الطابور ليسحبه أوّل من يفرغ"
-                    className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] px-2.5 py-1 text-xs font-bold text-[var(--sys-warning)] transition-colors hover:bg-[var(--sys-warning)]/20 disabled:opacity-40"
                   >
-                    {busyId === o.id ? (
-                      <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : (
-                      <RiInboxUnarchiveLine className="h-4 w-4" aria-hidden />
-                    )}
+                    <RiInboxUnarchiveLine className="h-4 w-4" aria-hidden />
                     إلى الطابور
-                  </button>
+                  </Button>
                 ) : (
-                  <span className="text-xs text-[var(--sys-muted)]">—</span>
+                  <span className="text-note text-[var(--sys-muted)]">—</span>
                 ),
             },
             // The agent's own name is on a desk's table; on a card it is
@@ -349,7 +351,7 @@ export function ConfirmationPostponedScreen({ embedded = false }: { embedded?: b
             )
           }
         />
-      </div>
+      </Card>
 
       {pagination.total > 0 && (
         <Pager

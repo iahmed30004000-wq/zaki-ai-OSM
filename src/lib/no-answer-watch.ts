@@ -3,6 +3,8 @@ import { zonedParts, zonedTimeToInstant, type BusinessCalendar } from './busines
 import { CONTACT_RESULTS, NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { OPEN_CONFIRMATION } from './confirmation-queue';
 import { localDayKey, startOfLocalDay } from './local-day';
+import { cadenceCalOf, cadenceLineNumbers, type CadenceCal, type CadenceFact } from './no-answer-cadence';
+import { cadenceSince } from './no-answer-cadence-switch';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -317,7 +319,7 @@ export async function noAnswerBoard(input: {
 // ───────────────────────── the report ─────────────────────────
 
 export interface RateRow {
-  /** The hour (0–23, local) or the attempt bucket ('1', '2', '3', '4+'). */
+  /** The hour (0–23, local) or the attempt bucket ('1' … '5', '6+'). */
   key: string;
   reached: number;
   notReached: number;
@@ -329,16 +331,33 @@ export interface RateRow {
   rate: number | null;
 }
 
+/**
+ * HOW THE ATTEMPTS OF THE RANGE WERE NUMBERED (request C3) — said in one sentence under the table:
+ *   · `CALLS` — by the order of the calls, as always: the plan («إثبات المكالمات وجدول المحاولات») is off, or switched on after the range;
+ *   · `PLAN`  — every line of the range is after the plan's floor: the attempt the plan COUNTED;
+ *   · `SPLIT` — the floor falls inside the range: the plan's numbering from the local day `fromDay`, the call order before it.
+ */
+export interface AttemptNumbering {
+  mode: 'CALLS' | 'PLAN' | 'SPLIT';
+  /** The local day (`yyyy-mm-dd`) of the floor, for `SPLIT` and `PLAN`; null for `CALLS`. */
+  fromDay: string | null;
+}
+
 export interface AnswerRateReport {
   byHour: RateRow[];
   byAttempt: RateRow[];
   total: RateRow;
+  numbering: AttemptNumbering;
   /** The range reached `REPORT_ROW_CAP`: the figures cover only part of it. */
   truncated: boolean;
 }
 
-export const ATTEMPT_BUCKETS = ['1', '2', '3', '4+'] as const;
-const bucketOf = (n: number) => (n >= 4 ? '4+' : String(Math.max(1, n)));
+/**
+ * THE ATTEMPT BUCKETS, NUMBERED 1–5 AND «أكثر من 5» (request C3, 18/11): the plan has five attempts, and the old «4+» folded the fourth and the fifth into one
+ * row. Nothing is dropped — the rows still sum to the total.
+ */
+export const ATTEMPT_BUCKETS = ['1', '2', '3', '4', '5', '6+'] as const;
+const bucketOf = (n: number) => (n >= 6 ? '6+' : String(Math.max(1, n)));
 
 const emptyRow = (key: string): RateRow => ({ key, reached: 0, notReached: 0, base: 0, notACall: 0, rate: null });
 function add(row: RateRow, outcome: Outcome) {
@@ -370,6 +389,17 @@ export interface AttemptRow {
   createdAt: Date;
   /** Only to order two rows of one order written in the same millisecond. */
   attemptNumber: number;
+  /** The due the door stored on the line (the plan's fold reads it) — absent when the reader did not select it. */
+  nextFollowUpAt?: Date | null;
+}
+
+/**
+ * THE PLAN, as the report needs it (request C3): its calendar — whose `since` is the floor, the switch's `enabledAt` — and, per order
+ * with a row in the range, its «لا يرد» lines AFTER the floor and BEFORE the range, so the fold starts where the order really stood.
+ */
+export interface ReportPlan {
+  cal: CadenceCal;
+  priorLines: ReadonlyMap<string, readonly CadenceFact[]>;
 }
 
 /**
@@ -382,12 +412,19 @@ export interface AttemptRow {
  * first call was not answered, the second was». So only the rows that ARE an outcome (`CALL_RESULTS`) are numbered, per
  * order, in time order, starting after the calls that order already had before the range (`priorCalls`). A button or a
  * message gets no number; it is counted in the hour table, outside the rate.
+ *
+ * UNDER THE PLAN (request C3, 18/11) — a line STRICTLY after the floor (`plan.cal.since`) is numbered by the ONE counter of C1/C2
+ * (`cadenceLineNumbers`, the fold the door, the desk and the timeline use): a «لا يرد» the plan counted is the attempt it counted; a press
+ * that did not count (early) is the attempt it tried to be and does NOT advance the number; a call that reached somebody is the
+ * attempt it was — one after the counted ones — and does not advance it either (a reached call is not an attempt of the plan). A line
+ * at or before the floor is numbered by the call order, as before. No plan: every line by the call order, exactly as before.
  */
 export function tallyAnswerRate(
   rows: AttemptRow[],
   priorCalls: Map<string, number>,
-  timezone: string
-): Omit<AnswerRateReport, 'truncated'> {
+  timezone: string,
+  plan?: ReportPlan | null
+): Omit<AnswerRateReport, 'truncated' | 'numbering'> {
   const hourOf = hourReader(timezone);
   const hours = new Map<number, RateRow>();
   const tries = new Map<string, RateRow>(ATTEMPT_BUCKETS.map((b) => [b, emptyRow(b)]));
@@ -396,6 +433,36 @@ export function tallyAnswerRate(
   const inOrder = [...rows].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.attemptNumber - b.attemptNumber
   );
+
+  // The plan's numbers, per order, from the one fold — over the order's lines after the floor (those before the range first).
+  const floor = plan ? plan.cal.since.getTime() : Infinity;
+  const underPlan = (r: AttemptRow) => r.createdAt.getTime() > floor;
+  const planNumber = new Map<object, number | null>();
+  const countedSoFar = new Map<string, number>();
+  if (plan) {
+    const factsOf = new Map<string, CadenceFact[]>();
+    for (const r of inOrder) {
+      if (!underPlan(r) || outcomeOf(r.result) !== 'NOT_REACHED') continue;
+      const list = factsOf.get(r.orderId);
+      if (list) list.push(r);
+      else factsOf.set(r.orderId, [...(plan.priorLines.get(r.orderId) ?? [])].concat(r));
+    }
+    for (const [orderId, facts] of factsOf) {
+      const numbers = cadenceLineNumbers(facts, plan.cal);
+      let before = 0;
+      for (const f of plan.priorLines.get(orderId) ?? []) before = Math.max(before, numbers.get(f) ?? 0);
+      countedSoFar.set(orderId, before);
+      for (const [f, n] of numbers) planNumber.set(f, n);
+    }
+    // An order whose lines in the range are all reached calls still starts after its counted ones.
+    for (const [orderId, prior] of plan.priorLines) {
+      if (countedSoFar.has(orderId)) continue;
+      let before = 0;
+      for (const n of cadenceLineNumbers(prior, plan.cal).values()) before = Math.max(before, n ?? 0);
+      countedSoFar.set(orderId, before);
+    }
+  }
+
   for (const r of inOrder) {
     const outcome = outcomeOf(r.result);
     const hour = hourOf(r.createdAt);
@@ -403,8 +470,18 @@ export function tallyAnswerRate(
     add(hours.get(hour)!, outcome);
     add(total, outcome);
     if (outcome === 'NOT_A_CALL') continue;
-    const n = (callsSoFar.get(r.orderId) ?? 0) + 1;
-    callsSoFar.set(r.orderId, n);
+    let n: number;
+    if (plan && underPlan(r)) {
+      const counted = countedSoFar.get(r.orderId) ?? 0;
+      const own = outcome === 'NOT_REACHED' ? planNumber.get(r) : null;
+      if (typeof own === 'number') {
+        n = own;
+        countedSoFar.set(r.orderId, Math.max(counted, own));
+      } else n = counted + 1;
+    } else {
+      n = (callsSoFar.get(r.orderId) ?? 0) + 1;
+      callsSoFar.set(r.orderId, n);
+    }
     add(tries.get(bucketOf(n))!, outcome);
   }
   return {
@@ -414,12 +491,25 @@ export function tallyAnswerRate(
   };
 }
 
+/** How a range is numbered against the plan's floor — see `AttemptNumbering`. */
+export function numberingOf(since: Date | null, start: Date, end: Date, timezone: string): AttemptNumbering {
+  if (!since || since.getTime() >= end.getTime()) return { mode: 'CALLS', fromDay: null };
+  const p = zonedParts(since, timezone);
+  const fromDay = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  return { mode: since.getTime() < start.getTime() ? 'PLAN' : 'SPLIT', fromDay };
+}
+
 /**
  * The report over a range, for one store. Two bounded reads:
  *
  *   · the range's rows, OLDEST first, so that when the cap cuts it is the end of the range that goes and every row kept
  *     still has all of its order's earlier rows in the range;
  *   · per order with a row in the range, how many calls it had BEFORE the range — one grouped count, not the rows.
+ *
+ * Request C3: with the plan on (`cadenceSince`, the switch's floor), the rows carry the due they stored, and a third bounded read brings
+ * the «لا يرد» lines between the floor and the range of the same orders — the fold needs where each order already stood. The plan off,
+ * the reads are main's two, unchanged. `calendar` gives the plan the country's rest days and hours (absent: the timezone alone and
+ * the plan's own fallbacks).
  */
 export async function answerRateReport(input: {
   companyId: string;
@@ -427,13 +517,18 @@ export async function answerRateReport(input: {
   timezone: string;
   start: Date;
   end: Date;
+  calendar?: BusinessCalendar;
 }): Promise<AnswerRateReport> {
   const { companyId, storeId, timezone, start, end } = input;
   const inRange = { gte: start, lte: end };
-  const [rows, before] = await Promise.all([
+  const since = await cadenceSince(db, companyId);
+  const planned = !!since && since.getTime() < end.getTime();
+  const [rows, before, priorPlan] = await Promise.all([
     db.orderContactAttempt.findMany({
       where: { companyId, order: { storeId }, createdAt: inRange },
-      select: { orderId: true, result: true, createdAt: true, attemptNumber: true },
+      select: planned
+        ? { orderId: true, result: true, createdAt: true, attemptNumber: true, nextFollowUpAt: true }
+        : { orderId: true, result: true, createdAt: true, attemptNumber: true },
       orderBy: [{ createdAt: 'asc' }, { attemptNumber: 'asc' }],
       take: REPORT_ROW_CAP,
     }),
@@ -450,7 +545,36 @@ export async function answerRateReport(input: {
       orderBy: { orderId: 'asc' },
       take: REPORT_ROW_CAP,
     }),
+    // The plan's «لا يرد» lines strictly after the floor and before the range, of the orders with a row in it — only when the floor is before the range.
+    planned && since!.getTime() < start.getTime()
+      ? db.orderContactAttempt.findMany({
+          where: {
+            companyId,
+            createdAt: { gt: since!, lt: start },
+            result: { in: [...NO_ANSWER_RESULTS] },
+            order: { storeId, contactAttempts: { some: { createdAt: inRange } } },
+          },
+          select: { orderId: true, result: true, createdAt: true, attemptNumber: true, nextFollowUpAt: true },
+          orderBy: [{ createdAt: 'asc' }, { attemptNumber: 'asc' }],
+          take: REPORT_ROW_CAP,
+        })
+      : Promise.resolve([] as AttemptRow[]),
   ]);
   const priorCalls = new Map(before.map((b) => [b.orderId, b._count._all]));
-  return { ...tallyAnswerRate(rows, priorCalls, timezone), truncated: rows.length >= REPORT_ROW_CAP };
+  let plan: ReportPlan | null = null;
+  if (planned) {
+    const priorLines = new Map<string, CadenceFact[]>();
+    for (const l of priorPlan) {
+      const list = priorLines.get(l.orderId);
+      if (list) list.push(l);
+      else priorLines.set(l.orderId, [l]);
+    }
+    const country = input.calendar ?? { timezone, weekendDays: [], workHoursStart: '', workHoursEnd: '' };
+    plan = { cal: cadenceCalOf(since!, { ...country, timezone }), priorLines };
+  }
+  return {
+    ...tallyAnswerRate(rows, priorCalls, timezone, plan),
+    numbering: numberingOf(since, start, end, timezone),
+    truncated: rows.length >= REPORT_ROW_CAP || priorPlan.length >= REPORT_ROW_CAP,
+  };
 }

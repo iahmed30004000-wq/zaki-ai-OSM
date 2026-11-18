@@ -12,6 +12,7 @@ import { RiCloseLine, RiLogoutBoxLine, RiMoreLine } from '@remixicon/react';
 import { useBulkActive } from './BulkBar';
 import { signOut } from '@/lib/sign-out';
 import { InstallAppLine } from './InstallApp';
+import { IconButton } from '@/components/ui/IconButton';
 
 /**
  * THE BOTTOM OF A PHONE.
@@ -96,14 +97,15 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
           >
             <div className="sticky top-0 flex items-center justify-between border-b border-[var(--sys-border)] bg-[var(--sys-card)] px-4 py-3">
               <span className="text-sm font-semibold text-[var(--sys-heading)]">كل الشاشات</span>
-              <button
+              {/* 18/11 (R17d): the kit's square, 44px on a phone by the kit itself — so not `TAP`. */}
+              <IconButton
                 type="button"
+                label="إغلاق"
                 onClick={() => setSheet(false)}
-                aria-label="إغلاق"
-                className={`${TAP} -me-2 flex items-center justify-center rounded-lg text-[var(--sys-muted)]`}
+                className="-me-2 text-[var(--sys-muted)]"
               >
                 <RiCloseLine className="h-5 w-5" />
-              </button>
+              </IconButton>
             </div>
 
             <div className="p-2">
@@ -195,6 +197,8 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
               </Link>
               {/* Installing, while this phone can: the strip above the page rests, this line stays. */}
               <InstallAppLine className={`${TAP} flex w-full items-center gap-3 rounded-lg px-2 text-sm font-semibold text-[var(--sys-primary)]`} />
+              {/* 18/11 (R17d): a hand-written press on purpose — a LINE of this list, drawn like the links above it;
+                  the kit Button centres and sizes its content and would break the column. R19's allowed list. */}
               <button
                 type="button"
                 onClick={() => signOut('manual')}
@@ -241,12 +245,14 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
                   <Icon className="h-5 w-5" />
                   {/* Truncated, never wrapped: a label that wraps makes the
                       bar taller and moves every other tab under the thumb. */}
-                  <span className="w-full truncate text-center text-xs leading-tight">{route.label}</span>
+                  <span className="w-full truncate text-center text-note leading-tight">{route.label}</span>
                 </Link>
               </li>
             );
           })}
 
+          {/* 18/11 (R17d): a hand-written press on purpose — a TAB of this bar, drawn like the four links beside it
+              (icon over word, the whole cell). R19's allowed list. */}
           <li className="min-w-0 flex-1">
             <button
               type="button"
@@ -255,7 +261,7 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
               className={`${TAP} flex w-full flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[var(--sys-muted-foreground)]`}
             >
               <RiMoreLine className="h-5 w-5" />
-              <span className="text-xs leading-tight">المزيد</span>
+              <span className="text-note leading-tight">المزيد</span>
             </button>
           </li>
         </ul>
