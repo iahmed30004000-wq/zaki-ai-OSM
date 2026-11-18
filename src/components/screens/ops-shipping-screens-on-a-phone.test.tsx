@@ -187,8 +187,12 @@ describe('«إنشاء شحنة»', () => {
     await draw();
     expect(within(card()).getByText('تنبيهات')).toBeTruthy();
     expect(card().firstElementChild!.textContent).not.toContain('أقرّ بالتنبيه');
-    // The box in the cell is the bare one it always was.
-    expect((within(card()).getByLabelText('أقرّ بالتنبيه وأتابع') as HTMLInputElement).className).toBe('');
+    // 18/11 (R11b): was «the box in the cell is the bare one it always was» (`className` empty). The box is the kit's
+    // `Checkbox` now, on a desk as on a phone: the same 20px box inside a label, so the cell's box is no longer bare.
+    // What did not change is the claim of this test — the warnings are a cell on a desk, not the card's notice.
+    const box = within(card()).getByLabelText('أقرّ بالتنبيه وأتابع') as HTMLInputElement;
+    expect(box.className).toContain('h-5');
+    expect(box.closest('label')!.getAttribute('for')).toBe(box.id);
   });
 
   it('PHONE: the amount the courier collects is first, the sum it came from is the line under it — no equals sign', async () => {

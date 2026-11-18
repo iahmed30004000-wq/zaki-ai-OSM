@@ -8,6 +8,9 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities';
 import { RiDraggable, RiGitMergeLine, RiDeleteBinLine, RiCloseLine } from '@remixicon/react';
 import { BulkBar } from '@/components/shell/BulkBar';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { Segmented } from '@/components/ui/Segmented';
 import { Money } from '@/components/ui/Money';
 import { NO_FILTER, QUICK_FILTERS, filterCampaigns, isFiltering, type CampaignFilter, type FilterableCampaign } from '@/lib/campaign-filters';
 
@@ -42,8 +45,6 @@ const VIEWS: { key: View; label: string }[] = [
   { key: 'compact', label: 'قائمة مختصرة' },
 ];
 
-const CHIP_ON = 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]';
-const CHIP_OFF = 'text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]';
 const SELECT = 'h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)]';
 const fmt = (n: number | null) => (n === null ? '—' : plainNumber(n, 2));
 
@@ -172,16 +173,16 @@ export function CampaignsBoard<T extends BoardCampaign>({
         </select>
         <div className="flex flex-wrap gap-1">
           {QUICK_FILTERS.map((q) => (
-            <button key={q.key} type="button" onClick={() => set({ quick: filter.quick === q.key ? '' : q.key })}
-              className={`rounded-md px-2 py-1 text-xs font-semibold ${filter.quick === q.key ? CHIP_ON : CHIP_OFF}`}>
+            <Button key={q.key} type="button" size="sm" variant={filter.quick === q.key ? 'secondary' : 'quiet'} aria-pressed={filter.quick === q.key}
+              onClick={() => set({ quick: filter.quick === q.key ? '' : q.key })}>
               {q.label}
-            </button>
+            </Button>
           ))}
         </div>
         {filtering && (
-          <button type="button" onClick={() => setFilter(NO_FILTER)} className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ${CHIP_OFF}`}>
+          <Button type="button" size="sm" variant="quiet" onClick={() => setFilter(NO_FILTER)}>
             <RiCloseLine className="h-4 w-4" /> امسح الفلاتر
-          </button>
+          </Button>
         )}
       </div>
 
@@ -189,26 +190,17 @@ export function CampaignsBoard<T extends BoardCampaign>({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {mayManage && (
-          <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-foreground)]">
-            <input type="checkbox" aria-label="حدد كل المعروض" checked={allShownSelected} onChange={selectShown} />
-            حدد كل المعروض ({shown.length})
-          </label>
+          <Checkbox id="campaigns-select-shown" aria-label="حدد كل المعروض" checked={allShownSelected} onChange={selectShown}
+            label={`حدد كل المعروض (${shown.length})`} />
           )}
           {mayManage && duplicates > 0 && (
-            <button type="button" onClick={() => void onMerge()}
-              className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-warning)] px-2 py-1 text-xs font-semibold text-[var(--sys-warning)]">
-              <RiGitMergeLine className="h-4 w-4" /> احذف المكرر ({duplicates})
-            </button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => { void onMerge(); }}>
+              <span className="inline-flex items-center gap-1 text-[var(--sys-warning)]"><RiGitMergeLine className="h-4 w-4" /> احذف المكرر ({duplicates})</span>
+            </Button>
           )}
         </div>
-        <div className="flex rounded-lg border border-[var(--sys-border)] p-0.5" role="group" aria-label="شكل العرض">
-          {VIEWS.map((v) => (
-            <button key={v.key} type="button" onClick={() => pickView(v.key)} aria-pressed={view === v.key}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${view === v.key ? CHIP_ON : CHIP_OFF}`}>
-              {v.label}
-            </button>
-          ))}
-        </div>
+        <Segmented size="sm" aria-label="شكل العرض" value={view} onChange={(v) => pickView(v as View)}
+          options={VIEWS.map((v) => ({ value: v.key, label: v.label }))} />
       </div>
       {mayManage && filtering && <p className="text-xs text-[var(--sys-muted)]">الترتيب بالسحب متاح على القائمة كاملة — امسح الفلاتر لتسحب.</p>}
 
@@ -231,17 +223,15 @@ export function CampaignsBoard<T extends BoardCampaign>({
 
       <BulkBar show={mayManage && selected.size > 0}>
         <span className="text-xs font-semibold">{selected.size} محددة</span>
-        <button type="button" onClick={() => void onBulkDelete([...selected])}
-          className="inline-flex items-center gap-1 rounded-lg bg-[var(--sys-destructive)] px-3 py-1.5 text-xs font-semibold text-white">
+        <Button type="button" size="sm" variant="danger" onClick={() => { void onBulkDelete([...selected]); }}>
           <RiDeleteBinLine className="h-4 w-4" /> احذف المحدد
-        </button>
+        </Button>
         {selectedDuplicates.length > 0 && (
-          <button type="button" onClick={() => void onMerge(selectedDuplicates)}
-            className="inline-flex items-center gap-1 rounded-lg border border-[var(--sys-border)] px-3 py-1.5 text-xs font-semibold">
+          <Button type="button" size="sm" variant="secondary" onClick={() => { void onMerge(selectedDuplicates); }}>
             <RiGitMergeLine className="h-4 w-4" /> ادمج المكرر المحدد ({selectedDuplicates.length})
-          </button>
+          </Button>
         )}
-        <button type="button" onClick={() => setSelected(new Set())} className="rounded-lg px-3 py-1.5 text-xs">إلغاء التحديد</button>
+        <Button type="button" size="sm" variant="quiet" onClick={() => setSelected(new Set())}>إلغاء التحديد</Button>
       </BulkBar>
     </div>
   );
@@ -254,7 +244,7 @@ function SortableItem({ id, mayManage, draggable, selected, onToggle, name, chil
   return (
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 }} className="flex items-start gap-1.5">
       <div className="flex shrink-0 flex-col items-center gap-1 pt-3">
-        {mayManage && <input type="checkbox" aria-label={`حدد ${name}`} checked={selected} onChange={onToggle} />}
+        {mayManage && <Checkbox id={`campaign-pick-${id}`} aria-label={`حدد ${name}`} checked={selected} onChange={() => onToggle()} />}
         {draggable && (
           <button type="button" ref={setActivatorNodeRef} {...attributes} {...listeners} aria-label={`اسحب ${name}`}
             style={{ touchAction: 'none' }} className="cursor-grab text-[var(--sys-muted-foreground)]">
