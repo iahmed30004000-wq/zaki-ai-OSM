@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
+    "rawButtons": 664,
     "rawCheckboxes": 77,
     "rawSurfaces": 348,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2618
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -1006,8 +1006,7 @@
       "textXs": 2
     },
     "src/components/settings/MenuOrderCard.tsx": {
-      "rawButtons": 10,
-      "textXs": 14
+      "rawButtons": 2
     },
     "src/components/settings/MessageTemplatesCard.tsx": {
       "rawButtons": 3,

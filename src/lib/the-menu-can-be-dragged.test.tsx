@@ -34,8 +34,17 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/admin/profile' }));
 
 import { MenuOrderCard } from '@/components/settings/MenuOrderCard';
 import { Sidebar } from '@/components/shell/Sidebar';
-import { EMPTY_LAYOUT, orderAfterDrag, reorderWithinGroup } from './nav-arrangement';
-import { ALL_ROUTES, NAV } from './route-registry';
+import {
+  applyArrangement,
+  cleanLayout,
+  EMPTY_LAYOUT,
+  orderAfterDrag,
+  reorderWithinGroup,
+  resolveLayout,
+  type NavLayout,
+} from './nav-arrangement';
+import { mobileNav } from './mobile-nav';
+import { ALL_ROUTES, NAV, isMenuLine } from './route-registry';
 import { repoFile, stripComments } from './guard-source';
 
 // jsdom has no ResizeObserver, and the drag library measures its drop zones with one.
@@ -185,8 +194,13 @@ const pathsInOrder = () =>
     return NAV_ROUTES.find((r) => r.label === shown)?.path;
   });
 
-describe('the card keeps everything it had', () => {
-  it('— every screen has its grip AND its four buttons', async () => {
+describe('the card: a grip and an eye per screen, and nothing else', () => {
+  /*
+   * CHANGED ON PURPOSE (18/11, R7). Was «every screen has its grip AND its four buttons» (grip, up, down, pin, hide).
+   * The owner asked for drag and the eye only. Now: «grip and eye; the keyboard sensor still moves a row» — the arrows'
+   * job (a path without a mouse) is the keyboard sensor's, held in «a real drag» below (Space, ↓, Space).
+   */
+  it('— every screen has its grip AND its eye, and no arrow and no pin', async () => {
     mountCard();
     const rows = await screen.findAllByRole('listitem');
     expect(rows).toHaveLength(NAV_ROUTES.length);
@@ -195,11 +209,44 @@ describe('the card keeps everything it had', () => {
     NAV_ROUTES.forEach((route, i) => {
       const row = inRow(rows[i]);
       expect(row.getByLabelText(`اسحب ${route.label} لتغيير ترتيبه`), `مقبض ${route.label}`).toBeTruthy();
-      expect(row.getByLabelText(`ارفع ${route.label}`), `ارفع ${route.label}`).toBeTruthy();
-      expect(row.getByLabelText(`انزل ${route.label}`), `انزل ${route.label}`).toBeTruthy();
-      expect(row.getByLabelText(`ثبّت ${route.label}`), `ثبّت ${route.label}`).toBeTruthy();
       expect(row.getByLabelText(`اخفِ ${route.label}`), `اخفِ ${route.label}`).toBeTruthy();
+      // NEGATIVE: what left.
+      expect(row.queryByLabelText(`ارفع ${route.label}`), `ارفع ${route.label}`).toBeNull();
+      expect(row.queryByLabelText(`انزل ${route.label}`), `انزل ${route.label}`).toBeNull();
+      expect(row.queryByLabelText(`ثبّت ${route.label}`), `ثبّت ${route.label}`).toBeNull();
+      // two controls, no more
+      expect(row.getAllByRole('button'), route.label).toHaveLength(2);
     });
+  });
+
+  it('and the eye hides a screen and brings it back — and a save sends it in `hidden`', async () => {
+    mountCard();
+    const rows = await screen.findAllByRole('listitem');
+    const route = NAV_ROUTES[0];
+    await act(async () => {
+      fireEvent.click(inRow(rows[0]).getByLabelText(`اخفِ ${route.label}`));
+    });
+    expect(inRow(rowsOf()[0]).getByLabelText(`أظهر ${route.label}`)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText('احفظ'));
+    });
+    const put = apiJson.mock.calls.find((c) => c[1]?.method === 'PUT')!;
+    expect(JSON.parse(put[1].body).hidden).toEqual([route.path]);
+  });
+
+  it('and no role picker and no phone’s four on a person’s card — even for whoever may set a role’s base', async () => {
+    apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url === '/api/nav/arrangement' && !init?.method) {
+        return { resolved: EMPTY_LAYOUT, own: null, paths: ALL_ROUTES.map((r) => r.path), maySetRoleBase: true };
+      }
+      if (url === '/api/roles') return { roles: [{ id: 'r1', name: 'دور' }] };
+      return {};
+    });
+    render(<MenuOrderCard />);
+    await screen.findAllByRole('listitem');
+    expect(screen.queryByDisplayValue('قائمتي أنا')).toBeNull();
+    expect(document.querySelectorAll('select')).toHaveLength(0);
+    expect(apiJson.mock.calls.some((c) => c[0] === '/api/roles'), 'البطاقة لسا بتجيب الأدوار').toBe(false);
   });
 
   it('and ONLY the grip refuses the browser’s scroll gesture — a thumb on the rest of the row scrolls', async () => {
@@ -239,56 +286,95 @@ describe('the card keeps everything it had', () => {
     );
   });
 
-  it('and the down button still moves a row down — through the shared function', async () => {
-    mountCard();
-    const rows = await screen.findAllByRole('listitem');
-    // 18/11 (R6): the first group is «اليوم», one screen — a row cannot move down inside it. The rows are pinned on «الطلبات»
-    // (the second group), counted from where its first row stands.
-    const at = NAV[0].routes.length;
-    const [a, b] = NAV[1].routes;
-    expect(rowsOf()[at].textContent).toContain(a.label);
+  /*
+   * CHANGED ON PURPOSE (18/11, R7). Three tests stood here that pressed the arrows: «the down button still moves a row
+   * down — through the shared function», «saving sends the flat order, with the moved screen where it was put», and
+   * «the first row cannot go up and the last cannot go down». The arrows left the card. The first two are now made by
+   * the KEYBOARD (Space, ↓, Space) in «a real drag» below, with the same assertions, still ending in `reorderWithinGroup`;
+   * the third has nothing left to hold — there is no arrow to disable — and the keyboard at the edge is held there
+   * instead («↓ on the last row moves nothing»).
+   */
+});
 
-    await act(async () => {
-      fireEvent.click(inRow(rows[at]).getByLabelText(`انزل ${a.label}`));
+// ───────────────────────── a layout saved before (18/11, R7) ─────────────────────────
+
+describe('a layout saved BEFORE the arrows and the pin left draws the same menu after a save from the new card', () => {
+  /*
+   * The stored rows written by the old card can carry `pinned`, the phone's four (`slots`) and group keys that the
+   * nine groups of R6 no longer have. The card no longer writes pins (it folds them into `order`) and no longer lets a
+   * person edit the four — so the question is only: does pressing «احفظ» on such a row change the menu that person
+   * sees? It must not. The «menu» is what the shell draws: the groups and their lines (`applyArrangement`, after the
+   * door's `cleanLayout`) and the phone's bar (`mobileNav` over the drawn lines with the stored four).
+   */
+  const ALL = ALL_ROUTES.map((r) => r.path);
+  const KEYS = NAV.map((g) => g.key);
+  const open = new Set(ALL);
+  const LINES = NAV.flatMap((g) => g.routes.filter((r) => isMenuLine(r, open)).map((r) => r.path));
+  const stored = (l: NavLayout) => cleanLayout(l, ALL, KEYS, LINES);
+  const drawn = (l: NavLayout) => {
+    const groups = applyArrangement(NAV, l);
+    const lines = applyArrangement(
+      NAV.map((g) => ({ ...g, routes: g.routes.filter((r) => isMenuLine(r, open)) })).filter((g) => g.routes.length > 0),
+      l
+    );
+    return {
+      groups: groups.map((g) => [g.key, g.routes.map((r) => r.path)]),
+      bar: mobileNav(lines, null, l.slots).primary.map((r) => r.path),
+    };
+  };
+
+  // A group of three screens or more: pin its LAST screen and another group's second, so a pin really moves something.
+  const big = NAV.filter((g) => g.routes.length >= 3);
+  const OLD: NavLayout = {
+    order: [...ALL],
+    hidden: [big[0].routes[1].path],
+    pinned: [big[1].routes[big[1].routes.length - 1].path, big[0].routes[big[0].routes.length - 1].path],
+    // `control`, `chats`, `settings`: keys from before R6, which `cleanLayout` drops.
+    groups: ['control', big[1].key, 'chats', big[0].key, 'settings'],
+    slots: [big[0].routes[2].path, '/orders'],
+  };
+
+  async function saveFrom(resolved: NavLayout, own: NavLayout | null) {
+    apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url === '/api/nav/arrangement' && !init?.method) return { resolved, own, paths: ALL, maySetRoleBase: false };
+      return {};
     });
-
-    const after = rowsOf();
-    expect(after[at].textContent, 'الأول ما نزل').toContain(b.label);
-    expect(after[at + 1].textContent).toContain(a.label);
-  });
-
-  it('and saving sends the flat order, with the moved screen where it was put', async () => {
-    mountCard();
-    const rows = await screen.findAllByRole('listitem');
-    // 18/11 (R6): the first group is «اليوم», one screen — a row cannot move down inside it. The rows are pinned on «الطلبات»
-    // (the second group), counted from where its first row stands.
-    const at = NAV[0].routes.length;
-    const [a, b] = NAV[1].routes;
-    await act(async () => {
-      fireEvent.click(inRow(rows[at]).getByLabelText(`انزل ${a.label}`));
-    });
+    render(<MenuOrderCard />);
+    await screen.findAllByRole('listitem');
     await act(async () => {
       fireEvent.click(screen.getByText('احفظ'));
     });
     const put = apiJson.mock.calls.find((c) => c[1]?.method === 'PUT')!;
-    const sent = JSON.parse(put[1].body).order as string[];
-    expect(sent.indexOf(b.path), 'ما انحفظ الترتيب الجديد').toBeLessThan(sent.indexOf(a.path));
-    expect(sent).toHaveLength(ALL_ROUTES.length);
+    return JSON.parse(put[1].body) as NavLayout;
+  }
+
+  it('— with pins, the four and old group keys: the same groups, the same lines, the same bar; and no pin written', async () => {
+    const before = stored(OLD);
+    // the fixture means something: the pin moved a line, and the old keys were dropped
+    expect(drawn(before).groups).not.toEqual(drawn({ ...before, pinned: [] }).groups);
+    const body = await saveFrom(before, before);
+    expect(body.pinned).toEqual([]);
+    expect(body.slots, 'الخانات الأربعة المحفوظة انمسحت').toEqual(before.slots);
+    expect(drawn(stored(body))).toEqual(drawn(before));
   });
 
-  it('and the first row cannot go up and the last cannot go down', async () => {
-    mountCard();
-    const rows = await screen.findAllByRole('listitem');
-    let at = 0;
-    for (const g of NAV) {
-      const first = g.routes[0];
-      const last = g.routes[g.routes.length - 1];
-      const up = inRow(rows[at]).getByLabelText(`ارفع ${first.label}`) as HTMLButtonElement;
-      const down = inRow(rows[at + g.routes.length - 1]).getByLabelText(`انزل ${last.label}`) as HTMLButtonElement;
-      expect(up.disabled, first.path).toBe(true);
-      expect(down.disabled, last.path).toBe(true);
-      at += g.routes.length;
-    }
+  it('and the RAW old row (unknown keys still in it, as the screen would receive it unchanged) draws the same after too', async () => {
+    const body = await saveFrom(OLD, OLD);
+    expect(drawn(stored(body))).toEqual(drawn(stored(OLD)));
+  });
+
+  it('and a person with NO row of their own, under a base with pins and four, keeps the same menu after a save', async () => {
+    const base = stored(OLD);
+    const body = await saveFrom(base, null);
+    // what the door resolves for them afterwards: their new row over the same base
+    expect(drawn(resolveLayout(base, stored(body)))).toEqual(drawn(base));
+    // and the base's four stay the base's — not copied into their row
+    expect(body.slots).toEqual([]);
+  });
+
+  it('NEGATIVE: posting the old order with the pins merely dropped WOULD change the menu — the fold is what keeps it', () => {
+    const before = stored(OLD);
+    expect(drawn({ ...before, pinned: [] })).not.toEqual(drawn(before));
   });
 });
 
@@ -498,6 +584,64 @@ describe('and a real drag — the pointer, the keyboard and Esc — goes through
     await settle();
     expect(mine(pathsInOrder()), 'Esc ما رجّعها').toEqual(groupPaths);
   });
+
+  /*
+   * 18/11 (R7): WHAT THE ARROWS HELD, HELD THROUGH THE KEYBOARD. The rows are pinned on «الطلبات» (the second group;
+   * the first, «اليوم», is one screen), counted from where its first row stands — as the arrow tests were.
+   */
+  const second = NAV[1];
+  const secondAt = NAV[0].routes.length;
+  /** Space on a row's grip, ↓, Space — and wait until the library has finished saying so. */
+  async function keyboardDown(rowAt: number, label: string, overLabel: string | null) {
+    mountCard();
+    const rows = await screen.findAllByRole('listitem');
+    await until(() => expect(document.querySelectorAll('[id^="DndDescribedBy"]')).toHaveLength(NAV.length + 1));
+    const grip = inRow(rows[rowAt]).getByLabelText(`اسحب ${label} لتغيير ترتيبه`);
+    await act(async () => {
+      fireEvent.keyDown(grip, { code: 'Space', key: ' ' });
+    });
+    await until(() => expect(announced()).toContain(`أمسكتَ «${label}»`));
+    await settle();
+    await act(async () => {
+      fireEvent.keyDown(document, { code: 'ArrowDown', key: 'ArrowDown' });
+    });
+    if (overLabel) await until(() => expect(announced()).toContain(`«${label}» فوق «${overLabel}»`));
+    else await settle();
+    await act(async () => {
+      fireEvent.keyDown(document, { code: 'Space', key: ' ' });
+    });
+    await until(() => expect(announced()).toContain(`أُفلتت «${label}»`));
+  }
+
+  it('and the keyboard still moves a row down — through the shared function (was: «the down button»)', async () => {
+    const [x, y] = second.routes;
+    await keyboardDown(secondAt, x.label, y.label);
+    const paths = second.routes.map((r) => r.path);
+    const expected = reorderWithinGroup(FLAT, paths, 0, 1).slice(secondAt, secondAt + paths.length);
+    await until(() => expect(pathsInOrder().slice(secondAt, secondAt + paths.length), 'الكيبورد ما نزّل الصف').toEqual(expected));
+    expect(rowsOf()[secondAt].textContent, 'الأول ما نزل').toContain(y.label);
+    expect(rowsOf()[secondAt + 1].textContent).toContain(x.label);
+  });
+
+  it('and saving after it sends the flat order, with the moved screen where it was put', async () => {
+    const [x, y] = second.routes;
+    await keyboardDown(secondAt, x.label, y.label);
+    await until(() => expect(rowsOf()[secondAt].textContent).toContain(y.label));
+    await act(async () => {
+      fireEvent.click(screen.getByText('احفظ'));
+    });
+    const put = apiJson.mock.calls.find((c) => c[1]?.method === 'PUT')!;
+    const sent = JSON.parse(put[1].body).order as string[];
+    expect(sent.indexOf(y.path), 'ما انحفظ الترتيب الجديد').toBeLessThan(sent.indexOf(x.path));
+    expect(sent).toHaveLength(ALL_ROUTES.length);
+  });
+
+  it('and ↓ on the LAST row of a group moves nothing — the edge the disabled arrow used to hold', async () => {
+    const last = second.routes[second.routes.length - 1];
+    await keyboardDown(secondAt + second.routes.length - 1, last.label, null);
+    await settle();
+    expect(pathsInOrder().slice(secondAt, secondAt + second.routes.length)).toEqual(second.routes.map((r) => r.path));
+  });
 });
 
 describe('and the wiring is the one that holds the rules', () => {
@@ -529,13 +673,26 @@ describe('and the wiring is the one that holds the rules', () => {
     expect(s).toContain('ref={setActivatorNodeRef}');
   });
 
-  it('and the buttons and the drag both go through reorderWithinGroup', () => {
+  // CHANGED ON PURPOSE (18/11, R7): was «the buttons and the drag both go through reorderWithinGroup». The buttons left;
+  // the pointer and the keyboard are ONE drag (`onDragEnd`), and it ends in `orderAfterDrag`, which is `reorderWithinGroup`.
+  it('and the drag and the keyboard both go through reorderWithinGroup', () => {
     const s = src();
-    expect(s).toContain('reorderWithinGroup(flat, within, at, at + by)');
     expect(s).toContain('orderAfterDrag(flat, groupPaths, end)');
     expect(s).toContain('onDragEnd={(end) => dropped(groupPaths, end)}');
-    // No second copy of the splice that the buttons used to carry.
+    expect(s).toContain('useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })');
+    const lib = stripComments(repoFile('src/lib/nav-arrangement.ts'));
+    const body = lib.slice(lib.indexOf('export function orderAfterDrag'));
+    expect(body.slice(0, body.indexOf('\n}'))).toContain('return reorderWithinGroup(flat, group, from, to)');
+    // No second copy of the splice that the buttons used to carry, and no arrow left behind.
     expect(s).not.toMatch(/\[within\[at\], within\[to\]\]/);
+    expect(s).not.toContain('reorderWithinGroup(');
+  });
+
+  it('and a save folds the pins into the order — the server still reads `pinned`, this client no longer writes it', () => {
+    const s = src();
+    expect(s).toContain('order: flat,');
+    expect(s).toContain('pinned: [],');
+    expect(s).not.toMatch(/'pinned'/);
   });
 
   it('and a screen reader is spoken to in Arabic, with the screen’s own name', () => {
