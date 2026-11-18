@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input, Select } from '@/components/ui/Input';
 import { PASSWORD_RULES, passwordProblems } from '@/lib/password-rules';
 import { ROLE_LABELS as CANONICAL_LABELS } from '@/types/auth';
@@ -171,7 +173,7 @@ export function CreateUserModal({
                 return (
                   <li
                     key={rule.key}
-                    className={`flex items-center gap-1 text-xs ${met ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted)]'}`}
+                    className={`flex items-center gap-1 text-note ${met ? 'text-[var(--sys-success)]' : 'text-[var(--sys-muted)]'}`}
                   >
                     {met ? <RiCheckLine className="h-4 w-4" /> : <RiCheckboxBlankCircleLine className="h-4 w-4" />}
                     {rule.ar}
@@ -197,67 +199,67 @@ export function CreateUserModal({
             anybody any more: commission comes from the rules — per store,
             with effective dates — and accrues on delivery. Asking for a
             number here that changes nothing is worse than not asking. */}
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <Card plain padding="sm" className="text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
             العمولة لا تُضبط من هنا. تُحسب من <span className="font-bold text-[var(--sys-foreground)]">قواعد العمولة</span>
             {' '}لكل متجر، بتواريخ سريان، وتُستحق عند التسليم.
-        </p>
+        </Card>
 
         <div className="rounded-lg border border-[var(--sys-border)] p-3 space-y-3">
-          <p className="text-xs font-bold text-[var(--sys-heading)] flex items-center gap-1.5">
+          <p className="text-sm font-bold text-[var(--sys-heading)] flex items-center gap-1.5">
             <RiEarthLine className="w-4 h-4 text-[var(--sys-primary)]" />
             الدول التي يعمل فيها
           </p>
           {countries.length === 0 ? (
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-sm text-[var(--sys-muted-foreground)]">
               لا بلدَ معرَّفاً بعد، وبلا بلدٍ لا يمكن حصرُ نطاق هذا الموظّف. تُعرَّف البلدان من «الإعدادات ← البلدان والمحافظات».
             </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {countries.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-xs text-[var(--sys-heading)] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={countryIds.includes(c.id)}
-                    onChange={() => toggleCountry(c.id)}
-                    className="w-4 h-4 accent-[var(--sys-primary)] cursor-pointer"
-                  />
-                  {c.name}
-                  <span className="text-xs text-[var(--sys-muted)] font-mono" dir="ltr">{c.code}</span>
-                </label>
+                <Checkbox
+                  key={c.id}
+                  id={`new-user-country-${c.id}`}
+                  checked={countryIds.includes(c.id)}
+                  onChange={() => toggleCountry(c.id)}
+                  label={
+                    <>
+                      {c.name}{' '}
+                      <span className="text-note text-[var(--sys-muted)] font-mono" dir="ltr">{c.code}</span>
+                    </>
+                  }
+                />
               ))}
             </div>
           )}
 
           {selectedCountries.length > 0 && (
             <div className="space-y-2 pt-1 border-t border-[var(--sys-border)]">
-              <p className="text-xs font-bold text-[var(--sys-heading)] flex items-center gap-1.5 pt-2">
+              <p className="text-sm font-bold text-[var(--sys-heading)] flex items-center gap-1.5 pt-2">
                 <RiStore2Line className="w-4 h-4 text-[var(--sys-primary)]" />
                 المتاجر
               </p>
-              <p className="text-xs text-[var(--sys-muted)]">
+              <p className="text-note text-[var(--sys-muted)]">
                 اتركها فارغة ليصل إلى كل متاجر الدولة، أو اختر متاجر بعينها.
               </p>
               {selectedCountries.map((c) => (
-                <div key={c.id} className="rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] p-2.5">
-                  <p className="text-xs font-bold text-[var(--sys-foreground)] mb-1.5">{c.name}</p>
+                <Card key={c.id} plain padding="sm">
+                  <p className="text-sm font-bold text-[var(--sys-foreground)] mb-1.5">{c.name}</p>
                   {c.stores.length === 0 ? (
-                    <p className="text-xs text-[var(--sys-muted)]">لا متاجر في هذه الدولة بعد.</p>
+                    <p className="text-note text-[var(--sys-muted)]">لا متاجر في هذه الدولة بعد.</p>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {c.stores.map((s) => (
-                        <label key={s.id} className="flex items-center gap-1.5 text-xs text-[var(--sys-heading)] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={storeIds.includes(s.id)}
-                            onChange={() => toggleStore(s.id)}
-                            className="w-3.5 h-3.5 accent-[var(--sys-primary)] cursor-pointer"
-                          />
-                          {s.name}
-                        </label>
+                        <Checkbox
+                          key={s.id}
+                          id={`new-user-store-${s.id}`}
+                          checked={storeIds.includes(s.id)}
+                          onChange={() => toggleStore(s.id)}
+                          label={s.name}
+                        />
                       ))}
                     </div>
                   )}
-                </div>
+                </Card>
               ))}
             </div>
           )}
@@ -273,17 +275,17 @@ export function CreateUserModal({
               stores — pressing "create" and seeing nothing happen is how
               «ما بنشء موظف» was reported. */}
           {error ? (
-            <span role="alert" className="me-auto text-xs font-medium text-[var(--sys-destructive)]">
+            <span role="alert" className="me-auto text-sm font-medium text-[var(--sys-destructive)]">
               {error}
             </span>
           ) : (
             !ready && (
-              <span className="me-auto text-xs text-[var(--sys-warning)]">
+              <span className="me-auto text-sm text-[var(--sys-warning)]">
                 ناقص: {missing.join('، ')}
               </span>
             )
           )}
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
           <Button onClick={submit} loading={saving} disabled={!ready}>إنشاء الحساب</Button>
         </div>
       </div>
