@@ -80,7 +80,7 @@ export function OfflineWatch() {
       role="status"
       aria-live="polite"
       dir="rtl"
-      className="sticky top-0 z-50 flex items-center gap-2 bg-[var(--sys-destructive)] px-3 py-2 text-xs text-[var(--sys-primary-foreground)]"
+      className="sticky top-0 z-50 flex items-center gap-2 bg-[var(--sys-destructive)] px-3 py-2 text-sm text-[var(--sys-primary-foreground)]"
     >
       <RiWifiOffLine className="h-4 w-4 shrink-0" />
       <span>

@@ -10,7 +10,8 @@ import { userCan } from '@/lib/can';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import {
   RiAlertLine,
@@ -340,39 +341,45 @@ export function CollectionScreen() {
               </Button>
             )}
           </div>
-          {refusal && busy !== s.id && <p className="text-xs text-[var(--sys-muted-foreground)]">{refusal.error}</p>}
+          {refusal && busy !== s.id && <p className="text-note text-[var(--sys-muted-foreground)]">{refusal.error}</p>}
         </div>
       );
     }
     return (
       <span className="flex flex-wrap gap-3 justify-end">
-        <button
+        <Button
+          variant="quiet"
+          size="sm"
           disabled={busy === s.id}
           title="شغّل المطابقة"
           onClick={() => void rematch()}
-          className="text-xs text-[var(--sys-primary)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+          className="text-[var(--sys-primary)]"
         >
           مطابقة
-        </button>
+        </Button>
         {waiting > 0 && settling && (
-          <button
+          <Button
+            variant="quiet"
+            size="sm"
             disabled={busy === s.id}
             title={settling.confirmBody}
             onClick={() => void settleClean(s)}
-            className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+            className="text-[var(--sys-success)]"
           >
             {settling.button} ({waiting})
-          </button>
+          </Button>
         )}
         {mayApprove && (
-          <button
+          <Button
+            variant="quiet"
+            size="sm"
             disabled={!!refusal || busy === s.id}
             title={refusal?.error ?? settling?.closeTitle ?? 'إغلاق المطابقة — عندها تتسوّى الطلبات، بلا أي حركة جديدة بالمحفظة'}
             onClick={() => void approve(s, false, undefined, 'close')}
-            className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+            className="text-[var(--sys-success)]"
           >
             إغلاق المطابقة
-          </button>
+          </Button>
         )}
       </span>
     );
@@ -527,23 +534,23 @@ export function CollectionScreen() {
             {s.draft ? 'حذف المسوّدة' : 'إلغاء الاستيراد'}
           </Button>
         </div>
-        {why && <p className="text-xs text-[var(--sys-muted-foreground)]">{why}</p>}
+        {why && <p className="text-note text-[var(--sys-muted-foreground)]">{why}</p>}
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/finance/collection')} />
-
+    <PageShell title={routeLabel('/finance/collection')} width="wide">
       {pointsToManual && (
-        <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
+          <p>
           لا كشف عند الشركة أو المندوب؟ لا حاجة لاستيراد شيء: سجّل التسليم والتحصيل يدوياً من{' '}
           <Link href="/finance/matching?mode=manual" className="font-medium text-[var(--sys-primary)] hover:underline">
             المطابقة ← يدوي — بلا كشف
           </Link>
           . وللطلبات التي سلّمها المندوب وتريد اعتمادها في كشف واحد: «مطابق يدوي» هناك، ثم «تجميع» هنا.
-        </p>
+          </p>
+        </Card>
       )}
 
       <ImportCard
@@ -585,7 +592,7 @@ export function CollectionScreen() {
           why="لم تُستورد أوراق التحصيل بعد. استورد كشف شركة الشحن ليبدأ مطابقة ما حُصّل بما استُحق."
         />
       ) : (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+        <Card plain className="overflow-hidden">
           {/* Seven columns of money on a 375px screen. The same
               definition draws the table a finance clerk reads at a desk
               and the card somebody checks on the way to the courier —
@@ -602,7 +609,7 @@ export function CollectionScreen() {
                 render: (s) => (
                   <>
                     <span className="font-medium text-[var(--sys-heading)]" dir="ltr">{s.reference}</span>
-                    <span className="block text-xs text-[var(--sys-muted)]" dir="ltr">{s.fileName}</span>
+                    <span className="block text-note text-[var(--sys-muted)]" dir="ltr">{s.fileName}</span>
                   </>
                 ),
               },
@@ -611,7 +618,7 @@ export function CollectionScreen() {
                 label: 'الحالة',
                 primary: true,
                 render: (s) => (
-                  <span className={`text-xs px-2 py-1 rounded-sm border ${STATUS_STYLE[s.status] ?? ''}`}>
+                  <span className={`text-note px-2 py-1 rounded-sm border ${STATUS_STYLE[s.status] ?? ''}`}>
                     {s.draft ? 'مسوّدة' : STATUS_AR[s.status] ?? s.status}
                   </span>
                 ),
@@ -630,7 +637,7 @@ export function CollectionScreen() {
                   <>
                     <Money value={s.gap.received} currency={s.currencyCode} />
                     {s.gap.unconvertible > 0 && (
-                      <span className="block text-xs text-[var(--sys-warning)]">
+                      <span className="block text-note text-[var(--sys-warning)]">
                         عدا <span className="tabular-nums">{s.gap.unconvertible}</span> إيصالاً بعملة أخرى بلا سعر صرف
                       </span>
                     )}
@@ -658,7 +665,7 @@ export function CollectionScreen() {
                 key: 'counts',
                 label: 'الأسطر',
                 render: (s) => (
-                  <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+                  <span className="text-note text-[var(--sys-muted-foreground)] tabular-nums">
                     {s.counts.lines} سطر · {s.counts.receipts} إيصال · {s.counts.matches} مطابقة
                     {!isMatchingClosed(s) && (s.counts.openLines ?? 0) > 0 && ` · ${s.counts.openLines} بلا بتّ`}
                   </span>
@@ -670,7 +677,7 @@ export function CollectionScreen() {
                 wide: true,
                 render: (s) =>
                   s.receipts.length === 0 ? (
-                    <span className="text-xs text-[var(--sys-muted)]">—</span>
+                    <span className="text-note text-[var(--sys-muted)]">—</span>
                   ) : (
                     /*
                       WHAT WAS COLLECTED, ONE LINE EACH, AND ITS PAPER.
@@ -682,7 +689,7 @@ export function CollectionScreen() {
                     <>
                     <ul className="space-y-1">
                       {s.receipts.map((r) => (
-                        <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <li key={r.id} className="flex flex-wrap items-center gap-1.5 text-note">
                           <Money value={r.amount} currency={r.currencyCode} />
                           <span className="text-[var(--sys-muted-foreground)]">{r.wallet}</span>
                           {r.proof ? (
@@ -718,21 +725,22 @@ export function CollectionScreen() {
                                   }}
                                 />
                               </label>
-                              <button
+                              <Button
                                 type="button"
+                                variant="danger"
+                                size="sm"
                                 disabled={busy === s.id}
                                 onClick={() => void removeReceipt(s, r)}
-                                className="inline-flex min-h-11 items-center text-[var(--sys-destructive)] hover:underline disabled:opacity-50 md:min-h-0"
                               >
                                 احذف الإيصال
-                              </button>
+                              </Button>
                             </>
                           )}
                         </li>
                       ))}
                     </ul>
                     {isApproved(s) && (
-                      <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">
+                      <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
                         {isMatchingClosed(s) ? STATEMENT_CLOSED_SENTENCE : 'المصاري دخلت المحفظة — المطابقة لسا مفتوحة'}
                       </p>
                     )}
@@ -759,7 +767,7 @@ export function CollectionScreen() {
               // The money is in and a line is still a question: the matching is open, and «إغلاق المطابقة» settles it.
               if (isApproved(s) && !isMatchingClosed(s)) return openMatchingActions(s);
               return isApproved(s) ? (
-                <span className="text-xs text-[var(--sys-success)] inline-flex items-center gap-1" title={STATEMENT_CLOSED_SENTENCE}>
+                <span className="text-note text-[var(--sys-success)] inline-flex items-center gap-1" title={STATEMENT_CLOSED_SENTENCE}>
                   <RiCheckboxCircleLine className="w-4 h-4" /> معتمد
                 </span>
               ) : phone ? (
@@ -767,53 +775,60 @@ export function CollectionScreen() {
               ) : (
                 <span className="flex flex-wrap gap-3 justify-end">
                   {/* This branch is the unapproved one — an approved row draws «معتمد» above and has no button. */}
-                  <button
+                  <Button
+                    variant="danger"
+                    size="sm"
                     disabled={busy === s.id}
                     onClick={() => void undoImport(s)}
-                    className="text-xs text-[var(--sys-destructive)] hover:underline disabled:opacity-50"
                   >
                     {s.draft ? 'حذف المسوّدة' : 'إلغاء الاستيراد'}
-                  </button>
+                  </Button>
                   {s.draft && (
-                    <button
+                    <Button
+                      variant="quiet"
+                      size="sm"
                       disabled={busy === s.id}
                       onClick={() => setAssembleFor(s)}
-                      className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:opacity-50"
+                      className="text-[var(--sys-success)]"
                     >
                       تجميع
-                    </button>
+                    </Button>
                   )}
                   {!s.draft && (
                     <>
-                      <button onClick={() => setReceiptFor(s)} className="text-xs text-[var(--sys-primary)] hover:underline">
+                      <Button variant="quiet" size="sm" onClick={() => setReceiptFor(s)} className="text-[var(--sys-primary)]">
                         إيصال استلام
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="quiet"
+                        size="sm"
                         disabled={s.counts.receipts === 0 || !!noRematch || busy === s.id}
                         title={noRematch?.error ?? (s.counts.receipts === 0 ? 'سجّل إيصال الاستلام أولاً' : 'شغّل المطابقة')}
-                        onClick={() =>
+                        onClick={() => void
                           act(s.id, 'تمت المطابقة', () =>
                             apiJson(`/api/finance/statements/${s.id}/match`, { method: 'POST' })
                           )
                         }
-                        className="text-xs text-[var(--sys-primary)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+                        className="text-[var(--sys-primary)]"
                       >
                         مطابقة
-                      </button>
+                      </Button>
                       {s.gap.needsExplanation && !s.gap.explained && (
-                        <button onClick={() => setExplainFor(s)} className="text-xs text-[var(--sys-warning)] hover:underline">
+                        <Button variant="quiet" size="sm" onClick={() => setExplainFor(s)} className="text-[var(--sys-warning)]">
                           تفسير الفرق
-                        </button>
+                        </Button>
                       )}
                       {mayApprove && (
-                        <button
+                        <Button
+                          variant="quiet"
+                          size="sm"
                           disabled={!!refusal || busy === s.id}
                           title={refusal?.error ?? 'اعتماد الكشف — عندها تُسجَّل حركة المحفظة'}
                           onClick={() => void approve(s)}
-                          className="text-xs font-medium text-[var(--sys-success)] hover:underline disabled:text-[var(--sys-border-strong)] disabled:no-underline"
+                          className="text-[var(--sys-success)]"
                         >
                           اعتماد
-                        </button>
+                        </Button>
                       )}
                     </>
                   )}
@@ -827,7 +842,7 @@ export function CollectionScreen() {
               />
             }
           />
-        </div>
+        </Card>
       )}
 
       {receiptFor && (
@@ -893,7 +908,7 @@ export function CollectionScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -966,11 +981,11 @@ function ImportCard({
       className={
         phone
           ? 'grid gap-3'
-          : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 grid gap-3 md:grid-cols-4 items-end'
+          : 'grid gap-3 md:grid-cols-4 items-end'
       }
     >
       <label>
-        <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">شركة الشحن</span>
+        <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">شركة الشحن</span>
         <select
           value={providerId}
           onChange={(e) => setProviderId(e.target.value)}
@@ -985,7 +1000,7 @@ function ImportCard({
       </label>
 
       <label>
-        <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">مرجع الكشف</span>
+        <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">مرجع الكشف</span>
         <input
           value={reference}
           onChange={(e) => setReference(e.target.value)}
@@ -1000,8 +1015,8 @@ function ImportCard({
         /* The browser's own file button is 32px tall and cannot be restyled without a rule of its own; a label around a
            hidden input is the same picker with a 44px face, and the chosen file's name is printed under it. */
         <div>
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
-          <label className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 text-xs font-medium text-[var(--sys-foreground)]">
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
+          <label className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-3 text-note font-medium text-[var(--sys-foreground)]">
             {file ? 'غيّر الملف' : 'اختر الملف'}
             <input
               type="file"
@@ -1010,30 +1025,30 @@ function ImportCard({
               onChange={(e) => void pickFile(e.target.files?.[0])}
             />
           </label>
-          <span className="mt-1 block break-words text-xs text-[var(--sys-muted-foreground)]" dir="ltr">
+          <span className="mt-1 block break-words text-note text-[var(--sys-muted-foreground)]" dir="ltr">
             {file ? file.name : ''}
           </span>
         </div>
       ) : (
         <label>
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">ملف الكشف (Excel أو CSV)</span>
           <input
             type="file"
             accept={FILE_TYPES}
             onChange={(e) => void pickFile(e.target.files?.[0])}
-            className="w-full text-xs file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-surface)] file:text-[var(--sys-foreground)] file:ml-2"
+            className="w-full text-note file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-surface)] file:text-[var(--sys-foreground)] file:ml-2"
           />
         </label>
       )}
 
-      <button
+      <Button
         type="submit"
+        variant="primary"
         disabled={busy || !file || !providerId}
-        className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
       >
         {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiUpload2Line className="w-4 h-4" />}
         استيراد
-      </button>
+      </Button>
       {phone && refused && error && (
         <p role="alert" className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
           {error}
@@ -1042,7 +1057,7 @@ function ImportCard({
     </form>
   );
 
-  if (!phone) return form;
+  if (!phone) return <Card padding="md">{form}</Card>;
   return (
     <>
       <Button
@@ -1161,13 +1176,13 @@ function ReceiptDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
+        <Card plain padding="sm" className="text-note text-[var(--sys-muted-foreground)]">
           أقرّت الشركة <Money value={statement.gap.claimed} currency={statement.currencyCode} /> ووصل حتى الآن <Money value={statement.gap.received} currency={statement.currencyCode} />.
           يمكن تسجيل أكثر من إيصال لنفس الكشف (نقد + حوالة).
-        </p>
+        </Card>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المحفظة التي وصل إليها المبلغ</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المحفظة التي وصل إليها المبلغ</span>
           <select
             value={walletId}
             onChange={(e) => setWalletId(e.target.value)}
@@ -1182,7 +1197,7 @@ function ReceiptDialog({
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المبلغ الواصل</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المبلغ الواصل</span>
           <input
             type="number"
             step="0.001"
@@ -1197,7 +1212,7 @@ function ReceiptDialog({
 
         {needsRate && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+            <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
               سعر الصرف ({statement.currencyCode} → {wallet?.currencyCode})
             </span>
             <input
@@ -1211,7 +1226,7 @@ function ReceiptDialog({
               dir="ltr"
             />
             {converted !== null && (
-              <span className="mt-1 block text-xs text-[var(--sys-muted-foreground)]">
+              <span className="mt-1 block text-note text-[var(--sys-muted-foreground)]">
                 يساوي <Money value={converted} currency={statement.currencyCode} /> بعملة الكشف
               </span>
             )}
@@ -1219,7 +1234,7 @@ function ReceiptDialog({
         )}
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ملاحظة (اختيارية)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">ملاحظة (اختيارية)</span>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -1237,9 +1252,9 @@ function ReceiptDialog({
           refused after a 12 MB upload is a refusal that cost the person
           their time, on a connection that is often a phone's.
         */}
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-2">
+        <Card plain padding="sm" className="space-y-2">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">
+            <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">
               إثبات التحصيل (اختياري) — صورة الإيصال أو ملف PDF للحوالة
             </span>
             <input
@@ -1258,13 +1273,13 @@ function ReceiptDialog({
                 // Chunked (see `fileToBase64`) — the same trap the statement importer walked into.
                 setProof({ fileName: picked.name, content: await fileToBase64(picked), size: picked.size });
               }}
-              className="w-full text-xs file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-card)] file:text-[var(--sys-foreground)] file:ml-2"
+              className="w-full text-note file:h-8 file:px-3 file:rounded-md file:border-0 file:bg-[var(--sys-surface)] file:text-[var(--sys-foreground)] file:ml-2"
             />
           </label>
 
           {proof && (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-[var(--sys-foreground)]">
+              <span className="mb-1 block text-note font-medium text-[var(--sys-foreground)]">
                 سمِّ الإثبات (اختياري)
               </span>
               <input
@@ -1274,26 +1289,26 @@ function ReceiptDialog({
                 maxLength={120}
                 className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
               />
-              <span className="mt-1 block text-xs text-[var(--sys-muted-foreground)]">
+              <span className="mt-1 block text-note text-[var(--sys-muted-foreground)]">
                 اتركه فارغاً ليبقى باسم الملف. الامتداد يُضبط من محتوى الملف نفسه.
               </span>
             </label>
           )}
-        </div>
+        </Card>
 
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end pt-1">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
             disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ الحفظ…' : 'حفظ الإيصال'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -1331,7 +1346,8 @@ function PossibleDoubleDialog({
         <p className="text-sm text-[var(--sys-foreground)]">{sentence}</p>
         <ul className="space-y-2">
           {rows.map((r) => (
-            <li key={r.id} className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+            <li key={r.id}>
+              <Card plain padding="sm" className="text-note space-y-1">
               <p className="text-[var(--sys-foreground)]">
                 <Money value={r.amount} currency={r.currencyCode} /> — {r.wallet}
               </p>
@@ -1339,34 +1355,31 @@ function PossibleDoubleDialog({
                 {arDateTime(r.date)} · {r.party} · {r.note}
                 {r.by ? ` · ${r.by}` : ''}
               </p>
+              </Card>
             </li>
           ))}
         </ul>
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             رجوع
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className={
-              onReverse
-                ? 'h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm disabled:opacity-50'
-                : 'h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50'
-            }
+            variant={onReverse ? 'secondary' : 'primary'}
           >
             اعتمد هيك
-          </button>
+          </Button>
           {onReverse && (
-            <button
+            <Button
               type="button"
+              variant="primary"
               disabled={busy}
               onClick={onReverse}
-              className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
             >
               اعكس اليدوي واعتمد
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1423,16 +1436,16 @@ function ExplainDialog({
         />
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
             disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             حفظ التفسير
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
