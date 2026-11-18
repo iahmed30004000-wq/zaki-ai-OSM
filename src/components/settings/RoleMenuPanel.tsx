@@ -72,7 +72,7 @@ export function RoleMenuPanel() {
                   هذا أساس الدور — بيشوفه كلّ واحد فيه إلا إذا رتّب لحاله.
                 </p>
                 {/* Keyed by the role: a new role is a new card, read from the start — never the last role's rows under a new name. */}
-                <MenuOrderCard key={roleId} forRole={roleId} />
+                <MenuOrderCard key={`card-${roleId}`} forRole={roleId} />
                 {/*
                   AND THE LOOK THE ROLE OPENS ON, IN THE SAME PLACE.
 
@@ -80,7 +80,7 @@ export function RoleMenuPanel() {
                   finds on their first morning — set by the same permission. ⚠️ It is a BASE, not a cage, and the
                   sentence says so: the moment that person picks a look of their own, this stops being read for them.
                 */}
-                <RoleOpeningTheme key={roleId} roleId={roleId} />
+                <RoleOpeningTheme key={`look-${roleId}`} roleId={roleId} />
               </>
             )}
           </div>

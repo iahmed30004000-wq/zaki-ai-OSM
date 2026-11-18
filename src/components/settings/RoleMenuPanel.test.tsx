@@ -84,6 +84,31 @@ describe('the role panel', () => {
     expect(reads).toEqual(['/api/nav/arrangement?roleId=a', '/api/nav/arrangement?roleId=b']);
   });
 
+  it('and after switching roles there is exactly ONE card and ONE «احفظ» — and it saves to the role the picker names', async () => {
+    serve(true);
+    render(<RoleMenuPanel />);
+    const picker = (await screen.findByLabelText('الدور')) as HTMLSelectElement;
+    await waitFor(() => expect(within(picker).getAllByRole('option')).toHaveLength(3));
+    await act(async () => {
+      fireEvent.change(picker, { target: { value: 'a' } });
+    });
+    await screen.findAllByRole('listitem');
+    await act(async () => {
+      fireEvent.change(picker, { target: { value: 'b' } });
+    });
+    await waitFor(() => expect(apiJson.mock.calls.some((c) => c[0] === '/api/nav/arrangement?roleId=b')).toBe(true));
+    await screen.findAllByRole('listitem');
+    await settle();
+    expect(screen.getAllByText('احفظ')).toHaveLength(1);
+    expect(document.querySelectorAll('#menu-order')).toHaveLength(1);
+    expect(screen.getAllByLabelText('المظهر الذي يفتح عليه هذا الدور')).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getByText('احفظ'));
+    });
+    const put = apiJson.mock.calls.filter((c) => c[1]?.method === 'PUT');
+    expect(put.map((c) => c[0])).toEqual(['/api/nav/arrangement?roleId=b']);
+  });
+
   it('and the look chosen for one role is not shown against the next role’s name', async () => {
     serve(true);
     render(<RoleMenuPanel />);

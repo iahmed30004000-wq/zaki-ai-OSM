@@ -70,7 +70,9 @@ import {
  *   • PINS ARE FOLDED, NOT DROPPED. A layout saved with `pinned` still draws
  *     its pinned screens first (the server keeps reading it). The rows below
  *     are already drawn that way, so a save posts their draw order as `order`
- *     and `pinned: []` — the same menu, with one list fewer.
+ *     and no pins — the same menu, with one list fewer. EXCEPT where an empty
+ *     list would let the ROLE'S pins answer instead (`resolveLayout` reads an
+ *     empty own list as «no opinion»): see `bodyToSave`.
  *
  * ── THE ROLE'S BASE IS SET FROM THE ROLES SCREEN ──
  *
@@ -97,6 +99,32 @@ const inheritedOf = (d: { resolved: NavLayout; own?: NavLayout | null }) => ({
   groups: !said(d.own?.groups) && said(d.resolved.groups),
   slots: !said(d.own?.slots) && said(d.resolved.slots),
 });
+/**
+ * WHAT «احفظ» POSTS — pure, so it can be held against the server's own `resolveLayout` for every shape of row.
+ *
+ * `order` is `flat`, the rows' draw order (pins already first in their group). `pinned` is FOLDED into it — posted
+ * empty — with one exception (18/11, review of R7): an empty own list is «no opinion» to `resolveLayout`, so when the
+ * person's OWN pins are what is drawn and the role's base ALSO has pins, an empty list would hand the drawing back to
+ * the base's pins and a screen would jump. Then the own pins are kept as they are, and the menu stays the one drawn.
+ * When the person has no pins of their own, the base's pins are what is drawn, and «no opinion» keeps exactly them.
+ */
+export function bodyToSave(
+  layout: NavLayout,
+  flat: string[],
+  inherited: { groups: boolean; slots: boolean },
+  keepOwnPins: boolean
+): NavLayout {
+  return {
+    ...layout,
+    order: flat,
+    pinned: keepOwnPins ? layout.pinned : [],
+    groups: inherited.groups ? [] : (layout.groups ?? []),
+    slots: inherited.slots ? [] : (layout.slots ?? []),
+  };
+}
+/** Own pins AND base pins: the one case where folding would let the base's pins surface — see `bodyToSave`. */
+const ownPinsOverBase = (d: { own?: NavLayout | null; base?: NavLayout | null }) => said(d.own?.pinned) && said(d.base?.pinned);
+
 /** «الأولى» is the one on the right: the bar is drawn right to left. */
 const ORDINALS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة'];
 
@@ -114,6 +142,8 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
    * does not copy the owner's choice into the person's own row and detach them from it for good.
    */
   const [inherited, setInherited] = useState({ groups: false, slots: false });
+  /** The person's own pins sit over a base that has pins too — they are posted as they are (`bodyToSave`). */
+  const [keepOwnPins, setKeepOwnPins] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -122,13 +152,16 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const d = await apiJson<{ resolved: NavLayout; own: NavLayout | null; paths: string[] }>('/api/nav/arrangement');
+      const d = await apiJson<{ resolved: NavLayout; own: NavLayout | null; base?: NavLayout | null; paths: string[] }>(
+        '/api/nav/arrangement'
+      );
       if (!alive) return;
       setPaths(d.paths);
       if (!forRole) {
         setLayout(d.resolved);
         setHasOwn(d.own !== null);
         setInherited(inheritedOf(d));
+        setKeepOwnPins(ownPinsOverBase(d));
         return;
       }
       // The role's base, over the menu of the one arranging it — the screens the owner may open.
@@ -243,22 +276,16 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
        * — which is also what a value that is only the role's base showing through is posted as — and the
        * door keeps what it holds only for a post that left the key out altogether (a tab older than this).
        *
-       * `pinned` is FOLDED: `flat` is the rows' draw order, pins first in their group, so posting it as
-       * `order` with no pins draws the very same menu.
+       * `pinned` is FOLDED into `order` — see `bodyToSave` for the one case it is kept.
        */
-      const body = {
-        ...layout,
-        order: flat,
-        pinned: [],
-        groups: inherited.groups ? [] : (layout.groups ?? []),
-        slots: inherited.slots ? [] : (layout.slots ?? []),
-      };
+      const body = bodyToSave(layout, flat, inherited, keepOwnPins);
       await apiJson(`/api/nav/arrangement${forRole ? `?roleId=${forRole}` : ''}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      setLayout({ ...layout, order: flat, pinned: [] });
+      // The pins stay in what is on screen: they are what the menu draws (the base's, or the person's own).
+      setLayout({ ...layout, order: flat });
       setNotice(
         forRole
           ? 'انحفظ أساس الدور. كلّ واحد فيه بيشوفه إلا إذا رتّب لحاله.'
@@ -277,11 +304,12 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
     setError(null);
     setNotice(null);
     try {
-      const d = await apiJson<{ resolved: NavLayout }>('/api/nav/arrangement', { method: 'DELETE' });
+      const d = await apiJson<{ resolved: NavLayout; base?: NavLayout | null }>('/api/nav/arrangement', { method: 'DELETE' });
       setLayout(d.resolved);
       setHasOwn(false);
       // The person's own row is gone: whatever the groups and the four are now is the role's base, or the system's.
       setInherited(inheritedOf({ resolved: d.resolved }));
+      setKeepOwnPins(false);
       setNotice('رجع الأساس. القائمة صارت زي ما ضبطها المالك لدورك.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذّر الإرجاع');

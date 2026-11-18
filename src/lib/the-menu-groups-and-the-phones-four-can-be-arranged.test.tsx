@@ -705,6 +705,16 @@ describe('the phone’s four — what the rows show (on the roles screen)', () =
     expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  // RESTORED 18/11 (R7 review): it had been dropped in the move to the roles screen — the same claim, on the role panel.
+  it('and ONE reachable screen is still a bar of one — the section is drawn, with nowhere for its arrows to go', async () => {
+    await mountRole({ paths: ['/orders'] });
+    expect(slotSelects()).toHaveLength(1);
+    expect(slotValues()).toEqual(['/orders']);
+    expect((screen.getByLabelText('ارفع الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('انزل الخانة الأولى') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('heading', { level: 3, name: SLOTS_TITLE })).toBeTruthy();
+  });
+
   it('and with no screen the drawer draws there is nothing to arrange — the section is not drawn at all', async () => {
     await mountRole({ paths: ['/assistant'] });
     expect(slotSelects()).toHaveLength(0);
@@ -836,6 +846,13 @@ describe('the owner’s base reaches whoever has no choice of their own', () => 
     expect(body.hidden).toContain('/orders');
   });
 
+  /*
+   * 18/11 (R7 review) — «the moment they change one, THAT part is theirs — the other stays the owner's» stood here: the
+   * person changed one of the FOUR and owned the four while the groups stayed the base's. A person no longer edits the
+   * four (they moved to the roles screen), so that half cannot happen; its other half — change ONE part and only that
+   * part becomes yours — is held by the test below (the groups become theirs, the four stay the base's), and «saving for
+   * some other reason does not copy» above.
+   */
   it('and a person who moved the groups owns the groups, and still shares the owner’s four', async () => {
     mountCard({ paths: AGENT_PATHS, resolved: BASE, base: BASE, own: null });
     await screen.findAllByRole('listitem');
@@ -1030,7 +1047,9 @@ describe('and the wiring is the one that holds the rules', () => {
   it('and the panel is not a second editor: it draws the same card in role mode, and has no drag of its own', () => {
     const p = panel();
     expect(p.match(/<MenuOrderCard\b/g)).toHaveLength(1);
-    expect(p).toContain('<MenuOrderCard key={roleId} forRole={roleId} />');
+    // 18/11 (R7 review): the card and the look are siblings — each needs a key of its own, or React keeps the old card.
+    expect(p).toContain('<MenuOrderCard key={`card-${roleId}`} forRole={roleId} />');
+    expect(p).toContain('<RoleOpeningTheme key={`look-${roleId}`} roleId={roleId} />');
     expect(p).not.toContain('DndContext');
     expect(p).not.toContain('useSortable');
     // the door's own flag, no new check

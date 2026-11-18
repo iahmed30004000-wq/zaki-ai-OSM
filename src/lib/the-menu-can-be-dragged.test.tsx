@@ -32,7 +32,7 @@ const { apiJson } = vi.hoisted(() => ({ apiJson: vi.fn() }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/admin/profile' }));
 
-import { MenuOrderCard } from '@/components/settings/MenuOrderCard';
+import { MenuOrderCard, bodyToSave } from '@/components/settings/MenuOrderCard';
 import { Sidebar } from '@/components/shell/Sidebar';
 import {
   applyArrangement,
@@ -376,6 +376,104 @@ describe('a layout saved BEFORE the arrows and the pin left draws the same menu 
     const before = stored(OLD);
     expect(drawn({ ...before, pinned: [] })).not.toEqual(drawn(before));
   });
+
+  /*
+   * 18/11 (R7 review): THE DIFFERENTIAL. A review found the first fold wrong in one family of rows — own pins AND base
+   * pins: an empty own list is «no opinion» to `resolveLayout`, so the base's pins came back and a screen jumped (178 of
+   * 3000 random rows). Held here over every shape at once — pins in own × pins in base × slots × groups × hidden × no row
+   * — against the server's own functions, unchanged: what the person sees before «احفظ» (`resolveLayout` of the stored
+   * rows) must be what they see after it (`resolveLayout` of the base and the posted row, through `cleanLayout`).
+   */
+  const rng = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const randomRow = (r: () => number, pins: boolean): NavLayout => {
+    const pick = (n: number) => ALL.filter(() => r() < n / ALL.length);
+    const order = [...ALL].sort(() => r() - 0.5);
+    return {
+      order: r() < 0.2 ? [] : order,
+      hidden: r() < 0.5 ? [] : pick(3),
+      pinned: pins ? (pick(4).length ? pick(4) : [ALL[Math.floor(r() * ALL.length)]]) : [],
+      ...(r() < 0.5 ? { groups: [...KEYS, 'control', 'chats'].sort(() => r() - 0.5).slice(0, 1 + Math.floor(r() * 5)) } : {}),
+      ...(r() < 0.5 ? { slots: [...LINES].sort(() => r() - 0.5).slice(0, 1 + Math.floor(r() * 4)) } : {}),
+    };
+  };
+  const said = (l?: string[]) => !!l && l.length > 0;
+  /** What the card would post for these stored rows — its own pure function, over its own `flat`. */
+  const postFor = (base: NavLayout | null, own: NavLayout | null, fold: typeof bodyToSave) => {
+    const resolved = resolveLayout(base, own);
+    const flat = applyArrangement(NAV, { ...resolved, hidden: [] }).flatMap((g) => g.routes.map((x) => x.path));
+    const inherited = { groups: !said(own?.groups) && said(resolved.groups), slots: !said(own?.slots) && said(resolved.slots) };
+    return fold(resolved, flat, inherited, said(own?.pinned) && said(base?.pinned));
+  };
+  const cases = (n: number) => {
+    const r = rng(20261118);
+    return Array.from({ length: n }, () => {
+      const base = r() < 0.25 ? null : stored(randomRow(r, r() < 0.6));
+      const own = r() < 0.25 ? null : stored(randomRow(r, r() < 0.6));
+      return { base, own };
+    });
+  };
+
+  it('— 3000 random rows: the menu after a save is the menu before it, under the server’s unchanged resolveLayout', () => {
+    let ownOverBase = 0;
+    for (const { base, own } of cases(3000)) {
+      const before = drawn(resolveLayout(base, own));
+      const after = drawn(resolveLayout(base, stored(postFor(base, own, bodyToSave))));
+      expect(after, JSON.stringify({ base, own })).toEqual(before);
+      if (said(own?.pinned) && said(base?.pinned)) ownOverBase++;
+    }
+    // the family the review found is really in the sample
+    expect(ownOverBase).toBeGreaterThan(300);
+  });
+
+  it('NEGATIVE: the first fold (pins always posted empty) fails the same differential — so the differential can see it', () => {
+    const alwaysFold: typeof bodyToSave = (l, f, i) => bodyToSave(l, f, i, false);
+    const differ = cases(3000).filter(
+      ({ base, own }) => JSON.stringify(drawn(resolveLayout(base, stored(postFor(base, own, alwaysFold))))) !== JSON.stringify(drawn(resolveLayout(base, own)))
+    );
+    expect(differ.length).toBeGreaterThan(0);
+    for (const { base, own } of differ) expect(said(own?.pinned) && said(base?.pinned)).toBe(true);
+  });
+
+  it('and the REAL card, rendered, posts what the pure function says — 25 random rows through «احفظ»', async () => {
+    for (const { base, own } of cases(25)) {
+      cleanup();
+      apiJson.mockReset();
+      const resolved = resolveLayout(base, own);
+      apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
+        if (url === '/api/nav/arrangement' && !init?.method) return { resolved, own, base, paths: ALL, maySetRoleBase: false };
+        return {};
+      });
+      render(<MenuOrderCard />);
+      await screen.findAllByRole('listitem');
+      await act(async () => {
+        fireEvent.click(screen.getByText('احفظ'));
+      });
+      const put = apiJson.mock.calls.find((c) => c[1]?.method === 'PUT')!;
+      const body = JSON.parse(put[1].body) as NavLayout;
+      expect(body, JSON.stringify({ base, own })).toEqual(postFor(base, own, bodyToSave));
+      expect(drawn(resolveLayout(base, stored(body)))).toEqual(drawn(resolved));
+    }
+  });
+
+  it('and the review’s own case: base pins one screen, own pins another — nothing jumps', async () => {
+    const group = NAV.find((g) => g.routes.length >= 4)!;
+    const [, , x, y] = group.routes.map((r) => r.path);
+    const base = stored({ ...EMPTY_LAYOUT, pinned: [y] });
+    const own = stored({ ...EMPTY_LAYOUT, order: [...ALL], pinned: [x] });
+    const resolved = resolveLayout(base, own);
+    apiJson.mockImplementation(async (url: string, init?: { method?: string }) => {
+      if (url === '/api/nav/arrangement' && !init?.method) return { resolved, own, base, paths: ALL, maySetRoleBase: false };
+      return {};
+    });
+    render(<MenuOrderCard />);
+    await screen.findAllByRole('listitem');
+    await act(async () => {
+      fireEvent.click(screen.getByText('احفظ'));
+    });
+    const body = JSON.parse(apiJson.mock.calls.find((c) => c[1]?.method === 'PUT')![1].body) as NavLayout;
+    expect(body.pinned).toEqual([x]);
+    expect(drawn(resolveLayout(base, stored(body)))).toEqual(drawn(resolved));
+  });
 });
 
 // ───────────────────────── a drag that really happens ─────────────────────────
@@ -691,7 +789,9 @@ describe('and the wiring is the one that holds the rules', () => {
   it('and a save folds the pins into the order — the server still reads `pinned`, this client no longer writes it', () => {
     const s = src();
     expect(s).toContain('order: flat,');
-    expect(s).toContain('pinned: [],');
+    // 18/11 (R7 review): was 'pinned: [],' — folded EXCEPT when own pins sit over base pins (see `bodyToSave`).
+    expect(s).toContain('pinned: keepOwnPins ? layout.pinned : [],');
+    expect(s).toContain('const body = bodyToSave(layout, flat, inherited, keepOwnPins);');
     expect(s).not.toMatch(/'pinned'/);
   });
 
