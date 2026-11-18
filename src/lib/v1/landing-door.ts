@@ -27,6 +27,14 @@ import { unitCostsOf } from '../product-fixed-cost';
 import { V1_CODE, V1Fault } from './door';
 import { stampAdTags } from './ad-tags';
 import { attributionColumns, readLandingAttribution } from './landing-attribution';
+import { parseVariantOptions, readVariantsView, unitsSentence, writeLineVariants, type VariantsView } from '../product-variants';
+
+/** `units: [{ variantId }]` — one per piece; read by the order door, the offer after the order and the chat's swap. */
+export const unitsSchema = z
+  .array(z.object({ variantId: z.string().trim().min(1).max(64) }))
+  .max(200)
+  .optional()
+  .nullable();
 
 /**
  * THE STANDALONE LANDING SYSTEM, AT THE SYSTEMS DOOR.
@@ -76,6 +84,8 @@ const PRODUCT_SELECT = {
   basePrice: true,
   status: true,
   storeId: true,
+  // The option types of a product with variants (null for every product without) — `product-variants.ts`.
+  variantOptions: true,
   store: {
     select: {
       id: true,
@@ -111,10 +121,11 @@ interface ProductRow {
   image: string | null;
   basePrice: number;
   status: string;
+  variantOptions?: string | null;
   store: { name: string; status: string; country: { code: string; currencyCode: string; minorUnit: number } } | null;
 }
 
-function productView(p: ProductRow, offers: OfferView[], availableStockShown: number | null) {
+function productView(p: ProductRow, offers: OfferView[], availableStockShown: number | null, variants: VariantsView | null = null) {
   return {
     id: p.id,
     sku: p.sku,
@@ -142,6 +153,11 @@ function productView(p: ProductRow, offers: OfferView[], availableStockShown: nu
       endsAt: o.endsAt ? o.endsAt.toISOString() : null,
       sortOrder,
     })),
+    /*
+     * THE OPTIONS AND EVERY ACTIVE COMBINATION (oms-lp.v1 §10, the owner 2026-11-18) — null for a product without
+     * variants. `available` per combination; a count only from 1 to 20 and only on the one-product read.
+     */
+    variants,
   };
 }
 
@@ -173,7 +189,13 @@ export async function listLandingProducts(companyId: string) {
     const found = await activeOffersForProducts(db, companyId, ids, minor, new Date(), { withEvidence: false });
     for (const [id, list] of found) offers.set(id, list);
   }
-  return rows.map((p) => productView(p, offers.get(p.id) ?? [], null));
+  const out = [];
+  for (const p of rows) {
+    // Only a product with options is asked about its combinations; every other one costs no query.
+    const variants = await readVariantsView(db, companyId, p, false);
+    out.push(productView(p, offers.get(p.id) ?? [], null, variants));
+  }
+  return out;
 }
 
 export async function readLandingProduct(companyId: string, productId: string) {
@@ -182,7 +204,8 @@ export async function readLandingProduct(companyId: string, productId: string) {
   const minor = p.store?.country.minorUnit ?? 2;
   const offers = await activeOffersFor(db, companyId, p.id, minor);
   const free = await availableStock(db, companyId, p.id, undefined, p.storeId);
-  return productView(p, offers, free >= 1 && free <= SHOWN_AT_OR_BELOW ? free : null);
+  const variants = await readVariantsView(db, companyId, p, true);
+  return productView(p, offers, free >= 1 && free <= SHOWN_AT_OR_BELOW ? free : null, variants);
 }
 
 export async function readLandingRegions(companyId: string, code: string) {
@@ -214,18 +237,21 @@ export async function deliveryQuote(params: {
     name: string;
     image: string | null;
     basePrice: number;
+    variantOptions?: string | null;
     store: { id: string; countryId: string; country: { minorUnit: number; currencyCode: string } };
   };
   offerId: string;
   city: string;
+  /** One combination id per piece, for a product with variants (oms-lp.v1 §10). Absent: the base offer's price. */
+  units?: string[];
 }) {
   const { companyId, productRow: p, offerId, city } = params;
   const { minorUnit, currencyCode } = p.store.country;
 
   const resolved = await resolvePublicLines(
     companyId,
-    [{ id: p.id, name: p.name, image: p.image, basePrice: p.basePrice }],
-    [{ productId: p.id, offerId, count: 1 }],
+    [{ id: p.id, name: p.name, image: p.image, basePrice: p.basePrice, variantOptions: p.variantOptions ?? null }],
+    [{ productId: p.id, offerId, count: 1, ...(params.units?.length ? { units: params.units } : {}) }],
     minorUnit
   );
   if (!resolved.ok) {
@@ -284,6 +310,12 @@ export async function deliveryQuote(params: {
       currency: currencyCode,
       minorUnit,
       region: region ? { id: region.id, name: region.name } : null,
+      /*
+       * A PRODUCT WITH VARIANTS (oms-lp.v1 §10): the pieces' deltas, already inside `subtotal` / `net` / `cod`, and how
+       * many pieces this offer needs a choice for. 0 and 0 for a product without variants.
+       */
+      variantsDelta: resolved.lines.reduce((n, l) => n + (l.variantDelta ?? 0), 0),
+      unitsRequired: parseVariantOptions(p.variantOptions).length > 0 ? resolved.lines.reduce((n, l) => n + l.quantity + l.freeQuantity, 0) : 0,
     },
   };
 }
@@ -297,10 +329,15 @@ async function sellableProduct(companyId: string, productId: string) {
   return { ...p, store: p.store };
 }
 
-export async function quoteLandingOrder(companyId: string, q: { productId: string; offerId: string; city: string }) {
+export async function quoteLandingOrder(companyId: string, q: { productId: string; offerId: string; city: string; units?: string[] }) {
   const productRow = await sellableProduct(companyId, q.productId);
   if (!productRow) return UNAVAILABLE;
-  return deliveryQuote({ companyId, productRow, offerId: q.offerId, city: q.city });
+  return deliveryQuote({ companyId, productRow, offerId: q.offerId, city: q.city, units: q.units });
+}
+
+/** The pieces a body names — `units: [{ variantId }]` — as ids; absent is none. */
+function unitIds(units: { variantId: string }[] | null | undefined): string[] {
+  return (units ?? []).map((u) => u.variantId);
 }
 
 /** Identifiers and the customer's words. Every figure is derived here. */
@@ -325,6 +362,11 @@ export const landingOrderSchema = z.object({
   attribution: z.unknown().optional(),
   event_id: z.unknown().optional(),
   client_user_agent: z.unknown().optional(),
+  /*
+   * ONE CHOICE PER PIECE, for a product with variants (oms-lp.v1 §10, the owner 2026-11-18): paid pieces first, then
+   * the free ones. Optional: a page from before this sends none and the order is taken, flagged for the call.
+   */
+  units: unitsSchema,
 });
 export type LandingOrderInput = z.infer<typeof landingOrderSchema>;
 
@@ -368,7 +410,11 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
     store: { id: store.id, countryId: store.countryId, country: store.country },
     checkout: checkoutRules(parseStoreTheme(store.theme)),
     campaignId: await resolveCampaign(companyId, store.id, order.campaign),
-    products: [{ id: productRow.id, name: productRow.name, image: productRow.image, basePrice: productRow.basePrice }],
+    products: [
+      { id: productRow.id, name: productRow.name, image: productRow.image, basePrice: productRow.basePrice, variantOptions: productRow.variantOptions },
+    ],
+    // The piece-by-piece choice of a product with variants (oms-lp.v1 §10); none for a product without.
+    ...(order.units?.length ? { units: unitIds(order.units) } : {}),
     // That page lives in the other system, so there is no row here to link.
     landingPage: null,
     source: LANDING_PAGE_SOURCE,
@@ -396,7 +442,10 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
     );
   }
   const upgrade = await upgradeOffered(companyId, productRow.id, store.country.minorUnit, String(result.body.orderNumber));
-  const figures = await deliveryQuote({ companyId, productRow, offerId: order.offerId, city: order.city ?? '' }).catch(() => null);
+  // Priced with the pieces as ordered — read before this order held anything, since a NEW order holds no stock.
+  const figures = await deliveryQuote({ companyId, productRow, offerId: order.offerId, city: order.city ?? '', units: unitIds(order.units) }).catch(
+    () => null
+  );
   const delivery =
     figures && figures.ok
       ? {
@@ -463,7 +512,10 @@ export async function takeCartOrder(companyId: string, cart: CartForOrder): Prom
     store: { id: store.id, countryId: store.countryId, country: store.country },
     checkout: null,
     campaignId: null,
-    products: [{ id: productRow.id, name: productRow.name, image: productRow.image, basePrice: productRow.basePrice }],
+    // With its option types: a cart of a product with variants becomes an order flagged «اسأل عن المقاس واللون».
+    products: [
+      { id: productRow.id, name: productRow.name, image: productRow.image, basePrice: productRow.basePrice, variantOptions: productRow.variantOptions },
+    ],
     landingPage: null,
     source: CART_ORDER_SOURCE,
     dedupeScope: `cart:${cart.id}`,
@@ -561,7 +613,15 @@ async function recordLandingAttribution(companyId: string, orderNumber: string, 
 export const landingAddOnSchema = z.object({
   token: z.string().min(20).max(2048),
   offerId: z.string().min(1).max(64),
+  // The pieces of the larger offer, for a product with variants (oms-lp.v1 §10).
+  units: unitsSchema,
 });
+
+/** A refusal about the pieces is the visitor's to fix: 400 with the field errors, the shape the order door answers with. */
+export function unitsRefusal(r: { reason: string; fieldErrors?: Record<string, string> }): Refusal | null {
+  if (r.reason !== UNITS_REQUIRED && r.reason !== UNITS_INVALID) return null;
+  return { ok: false, status: 400, body: { ...ORDER_VALIDATION_ERROR_BODY, reason: r.reason, fieldErrors: r.fieldErrors ?? {} } };
+}
 
 /** Names the swap on the order's history, and is how «once» is a fact on the row. */
 export const OFFER_SWAP_ACTION = 'LANDING_OFFER_SWAPPED';
@@ -584,7 +644,7 @@ const SWAP_SELECT = {
   trackingNumber: true,
   labelPrintedAt: true,
   region: { select: { name: true } },
-  items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
+  items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true, variantSummary: true } },
   _count: { select: { contactAttempts: true } },
 } as const;
 
@@ -619,7 +679,14 @@ export interface OfferRewriteRule {
 
 export type OfferRewrite =
   | { ok: true; offer: OfferView; before: number; total: number; currency: string; productRow: NonNullable<Awaited<ReturnType<typeof sellableProduct>>>; regionName: string | null }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; fieldErrors?: Record<string, string> };
+
+/**
+ * The pieces of a product with variants, when an offer is rewritten (oms-lp.v1 §10): a line that already carries a
+ * choice per piece needs one for every piece of the new offer; a line without may name them or not.
+ */
+export const UNITS_REQUIRED = 'UNITS_REQUIRED';
+export const UNITS_INVALID = 'UNITS_INVALID';
 
 /**
  * THE ORDER'S LINE TAKES ANOTHER CATALOGUE OFFER — the one write both offer doors share (the offer after the order,
@@ -634,7 +701,9 @@ export async function rewriteLandingOffer(
   orderId: string,
   offerId: string,
   rule: OfferRewriteRule,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** One combination id per piece of the NEW offer, for a product with variants. */
+  units?: string[]
 ): Promise<OfferRewrite> {
   // The signature proves the customer; the company comes from the calling system's key.
   const order = await db.order.findFirst({ where: { companyId, id: orderId }, select: SWAP_SELECT });
@@ -655,13 +724,24 @@ export async function rewriteLandingOffer(
   );
   if (!allowed) return { ok: false, reason: 'OFFER_GONE' };
 
+  // A line whose pieces were chosen keeps a choice for EVERY piece: the new offer's pieces must be named.
+  const options = parseVariantOptions(product.variantOptions);
+  const withUnits = options.length > 0 && !!units?.length;
+  if (options.length > 0 && !withUnits && line.variantSummary) {
+    return { ok: false, reason: UNITS_REQUIRED, fieldErrors: { units: unitsSentence(options) } };
+  }
+
   const resolved = await resolvePublicLines(
     companyId,
-    [{ id: product.id, name: product.name, image: product.image, basePrice: product.basePrice }],
-    [{ productId: product.id, offerId: allowed.id, count: 1 }],
+    [{ id: product.id, name: product.name, image: product.image, basePrice: product.basePrice, variantOptions: product.variantOptions }],
+    [{ productId: product.id, offerId: allowed.id, count: 1, ...(withUnits ? { units } : {}) }],
     minorUnit
   );
-  if (!resolved.ok) return { ok: false, reason: 'OFFER_GONE' };
+  if (!resolved.ok) {
+    return withUnits && (resolved.fieldErrors.units || Object.keys(resolved.fieldErrors).some((k) => k.startsWith('units')))
+      ? { ok: false, reason: UNITS_INVALID, fieldErrors: resolved.fieldErrors }
+      : { ok: false, reason: 'OFFER_GONE' };
+  }
   const [next] = resolved.lines;
 
   // An add-on already on the order (a later door may write one) stays in the sum, as every reader counts it.
@@ -694,6 +774,10 @@ export async function rewriteLandingOffer(
         lineTotal: money.lineTotals[0] ?? 0,
       },
     });
+    // The pieces of the new offer replace the old ones, in the same commit as the line they describe.
+    if (next.units?.length) {
+      await writeLineVariants(tx, { companyId, orderId: order.id, orderItemId: line.id, productId: product.id, groups: next.units });
+    }
     await tx.order.update({
       where: { id: order.id },
       data: {
@@ -782,9 +866,10 @@ export async function swapLandingOffer(
       action: OFFER_SWAP_ACTION,
       by: 'public visitor',
     },
-    now
+    now,
+    unitIds(swap.units)
   );
-  if (!result.ok) return refuse(result.reason as PostOrderRefusal);
+  if (!result.ok) return unitsRefusal(result) ?? refuse(result.reason as PostOrderRefusal);
   const { offer: allowed } = result;
 
   // What the customer now pays at the door, by the quote the page already showed for this offer.

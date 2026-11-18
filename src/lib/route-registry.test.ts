@@ -45,7 +45,7 @@ describe('navigation contract', () => {
     for (const gone of ['control', 'chats', 'settings']) expect(NAV.some((g) => g.key === gone), gone).toBe(false);
   });
 
-  it('lists 54 unique routes', () => {
+  it('lists 55 unique routes', () => {
     // 52 until /ops/labels was folded into the shipping batches screen:
     // printing, the sizes and the courier CSV all live where the batch is.
     // 59 with the store section's seven screens, all live. 60 with
@@ -99,8 +99,9 @@ describe('navigation contract', () => {
     // the orders on the same key (`orders.view`).
     //
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(54);
-    expect(new Set(paths).size).toBe(54);
+    // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the third tab of «المحادثات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). One more screen, no more line (it is a tab of an existing hub). Not one address moved.
+    expect(paths).toHaveLength(55);
+    expect(new Set(paths).size).toBe(55);
   });
 
   it('the store section is its own group, and reads as one', () => {

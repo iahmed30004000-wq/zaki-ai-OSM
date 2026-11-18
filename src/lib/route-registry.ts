@@ -166,6 +166,9 @@ export const NAV: NavGroup[] = [
       // the rest of the setup (`/settings/links`) — an operation sits with the work, its configuration apart.
       r('/growth/telegram/orders', 'طلبات تلجرام', 'Send', ['telegram.view']),
       r('/growth/whatsapp/inbox', 'صندوق الواتساب', 'MessageCircle', ['whatsapp.view']),
+      // The landing chat (18/11): every conversation of Zaki pages' assistant, answered here. The WhatsApp inbox's own
+      // permission, so the same people see it and no role has to change (contract oms-lp.v1 §11).
+      r('/growth/landing-chats', 'رسائل اللاندينج', 'Inbox', ['whatsapp.view']),
     ],
   },
   {

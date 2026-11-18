@@ -19,6 +19,14 @@ export interface GoodsLine {
   productName: string;
   quantity: number;
   freeQuantity?: number;
+  /** The pieces of a product with variants — «L · أسود ×2، M · كحلي (مجانًا)» (`OrderItem.variantSummary`). */
+  variantSummary?: string | null;
+}
+
+/** «قميص × 2 — L · أسود، M · كحلي»: the size and colour of every piece beside the line, wherever an order's goods are read. */
+export function withPieces(text: string, variantSummary?: string | null): string {
+  const s = variantSummary?.trim();
+  return s ? `${text} — ${s}` : text;
 }
 
 export interface GoodsAddOn {
@@ -54,7 +62,10 @@ export function goodsLines(
   const all: GoodsText[] = [
     ...(items ?? []).map((it) => ({
       key: `i-${it.id}`,
-      text: `${it.productName} × ${it.quantity}${it.freeQuantity && it.freeQuantity > 0 ? ` (+${it.freeQuantity} مجاني)` : ''}`,
+      text: withPieces(
+        `${it.productName} × ${it.quantity}${it.freeQuantity && it.freeQuantity > 0 ? ` (+${it.freeQuantity} مجاني)` : ''}`,
+        it.variantSummary
+      ),
       addOn: false,
     })),
     ...(addOns ?? []).map((a) => ({ key: `a-${a.id}`, text: `${a.productName} × ${a.quantity}`, addOn: true })),

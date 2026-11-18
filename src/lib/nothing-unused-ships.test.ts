@@ -293,7 +293,8 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
    *
-   * 18/11 (R12e): `Checkbox` left — the three marks of a product's offer form (`ProductOffers.tsx`) are the first to render it.
+   * 18/11 (R17a): `Checkbox` LEFT the list — «تذكرني» on the login page and «لا تطلب الرمز على هذا الجهاز» on the
+   * second step are the first screens that draw it. The old line said «no screen draws it yet»; that is no longer true.
    */
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
@@ -471,6 +472,8 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   // The abandoned carts Zaki pages sends (contract oms-lp.v1 §9, 15/11) — two doors, both called by its cart sender (src/server/carts.ts).
   '/api/v1/landing/abandoned-carts': 'صفحاتُ الهبوط ترسل السلة المهجورة بعد ربع ساعة هدوء، وتعيد إرسالها إن عدّل الزائر بياناته — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/abandoned-carts/[externalId]/recovered': 'صفحاتُ الهبوط تقول إن صاحب السلة طلب بنفسه بعد إرسالها — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/chat/messages': 'صفحاتُ الهبوط ترسل كل سطر من محادثة مساعدتها إلى «رسائل اللاندينج» فور كتابته (العقد §11) — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/chat/updates': 'صفحاتُ الهبوط تقرأ ردود الفريق وإيقاف البوت وإرجاعه كل بضع ثوانٍ (العقد §11) — المستدعي في مستودعٍ آخر',
   '/api/call-helper/pair':
     'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
 };

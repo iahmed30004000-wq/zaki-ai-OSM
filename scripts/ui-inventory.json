@@ -13,7 +13,7 @@
     "buttons": 1,
     "inputs": 1,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 3,
     "links": 2,
@@ -21,13 +21,14 @@
   },
   "src/app/(system)/login/page.tsx": {
     "buttons": 2,
-    "inputs": 3,
+    "inputs": 2,
     "columns": 0,
-    "cards": 1,
+    "cards": 3,
     "modals": 0,
     "icons": 5,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/app/(system)/not-found.tsx": {
     "buttons": 0,
@@ -43,7 +44,7 @@
     "buttons": 1,
     "inputs": 4,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 6,
     "links": 2,
@@ -670,6 +671,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/orders/OrderPieces.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/orders/OrderRef.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -971,6 +982,18 @@
     "icons": 6,
     "links": 2,
     "tabs": 0
+  },
+  "src/components/products/ProductVariants.tsx": {
+    "buttons": 3,
+    "inputs": 6,
+    "columns": 6,
+    "cards": 0,
+    "modals": 0,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3,
+    "checkboxes": 1
   },
   "src/components/scan/ScanButton.tsx": {
     "buttons": 3,
@@ -1292,6 +1315,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/LandingChatsScreen.tsx": {
+    "buttons": 4,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 4,
+    "modals": 0,
+    "icons": 12,
+    "links": 1,
+    "tabs": 0,
+    "iconButtons": 2
+  },
   "src/components/screens/LandingLibraryScreen.tsx": {
     "buttons": 3,
     "inputs": 2,
@@ -1395,7 +1429,7 @@
   "src/components/screens/PreparationScreen.tsx": {
     "buttons": 8,
     "inputs": 0,
-    "columns": 5,
+    "columns": 6,
     "cards": 0,
     "modals": 0,
     "icons": 7,
@@ -1406,7 +1440,7 @@
     "buttons": 10,
     "inputs": 1,
     "columns": 6,
-    "cards": 4,
+    "cards": 5,
     "modals": 1,
     "icons": 9,
     "links": 1,
@@ -1606,7 +1640,7 @@
     "buttons": 8,
     "inputs": 7,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 1,
     "icons": 0,
     "links": 0,
@@ -2615,13 +2649,14 @@
   },
   "src/components/shell/SecondFactor.tsx": {
     "buttons": 8,
-    "inputs": 4,
+    "inputs": 3,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/shell/Sidebar.tsx": {
     "buttons": 4,
