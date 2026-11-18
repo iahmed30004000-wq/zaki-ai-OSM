@@ -89,7 +89,7 @@ export function PartnersSection() {
       <Card>
         <CardHeader title="الشركاء" />
         <CardContent>
-          <p className="text-xs text-[var(--sys-destructive)]">تعذّر تحميل حساب الشركاء — حدّث الصفحة وجرّب من جديد.</p>
+          <p className="text-note text-[var(--sys-destructive)]">تعذّر تحميل حساب الشركاء — حدّث الصفحة وجرّب من جديد.</p>
         </CardContent>
       </Card>
     );
@@ -195,7 +195,7 @@ export function PartnersSection() {
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               setReverseError(null);
               setReversing(d);
@@ -215,7 +215,7 @@ export function PartnersSection() {
           subtitle="نصيب كل شريك من صافي الربح، وسحوباته، والرصيد. اللي بيسحب فوق نصيبه بيتسجّل «مكسور عليه» — بيتنعدّ وبيتحمل للقادم وما بينمنع. كل الأرقام من البداية، والنسب هي نسب اليوم على كل التاريخ."
         />
         <CardContent className="p-0">
-          <div className="space-y-2 border-b border-[var(--sys-border)] px-5 py-3 text-xs text-[var(--sys-muted-foreground)]">
+          <div className="space-y-2 border-b border-[var(--sys-border)] px-5 py-3 text-note text-[var(--sys-muted-foreground)]">
             <p>
               صافي الربح الموزَّع: <Money value={statement.netProfit} currency={currency} minorUnit={minorUnit} className="font-bold text-[var(--sys-heading)]" />
               {statement.netProfit <= 0 && ' — ما في ربح للتوزيع، فنصيب الكل صفر.'}
@@ -244,7 +244,7 @@ export function PartnersSection() {
                 </p>
               )}
               <Rows rows={statement.lines} keyOf={(l) => l.id} columns={columns} />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--sys-border)] px-5 py-3 text-xs text-[var(--sys-muted-foreground)]">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--sys-border)] px-5 py-3 text-note text-[var(--sys-muted-foreground)]">
                 <span>المجموع</span>
                 <span>نصيب: {money(statement.totals.entitlement)}</span>
                 <span>سحوبات: {money(statement.totals.draws)}</span>
@@ -288,12 +288,12 @@ export function PartnersSection() {
           </p>
           <Textarea label="سبب العكس *" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required minLength={5} />
           {reverseError && (
-            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">
+            <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">
               {reverseError}
             </p>
           )}
           <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setReversing(null)}>
+            <Button type="button" variant="secondary" onClick={() => setReversing(null)}>
               تراجع
             </Button>
             <Button type="submit" variant="danger" loading={reverseBusy} disabled={reason.trim().length < 5}>
