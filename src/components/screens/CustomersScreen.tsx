@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { Card } from '@/components/ui/Card';
+import { StatTile } from '@/components/ui/StatTile';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -35,14 +36,15 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AskAi } from '@/components/growth/AskAi';
 import { userCan } from '@/lib/can';
 import { GRADE_RANK, scoreCustomer } from '@/lib/customer-score';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { routeLabel } from '@/lib/route-registry';
 import { apiFetch } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { Pager } from '@/components/ui/Pager';
 import { useIsPhone } from '@/hooks/useIsPhone';
 
 export function CustomersScreen() {
-  const { t, currentUser } = useApp();
+  const { currentUser } = useApp();
   /* A phone scrolls the facts sideways, wraps the history and stacks the form; a desk is as it was. */
   const onPhone = useIsPhone();
   // The assistant's own gate: a panel that opens onto a refusal is noise.
@@ -236,23 +238,25 @@ export function CustomersScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Header */}
-        <PageHeader title={t.customers}
-            description="سِجلّ العملاء: توحيدُ الأرقام، وكشفُ التكرار، وسجلُّ الطلبات — ومن يستلم ومن يرفض"
-            actions={
-              <><Button
+      {/*
+        THE ONE FRAME (R10d, 18/11): the header, the filters row, then the content — the order every screen on
+        the kit keeps. The name is the menu's (`routeLabel`), the width is the full one this screen always had.
+      */}
+      <PageShell
+        title={routeLabel('/customers')}
+        description="سِجلّ العملاء: توحيدُ الأرقام، وكشفُ التكرار، وسجلُّ الطلبات — ومن يستلم ومن يرفض"
+        actions={
+          <Button
             size="sm"
             onClick={() => setCreateModalOpen(true)}
             className="flex items-center space-x-1.5 bg-[var(--sys-destructive)] hover:bg-[var(--sys-destructive)]/85"
           >
             <RiAddCircleLine className="w-4 h-4" />
             <span>إضافة عميل</span>
-          </Button></>
-            }
-          />
-
-        {/* The search, and under it the three dropdowns that narrow the same list. */}
+          </Button>
+        }
+        filters={
+        /* The search, and under it the three dropdowns that narrow the same list. */
         <div className="space-y-2">
         {/* RiSearchLine */}
         <div className="relative max-w-md">
@@ -262,7 +266,7 @@ export function CustomersScreen() {
             placeholder="بحث بالاسم، رقم الهاتف، المحافظة..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-11 md:h-auto w-full pl-9 pr-4 rtl:pl-4 rtl:pr-9 md:py-2 text-xs bg-[var(--sys-card)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)] shadow-raised"
+            className="h-11 md:h-auto w-full pl-9 pr-4 rtl:pl-4 rtl:pr-9 md:py-2 text-sm bg-[var(--sys-card)] border border-[var(--sys-border-input)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/30 focus:border-[var(--sys-primary)] shadow-raised"
           />
         </div>
 
@@ -288,7 +292,7 @@ export function CustomersScreen() {
               label="الفئة"
               value={segment}
               onChange={(e) => setSegment(e.target.value as Segment | 'all')}
-              className="text-xs py-2"
+              className="py-2"
             >
               <option value="all">كل العملاء ({facts.total})</option>
               {SEGMENTS.map((s) => (
@@ -302,7 +306,7 @@ export function CustomersScreen() {
               label="المحافظة"
               value={cityFilter}
               onChange={(e) => setCityFilter(e.target.value)}
-              className="text-xs py-2"
+              className="py-2"
             >
               <option value="all">كل المحافظات</option>
               {/* A governorate a link asked for that this book has none of
@@ -322,7 +326,7 @@ export function CustomersScreen() {
               label="الترتيب"
               value={sort}
               onChange={(e) => setSort(e.target.value as CustomerSort)}
-              className="text-xs py-2"
+              className="py-2"
             >
               {SORTS.map((s) => (
                 <option key={s} value={s}>
@@ -340,7 +344,8 @@ export function CustomersScreen() {
           </div>
         )}
         </div>
-
+        }
+      >
         {/*
           WHAT THE BOOK SAYS, ABOVE WHAT THE PAGE SHOWS.
 
@@ -376,7 +381,7 @@ export function CustomersScreen() {
           table on a desk, the same cards on a phone, and one place to fix
           any of it.
         */}
-        <div className="overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+        <Card className="overflow-hidden">
           <Rows
             rows={graded}
             keyOf={({ customer }) => customer.id}
@@ -499,7 +504,7 @@ export function CustomersScreen() {
               )
             }
           />
-        </div>
+        </Card>
 
         {/*
           THE PAGE BAR — the shared one (`ui/Pager`), the same on every list.
@@ -527,7 +532,7 @@ export function CustomersScreen() {
           phone, no address ever reaches a model.
         */}
         {canAskAi && <AskAi preselect={['CUSTOMERS']} />}
-      </div>
+      </PageShell>
 
       {/* Customer Details & History Modal */}
       {selectedCustomer && (
@@ -539,32 +544,32 @@ export function CustomersScreen() {
           maxWidth="2xl"
         >
           <div className="space-y-4">
-            <div className="p-4 bg-[var(--sys-surface)] rounded-lg grid grid-cols-2 gap-3 text-xs">
+            <div className="p-4 bg-[var(--sys-surface)] rounded-lg grid grid-cols-2 gap-3 text-sm">
               <div>
-                <span className="text-[var(--sys-muted)]">رقم الهاتف:</span>
+                <span className="text-note text-[var(--sys-muted)]">رقم الهاتف:</span>
                 <p className="font-bold font-mono text-[var(--sys-heading)] text-sm" dir="ltr">
                   {selectedCustomer.rawPhone || selectedCustomer.phone}
                 </p>
               </div>
               <div>
-                <span className="text-[var(--sys-muted)]">إجمالي المشتريات:</span>
+                <span className="text-note text-[var(--sys-muted)]">إجمالي المشتريات:</span>
                 <p className="font-bold text-[var(--sys-destructive)] text-sm">
                   <Money value={selectedCustomer.totalPurchaseValue ?? 0} />
                 </p>
               </div>
               <div>
-                <span className="text-[var(--sys-muted)]">العنوان:</span>
+                <span className="text-note text-[var(--sys-muted)]">العنوان:</span>
                 <p className="font-medium text-[var(--sys-heading)]">{selectedCustomer.address}</p>
               </div>
               <div>
-                <span className="text-[var(--sys-muted)]">المحافظة / الدولة:</span>
+                <span className="text-note text-[var(--sys-muted)]">المحافظة / الدولة:</span>
                 <p className="font-medium text-[var(--sys-heading)]">
                   {selectedCustomer.city}، {selectedCustomer.country}
                 </p>
               </div>
             </div>
 
-            <h4 className="text-xs font-bold text-[var(--sys-foreground)] mt-2">
+            <h4 className="text-sm font-bold text-[var(--sys-foreground)] mt-2">
               سجل الطلبات ({selectedCustomer.orders?.length || 0})
             </h4>
 
@@ -572,7 +577,7 @@ export function CustomersScreen() {
                 scrolls traps the thumb (ORD-21). A desk keeps the 15rem window. */}
             <div className={onPhone ? 'divide-y divide-[var(--sys-border)]' : 'divide-y divide-[var(--sys-border)] max-h-60 overflow-y-auto'}>
               {selectedCustomer.orders?.map((ord: any) => (
-                <div key={ord.id} className={onPhone ? 'py-2.5 flex flex-wrap items-center justify-between gap-y-1 text-xs' : 'py-2.5 flex items-center justify-between text-xs'}>
+                <div key={ord.id} className={onPhone ? 'py-2.5 flex flex-wrap items-center justify-between gap-y-1 text-sm' : 'py-2.5 flex items-center justify-between text-sm'}>
                   <div className={onPhone ? 'min-w-0' : undefined}>
                     <OrderRef id={ord.id} number={ord.orderNumber} className="font-bold text-[var(--sys-destructive)]" />
                     <span className="text-[var(--sys-muted-foreground)] ml-2 rtl:ml-0 rtl:mr-2">{ord.product?.name}</span>
@@ -598,9 +603,9 @@ export function CustomersScreen() {
       >
         <form onSubmit={handleCreateCustomer} className="space-y-4">
           {modalMsg && (
-            <div className="p-3 bg-[var(--sys-surface)] border border-[var(--sys-primary-soft)] text-[var(--sys-primary)] text-xs rounded-lg">
+            <Card plain padding="sm" className="text-sm text-[var(--sys-primary)]">
               {modalMsg}
-            </div>
+            </Card>
           )}
 
           <Input
@@ -671,6 +676,9 @@ export function CustomersScreen() {
 /**
  * One figure from the book, with the sentence that makes it readable.
  * Small on purpose: five of these are a strip, not a dashboard.
+ *
+ * Drawn by the kit's `StatTile` since 18/11 (R10d): it was a card drawn by
+ * hand here. The figure is what the server sent; the tone only colours it.
  */
 function Fact({
   label,
@@ -693,12 +701,11 @@ function Fact({
         ? 'text-[var(--sys-destructive)]'
         : 'text-[var(--sys-heading)]';
   return (
-    <div className={`${strip ? 'w-36 shrink-0 ' : ''}rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3`}>
-      <p className="text-xs text-[var(--sys-muted-foreground)]">{label}</p>
-      <p className={`mt-0.5 text-lg font-bold tabular-nums ${colour}`} dir="ltr">
-        {value}
-      </p>
-      {hint && <p className="mt-0.5 text-xs leading-relaxed text-[var(--sys-muted)]">{hint}</p>}
-    </div>
+    <StatTile
+      label={label}
+      value={<span className={colour}>{value}</span>}
+      caption={hint}
+      className={strip ? 'w-36 shrink-0' : undefined}
+    />
   );
 }
