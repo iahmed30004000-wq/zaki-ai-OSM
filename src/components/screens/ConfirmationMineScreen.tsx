@@ -1296,7 +1296,7 @@ export function ConfirmationMineScreen() {
       )}
       {desks && desks.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="desk-watch" className="text-xs font-medium text-[var(--sys-muted-foreground)]">
+          <label htmlFor="desk-watch" className="text-note font-medium text-[var(--sys-muted-foreground)]">
             شاشة موظفة
           </label>
           <select
@@ -1352,7 +1352,7 @@ export function ConfirmationMineScreen() {
             {returning && <RiLoader4Line className="w-4 h-4 animate-spin" />}
             أرجِع «لا يرد» للطابور
           </Button>
-          <span className="text-xs font-medium text-[var(--sys-muted-foreground)]">
+          <span className="text-note font-medium text-[var(--sys-muted-foreground)]">
             {data.returnPile.eligible === 0
               ? 'ما في «لا يرد» يرجع هلأ — اللي عليه موعد أو اللي ردّ زبونه بيضل عندها'
               : data.returnPile.remainingAfter > 0
