@@ -7,6 +7,8 @@ import { apiJson } from '@/lib/api-client';
 import { arDateShort } from '@/lib/format';
 import type { NotificationType } from '@/lib/notification';
 import { RiCheckLine, RiLoader4Line, RiNotification3Line } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
 
 /**
  * The bell.
@@ -124,19 +126,24 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={box}>
-      <button
-        onClick={toggle}
-        aria-label={unread > 0 ? `${unread} إشعار غير مقروء` : 'الإشعارات'}
-        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)] hover:bg-[var(--sys-surface)] transition-colors"
-        title={unread > 0 ? `${unread} إشعار غير مقروء` : 'الإشعارات'}
+      {/* `toggle` awaits a fresh read when it opens. Handed to the kit as a
+          promise, the bell would lock and spin through that read and the
+          second press — the one that closes it — would be swallowed; so the
+          promise is dropped here and the bell answers every press as before. */}
+      <IconButton
+        onClick={() => {
+          void toggle();
+        }}
+        label={unread > 0 ? `${unread} إشعار غير مقروء` : 'الإشعارات'}
+        className="shrink-0"
       >
         <RiNotification3Line className="w-5 h-5" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-xs font-bold flex items-center justify-center tabular-nums">
+          <span className="absolute -top-0.5 -end-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-note font-bold flex items-center justify-center tabular-nums">
             {unread > 99 ? '99+' : unread}
           </span>
         )}
-      </button>
+      </IconButton>
 
       {open && (
         <div
@@ -144,26 +151,29 @@ export function NotificationBell() {
           className="absolute z-40 mt-1 end-0 w-[22rem] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] shadow-overlay overflow-hidden"
         >
           <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
-            <span className="text-xs font-bold text-[var(--sys-heading)]">الإشعارات</span>
+            <span className="text-sm font-bold text-[var(--sys-heading)]">الإشعارات</span>
             {unread > 0 && (
-              <button
-                onClick={markAll}
+              <Button
+                variant="quiet"
+                size="sm"
+                onClick={() => {
+                  void markAll();
+                }}
                 disabled={busy}
-                className="text-xs text-[var(--sys-primary)] hover:underline inline-flex items-center gap-1 disabled:opacity-50"
               >
                 {busy ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" />}
                 تعليم الكل كمقروء
-              </button>
+              </Button>
             )}
           </div>
 
           <div className="max-h-[22rem] overflow-y-auto">
             {items === null ? (
-              <p className="px-4 py-6 text-xs text-[var(--sys-muted)] flex items-center justify-center gap-1.5">
+              <p className="px-4 py-6 text-sm text-[var(--sys-muted)] flex items-center justify-center gap-1.5">
                 <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
               </p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-[var(--sys-muted)] text-center">لا إشعارات.</p>
+              <p className="px-4 py-6 text-sm text-[var(--sys-muted)] text-center">لا إشعارات.</p>
             ) : (
               <ul className="divide-y divide-[var(--sys-border)]">
                 {items.map((n) => (
@@ -180,15 +190,15 @@ export function NotificationBell() {
                         )}
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-xs px-1.5 py-0.5 rounded-md ${TONE[n.type as NotificationType] ?? TONE.SYSTEM_ALERT}`}>
+                            <span className={`text-note px-1.5 py-0.5 rounded-md ${TONE[n.type as NotificationType] ?? TONE.SYSTEM_ALERT}`}>
                               {TYPE_AR[n.type as NotificationType] ?? TYPE_AR.SYSTEM_ALERT}
                             </span>
-                            <span className="text-xs text-[var(--sys-muted)]">{arDateShort(n.createdAt)}</span>
+                            <span className="text-note text-[var(--sys-muted)]">{arDateShort(n.createdAt)}</span>
                           </span>
-                          <span className={`block text-xs mt-1 ${n.isRead ? 'text-[var(--sys-muted-foreground)]' : 'text-[var(--sys-heading)] font-medium'}`}>
+                          <span className={`block text-sm mt-1 ${n.isRead ? 'text-[var(--sys-muted-foreground)]' : 'text-[var(--sys-heading)] font-medium'}`}>
                             {n.title}
                           </span>
-                          <span className="block text-xs text-[var(--sys-muted)] mt-0.5 break-words">{n.message}</span>
+                          <span className="block text-note text-[var(--sys-muted)] mt-0.5 break-words">{n.message}</span>
                         </span>
                       </span>
                     </button>

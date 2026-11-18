@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { RiArrowRightLine, RiInformationLine } from '@remixicon/react';
 import { Modal } from '@/components/ui/Modal';
+import { IconButton } from '@/components/ui/IconButton';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { findRoute, type RouteDef } from '@/lib/route-registry';
 import { roadPosition } from '@/lib/next-stop';
@@ -71,22 +72,22 @@ export function GuideButton() {
   const guide = useContext(Ctx);
   if (!guide?.route) return null;
   return (
-    <button
+    <IconButton
       type="button"
       onClick={guide.toggle}
+      label="اشرح لي هذه الشاشة"
       aria-haspopup="dialog"
       aria-expanded={guide.open}
       // The first-run tour anchors its last step here — the ⓘ is the thing
       // the tour exists to introduce. See FirstRunTour.tsx.
       data-tour="guide"
-      // 44px of target around a 16px glyph, with the negative margin that keeps
-      // it from growing the title's row — the same classes `PanelHeader`'s ⓘ
+      // The kit's square (44px on a phone) with the negative margin that keeps
+      // it from growing the title's row — the classes `PanelHeader`'s ⓘ
       // carries, so it costs the stylesheet nothing.
-      className="tap-safe -m-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
+      className="tap-safe -m-2"
     >
       <RiInformationLine className="h-4 w-4" />
-      <span className="sr-only">اشرح لي هذه الشاشة</span>
-    </button>
+    </IconButton>
   );
 }
 
@@ -122,15 +123,15 @@ function GuideSheet({ route, onClose }: { route: RouteDef; onClose: () => void }
     <Modal isOpen onClose={onClose} title={route.label} subtitle="كيف تستعمل هذه الشاشة" side="end" maxWidth="md">
       <div dir="rtl" className="space-y-4">
         {road && (
-          <p className="text-xs font-semibold text-[var(--sys-primary)]">
+          <p className="text-note font-semibold text-[var(--sys-primary)]">
             {road.road} · الخطوة <span className="tabular-nums">{road.here.step}</span> من{' '}
             <span className="tabular-nums">{road.of}</span>
           </p>
         )}
 
-        {text === null && <p className="text-xs text-[var(--sys-muted-foreground)]">جارٍ التحميل…</p>}
+        {text === null && <p className="text-sm text-[var(--sys-muted-foreground)]">جارٍ التحميل…</p>}
         {text === 'failed' && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">تعذّر تحميل الشرح — تحقّق من الاتصال وجرّب مرة ثانية.</p>
+          <p className="text-sm text-[var(--sys-muted-foreground)]">تعذّر تحميل الشرح — تحقّق من الاتصال وجرّب مرة ثانية.</p>
         )}
 
         {written && (
@@ -163,7 +164,7 @@ function GuideSheet({ route, onClose }: { route: RouteDef; onClose: () => void }
           </Link>
         )}
 
-        <p className="border-t border-[var(--sys-border)] pt-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="border-t border-[var(--sys-border)] pt-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           {who
             ? `تفتحها صلاحية: ${who.map((n) => `«${n}»`).join(' أو ')}.`
             : 'مفتوحة لكل من سجّل دخوله.'}

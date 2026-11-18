@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { apiJson } from '@/lib/api-client';
 import { RiArrowLeftLine, RiInformationLine, RiMenuLine, RiSearchLine, RiStore2Line } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -323,39 +325,28 @@ export function FirstRunTour() {
               <p className="text-sm leading-relaxed text-[var(--sys-heading)]">{current.text}</p>
             </div>
 
-            <p className="mt-3 text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+            <p className="mt-3 text-note text-[var(--sys-muted-foreground)] tabular-nums">
               خطوة {step + 1} من {plan.length}
             </p>
 
             <div className="mt-3 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={skip}
-                className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]"
-              >
+              <Button type="button" variant="secondary" onClick={skip}>
                 تخطّي
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                disabled={busy}
-                className="inline-flex h-11 md:h-10 items-center gap-1 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
-              >
+              </Button>
+              <Button type="button" onClick={next} disabled={busy}>
                 {step + 1 < plan.length ? 'التالي' : 'خلصت'}
                 <RiArrowLeftLine className="icon-mirror h-4 w-4" aria-hidden />
-              </button>
+              </Button>
             </div>
 
             {step === 0 && (
-              <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
-                <input
-                  type="checkbox"
-                  checked={neverAgain}
-                  onChange={(e) => setNeverAgain(e.target.checked)}
-                  className="h-4 w-4 rounded-sm border-[var(--sys-border)]"
-                />
-                ما بدي أشرح مرة ثانية
-              </label>
+              <Checkbox
+                id="first-run-tour-never-again"
+                checked={neverAgain}
+                onChange={(checked) => setNeverAgain(checked)}
+                label="ما بدي أشرح مرة ثانية"
+                className="mt-3"
+              />
             )}
           </div>
         </>

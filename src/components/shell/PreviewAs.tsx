@@ -102,7 +102,7 @@ export function PreviewPicker() {
             عاين
           </Button>
         </div>
-        {error && <p className="mt-2 text-xs text-[var(--sys-destructive)]">{error}</p>}
+        {error && <p className="mt-2 text-note text-[var(--sys-destructive)]">{error}</p>}
       </CardContent>
     </Card>
   );

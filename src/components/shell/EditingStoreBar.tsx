@@ -66,7 +66,7 @@ export function EditingStoreBar() {
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2" dir="rtl">
-      <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold text-[var(--sys-heading)]">
+      <span className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-[var(--sys-heading)]">
         <RiStore2Line className="h-4 w-4 shrink-0 text-[var(--sys-primary)]" />
         عم تعدّل: <span className="truncate">{current?.name ?? '…'}</span>
       </span>
@@ -76,7 +76,7 @@ export function EditingStoreBar() {
           value={currentId}
           disabled={busy}
           onChange={(e) => void switchStore(e.target.value)}
-          className="h-11 md:h-10 min-w-0 max-w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-surface)] px-2 text-xs text-[var(--sys-heading)] disabled:opacity-50"
+          className="h-11 md:h-10 min-w-0 max-w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-surface)] px-2 text-sm text-[var(--sys-heading)] disabled:opacity-50"
         >
           {stores.map((s) => (
             <option key={s.id} value={s.id}>

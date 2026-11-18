@@ -13,6 +13,7 @@ import {
 } from '@/lib/exposure';
 import { signOut } from '@/lib/sign-out';
 import { RiEyeOffLine, RiLockLine } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
 
 /**
  * A PHONE LEFT ON A COUNTER.
@@ -309,13 +310,9 @@ export function IdleGuard({ idleSignOut = true }: { idleSignOut?: boolean }) {
               )}
             </p>
             {phase === 'warning' && (
-              <button
-                type="button"
-                onClick={touch}
-                className="h-11 md:h-10 shrink-0 rounded-lg bg-[var(--sys-primary)] px-4 text-sm font-medium text-[var(--sys-primary-foreground)]"
-              >
+              <Button type="button" onClick={touch} className="shrink-0">
                 أنا هنا
-              </button>
+              </Button>
             )}
           </div>
         </div>
