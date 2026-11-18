@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { RiFocus3Line, RiLoader4Line } from '@remixicon/react';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { Card } from '@/components/ui/Card';
 
 /**
  * WHERE THE RUNNING SPAN STANDS.
@@ -47,7 +48,7 @@ export function PeriodProgress() {
   if (rows !== null && rows.length === 0) return null;
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+    <Card className="overflow-hidden">
       <div className="flex items-center gap-1.5 px-4 py-3 border-b border-[var(--sys-border)]">
         <RiFocus3Line className="w-4 h-4 text-[var(--sys-primary)]" />
         <h2 className="text-sm font-medium text-[var(--sys-heading)]">الفترة الجارية</h2>
@@ -63,15 +64,15 @@ export function PeriodProgress() {
             {rows.map((r) => {
               const short = r.minOrders != null && r.count < r.minOrders;
               const standing = short ? (
-                <span className="text-xs text-[var(--sys-warning)] whitespace-nowrap">
+                <span className="text-note text-[var(--sys-warning)] whitespace-nowrap">
                   دون الحد الأدنى ({r.minOrders}) — لا تُحتسب بعد
                 </span>
               ) : r.inBand ? (
-                <span className="text-xs text-[var(--sys-success)] whitespace-nowrap">
+                <span className="text-note text-[var(--sys-success)] whitespace-nowrap">
                   {r.isTarget ? `بلغ الهدف · ${r.inBand.value}` : `شريحة ${r.inBand.label} · ${r.inBand.value}`}
                 </span>
               ) : (
-                <span className="text-xs text-[var(--sys-muted)] whitespace-nowrap">لم يبلغ أي شريحة بعد</span>
+                <span className="text-note text-[var(--sys-muted)] whitespace-nowrap">لم يبلغ أي شريحة بعد</span>
               );
               const figure = (
                 <span className="text-sm font-bold text-[var(--sys-heading)] tabular-nums ms-auto" dir="ltr">
@@ -80,7 +81,7 @@ export function PeriodProgress() {
                 </span>
               );
               const remaining = r.next && (
-                <span className="text-xs text-[var(--sys-muted-foreground)] whitespace-nowrap">
+                <span className="text-note text-[var(--sys-muted-foreground)] whitespace-nowrap">
                   باقي {r.next.remaining} لـ {r.next.at}
                 </span>
               );
@@ -92,7 +93,7 @@ export function PeriodProgress() {
                       <span className="text-sm font-medium text-[var(--sys-heading)]">{r.userName}</span>
                       {figure}
                     </div>
-                    <p className="text-xs text-[var(--sys-muted-foreground)]">
+                    <p className="text-note text-[var(--sys-muted-foreground)]">
                       {r.ruleName} · {r.metricLabel} · {r.periodLabel}
                     </p>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -105,7 +106,7 @@ export function PeriodProgress() {
               return (
                 <li key={`${r.ruleId}:${r.userId}`} className="px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="text-sm font-medium text-[var(--sys-heading)] min-w-[120px]">{r.userName}</span>
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">
+                  <span className="text-note text-[var(--sys-muted-foreground)]">
                     {r.ruleName} · {r.metricLabel} · {r.periodLabel}
                   </span>
                   {figure}
@@ -115,9 +116,9 @@ export function PeriodProgress() {
               );
             })}
           </ul>
-          {note && <p className="px-4 py-2 text-xs text-[var(--sys-muted)] border-t border-[var(--sys-border)]">{note}</p>}
+          {note && <p className="px-4 py-2 text-note text-[var(--sys-muted)] border-t border-[var(--sys-border)]">{note}</p>}
         </>
       )}
-    </div>
+    </Card>
   );
 }

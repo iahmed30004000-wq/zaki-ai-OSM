@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
 import { useCan } from '@/hooks/useCan';
@@ -57,7 +59,7 @@ export function AgentCommissionCard() {
     }
   };
 
-  const field = 'h-8 w-28 rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs tabular-nums';
+  const field = 'h-8 w-28 rounded-md border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-sm tabular-nums';
   const setTier = (i: number, key: 'from' | 'value', v: string) => setDraft({ ...draft, tiers: draft.tiers.map((t, j) => (j === i ? { ...t, [key]: num(v) } : t)) });
 
   return (
@@ -74,33 +76,34 @@ export function AgentCommissionCard() {
       />
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <p className="text-xs font-bold text-[var(--sys-foreground)]">الشرائح</p>
+          <p className="text-note font-bold text-[var(--sys-foreground)]">الشرائح</p>
           {draft.tiers.map((t, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+            <div key={i} className="flex flex-wrap items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
               <span>من</span>
               <input aria-label={`بداية الشريحة ${i + 1}`} type="number" min={1} className={field} value={Number.isNaN(t.from) ? '' : t.from} disabled={!canManage || busy} onChange={(e) => setTier(i, 'from', e.target.value)} />
               <span>طلب</span>
               <input aria-label={`مبلغ الشريحة ${i + 1}`} type="number" min={0} className={field} value={Number.isNaN(t.value) ? '' : t.value} disabled={!canManage || busy} onChange={(e) => setTier(i, 'value', e.target.value)} />
               {canManage && draft.tiers.length > 1 && (
-                <button type="button" className="text-[var(--sys-destructive)]" disabled={busy} onClick={() => setDraft({ ...draft, tiers: draft.tiers.filter((_, j) => j !== i) })}>
+                <Button type="button" variant="quiet" size="sm" disabled={busy} onClick={() => setDraft({ ...draft, tiers: draft.tiers.filter((_, j) => j !== i) })}>
                   حذف
-                </button>
+                </Button>
               )}
             </div>
           ))}
           {canManage && (
-            <button
+            <Button
               type="button"
-              className="text-xs text-[var(--sys-primary)]"
+              variant="quiet"
+              size="sm"
               disabled={busy || draft.tiers.length >= 12}
               onClick={() => setDraft({ ...draft, tiers: [...draft.tiers, { from: (draft.tiers.at(-1)?.from ?? 0) + 20, value: draft.tiers.at(-1)?.value ?? 0 }] })}
             >
               إضافة شريحة
-            </button>
+            </Button>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+        <div className="flex flex-wrap items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
           <span className="font-bold text-[var(--sys-foreground)]">البونص:</span>
           <span>من</span>
           <input aria-label="حد البونص" type="number" min={1} className={field} value={Number.isNaN(draft.bonus.minOrders) ? '' : draft.bonus.minOrders} disabled={!canManage || busy} onChange={(e) => setDraft({ ...draft, bonus: { ...draft.bonus, minOrders: num(e.target.value) } })} />
@@ -108,22 +111,25 @@ export function AgentCommissionCard() {
           <input aria-label="سعر طلب البونص" type="number" min={0} className={field} value={Number.isNaN(draft.bonus.perOrder) ? '' : draft.bonus.perOrder} disabled={!canManage || busy} onChange={(e) => setDraft({ ...draft, bonus: { ...draft.bonus, perOrder: num(e.target.value) } })} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={draft.qualityGate.enabled} disabled={!canManage || busy} onChange={(e) => setDraft({ ...draft, qualityGate: { ...draft.qualityGate, enabled: e.target.checked } })} className="h-5 w-5 accent-[var(--sys-primary)]" />
-            بوابة الجودة
-          </label>
+        <div className="flex flex-wrap items-center gap-2 text-note text-[var(--sys-muted-foreground)]">
+          <Checkbox
+            id="agent-commission-quality-gate"
+            label="بوابة الجودة"
+            checked={draft.qualityGate.enabled}
+            disabled={!canManage || busy}
+            onChange={(checked) => setDraft({ ...draft, qualityGate: { ...draft.qualityGate, enabled: checked } })}
+          />
           <span>نسبة التسليم المطلوبة</span>
           <input aria-label="نسبة التسليم المطلوبة" type="number" min={1} max={100} className={field} value={Number.isNaN(draft.qualityGate.minDeliveryRate) ? '' : draft.qualityGate.minDeliveryRate} disabled={!canManage || busy} onChange={(e) => setDraft({ ...draft, qualityGate: { ...draft.qualityGate, minDeliveryRate: num(e.target.value) } })} />
           <span>%</span>
         </div>
 
         {canManage ? (
-          <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50" disabled={!dirty || busy} onClick={() => void save()}>
+          <Button type="button" size="sm" disabled={!dirty || busy} onClick={() => void save()}>
             حفظ
-          </button>
+          </Button>
         ) : (
-          <p className="text-xs text-[var(--sys-muted)]">بيعدّلها بس صاحب صلاحية «إعدادات النظام الحسّاسة».</p>
+          <p className="text-note text-[var(--sys-muted)]">بيعدّلها بس صاحب صلاحية «إعدادات النظام الحسّاسة».</p>
         )}
       </CardContent>
     </Card>

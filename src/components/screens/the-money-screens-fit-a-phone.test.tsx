@@ -739,7 +739,12 @@ describe('«العمولات»', () => {
     expect(buttons[0].className).toContain('w-full');
     // 18/11 (R3): was heading «العنوان» (the mocked ScreenTitle) and its next sibling. The real PageHeader is drawn now: the
     // h1 is the registry's «العمولات», and the button is the first thing after the header that holds it.
-    expect(screen.getByRole('heading', { level: 1, name: 'العمولات' }).closest('header')!.nextElementSibling).toBe(buttons[0]);
+    // 18/11 (R13h): the screen is on the kit frame (PageShell). The old sentence «the first thing after the header» is now
+    // «the header's own actions row», which a phone draws right under the name: the same place on the screen, inside the
+    // header instead of beside it. Still the header's last control, so nothing sits between the name and the button.
+    const header = screen.getByRole('heading', { level: 1, name: 'العمولات' }).closest('header')!;
+    expect(header.contains(buttons[0])).toBe(true);
+    expect(header.lastElementChild!.contains(buttons[0])).toBe(true);
   });
 
   it('FIN-20 DESK: it is in the header of the rules card, as it was', async () => {
@@ -774,7 +779,8 @@ describe('«العمولات»', () => {
     fireEvent.click(screen.getByRole('button', { name: /قاعدة جديدة/ }));
     // A rule paid per order has one value; bands need a measure that is counted over a period.
     fireEvent.change(await screen.findByLabelText('تُحتسب على'), { target: { value: 'CONFIRMED_COUNT' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'شرائح' }));
+    // 18/11 (R13h): the three shapes are the kit's `Segmented` now, whose options are radios (one of three), not buttons.
+    fireEvent.click(await screen.findByRole('radio', { name: 'شرائح' }));
   };
 
   it('FIN-04: each band is a small card — three labelled numbers, then the name and the ×', async () => {

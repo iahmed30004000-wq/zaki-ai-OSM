@@ -299,7 +299,9 @@ describe('FIN-20 · لوحة العدالة', () => {
 
   it('«من أين الدرجة» is a 44px target under a thumb and not on the desk', () => {
     render(<FairnessPanel data={DATA} />);
-    expect(has(screen.getByRole('button', { name: /من أين الدرجة/ }), 'min-h-11', 'md:min-h-0')).toBe(true);
+    // 18/11 (R13h): it is the kit `Button` (quiet, sm) now, which carries the same rule as a height and not a minimum:
+    // the old pair «min-h-11 md:min-h-0» became «h-11 md:h-8» (44px on a phone, the desk's row size on a desk).
+    expect(has(screen.getByRole('button', { name: /من أين الدرجة/ }), 'h-11', 'md:h-8')).toBe(true);
   });
 
   it('nothing to say → nothing drawn (an empty panel is not a state)', () => {

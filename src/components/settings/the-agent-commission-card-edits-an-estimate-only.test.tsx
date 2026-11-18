@@ -50,7 +50,9 @@ describe('the card', () => {
 
   it('save is off until something changed, then sends the WHOLE document once', async () => {
     await loaded();
-    const save = screen.getByText('حفظ') as HTMLButtonElement;
+    // 18/11 (R13h): «حفظ» is the kit `Button`, which draws its words inside a span: the button is asked by its role and name
+    // (was `getByText('حفظ')`, which now finds the span and not the button).
+    const save = screen.getByRole('button', { name: 'حفظ' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('مبلغ الشريحة 1'), { target: { value: '30000' } });
     fireEvent.click(screen.getByRole('checkbox'));
@@ -66,7 +68,7 @@ describe('the card', () => {
     expect(sent.tiers).toHaveLength(5);
     expect(sent.qualityGate).toEqual({ enabled: true, minDeliveryRate: 80 });
     expect(sent.bonus).toEqual({ minOrders: 2_000, perOrder: 500 });
-    await waitFor(() => expect((screen.getByText('حفظ') as HTMLButtonElement).disabled).toBe(true));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'حفظ' }) as HTMLButtonElement).disabled).toBe(true));
   });
 
   it('a refusal keeps what was typed and says the server\'s sentence', async () => {
