@@ -140,7 +140,7 @@ function InstallSteps({ way, open, onClose }: { way: InstallWay; open: boolean; 
             <li>2. مرّر القائمة واختر «إضافة إلى الشاشة الرئيسية».</li>
             <li>3. اضغط «إضافة»، فتظهر أيقونة النظام على شاشتك مثل أي تطبيق.</li>
           </ol>
-          <p className="mt-3 text-xs text-[var(--sys-muted-foreground)]">
+          <p className="mt-3 text-note text-[var(--sys-muted-foreground)]">
             إذا لم تجد «إضافة إلى الشاشة الرئيسية»، افتح الرابط في سفاري وحاول مرة أخرى.
           </p>
         </>
@@ -161,15 +161,20 @@ export function InstallAppButton() {
   if (!way) return null;
   return (
     <>
-      <button
-        type="button"
-        onClick={() => void install()}
-        className="hidden md:flex shrink-0 items-center gap-2 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] text-sm text-[var(--sys-primary)] hover:border-[var(--sys-primary)]"
-        title="ثبّت النظام كتطبيق بأيقونة خاصة فيه"
-      >
-        <RiInstallLine className="w-4 h-4 shrink-0" aria-hidden />
-        ثبّت التطبيق
-      </button>
+      {/* Hidden on a phone by a wrapper: the kit's button always shows
+          itself as an inline box, and the sheet writes that rule after the
+          one that hides. */}
+      <span className="hidden md:flex shrink-0">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => void install()}
+          title="ثبّت النظام كتطبيق بأيقونة خاصة فيه"
+        >
+          <RiInstallLine className="w-4 h-4 shrink-0" aria-hidden />
+          ثبّت التطبيق
+        </Button>
+      </span>
       <InstallSteps way={way} open={steps} onClose={closeSteps} />
     </>
   );

@@ -342,7 +342,8 @@ describe('NO NEW CSS — every class the dialog uses is one the product already 
 
   it('the two new buttons in `TrackingScreen` wear the very classes of «اختر الكل» beside them', () => {
     const src = readFileSync(join(root, 'components/screens/TrackingScreen.tsx'), 'utf8');
-    const KNOWN = 'min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline';
+    // 18/11 (R11d): the kit's `Button` now — «the very classes» became «the very props» of «اختر الكل» beside them.
+    const KNOWN = 'type="button" variant="quiet" size="sm"';
     let from = 0;
     let found = 0;
     for (;;) {
@@ -350,7 +351,11 @@ describe('NO NEW CSS — every class the dialog uses is one the product already 
       if (at < 0) break;
       found += 1;
       // The button's own class is the LAST one before its label (an earlier button may sit inside the window).
-      const before = [...src.slice(Math.max(0, at - 260), at).matchAll(/className="([^"]+)"/g)];
+      const window = src.slice(Math.max(0, at - 260), at);
+      const before = [...window.matchAll(/<Button ([^>]*?) onClick=/g)];
+      // …and nothing after the handler either: a `className` or a `size` written after `onClick=` would change the look
+      // the props above promise (the tag must close right after the handler).
+      expect(window.slice(window.lastIndexOf('<Button')), `button ${found}: خاصية بعد onClick`).toMatch(/ onClick=\{\(\) => [^{}]*\}>\s*$/);
       expect(before[before.length - 1]?.[1], `button ${found}`).toBe(KNOWN);
       from = at + 1;
     }

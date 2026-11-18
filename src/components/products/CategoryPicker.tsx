@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
+import { Button } from '@/components/ui/Button';
 import { RiAddCircleLine, RiLoader4Line } from '@remixicon/react';
 
 /**
@@ -102,24 +103,25 @@ export function CategoryPicker({
             maxLength={60}
             className="h-11 md:h-10 min-w-0 flex-1 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-sm"
           />
-          <button
+          <Button
             type="button"
-            onClick={() => void create()}
+            onClick={() => {
+              void create();
+            }}
             disabled={busy || draft.trim().length < 2}
-            className="h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-3 text-sm font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" aria-hidden /> : 'أضف'}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="secondary"
             onClick={() => {
               setAdding(false);
               setError(null);
             }}
-            className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] px-3 text-sm text-[var(--sys-muted-foreground)]"
           >
             إلغاء
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
@@ -136,24 +138,20 @@ export function CategoryPicker({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="inline-flex h-11 items-center gap-1 rounded-lg border border-[var(--sys-border)] px-3 text-sm text-[var(--sys-primary)] md:h-10"
-          >
-            <RiAddCircleLine className="h-4 w-4" aria-hidden />
+          <Button type="button" variant="secondary" onClick={() => setAdding(true)}>
+            <RiAddCircleLine className="h-4 w-4 text-[var(--sys-primary)]" aria-hidden />
             جديد
-          </button>
+          </Button>
         </div>
       )}
 
-      {error && <p className="mt-1 text-xs text-[var(--sys-destructive)]">{error}</p>}
+      {error && <p className="mt-1 text-note text-[var(--sys-destructive)]">{error}</p>}
 
       {/* Said once, where the decision is. Not a warning — an explanation
           of what the field is for, which is the thing nobody could guess
           while it did not exist. */}
       {cats !== null && cats.length === 0 && !adding && (
-        <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           لا تصنيفات بعد. التصنيفُ يجمع المنتجات في التقارير، وبه تُحصر صلاحيةُ موظّفٍ على خطٍّ
           واحد من منتجاتك.
         </p>

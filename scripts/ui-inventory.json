@@ -938,7 +938,7 @@
     "buttons": 3,
     "inputs": 8,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -955,14 +955,16 @@
     "tabs": 0
   },
   "src/components/products/ProductOffers.tsx": {
-    "buttons": 11,
-    "inputs": 9,
+    "buttons": 5,
+    "inputs": 6,
     "columns": 0,
     "cards": 1,
     "modals": 0,
     "icons": 15,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 6,
+    "checkboxes": 3
   },
   "src/components/products/ProductPerformance.tsx": {
     "buttons": 0,
@@ -1311,7 +1313,7 @@
     "buttons": 1,
     "inputs": 2,
     "columns": 8,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 4,
     "links": 0,
@@ -1462,14 +1464,15 @@
     "tabs": 0
   },
   "src/components/screens/ProductsScreen.tsx": {
-    "buttons": 14,
+    "buttons": 8,
     "inputs": 7,
     "columns": 7,
-    "cards": 1,
+    "cards": 5,
     "modals": 1,
     "icons": 13,
     "links": 2,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 5
   },
   "src/components/screens/ProfileScreen.tsx": {
     "buttons": 1,
@@ -1706,7 +1709,7 @@
     "buttons": 27,
     "inputs": 0,
     "columns": 15,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 20,
     "links": 0,
@@ -1848,7 +1851,7 @@
     "buttons": 2,
     "inputs": 3,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -1868,7 +1871,7 @@
     "buttons": 4,
     "inputs": 3,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 1,
     "icons": 3,
     "links": 0,
@@ -1878,7 +1881,7 @@
     "buttons": 28,
     "inputs": 12,
     "columns": 7,
-    "cards": 0,
+    "cards": 6,
     "modals": 4,
     "icons": 7,
     "links": 2,
@@ -2009,7 +2012,7 @@
     "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 0,
     "links": 0,
@@ -2079,7 +2082,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -2532,7 +2535,7 @@
     "buttons": 0,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 1,
     "links": 0,
@@ -2550,13 +2553,14 @@
   },
   "src/components/shell/FirstRunTour.tsx": {
     "buttons": 2,
-    "inputs": 1,
+    "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 1,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/shell/Header.tsx": {
     "buttons": 4,
@@ -2582,7 +2586,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -2619,24 +2623,26 @@
     "tabs": 0
   },
   "src/components/shell/NotificationBell.tsx": {
-    "buttons": 3,
-    "inputs": 0,
-    "columns": 0,
-    "cards": 0,
-    "modals": 0,
-    "icons": 4,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/shell/NotificationCards.tsx": {
     "buttons": 2,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
+  "src/components/shell/NotificationCards.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/shell/OfflineWatch.tsx": {
     "buttons": 0,
@@ -2652,21 +2658,22 @@
     "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 3,
     "links": 0,
     "tabs": 0
   },
   "src/components/shell/ScreenGuide.tsx": {
-    "buttons": 1,
+    "buttons": 0,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 2,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/shell/SecondFactor.tsx": {
     "buttons": 8,
