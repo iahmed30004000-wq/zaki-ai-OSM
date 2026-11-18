@@ -30,7 +30,6 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/finance/wallets', useRo
 vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useTell: () => vi.fn() }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ show: vi.fn(), push: vi.fn(), failed: vi.fn() }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المحافظ</h1> }));
 vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
 
 import { WalletsScreen } from './WalletsScreen';

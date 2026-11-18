@@ -24,8 +24,9 @@ import { join } from 'node:path';
  *   • the road stops, which are the screens a new person is walked through,
  *     all have one, and a stop's «next» is never written (it is read from the
  *     menu's own order, so it cannot go stale);
- *   • the button is where an eye looks for «what is this» on BOTH kinds of
- *     header, appears only where there is something to open, and is drawn
+ *   • the button is where an eye looks for «what is this» on the one header
+ *     (two kinds until 18/11, when ScreenTitle was folded into PageHeader),
+ *     appears only where there is something to open, and is drawn
  *     nowhere on the storefront's screens, which are another agent's;
  *   • the texts are fetched when the sheet is opened and not before.
  * ═══════════════════════════════════════════════════════════════════════
@@ -42,10 +43,9 @@ vi.mock('@/hooks/useMayOpen', () => ({
 
 import { ScreenGuideProvider, GuideButton } from '@/components/shell/ScreenGuide';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
 import { GUIDED_PATHS, guideRoute, permissionName, whoOpens } from './route-guide';
 import { GUIDE_TEXTS } from './route-guide-texts';
-import { ALL_ROUTES, NAV } from './route-registry';
+import { ALL_ROUTES, NAV, routeLabel } from './route-registry';
 import { repoFile, stripComments } from './guard-source';
 
 beforeEach(() => {
@@ -258,10 +258,15 @@ describe('what is derived rather than written', () => {
 
 // ───────────────────────── the button and the sheet ─────────────────────────
 
+/*
+ * 18/11 (R3): there is one header now. `'title'` used to mount `ScreenTitle`, which read the name from the address; it is
+ * deleted, and every screen that drew it draws `PageHeader` with the name READ from the registry — `routeLabel(path)` —
+ * which is exactly what `'title'` mounts here, for the address under test.
+ */
 const mountHeader = (which: 'page' | 'title' = 'page') =>
   render(
     <ScreenGuideProvider>
-      {which === 'page' ? <PageHeader title="الطلبات" description="كل الطلبات" /> : <ScreenTitle />}
+      {which === 'page' ? <PageHeader title="الطلبات" description="كل الطلبات" /> : <PageHeader title={routeLabel(here.path)} />}
     </ScreenGuideProvider>
   );
 const button = () => screen.queryByRole('button', { name: 'اشرح لي هذه الشاشة' });
@@ -277,7 +282,8 @@ describe('the ⓘ', () => {
     expect(b.parentElement).toBe(title.parentElement);
   });
 
-  it('and beside the title of a screen drawn with ScreenTitle', () => {
+  // 18/11 (R3): was «a screen drawn with ScreenTitle» — that header is deleted; its screens draw PageHeader with the registry's name.
+  it('and beside the title of a screen whose name is read from the registry', () => {
     here.path = '/ops/preparation';
     mountHeader('title');
     expect(button()).toBeTruthy();
@@ -465,7 +471,8 @@ describe('a screen cannot be added to the menu without explaining itself', () =>
       expect(page, `${path}: ما لقيت صفحة`).not.toBeNull();
       const source = closure(page!).join('\n');
       // 18/11 (R2c): `<PageShell` counts too — it draws the same `PageHeader` (its own test holds that) and the screens move onto it from R3.
-      expect(/<PageHeader\b|<ScreenTitle\b|<PageShell\b/.test(source), `${path}: بلا عنوان — لا مكان للزر`).toBe(true);
+      // 18/11 (R3): `<ScreenTitle` no longer counts — the component is deleted, so a screen still naming it would not even build.
+      expect(/<PageHeader\b|<PageShell\b/.test(source), `${path}: بلا عنوان — لا مكان للزر`).toBe(true);
     }
   });
 });
@@ -475,10 +482,11 @@ describe('a screen cannot be added to the menu without explaining itself', () =>
 describe('how it is wired', () => {
   const code = (file: string) => stripComments(repoFile(file));
 
-  it('— both kinds of header hold the button, once each', () => {
-    for (const f of ['src/components/ui/PageHeader.tsx', 'src/components/shell/ScreenTitle.tsx']) {
-      expect(code(f).match(/<GuideButton\s*\/>/g), f).toHaveLength(1);
-    }
+  // 18/11 (R3): was «both kinds of header hold the button» (PageHeader and ScreenTitle). ScreenTitle is deleted; one header is left,
+  // and it holds the button once — and the deleted file stays deleted.
+  it('— the one header holds the button, once', () => {
+    expect(code('src/components/ui/PageHeader.tsx').match(/<GuideButton\s*\/>/g)).toHaveLength(1);
+    expect(existsSync(join(process.cwd(), 'src/components/shell/ScreenTitle.tsx')), 'رجع رأس صفحة ثاني').toBe(false);
   });
 
   it('and PageHeader does not ask the router where it is — thirty tests mock next/navigation without it', () => {

@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Money } from '@/components/ui/Money';
 import { Pager } from '@/components/ui/Pager';
@@ -237,7 +238,7 @@ export function WinbackScreen({ embedded = false }: { embedded?: boolean } = {})
         // Inside «المتابعة»: the page already has its title, so only the sentence under it stays.
         <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{explain}</p>
       ) : (
-        <ScreenTitle note={explain} />
+        <PageHeader title={routeLabel('/confirmation/follow-up')} description={explain} />
       )}
 
       {/* THE RULE, VISIBLE. Otherwise the screen looks arbitrary — and, beside it, the way to change it. */}

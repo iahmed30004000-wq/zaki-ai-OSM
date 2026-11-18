@@ -553,8 +553,11 @@ describe('and the screen teaches the rule instead of hiding it', () => {
   });
 
   it('borrows its heading from the registry, like every other screen — and inside «المتابعة» the page carries it', () => {
-    expect(screen()).toContain('<ScreenTitle');
-    expect(screen(), 'عنوانٌ مكتوبٌ في الشاشة يخالف القائمة').not.toMatch(/ScreenTitle[\s\S]{0,80}title=/);
+    // 18/11 (R3): was «contains `<ScreenTitle` and gives it no `title=`». ScreenTitle is deleted; the screen draws `PageHeader`,
+    // whose title is READ — `routeLabel(…)` — never a typed Arabic word.
+    expect(screen()).toContain('<PageHeader');
+    expect(screen()).toMatch(/<PageHeader title=\{routeLabel\('\/confirmation\/follow-up'\)\}/);
+    expect(screen(), 'عنوانٌ مكتوبٌ في الشاشة يخالف القائمة').not.toMatch(/<PageHeader[\s\S]{0,80}title="/);
     // The screen is a tab of «المتابعة» now: its address is the page's, and `embedded`
     // keeps it from drawing a second title under the page's own.
     expect(stripComments(repoFile('src/lib/route-registry.ts'))).toContain("r('/confirmation/follow-up'");

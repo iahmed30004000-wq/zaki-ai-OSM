@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -97,7 +98,7 @@ export function BenchScreen() {
       {/* The heading and its name come from the route registry — one list
           of screens, so a title cannot drift from the menu entry. What a
           screen adds is the sentence underneath. */}
-      <ScreenTitle note="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام" />
+      <PageHeader title={routeLabel('/growth/bench')} description="منتجات تُجرَّب على متجرٍ معزول — وأرقامها خارج كل حسبة في النظام" />
 
       {error && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-sm text-[var(--sys-destructive)]">

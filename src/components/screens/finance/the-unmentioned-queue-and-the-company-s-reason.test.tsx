@@ -21,7 +21,6 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'ACCOUNTANT', permissions: permissions.current } }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المطابقة</h1> }));
 vi.mock('@/components/ui/NextStep', () => ({ NextStepButton: () => null }));
 vi.mock('@/components/screens/finance/DifferencesByPerson', () => ({ DifferencesByPerson: () => null }));
 vi.mock('@/components/screens/finance/ManualMatching', () => ({ ManualMatching: () => null }));

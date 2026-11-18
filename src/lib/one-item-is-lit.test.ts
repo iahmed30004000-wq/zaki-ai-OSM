@@ -17,12 +17,12 @@ import { repoFile, stripComments } from './guard-source';
  * and read first, so the menu pointed at the screen the person was NOT
  * on.
  *
- * `ScreenTitle` had the rule right — among the matching prefixes, the
+ * `ScreenTitle` (deleted 18/11) had the rule right — among the matching prefixes, the
  * longest wins — and kept it to itself, which is why the heading and the
  * menu could disagree about where somebody was standing.
  *
  * The rule is one function now. These claims hold it, and hold that the
- * three callers use it rather than keeping a copy each.
+ * callers use it rather than keeping a copy each (three until 18/11, two now).
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -91,7 +91,7 @@ describe('and the real menu, with the real registry', () => {
 });
 
 describe('and no screen keeps a copy of the rule', () => {
-  it('the three that ask use the shared one', () => {
+  it('the two that ask use the shared one', () => {
     /*
      * A second copy is where this fault came from: three files asked the
      * same question and two of them answered it differently. The rule is
@@ -100,7 +100,8 @@ describe('and no screen keeps a copy of the rule', () => {
     for (const rel of [
       'src/components/shell/Sidebar.tsx',
       'src/components/shell/MobileNav.tsx',
-      'src/components/shell/ScreenTitle.tsx',
+      // 18/11 (R3): 'src/components/shell/ScreenTitle.tsx' was the third — it is deleted (its screens draw PageHeader with
+      // the name read from the registry, and ask no address at all), so two callers are left.
     ]) {
       const src = stripComments(repoFile(rel));
       expect(src, `${rel}: ما بيستعمل القاعدة المشتركة`).toMatch(/from '@\/lib\/active-route'/);

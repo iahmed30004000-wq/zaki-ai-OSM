@@ -45,7 +45,6 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ locale: 'ar', t: {}, currentUser: user.current }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({
   useConfirm: () => vi.fn(async () => true),
   useAsk: () => vi.fn(async () => null),
@@ -512,7 +511,9 @@ describe('«إنشاء شحنة» — the button is in the bar', () => {
     expect(screen.getByRole('button', { name: 'إنشاء شحنة (2)' })).toBeTruthy();
     expect(document.body.textContent).not.toContain('اختر شركة الشحن من الأعلى');
     // one button, not two
-    expect(screen.getAllByText(/^إنشاء شحنة/)).toHaveLength(1);
+    // 18/11 (R3): the real header is drawn now (the mock said «العنوان»), and its h1 is the screen's name «إنشاء شحنة» —
+    // the title is not a second button, so it is left out of the count.
+    expect(screen.getAllByText(/^إنشاء شحنة/, { ignore: 'script, style, h1' })).toHaveLength(1);
   });
 });
 

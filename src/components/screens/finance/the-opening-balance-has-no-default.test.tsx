@@ -75,7 +75,6 @@ vi.mock('@/components/ui/Confirm', () => ({
   useTell: () => vi.fn(),
 }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ show: vi.fn(), push: vi.fn() }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المحافظ</h1> }));
 
 import { POST as WALLETS } from '@/app/api/finance/wallets/route';
 import { WalletsScreen } from './WalletsScreen';

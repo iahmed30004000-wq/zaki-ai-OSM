@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { useConfirm } from '@/components/ui/Confirm';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiImageEditLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
@@ -414,7 +415,7 @@ export function WalletsScreen() {
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/finance/wallets')} />
 
       {/* On a phone the sentence takes the whole line and the button sits under it: side by side the sentence was
           squeezed into five lines with the button floating in the middle of them. */}

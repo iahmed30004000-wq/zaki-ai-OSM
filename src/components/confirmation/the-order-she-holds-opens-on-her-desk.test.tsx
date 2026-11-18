@@ -60,7 +60,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, []);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>طلباتي</h1> }));
 vi.mock('@/components/orders/OrderDetailModal', () => ({
   OrderDetailModal: ({ orderId }: { orderId: string }) => <div data-testid="order-window" data-order={orderId} />,
 }));

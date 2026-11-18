@@ -34,13 +34,18 @@ const { api, toast, ask, tell } = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
-vi.mock('@/components/shell/ScreenTitle', () => ({
-  ScreenTitle: ({ note }: { note?: string }) => <p data-testid="note">{note}</p>,
-}));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => toast }));
 vi.mock('@/components/ui/Confirm', () => ({ useAsk: () => ask, useTell: () => tell }));
 
 import { WinbackScreen } from './WinbackScreen';
+
+// 18/11 (R3): the screen draws the real `PageHeader` now, not a mocked `ScreenTitle` with a `note` test id —
+// the sentence under the title is the header's own paragraph, and that is what these tests read.
+const theNote = (): Element => {
+  const p = screen.getByRole('heading', { level: 1 }).closest('header')?.querySelector('p');
+  if (!p) throw new Error('no sentence under the title');
+  return p;
+};
 
 const row = (id: string, over: Record<string, unknown> = {}) => ({
   id,
@@ -251,7 +256,7 @@ describe('the rule, printed on the screen', () => {
   it('and the line under the title carries the same cooling, not a number of its own — for both kinds', async () => {
     rule = { ...rule, coolingDays: 10, lookbackDays: 90 };
     await draw();
-    const note = screen.getByTestId('note').textContent!;
+    const note = theNote().textContent!;
     expect(note).toContain('أو شُحنت ثمّ رجعت واستلمها المستودع');
     expect(note).toContain('ومضى على الإلغاء أو الاستلام 10 يوماً على الأقلّ');
     expect(note).not.toContain('14');
@@ -260,7 +265,7 @@ describe('the rule, printed on the screen', () => {
   it('and with the switch off, the line it always printed', async () => {
     rule = { ...rule, afterShipping: false, coolingDays: 10 };
     await draw();
-    expect(screen.getByTestId('note').textContent).toBe(
+    expect(theNote().textContent).toBe(
       'طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر، ومضى على إلغائها 10 يوماً على الأقلّ. العرضُ يُنشئ طلباً جديداً في الطابور، والقديمُ يبقى ملغى.'
     );
   });
@@ -304,7 +309,7 @@ describe('saving a new rule', () => {
     expect(puts()).toHaveLength(1);
     await waitFor(() => expect(screen.queryByText('قاعدة استرجاع الملغى')).toBeNull());
     await waitFor(() => expect(screen.getByText(RULE_LINE).textContent).toContain('بعد 10 يوماً من الإلغاء'));
-    expect(screen.getByTestId('note').textContent).toContain('10 يوماً');
+    expect(theNote().textContent).toContain('10 يوماً');
   });
 
   it('and the switch the owner unticks is what the route is sent, and the screen prints the sentence of before', async () => {
@@ -796,13 +801,15 @@ describe('drawn as the «ملغاة سابقاً» tab of «المتابعة» (
     await screen.findByLabelText('الحالة');
     // The page owns the title; the screen's heading component is not drawn, and the
     // sentence it carried is a plain paragraph instead.
-    expect(screen.queryByTestId('note')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.getByText(/طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر/)).toBeTruthy();
   });
 
   it('and on its own address it still draws the title with that sentence as its note', async () => {
     await draw();
-    expect(screen.getByTestId('note').textContent).toMatch(/طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر/);
+    expect(theNote().textContent).toMatch(/طلباتٌ أُلغيت لسببٍ يزول بالوقت أو بالسعر/);
+    // 18/11 (R3): and the title is the registry's name for the page it lives on, read, not typed.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('المتابعة');
   });
 });
 

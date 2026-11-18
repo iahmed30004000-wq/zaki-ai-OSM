@@ -38,7 +38,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ done: vi.fn(), warn: vi.fn(), failed: vi.fn() }) }));
 vi.mock('@/components/ui/Confirm', () => ({ useAsk: () => vi.fn(), useTell: () => vi.fn() }));
 

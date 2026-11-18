@@ -2,7 +2,8 @@
 
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { RiArrowDownLine, RiArrowUpLine, RiHistoryLine, RiLoader4Line, RiSearchLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -62,7 +63,7 @@ export function InventoryMovementsScreen() {
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/inventory/movements')} />
 
       <form
         onSubmit={(e) => {

@@ -8,7 +8,8 @@ import { CourierCredentials } from '@/components/settings/CourierCredentials';
 import { CourierFees } from '@/components/settings/CourierFees';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { COURIER_PLATFORMS } from '@/lib/couriers';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { Modal } from '@/components/ui/Modal';
 import { Tabs } from '@/components/ui/Tabs';
 import { RiAddCircleLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiEBike2Line, RiLoader4Line, RiPencilLine, RiTruckLine, RiWallet3Line } from '@remixicon/react';
@@ -236,7 +237,7 @@ export function CouriersScreen() {
 
   return (
     <div className="max-w-3xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/settings/couriers')} />
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--sys-muted-foreground)]">

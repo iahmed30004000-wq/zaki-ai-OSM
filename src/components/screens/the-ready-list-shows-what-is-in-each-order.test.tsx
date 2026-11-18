@@ -33,7 +33,6 @@ vi.mock('@/components/ui/Confirm', () => ({
 }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: user.current }) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null }));
 vi.mock('@/components/screens/confirmation/ActionDialogs', () => ({ RejectDialog: () => null }));
 vi.mock('@/components/ops/DelayShipmentDialog', () => ({ DelayShipmentDialog: () => null }));
