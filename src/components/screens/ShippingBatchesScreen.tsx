@@ -20,7 +20,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { BatchButtonsHelp, LEAVE_PRESSES } from '@/components/screens/BatchButtonsHelp';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
+import { routeLabel } from '@/lib/route-registry';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -641,41 +643,45 @@ export function ShippingBatchesScreen() {
   };
 
   return (
-    <div className="max-w-4xl space-y-4">
-      <PageHeader title="دفعات الشحن"
-          description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، ثم تُسلَّم للشركة. التسوية بالكشف، طلباً طلباً، لا بالدفعة."
-        />
-
-      {/* A phone: the four states are one strip that slides sideways, as every other tab strip does, and the paper
-          has a row of its own with its name on it — it was a fifth chip that read like a filter. */}
-      <div className={phone ? 'flex items-center gap-1.5 overflow-x-auto' : 'flex flex-wrap items-center gap-1.5'}>
-        {([
-          ['all', `الكل (${total})`],
-          ['READY', `قيد التجميع (${counts.READY})`],
-          ['SHIPPED', `سُلّمت (${counts.SHIPPED})`],
-          // Only a batch closed before the press was removed (5/11) is «مُنتهية»; with none, the chip is not drawn.
-          ...(counts.CLOSED > 0 ? ([['CLOSED', `مُنتهية (${counts.CLOSED})`]] as const) : []),
-        ] as const).map(([key, label]) => (
-          <Button
-            key={key}
-            type="button"
-            size="sm"
-            variant={filter === key ? 'primary' : 'secondary'}
-            onClick={() => setFilter(key as typeof filter)}
-            className={phone ? 'shrink-0 whitespace-nowrap' : undefined}
-          >
-            {label}
-          </Button>
-        ))}
-        {/* The paper every «طباعة بوالص الدفعة» below will use. */}
-        {!phone && <LabelSizePicker compact className="ms-auto flex items-center" />}
-      </div>
-      {phone && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-note text-[var(--sys-muted-foreground)]">مقاس البوليصة</span>
-          <LabelSizePicker compact className="flex flex-wrap items-center gap-2" />
+    <PageShell
+      title={routeLabel('/ops/batches')}
+      description="ما يتسلّمه المندوب دفعةً واحدة — تُجمَّع، ثم تُسلَّم للشركة. التسوية بالكشف، طلباً طلباً، لا بالدفعة."
+      width="medium"
+      filters={
+        <div className="space-y-2">
+          {/* A phone: the four states are one strip that slides sideways, as every other tab strip does, and the paper
+              has a row of its own with its name on it — it was a fifth chip that read like a filter. */}
+          <div className={phone ? 'flex items-center gap-1.5 overflow-x-auto' : 'flex flex-wrap items-center gap-1.5'}>
+            {([
+              ['all', `الكل (${total})`],
+              ['READY', `قيد التجميع (${counts.READY})`],
+              ['SHIPPED', `سُلّمت (${counts.SHIPPED})`],
+              // Only a batch closed before the press was removed (5/11) is «مُنتهية»; with none, the chip is not drawn.
+              ...(counts.CLOSED > 0 ? ([['CLOSED', `مُنتهية (${counts.CLOSED})`]] as const) : []),
+            ] as const).map(([key, label]) => (
+              <Button
+                key={key}
+                type="button"
+                size="sm"
+                variant={filter === key ? 'primary' : 'secondary'}
+                onClick={() => setFilter(key as typeof filter)}
+                className={phone ? 'shrink-0 whitespace-nowrap' : undefined}
+              >
+                {label}
+              </Button>
+            ))}
+            {/* The paper every «طباعة بوالص الدفعة» below will use. */}
+            {!phone && <LabelSizePicker compact className="ms-auto flex items-center" />}
+          </div>
+          {phone && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-note text-[var(--sys-muted-foreground)]">مقاس البوليصة</span>
+              <LabelSizePicker compact className="flex flex-wrap items-center gap-2" />
+            </div>
+          )}
         </div>
-      )}
+      }
+    >
 
       {error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>
@@ -697,7 +703,8 @@ export function ShippingBatchesScreen() {
           />
         )
       ) : (
-        <ul className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
+        <Card>
+        <ul className="divide-y divide-[var(--sys-border)]">
           {shown.map((b) => {
             const tone = STATUS[b.status] ?? STATUS.CLOSED;
             /*
@@ -840,10 +847,8 @@ export function ShippingBatchesScreen() {
                card says so in words and offers to take it away; the handover press, which can never answer an empty trolley, is not drawn. */
             const emptyOpen = b.status === 'READY' && b._count.orders === 0;
             const emptyNote = emptyOpen ? (
-              <div
-                role="status"
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-sm text-[var(--sys-muted-foreground)]"
-              >
+              <div role="status">
+                <Card plain padding="sm" className="flex flex-wrap items-center gap-2 text-sm text-[var(--sys-muted-foreground)]">
                 <p className="min-w-0 flex-1">
                   الدفعة فاضية — بتتعبّى بأول شحنة{b.provider ? ` لـ${b.provider.name}` : ''}. وإذا ما بدك إياها، احذفها.
                 </p>
@@ -858,6 +863,7 @@ export function ShippingBatchesScreen() {
                     احذف الدفعة
                   </Button>
                 )}
+                </Card>
               </div>
             ) : null;
             const shipBtn =
@@ -1135,6 +1141,7 @@ export function ShippingBatchesScreen() {
             );
           })}
         </ul>
+        </Card>
       )}
 
       <NextStepButton />
@@ -1192,6 +1199,6 @@ export function ShippingBatchesScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

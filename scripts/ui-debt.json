@@ -156,19 +156,10 @@
     "src/components/landing-flow/PageSummary.tsx": {
       "textXs": 5
     },
-    "src/components/ops/BatchBarcodePaste.tsx": {
-      "rawButtons": 3,
-      "rawCheckboxes": 1,
-      "textXs": 8
-    },
     "src/components/ops/DelayShipmentDialog.tsx": {
       "rawButtons": 2,
       "rawDatePickers": 1,
       "textXs": 1
-    },
-    "src/components/ops/PrepEditSheet.tsx": {
-      "rawButtons": 4,
-      "textXs": 5
     },
     "src/components/orders/AiOrderModal.tsx": {
       "rawCheckboxes": 1,
@@ -362,9 +353,6 @@
     "src/components/screens/AuditScreen.tsx": {
       "textXs": 5
     },
-    "src/components/screens/BatchButtonsHelp.tsx": {
-      "textXs": 2
-    },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
       "rawCheckboxes": 1,
@@ -526,9 +514,8 @@
       "textXs": 1
     },
     "src/components/screens/ShippingBatchesScreen.tsx": {
-      "rawButtons": 14,
-      "rawSurfaces": 3,
-      "textXs": 27
+      "rawSurfaces": 1,
+      "textXs": 1
     },
     "src/components/screens/StoreDesignScreen.tsx": {
       "textXs": 2

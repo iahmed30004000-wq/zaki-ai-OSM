@@ -44,7 +44,7 @@ vi.mock('@/hooks/useRegions', () => ({ useRegions: () => ({ regions: [{ id: 'r1'
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: null }) }));
 vi.mock('@/hooks/useLiveRefresh', () => ({
   useLiveRefresh: (load: () => Promise<void>) => {
-    React.useEffect(() => { void load(); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+    React.useEffect(() => { void load(); }, [load]);
   },
 }));
 vi.mock('@/components/labels/LabelSize', () => ({ useLabelSize: () => ({ dims: { width: 100, height: 150 } }), LabelSizePicker: () => null }));
@@ -65,6 +65,7 @@ vi.mock('@/components/scan/ScanButton', () => ({
 vi.mock('@/components/orders/OrderLink', () => ({ OrderLink: ({ number }: { number: string }) => <span>{number}</span> }));
 
 import { ShippingBatchesScreen } from './ShippingBatchesScreen';
+import { CARD_CLASS } from '@/lib/theme-shape';
 
 const WAIT = { timeout: 8000 };
 const ALL_KEYS = ['ops.batches', 'customers.view', 'orders.change_status', 'ops.ship'];
@@ -328,6 +329,14 @@ describe('(b) the barcode paste window', () => {
     expect(callsTo(apiJson, '/api/shipping-batches/b2/tracking')).toHaveLength(0);
   });
 
+  it('its three presses say type="button" (the kit sets none), and the box has its own id per batch', async () => {
+    const dlg = await openPaste();
+    for (const name of ['تحقّق', 'اكتب']) expect(press(dlg, name).getAttribute('type'), name).toBe('button');
+    const close = within(dlg).getAllByRole('button', { name: 'إغلاق' }).find((b) => b.textContent?.trim() === 'إغلاق')!;
+    expect(close.getAttribute('type')).toBe('button');
+    expect(within(dlg).getByRole('checkbox').id).toBe('batch-paste-overwrite-b2');
+  });
+
   it('NEGATIVE: an empty paste cannot be checked', async () => {
     const dlg = await openPaste();
     expect(press(dlg, 'تحقّق').disabled).toBe(true);
@@ -374,6 +383,11 @@ describe('(b) the parcel edit window', () => {
     expect(patch).not.toHaveBeenCalled();
   });
 
+  it('its four presses say type="button" (the kit sets none)', async () => {
+    const dlg = await openEdit();
+    for (const name of ['احفظ التعديل', 'إلغاء', 'زد الكمية', 'أنقص الكمية']) expect(press(dlg, name).getAttribute('type'), name).toBe('button');
+  });
+
   it('a renamed customer goes as customerName, and nothing else', async () => {
     const dlg = await openEdit();
     fireEvent.change(within(dlg).getByLabelText('اسم العميل'), { target: { value: 'اسم جديد' } });
@@ -415,5 +429,28 @@ describe('(g) at 375px', () => {
     await draw();
     const row = press(card('BATCH-2026-0001'), /طباعة بوالص الدفعة/).parentElement!;
     expect(row.className.split(' ')).toContain('flex-wrap');
+  });
+});
+
+/* ═══════════ the frame and the surfaces ═══════════ */
+
+describe('the frame and the surfaces', () => {
+  it('one h1, the registry’s name; the state strip sits in the frame’s filter row, above the list', async () => {
+    await draw();
+    const h1 = screen.getAllByRole('heading', { level: 1 });
+    expect(h1.map((h) => h.textContent)).toEqual(['دفعات الشحن']);
+    const strip = screen.getByRole('button', { name: 'الكل (3)' }).parentElement!;
+    expect(strip.compareDocumentPosition(screen.getByText('BATCH-2026-0001'))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('the list of batches is ONE page-level card; the empty trolley’s sentence is a plain card inside it', async () => {
+    await draw();
+    const list = card('BATCH-2026-0001').closest('ul')!;
+    expect(list.parentElement!.classList.contains(CARD_CLASS)).toBe(true);
+    expect(document.querySelectorAll('.' + CARD_CLASS)).toHaveLength(1);
+    const said = within(card('BATCH-2026-0003')).getByRole('status');
+    const inner = said.firstElementChild as HTMLElement;
+    expect(inner.classList.contains(CARD_CLASS)).toBe(false);
+    expect(inner.className).toContain('--sys-card');
   });
 });
