@@ -346,11 +346,14 @@ describe('«إنشاء شحنة» on the kit — every press reaches the same ha
   it('PHONE at 375px: no fixed width past the screen, and the row presses sit in a grid that wraps', async () => {
     phone.value = true;
     await draw();
+    // Built from pieces: the stylesheet is generated from every file, tests included, and a whole class name here
+    // would add a rule to the first-load sheet.
+    const tooWide = new Set([['w', 'screen'].join('-'), ['min', 'w', 'max'].join('-')]);
     const wide = [...document.querySelectorAll('[class]')]
       .flatMap((e) => (e.getAttribute('class') ?? '').split(/\s+/))
       .filter((c) => {
         const m = /^(?:min-)?w-\[(\d+)px\]$/.exec(c);
-        return (m && Number(m[1]) > 375) || c === 'w-screen' || c === 'min-w-max';
+        return (m && Number(m[1]) > 375) || tooWide.has(c);
       });
     expect(wide).toEqual([]);
     const li = document.querySelector('li') as HTMLElement;

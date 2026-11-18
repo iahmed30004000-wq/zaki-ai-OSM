@@ -4,6 +4,7 @@ import React, { useId, useState } from 'react';
 import type { DispatchSummary } from '@/lib/couriers/dispatch';
 import { groupDispatchReasons, type DispatchReasonGroup } from '@/lib/dispatch-reason';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * WHAT CAME BACK FROM SENDING A BATCH TO THE COURIER — ONE BOX FOR BOTH SCREENS.
@@ -32,7 +33,7 @@ export function DispatchResult({
     ? summary.outcomes.filter((o) => !o.ok && (o.skipped === 'SEND_IN_FLIGHT' || o.outcomeUnknown))
     : [];
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5 space-y-1">
+    <Card plain className="p-2.5 space-y-1">
       <p className="text-sm font-bold text-[var(--sys-heading)]">
         رُحّل {summary.sent}
         {summary.skipped > 0 && ` · تُخطّي ${summary.skipped}`}
@@ -59,7 +60,7 @@ export function DispatchResult({
         </div>
       )}
       {summary.outcomes.some((o) => o.ok) && <p className="text-note text-[var(--sys-success)]">{savedNote}</p>}
-    </div>
+    </Card>
   );
 }
 

@@ -10,7 +10,8 @@ import { OrderRef } from '@/components/orders/OrderRef';
 import { goodsLines } from '@/components/orders/OrderGoods';
 import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -697,8 +698,7 @@ export function ShipmentsNewScreen() {
   };
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/ops/shipments/new')} />
+    <PageShell title={routeLabel('/ops/shipments/new')} width="wide">
 
       {/*
         FIRST, BECAUSE IT IS THE FIRST THING A PERSON DOES.
@@ -715,7 +715,7 @@ export function ShipmentsNewScreen() {
         doctrine is to reuse what the product already has; a box on its own
         line needs no column arithmetic at all.
       */}
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-3">
+      <Card padding="md" className="space-y-3">
         <SearchField
           value={filters.q}
           onChange={(v) => setFilters({ ...filters, q: v })}
@@ -752,7 +752,7 @@ export function ShipmentsNewScreen() {
         </div>
         )}
         </div>
-      </div>
+      </Card>
 
       {/*
         «إنشاء شحنة» WHERE THE THUMB IS, NOT AT THE TOP OF A FORM.
@@ -817,7 +817,7 @@ export function ShipmentsNewScreen() {
       )}
 
       {exceptions.length > 0 && (
-        <section className="bg-[var(--sys-card)] border border-[var(--sys-destructive-border)] rounded-lg p-4">
+        <Card padding="md" className="border-[var(--sys-destructive-border)]">
           <h3 className="text-sm font-bold text-[var(--sys-destructive)] mb-2">طلبات لم تُشحن ({exceptions.length})</h3>
           <ul className="text-sm text-[var(--sys-foreground)] space-y-1">
             {exceptions.map((e) => (
@@ -831,7 +831,7 @@ export function ShipmentsNewScreen() {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {!rows ? (
@@ -904,7 +904,7 @@ export function ShipmentsNewScreen() {
           {fileNote}
         </p>
       )}
-      <div className={phone ? undefined : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden'}>
+      <ListFrame framed={!phone}>
           {/* The picking list: eight columns, read on a phone at the
               packing bench. `selection` puts the checkbox where a thumb is
               — in the card's heading — instead of in a first column
@@ -1160,7 +1160,7 @@ export function ShipmentsNewScreen() {
               )
             }
           />
-        </div>
+        </ListFrame>
 
         {/* The road goes on from here: «دفعات الشحن». Only when this list is
             not narrowed — a clerk who has filtered down to three rows has not
@@ -1197,7 +1197,20 @@ export function ShipmentsNewScreen() {
           if (row) void standDown(row, { outcome: 'CANCEL', reason: rejectionReason, note });
         }}
       />
-    </div>
+    </PageShell>
+  );
+}
+
+/**
+ * THE LIST'S FRAME ON A DESK, AND NONE ON A PHONE (the cards are framed one by one there). A component of its own,
+ * outside the screen, so the list under it is not remounted on every render.
+ */
+function ListFrame({ framed, children }: { framed: boolean; children: React.ReactNode }) {
+  if (!framed) return <div>{children}</div>;
+  return (
+    <Card plain className="overflow-hidden">
+      {children}
+    </Card>
   );
 }
 

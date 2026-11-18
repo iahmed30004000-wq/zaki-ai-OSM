@@ -95,13 +95,18 @@ describe('one page header', () => {
 
   it.each(TABLE)('%s draws PageHeader with the registry name of %s, read, never typed', (file, path, count) => {
     const src = stripComments(repoFile(file));
-    expect(src, 'ما بيستورد PageHeader').toMatch(/import \{ PageHeader \} from '@\/components\/ui\/PageHeader';/);
+    // 18/11 (R11b): the kit's `PageShell` counts as the header too — it draws exactly `<PageHeader title={title}>` (its
+    // own test holds that), and the screens move onto it one per request from R10. The old claim was «imports PageHeader
+    // and draws `<PageHeader title={routeLabel(…)}`»; the new one is the same claim for either of the two.
+    expect(src, 'ما بيستورد PageHeader').toMatch(
+      /import \{ PageHeader \} from '@\/components\/ui\/PageHeader';|import \{ PageShell \} from '@\/components\/ui\/PageShell';/
+    );
     expect(src, 'ما بيستورد routeLabel').toMatch(/import \{ routeLabel \} from '@\/lib\/route-registry';/);
-    const headers = src.match(/<PageHeader\b/g) ?? [];
+    const headers = src.match(/<(?:PageHeader|PageShell)\b/g) ?? [];
     expect(headers, 'عدد الرؤوس').toHaveLength(count);
-    const titled = src.match(new RegExp(`<PageHeader\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
+    const titled = src.match(new RegExp(`<(?:PageHeader|PageShell)\\s+title=\\{routeLabel\\('${path.replace(/\//g, '\\/')}'\\)\\}`, 'g')) ?? [];
     expect(titled, `العنوان مش routeLabel('${path}')`).toHaveLength(count);
-    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<PageHeader\s+title="/);
+    expect(src, 'عنوان مكتوب باليد').not.toMatch(/<(?:PageHeader|PageShell)\s+title="/);
   });
 
   it.each(TABLE.filter((r) => r[3] !== null))('%s is drawn by the page at %s', (file, path, _count, page) => {

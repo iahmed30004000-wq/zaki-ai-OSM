@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawButtons": 661,
+    "rawCheckboxes": 76,
+    "rawSurfaces": 344,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2598
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -199,12 +199,7 @@
     "src/components/ops/DelayShipmentDialog.tsx": {
       "rawButtons": 2,
       "rawDatePickers": 1,
-      "textXs": 7
-    },
-    "src/components/ops/DispatchResult.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 8
+      "textXs": 1
     },
     "src/components/ops/PrepEditSheet.tsx": {
       "rawButtons": 4,
@@ -643,11 +638,8 @@
       "textXs": 4
     },
     "src/components/screens/ShipmentsNewScreen.tsx": {
-      "rawButtons": 9,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
       "rawDatePickers": 1,
-      "textXs": 21
+      "textXs": 1
     },
     "src/components/screens/ShippingBatchesScreen.tsx": {
       "rawButtons": 14,
