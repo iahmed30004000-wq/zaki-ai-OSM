@@ -1386,14 +1386,16 @@
     "iconButtons": 1
   },
   "src/components/screens/OrdersScreen.tsx": {
-    "buttons": 19,
-    "inputs": 11,
+    "buttons": 18,
+    "inputs": 9,
     "columns": 0,
-    "cards": 1,
+    "cards": 2,
     "modals": 0,
     "icons": 19,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 2
   },
   "src/components/screens/PenaltiesScreen.tsx": {
     "buttons": 7,
