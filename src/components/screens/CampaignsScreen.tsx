@@ -18,6 +18,7 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCreateIntent } from '@/hooks/useCreateIntent';
 import { isManualAccount } from '@/lib/ads/manual';
 import { DateRange, type Range } from '@/components/ui/DateRange';
+import { readReportRange, searchWithRange, writeReportRange } from '@/lib/report-range';
 import { CampaignsBoard, type BoardInsights } from '@/components/growth/CampaignsBoard';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -123,6 +124,31 @@ export function CampaignsScreen() {
   // A picked range wins over the period buttons; a period button clears it.
   const [range, setRange] = useState<Range>({ from: '', to: '' });
   const windowQuery = range.from && range.to ? `startDate=${range.from}&endDate=${range.to}` : `period=${period}`;
+  /*
+   * THE SHARED RANGE OF THE FOUR REPORT TABS (R14b, 18/11) — read once at mount: the address, then the one stored key.
+   * Nothing stored («today») leaves this screen on its own `period=today`, the very query it always sent. Nothing is
+   * loaded before this is read, so the screen never asks for today and then for the stored span.
+   */
+  const [rangeRead, setRangeRead] = useState(false);
+  useEffect(() => {
+    const { range: shared, source } = readReportRange(window.location.search);
+    if (source !== 'today') setRange(shared);
+    setRangeRead(true);
+  }, []);
+  /** Every change of the window is written to the one key; an address that carried a range is kept in step with it. */
+  const pickRange = useCallback((next: Range) => {
+    setRange(next);
+    const kept = next.from && next.to ? next : null;
+    writeReportRange(kept);
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.has('from') || q.has('to')) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${searchWithRange(window.location.search, kept)}`);
+      }
+    } catch {
+      /* an address that cannot be rewritten still has the stored key */
+    }
+  }, []);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Campaign | null>(null);
   const [creating, setCreating] = useState(false);
@@ -217,6 +243,7 @@ export function CampaignsScreen() {
   }
 
   const load = useCallback(async () => {
+    if (!rangeRead) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/growth/campaigns?${windowQuery}`);
@@ -224,9 +251,10 @@ export function CampaignsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [windowQuery]);
+  }, [windowQuery, rangeRead]);
 
-  useLiveRefresh(load, { key: windowQuery });
+  // The key carries the reading too: a caller that reloads on the key alone still asks once, after the range is read.
+  useLiveRefresh(load, { key: rangeRead ? windowQuery : null, enabled: rangeRead });
   useEffect(() => {
     void fetch('/api/landing-pages')
       .then((r) => r.json())
@@ -353,13 +381,13 @@ export function CampaignsScreen() {
                 size="sm"
                 variant={!range.from && period === p.key ? 'secondary' : 'quiet'}
                 aria-pressed={!range.from && period === p.key}
-                onClick={() => { setPeriod(p.key); setRange({ from: '', to: '' }); }}
+                onClick={() => { setPeriod(p.key); pickRange({ from: '', to: '' }); }}
               >
                 {p.label}
               </Button>
             ))}
           </div>
-          <DateRange value={range} onChange={setRange} label="من — إلى" />
+          <DateRange value={range} onChange={pickRange} label="من — إلى" />
           {/* Only an account with a platform on the other end can be pulled
               from. A manual account is a place to put campaigns, and offering
               «اسحب الإنفاق» because one exists would call nobody. */}
