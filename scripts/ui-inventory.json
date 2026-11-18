@@ -2299,14 +2299,15 @@
     "tabs": 0
   },
   "src/components/settings/MenuOrderCard.tsx": {
-    "buttons": 12,
-    "inputs": 4,
+    "buttons": 4,
+    "inputs": 1,
     "columns": 0,
-    "cards": 3,
+    "cards": 2,
     "modals": 0,
-    "icons": 12,
+    "icons": 7,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 3
   },
   "src/components/settings/MessageTemplatesCard.tsx": {
     "buttons": 5,
@@ -2391,6 +2392,16 @@
   "src/components/settings/QueuePriorityCard.tsx": {
     "buttons": 0,
     "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/settings/RoleMenuPanel.tsx": {
+    "buttons": 0,
+    "inputs": 2,
     "columns": 0,
     "cards": 1,
     "modals": 0,
