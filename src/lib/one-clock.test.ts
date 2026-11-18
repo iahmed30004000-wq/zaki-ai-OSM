@@ -92,11 +92,18 @@ describe('how long somebody took', () => {
      * counted `order.claimedById`, the current holder, so a transferred
      * order left the first agent's record entirely.
      */
+    // The team table now reaches the calculator through `confirmationTeamAnswer` (lib/confirmation-team-answer.ts — the block moved whole, 18/11, so the drawer of one person reads the same answer); the calculator is still called by name, in ONE place.
     for (const route of [
       'src/app/api/orders/confirmation/performance/route.ts',
-      'src/app/api/orders/confirmation/team/route.ts',
+      'src/lib/confirmation-team-answer.ts',
     ]) {
       expect(read(route), `${route}: لا يقرأ من الحاسبة المشتركة`).toContain('teamPerformance(');
+    }
+    for (const route of [
+      'src/app/api/orders/confirmation/team/route.ts',
+      'src/app/api/orders/confirmation/team/[userId]/route.ts',
+    ]) {
+      expect(read(route), `${route}: لا يقرأ الجواب المشترك`).toContain('confirmationTeamAnswer(');
     }
     // And the second implementation is pinned ABSENT, not merely unused.
     const perf = read('src/app/api/orders/confirmation/performance/route.ts');

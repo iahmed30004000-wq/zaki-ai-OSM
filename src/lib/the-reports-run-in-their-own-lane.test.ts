@@ -25,7 +25,8 @@ const read = (file: string) => stripComments(readFileSync(join(root, file), 'utf
 
 const REPORTS: Record<string, string> = {
   'src/lib/analytics-answer.ts': 'the board’s and the dashboard’s numbers',
-  'src/app/api/orders/confirmation/team/route.ts': 'the confirmation team table',
+  // The team table and the drawer of one person ask this one function (`GET /api/orders/confirmation/team` and `.../team/[userId]`); the block moved here whole, 18/11.
+  'src/lib/confirmation-team-answer.ts': 'the confirmation team table (and the drawer of one person)',
   'src/app/api/growth/attribution/route.ts': 'who brought the business, and through which door',
   'src/app/api/orders/shipping/performance/route.ts': 'the couriers',
 };
