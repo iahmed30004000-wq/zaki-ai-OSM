@@ -9,9 +9,11 @@ import {
   hitsOf,
   inDebtScope,
   measure,
+  parseRegistry,
   render,
   riseLine,
   run,
+  totalsOf,
   type Io,
   type Registry,
 } from '../../scripts/ui-debt';
@@ -29,10 +31,15 @@ import {
  *   · `npx tsx scripts/ui-debt.ts --write` pins the lower number, and REFUSES (exit 1, writes nothing) if any file rose.
  *
  * The registry file is generated. It is never edited by hand: a hand edit that raised a ceiling would be the whole point of
- * this guard defeated by one keystroke, so the totals are re-added from the files below.
+ * this guard defeated by one keystroke — the byte-for-byte check below catches it.
+ *
+ * 18/11: the registry no longer stores a `totals` block (every screen PR changed those lines, so any two PRs conflicted on
+ * the file). The totals are computed from the per-file rows (`totalsOf`) wherever they are needed, and a registry that
+ * carries a `totals` key again is refused. The old test «keeps its totals equal to the sum of its files» guarded a stored
+ * number that no longer exists; its intent (no hand-edited ceiling) is held by the byte check and by the refusal test.
  */
 
-const pinned: Registry = JSON.parse(readFileSync(join(process.cwd(), 'scripts', 'ui-debt.json'), 'utf8'));
+const pinned: Registry = parseRegistry(readFileSync(join(process.cwd(), 'scripts', 'ui-debt.json'), 'utf8'));
 const now = measure();
 
 describe('the pinned debt against what is written now', () => {
@@ -52,11 +59,36 @@ describe('the pinned debt against what is written now', () => {
     ).toEqual([]);
   });
 
-  it('keeps its totals equal to the sum of its files — a hand-edited ceiling shows here', () => {
-    for (const kind of DEBT_KINDS) {
-      const sum = Object.values(pinned.files).reduce((s, row) => s + (row[kind] ?? 0), 0);
-      expect(pinned.totals[kind], `مجموع «${kind}» في السجل لا يساوي مجموع ملفاته — السجل يُولَّد ولا يُعدَّل باليد`).toBe(sum);
+  it('holds per-file rows only — a stored totals block is refused, so it never comes back', () => {
+    const raw = JSON.parse(readFileSync(join(process.cwd(), 'scripts', 'ui-debt.json'), 'utf8')) as Record<string, unknown>;
+    expect(Object.keys(raw), 'السجل بيحمل «files» بس — المجاميع بتنحسب').toEqual(['files']);
+    const withTotals = JSON.stringify({ totals: totalsOf(pinned), files: pinned.files });
+    expect(() => parseRegistry(withTotals)).toThrow(/totals/);
+    expect(() => parseRegistry(JSON.stringify({ files: {}, other: 1 }))).toThrow(/other/);
+    expect(() => parseRegistry(JSON.stringify({ totals: {} }))).toThrow();
+    expect(parseRegistry(JSON.stringify({ files: { 'a.tsx': { rawButtons: 1 } } }))).toEqual({ files: { 'a.tsx': { rawButtons: 1 } } });
+  });
+
+  it('the plain run and --write both refuse a registry carrying totals, and write nothing', () => {
+    const written: string[] = [];
+    const fake: Io = {
+      measure: () => now,
+      read: () => parseRegistry(JSON.stringify({ totals: totalsOf(now), files: now.files })),
+      write: (t) => written.push(t),
+      source: () => null,
+    };
+    for (const argv of [[], ['--write']]) {
+      const r = run(argv, fake);
+      expect(r.code, argv.join(' ')).toBe(1);
+      expect(r.err.join('\n')).toContain('totals');
     }
+    expect(written).toEqual([]);
+  });
+
+  it('adds its totals up from the files', () => {
+    expect(totalsOf({ files: { 'a.tsx': { rawButtons: 2, textXs: 1 }, 'b.tsx': { rawButtons: 3 } } })).toEqual({
+      rawButtons: 5, rawCheckboxes: 0, rawSurfaces: 0, rawDatePickers: 0, screenTitle: 0, textXs: 1,
+    });
   });
 
   it('is exactly what the script writes — byte for byte', () => {
@@ -80,8 +112,9 @@ describe('the pinned debt against what is written now', () => {
     expect(Object.keys(now.files).length).toBeGreaterThan(100);
     // 18/11 (R3): was «every kind above zero». `screenTitle` is PAID — the component is deleted and its 27 uses draw PageHeader —
     // so it stays a kind (a reintroduction fails the per-file pin) at 0 everywhere; the unit test below proves it is still counted.
-    for (const kind of DEBT_KINDS.filter((k) => k !== 'screenTitle')) expect(now.totals[kind], `«${kind}» لا يُعدّ إطلاقاً`).toBeGreaterThan(0);
-    expect(now.totals.screenTitle, 'رجع ScreenTitle').toBe(0);
+    const totals = totalsOf(now);
+    for (const kind of DEBT_KINDS.filter((k) => k !== 'screenTitle')) expect(totals[kind], `«${kind}» لا يُعدّ إطلاقاً`).toBeGreaterThan(0);
+    expect(totals.screenTitle, 'رجع ScreenTitle').toBe(0);
   });
 
   it('leaves the kit alone: a raw button inside src/components/ui is the kit itself', () => {
@@ -196,11 +229,7 @@ describe('what the counter counts', () => {
 
 // ───────────────────────── the commands ─────────────────────────
 
-const reg = (files: Registry['files']): Registry => {
-  const totals = Object.fromEntries(DEBT_KINDS.map((k) => [k, 0])) as Registry['totals'];
-  for (const row of Object.values(files)) for (const k of DEBT_KINDS) totals[k] += row[k] ?? 0;
-  return { totals, files };
-};
+const reg = (files: Registry['files']): Registry => ({ files });
 
 function io(pinnedReg: Registry | null, nowReg: Registry) {
   const written: string[] = [];
