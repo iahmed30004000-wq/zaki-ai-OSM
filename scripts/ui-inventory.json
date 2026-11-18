@@ -1341,14 +1341,15 @@
     "tabs": 0
   },
   "src/components/screens/ManufacturingScreen.tsx": {
-    "buttons": 9,
+    "buttons": 8,
     "inputs": 10,
     "columns": 12,
-    "cards": 2,
+    "cards": 4,
     "modals": 1,
     "icons": 6,
     "links": 4,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/OrdersScreen.tsx": {
     "buttons": 19,

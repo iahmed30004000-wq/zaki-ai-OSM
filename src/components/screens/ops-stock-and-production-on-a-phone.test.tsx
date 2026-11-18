@@ -341,9 +341,17 @@ describe('«تشغيلات الإنتاج»', () => {
   it('DESK: nothing changed — the two are the plain links they were', async () => {
     phone.value = false;
     await draw();
-    for (const el of [within(card()).getByRole('button', { name: 'عدّل الكلفة' }), within(card()).getByRole('link', { name: 'المنتج' })]) {
+    /*
+     * 18/11 (R12d): «عدّل الكلفة» is the kit's `Button variant="quiet"` now, and that look carries
+     * `border border-transparent` (an edge nobody sees, so the height matches its framed siblings).
+     * Old: `not.toContain('border')` on both. New: neither DRAWS an edge — no `border-[var(--sys-border)]` —
+     * and neither is a half-width target. What the desk shows is unchanged: two plain row actions.
+     */
+    const edit = within(card()).getByRole('button', { name: 'عدّل الكلفة' });
+    expect(edit.className).toContain('border-transparent');
+    for (const el of [edit, within(card()).getByRole('link', { name: 'المنتج' })]) {
       expect(el.className).not.toContain('flex-1');
-      expect(el.className).not.toContain('border');
+      expect(el.className).not.toContain('border-[var(--sys-border)]');
     }
   });
 
