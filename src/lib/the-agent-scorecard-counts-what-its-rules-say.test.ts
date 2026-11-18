@@ -24,23 +24,25 @@ const names = new Map([['u1', 'سارة'], ['u2', 'هدى']]);
 const base = (over: Partial<ScoreInputs> = {}): ScoreInputs => ({
   now: NOW, grain: 'day', calendar: CAL, names, claims: [], releases: [], decisions: [], attempts: [], upsold: new Set(), confirmations: [], winbackOffers: [], ...over,
 });
-const one = (over: Partial<ScoreInputs>, user = 'u1') => tallyScorecard(base(over)).find((r) => r.userId === user)!;
+// 18/11 (H2, cause 8 of the hang): `tallyScorecard` hands the thread back every few thousand rows, so it answers with a promise now — the rows are the
+// same (`the-scorecard-breathes-and-counts-the-same.test.ts` holds them to osm/main's). Every call below only gained an `await`.
+const one = async (over: Partial<ScoreInputs>, user = 'u1') => (await tallyScorecard(base(over))).find((r) => r.userId === user)!;
 
 describe('claims and decisions are unique orders', () => {
-  it('the same order claimed twice the same day is one claim; on another day it is another row', () => {
-    const rows = tallyScorecard(base({
+  it('the same order claimed twice the same day is one claim; on another day it is another row', async () => {
+    const rows = (await tallyScorecard(base({
       claims: [
         { userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') },
         { userId: 'u1', orderId: 'o1', at: at('2026-11-10T09:00:00Z') },
         { userId: 'u1', orderId: 'o2', at: at('2026-11-10T09:30:00Z') },
         { userId: 'u1', orderId: 'o1', at: at('2026-11-11T08:00:00Z') },
       ],
-    }));
+    })));
     expect(rows.map((r) => [r.bucket, r.claims])).toEqual([['2026-11-11', 1], ['2026-11-10', 2]]);
   });
 
-  it('a confirmation reversed by a rejection the same day is a rejection; the rate is confirmed over decided', () => {
-    const r = one({
+  it('a confirmation reversed by a rejection the same day is a rejection; the rate is confirmed over decided', async () => {
+    const r = (await one({
       decisions: [
         { userId: 'u1', orderId: 'a', value: 'CONFIRMED', at: at('2026-11-10T08:00:00Z') },
         { userId: 'u1', orderId: 'b', value: 'CONFIRMED', at: at('2026-11-10T08:05:00Z') },
@@ -48,14 +50,14 @@ describe('claims and decisions are unique orders', () => {
         { userId: 'u1', orderId: 'c', value: 'CONFIRMED', at: at('2026-11-10T09:00:00Z') },
         { userId: 'u1', orderId: 'd', value: 'REJECTED', at: at('2026-11-10T09:10:00Z') },
       ],
-    });
+    }));
     expect(r.confirmed).toBe(2);
     expect(r.rejected).toBe(2);
     expect(r.confirmationRate).toEqual({ of: 2, base: 4, rate: 50 });
   });
 
-  it('no decisions: the rate is null (a dash), never 0', () => {
-    const r = one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] });
+  it('no decisions: the rate is null (a dash), never 0', async () => {
+    const r = (await one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] }));
     expect(r.confirmationRate).toEqual({ of: 0, base: 0, rate: null });
     expect(r.upsell.rate).toBeNull();
     expect(r.delivery.rate).toBeNull();
@@ -67,29 +69,29 @@ describe('the quick release is hers, after her claim, and under a minute', () =>
   const claim = { userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00.000Z') };
   const release = (ms: number, user = 'u1') => ({ userId: user, orderId: 'o1', at: new Date(claim.at.getTime() + ms) });
 
-  it('59.999 s counts, 60 s does not', () => {
-    expect(one({ claims: [claim], releases: [release(59_999)] }).quickNoAnswer).toEqual({ of: 1, base: 1, rate: 100 });
-    expect(one({ claims: [claim], releases: [release(60_000)] }).quickNoAnswer).toEqual({ of: 0, base: 1, rate: 0 });
+  it('59.999 s counts, 60 s does not', async () => {
+    expect((await one({ claims: [claim], releases: [release(59_999)] })).quickNoAnswer).toEqual({ of: 1, base: 1, rate: 100 });
+    expect((await one({ claims: [claim], releases: [release(60_000)] })).quickNoAnswer).toEqual({ of: 0, base: 1, rate: 0 });
   });
 
-  it('a colleague\'s release, or a release before the claim, does not count', () => {
-    expect(one({ claims: [claim], releases: [release(10_000, 'u2')] }).quickNoAnswer.of).toBe(0);
-    expect(one({ claims: [claim], releases: [release(-5_000)] }).quickNoAnswer.of).toBe(0);
+  it('a colleague\'s release, or a release before the claim, does not count', async () => {
+    expect((await one({ claims: [claim], releases: [release(10_000, 'u2')] })).quickNoAnswer.of).toBe(0);
+    expect((await one({ claims: [claim], releases: [release(-5_000)] })).quickNoAnswer.of).toBe(0);
   });
 
-  it('the share is of her claims: one quick of four is 25%', () => {
+  it('the share is of her claims: one quick of four is 25%', async () => {
     const claims = ['o1', 'o2', 'o3', 'o4'].map((orderId) => ({ userId: 'u1', orderId, at: at('2026-11-10T08:00:00Z') }));
-    expect(one({ claims, releases: [{ userId: 'u1', orderId: 'o2', at: at('2026-11-10T08:00:30Z') }] }).quickNoAnswer).toEqual({ of: 1, base: 4, rate: 25 });
+    expect((await one({ claims, releases: [{ userId: 'u1', orderId: 'o2', at: at('2026-11-10T08:00:30Z') }] })).quickNoAnswer).toEqual({ of: 1, base: 4, rate: 25 });
   });
 });
 
 describe('attempts, the first attempt, and the upsell', () => {
-  it('the press and the message are not attempts; a call and a result are', () => {
+  it('the press and the message are not attempts; a call and a result are', async () => {
     const lines = ['OPENED', 'NO_ANSWER', 'MESSAGE_SENT', 'ANSWERED', 'BUSY'].map((result, i) => ({ userId: 'u1', orderId: 'o1', result, at: at(`2026-11-10T08:0${i}:00Z`) }));
-    expect(one({ attempts: lines }).attempts).toBe(3);
+    expect((await one({ attempts: lines })).attempts).toBe(3);
   });
 
-  it('the median first attempt is in minutes from each claim to her first line on it; an order with no line is out', () => {
+  it('the median first attempt is in minutes from each claim to her first line on it; an order with no line is out', async () => {
     const claims = [
       { userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') },
       { userId: 'u1', orderId: 'o2', at: at('2026-11-10T08:00:00Z') },
@@ -103,14 +105,14 @@ describe('attempts, the first attempt, and the upsell', () => {
       { userId: 'u1', orderId: 'o3', result: 'ANSWERED', at: at('2026-11-10T08:04:00Z') },
       { userId: 'u2', orderId: 'o4', result: 'ANSWERED', at: at('2026-11-10T08:01:00Z') }, // a colleague's line is not hers
     ];
-    const r = one({ claims, attempts });
+    const r = (await one({ claims, attempts }));
     expect(r.firstAttempts).toBe(3);
     expect(r.medianFirstAttemptMinutes).toBe(4);
   });
 
-  it('the upsell is confirmed orders where SHE added a line after intake, over her confirmed orders', () => {
+  it('the upsell is confirmed orders where SHE added a line after intake, over her confirmed orders', async () => {
     const decisions = ['a', 'b', 'c', 'd'].map((orderId) => ({ userId: 'u1', orderId, value: 'CONFIRMED' as const, at: at('2026-11-10T09:00:00Z') }));
-    expect(one({ decisions, upsold: new Set(['u1|a', 'u2|b', 'u1|zzz']) }).upsell).toEqual({ of: 1, base: 4, rate: 25 });
+    expect((await one({ decisions, upsold: new Set(['u1|a', 'u2|b', 'u1|zzz']) })).upsell).toEqual({ of: 1, base: 4, rate: 25 });
   });
 });
 
@@ -118,73 +120,73 @@ describe('delivery counts only mature confirmations', () => {
   const day = (offset: number) => new Date(NOW.getTime() - offset * 86_400_000);
   const c = (offsetDays: number, shippingStatus: string, orderId = `o${offsetDays}${shippingStatus}`) => ({ userId: 'u1', orderId, at: day(offsetDays), shippingStatus });
 
-  it('delivered ÷ (delivered + returned) at seven days or older; younger ones and in-flight ones are in neither part', () => {
-    const rows = tallyScorecard(base({
+  it('delivered ÷ (delivered + returned) at seven days or older; younger ones and in-flight ones are in neither part', async () => {
+    const rows = (await tallyScorecard(base({
       confirmations: [
         c(8, 'DELIVERED', 'a'), c(8, 'DELIVERED', 'b'), c(8, 'DELIVERED', 'c'), c(8, 'RETURNED', 'd'),
         c(8, 'OUT_FOR_DELIVERY', 'e'), // still on the road: in neither
         c(3, 'RETURNED', 'f'), // too young: in neither
       ],
-    }));
+    })));
     const total = rows.reduce((s, r) => ({ delivered: s.delivered + r.delivery.delivered, returned: s.returned + r.delivery.returned }), { delivered: 0, returned: 0 });
     expect(total).toEqual({ delivered: 3, returned: 1 });
     expect(rows.find((r) => r.delivery.base === 4)?.delivery.rate).toBe(75);
   });
 
-  it('the maturity is exactly seven days: a confirmation seven days old counts, one a minute younger does not', () => {
+  it('the maturity is exactly seven days: a confirmation seven days old counts, one a minute younger does not', async () => {
     const exact = new Date(NOW.getTime() - DELIVERY_MATURITY_DAYS * 86_400_000);
     const younger = new Date(exact.getTime() + 60_000);
-    const rows = tallyScorecard(base({ confirmations: [{ userId: 'u1', orderId: 'x', at: exact, shippingStatus: 'DELIVERED' }, { userId: 'u1', orderId: 'y', at: younger, shippingStatus: 'DELIVERED' }] }));
+    const rows = (await tallyScorecard(base({ confirmations: [{ userId: 'u1', orderId: 'x', at: exact, shippingStatus: 'DELIVERED' }, { userId: 'u1', orderId: 'y', at: younger, shippingStatus: 'DELIVERED' }] })));
     expect(rows.reduce((s, r) => s + r.delivery.delivered, 0)).toBe(1);
   });
 
-  it('partial delivery counts as delivered and a return request as returned (the same sets the delivery rate of commission reads)', () => {
-    const r = tallyScorecard(base({ confirmations: [c(9, 'PARTIALLY_DELIVERED', 'p'), c(9, 'RETURN_REQUESTED', 'q')] }))[0];
+  it('partial delivery counts as delivered and a return request as returned (the same sets the delivery rate of commission reads)', async () => {
+    const r = (await tallyScorecard(base({ confirmations: [c(9, 'PARTIALLY_DELIVERED', 'p'), c(9, 'RETURN_REQUESTED', 'q')] })))[0];
     expect(r.delivery).toMatchObject({ delivered: 1, returned: 1, rate: 50 });
   });
 });
 
 describe('the buckets follow the store\'s clock', () => {
-  it('a line at 23:30 UTC is the next day in Damascus (UTC+3)', () => {
+  it('a line at 23:30 UTC is the next day in Damascus (UTC+3)', async () => {
     expect(bucketOf(at('2026-11-10T23:30:00Z'), 'day', 'UTC')).toBe('2026-11-10');
     expect(bucketOf(at('2026-11-10T23:30:00Z'), 'day', 'Asia/Damascus')).toBe('2026-11-11');
   });
 
-  it('the week starts on Saturday, as the commission week does', () => {
+  it('the week starts on Saturday, as the commission week does', async () => {
     expect(bucketOf(at('2026-11-14T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // a Saturday
     expect(bucketOf(at('2026-11-16T10:00:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // the Monday after
     expect(bucketOf(at('2026-11-20T23:30:00Z'), 'week', 'UTC')).toBe('2026-11-14'); // the Friday: last day of the week
     expect(bucketOf(at('2026-11-21T00:30:00Z'), 'week', 'UTC')).toBe('2026-11-21');
   });
 
-  it('the week grain sums a week into one row per agent', () => {
+  it('the week grain sums a week into one row per agent', async () => {
     const claims = [
       { userId: 'u1', orderId: 'o1', at: at('2026-11-16T08:00:00Z') },
       { userId: 'u1', orderId: 'o2', at: at('2026-11-18T08:00:00Z') },
       { userId: 'u1', orderId: 'o3', at: at('2026-11-23T08:00:00Z') },
     ];
-    expect(tallyScorecard(base({ grain: 'week', claims })).map((r) => [r.bucket, r.claims])).toEqual([['2026-11-21', 1], ['2026-11-14', 2]]);
+    expect((await tallyScorecard(base({ grain: 'week', claims }))).map((r) => [r.bucket, r.claims])).toEqual([['2026-11-21', 1], ['2026-11-14', 2]]);
   });
 });
 
 describe('order of the rows, and the words', () => {
-  it('rows are by day (newest first) then by name — whatever the figures', () => {
+  it('rows are by day (newest first) then by name — whatever the figures', async () => {
     const decisions = [
       { userId: 'u2', orderId: 'a', value: 'CONFIRMED' as const, at: at('2026-11-10T08:00:00Z') },
       { userId: 'u1', orderId: 'b', value: 'REJECTED' as const, at: at('2026-11-10T08:00:00Z') },
       { userId: 'u1', orderId: 'c', value: 'CONFIRMED' as const, at: at('2026-11-09T08:00:00Z') },
     ];
-    expect(tallyScorecard(base({ decisions })).map((r) => `${r.bucket}|${r.name}`)).toEqual(['2026-11-10|سارة', '2026-11-10|هدى', '2026-11-09|سارة']);
+    expect((await tallyScorecard(base({ decisions }))).map((r) => `${r.bucket}|${r.name}`)).toEqual(['2026-11-10|سارة', '2026-11-10|هدى', '2026-11-09|سارة']);
   });
 
-  it('the median works on odd and even lists', () => {
+  it('the median works on odd and even lists', async () => {
     expect(medianOf([])).toBeNull();
     expect(medianOf([5])).toBe(5);
     expect(medianOf([9, 1, 5])).toBe(5);
     expect(medianOf([4, 1, 3, 2])).toBe(2.5);
   });
 
-  it('every figure has its rule, in Arabic with Western digits', () => {
+  it('every figure has its rule, in Arabic with Western digits', async () => {
     for (const key of ['claims', 'confirmed', 'confirmationRate', 'medianFirstAttempt', 'quickNoAnswer', 'attempts', 'upsell', 'delivery', 'winback']) {
       expect(SCORECARD_RULES[key], key).toBeTruthy();
       expect(SCORECARD_RULES[key]).not.toMatch(/[٠-٩]/);
@@ -192,16 +194,16 @@ describe('order of the rows, and the words', () => {
     expect(SCORECARD_RULES.delivery).toContain(String(DELIVERY_MATURITY_DAYS));
   });
 
-  it('the winback credits whoever made the offer: offers are the base, the ones whose new order is confirmed are the part; none is a dash', () => {
+  it('the winback credits whoever made the offer: offers are the base, the ones whose new order is confirmed are the part; none is a dash', async () => {
     const offers = [
       { userId: 'u1', at: at('2026-11-10T08:00:00Z'), confirmed: true },
       { userId: 'u1', at: at('2026-11-10T09:00:00Z'), confirmed: false },
       { userId: 'u1', at: at('2026-11-10T10:00:00Z'), confirmed: false },
       { userId: 'u2', at: at('2026-11-10T10:00:00Z'), confirmed: true },
     ];
-    expect(one({ winbackOffers: offers }).winback).toEqual({ of: 1, base: 3, rate: 33 });
-    expect(one({ winbackOffers: offers }, 'u2').winback).toEqual({ of: 1, base: 1, rate: 100 });
-    expect(one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] }).winback).toEqual({ of: 0, base: 0, rate: null });
+    expect((await one({ winbackOffers: offers })).winback).toEqual({ of: 1, base: 3, rate: 33 });
+    expect((await one({ winbackOffers: offers }, 'u2')).winback).toEqual({ of: 1, base: 1, rate: 100 });
+    expect((await one({ claims: [{ userId: 'u1', orderId: 'o1', at: at('2026-11-10T08:00:00Z') }] })).winback).toEqual({ of: 0, base: 0, rate: null });
     expect(SCORECARD_RULES.winback).toContain('للي قدّمت العرض');
   });
 });

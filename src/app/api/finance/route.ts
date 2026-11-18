@@ -13,6 +13,7 @@ import { gradeExpenseTypes, ledgerTrust, resolveExpenseCategory, type ExpenseTyp
 import { z } from 'zod';
 import { numeric } from '@/lib/numeric-input';
 import { zodMessage } from '@/lib/zod-message';
+import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 
 /**
  * ─── HOW MUCH MONEY LEFT: READ BY THE ONE STRICT READER, NOT BY `parseFloat` ───
@@ -87,7 +88,31 @@ export async function GET(req: Request) {
     // An optional span of days of the store (?from=YYYY-MM-DD&to=YYYY-MM-DD). Without it, or with a bad one, the figures are since the beginning — what every caller got before.
     const url = new URL(req.url);
     const window = profitWindow(url.searchParams.get('from'), url.searchParams.get('to'), country.timezone);
-    const { expenses, liveExpenses, deliveredOrders, summary } = await profitToDate({ companyId, storeId }, window);
+    /*
+     * IN THE REPORTS LANE, ONE ANSWER A MINUTE (H2, cause 6 of the hang — 18/11). `profitToDate` reads every delivered order of the span (since the
+     * beginning, without one) on the site's main pool, at every return to the tab. It now runs on the reports' own pool and its answer is kept
+     * `REPORT_TTL_MS`, keyed by the company, the store and the span asked — and by the store's LIVE EXPENSES AS THEY STAND (how many, their sum, the
+     * newest): the expense list and «does the ledger tie to the wallets» (`ledgerTrust` below) are read from this answer, so an expense recorded or
+     * cancelled a second ago makes a new key and is on the screen at once. (One edge, said plainly: an expense recorded AND cancelled within the same
+     * minute brings the key back to the one before it, and for the rest of that minute the list lacks that one cancelled row — no figure moves.)
+     * Nothing in the arithmetic moves: the same function, the same figures; delivered orders may be up to a minute behind, like every report.
+     */
+    const stamp = await db.expense.aggregate({
+      where: { ...expensesOf(companyId, storeId), ...(window ? { expenseDate: { gte: window.start, lt: window.end } } : {}) },
+      _count: { _all: true },
+      _sum: { amount: true },
+      _max: { createdAt: true },
+    });
+    const profitKey = [
+      'finance-profit',
+      companyId,
+      storeId,
+      window ? `${window.start.toISOString()}~${window.end.toISOString()}` : 'all',
+      stamp._count._all,
+      stamp._sum.amount ?? 0,
+      stamp._max.createdAt?.toISOString() ?? '',
+    ].join('|');
+    const { expenses, liveExpenses, deliveredOrders, summary } = await heavyOnce(profitKey, REPORT_TTL_MS, () => profitToDate({ companyId, storeId }, window));
 
     /**
      * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───
@@ -146,10 +171,12 @@ export async function GET(req: Request) {
     };
 
     if (monthCount > 0) {
+      // The two revenue readings, in the reports lane and kept a minute (H2): keyed by the company, the store and the window each one reads.
+      const span = (r: { start?: Date; end?: Date }) => `${r.start?.toISOString() ?? ''}~${r.end?.toISOString() ?? ''}`;
       const [now, before] = await Promise.all([
-        getCompanyAnalytics({ companyId, storeId }, spendFilter),
+        heavyOnce(['finance-month', companyId, storeId, span(thisMonth)].join('|'), REPORT_TTL_MS, () => getCompanyAnalytics({ companyId, storeId }, spendFilter)),
         lastMonth
-          ? getCompanyAnalytics({ companyId, storeId }, spendFilter, lastMonth)
+          ? heavyOnce(['finance-month', companyId, storeId, 'before', span(lastMonth)].join('|'), REPORT_TTL_MS, () => getCompanyAnalytics({ companyId, storeId }, spendFilter, lastMonth))
           : Promise.resolve(null),
       ]);
       spendWindow = {
