@@ -230,11 +230,17 @@ describe('every screen names itself', () => {
         // (src/components/store-admin/PanelHeader.tsx) and renders the
         // same h1, plus the one line and the ONE primary action those
         // screens are now held to. Nine screens read it.
+        //
+        // `<PageShell>` (18/11, C1 — the first screen on it is «قواعد مركز
+        // التأكيد»): the kit's screen frame. Its `title` is required and it
+        // always renders `PageHeader` (its own test, #321) — the same
+        // acceptance the-screen-explains-itself.test.tsx gave it in #321.
         return (
           !src.includes('<h1') &&
           !src.includes('<ScreenTitle') &&
           !src.includes('<PageHeader') &&
-          !src.includes('<PanelHeader')
+          !src.includes('<PanelHeader') &&
+          !src.includes('<PageShell')
         );
       })
       .map((f) => f.split(/[\/]/).pop());
