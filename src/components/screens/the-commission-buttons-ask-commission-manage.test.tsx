@@ -26,7 +26,6 @@ vi.mock('@/lib/api-client', () => ({
     return api.answers[hit];
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العمولات</h1> }));
 vi.mock('@/components/screens/commission/PeriodProgress', () => ({ PeriodProgress: () => null }));
 vi.mock('@/components/screens/commission/FairnessPanel', () => ({ FairnessPanel: () => null }));
 vi.mock('@/components/screens/commission/PayoutDialog', () => ({ PayoutDialog: () => null }));

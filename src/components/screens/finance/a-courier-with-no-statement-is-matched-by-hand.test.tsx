@@ -40,7 +40,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/finance/matching',
 }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: user.current }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المطابقة</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => confirm, useAsk: () => async () => null }));
 vi.mock('@/components/screens/tracking/CollectDialog', () => ({
   CollectDialog: (p: { orders: { id: string }[]; onClose: () => void; onDone: (m: string) => void }) => {

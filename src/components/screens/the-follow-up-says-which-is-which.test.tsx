@@ -39,7 +39,6 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ currentUser: user.current, t: {}, locale: 'ar' }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المتابعة</h1> }));
 vi.mock('@/components/screens/ConfirmationPostponedScreen', () => ({
   ConfirmationPostponedScreen: ({ embedded }: { embedded?: boolean }) => (
     <div data-testid="postponed-list" data-embedded={String(!!embedded)} />

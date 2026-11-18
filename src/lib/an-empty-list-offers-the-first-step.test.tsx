@@ -141,8 +141,9 @@ const { APP, REGIONS } = vi.hoisted(() => ({
 }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => APP }));
 vi.mock('@/hooks/useRegions', () => ({ useRegions: () => REGIONS }));
-// `ScreenTitle` reads the address to find the screen's own name; and the customers screen reads what points at it
-// (`?search=`, `?segment=`) once, at the start — an address with nothing in it here.
+// The customers screen reads what points at it
+// (`?search=`, `?segment=`) once, at the start — an address with nothing in it here. (18/11, R3: this also fed
+// `ScreenTitle`, which read the address for the screen's name; it is deleted, and the name is read from the registry.)
 vi.mock('next/navigation', () => ({ usePathname: () => '/control/blacklist', useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/components/growth/AskAi', () => ({ AskAi: () => null }));
 

@@ -78,7 +78,10 @@ describe('the pinned debt against what is written now', () => {
 
   it('sees the screens, not an empty list', () => {
     expect(Object.keys(now.files).length).toBeGreaterThan(100);
-    for (const kind of DEBT_KINDS) expect(now.totals[kind], `«${kind}» لا يُعدّ إطلاقاً`).toBeGreaterThan(0);
+    // 18/11 (R3): was «every kind above zero». `screenTitle` is PAID — the component is deleted and its 27 uses draw PageHeader —
+    // so it stays a kind (a reintroduction fails the per-file pin) at 0 everywhere; the unit test below proves it is still counted.
+    for (const kind of DEBT_KINDS.filter((k) => k !== 'screenTitle')) expect(now.totals[kind], `«${kind}» لا يُعدّ إطلاقاً`).toBeGreaterThan(0);
+    expect(now.totals.screenTitle, 'رجع ScreenTitle').toBe(0);
   });
 
   it('leaves the kit alone: a raw button inside src/components/ui is the kit itself', () => {

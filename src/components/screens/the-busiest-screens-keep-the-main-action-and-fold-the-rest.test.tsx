@@ -91,7 +91,6 @@ vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ show: vi.fn(), push: vi.fn(), done: vi.fn(), failed: vi.fn(), success: vi.fn(), error: vi.fn() }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>المحافظ</h1> }));
 // Orders
 vi.mock('@/components/labels/LabelSize', () => ({ useLabelSize: () => 'thermal', LabelSizePicker: () => null }));
 vi.mock('@/components/labels/openWaybills', () => ({

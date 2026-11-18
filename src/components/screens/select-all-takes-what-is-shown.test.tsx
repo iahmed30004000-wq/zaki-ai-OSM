@@ -34,7 +34,6 @@ vi.mock('@/components/ui/Confirm', () => ({
 // somebody who may open the batches screen. Nobody is, here: this test is
 // about ticking rows, and an offer that is not made is not under test.
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: null }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => null }));
 vi.mock('@/components/orders/CustomerHistory', () => ({ CustomerHistoryButton: () => null }));
 vi.mock('@/components/screens/confirmation/ActionDialogs', () => ({ RejectDialog: () => null }));
 vi.mock('@/components/ops/DelayShipmentDialog', () => ({ DelayShipmentDialog: () => null }));

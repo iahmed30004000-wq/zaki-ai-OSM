@@ -4,7 +4,8 @@ import React, { useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiJson } from '@/lib/api-client';
 import { AskAi } from '@/components/growth/AskAi';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import { Tabs } from '@/components/ui/Tabs';
 import { RiAlertLine, RiCheckboxCircleLine, RiEyeLine, RiLightbulbLine, RiLoader4Line } from '@remixicon/react';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
@@ -99,7 +100,7 @@ export function IntelligenceScreen() {
 
   return (
     <div className="max-w-4xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/growth/intelligence')} />
 
       {/* The AI sits under the rule-based findings, never instead of them:
           those carry their evidence and can be checked, and the numbers it

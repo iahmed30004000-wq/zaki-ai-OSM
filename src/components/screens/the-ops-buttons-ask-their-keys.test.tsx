@@ -36,7 +36,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/ops/tracking',
 }));
 vi.mock('@/context/AppContext', () => ({ useApp: () => ({ currentUser: user.current, t: { cancel: 'إلغاء' }, locale: 'ar', isRtl: true }) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ done: vi.fn(), warn: vi.fn(), failed: vi.fn() }) }));
 vi.mock('@/components/ui/Confirm', () => ({
   useAsk: () => async () => null,

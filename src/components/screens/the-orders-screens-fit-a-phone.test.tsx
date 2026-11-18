@@ -54,7 +54,6 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
     }, []);
   },
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>طلباتي</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useAsk: () => vi.fn(async () => null), useTell: () => vi.fn() }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ failed: vi.fn(), done: vi.fn(), warn: vi.fn() }) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));

@@ -32,7 +32,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => '/ops/tracking',
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>متابعة الشحن</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useAsk: () => async () => null, useConfirm: () => (o: never) => confirm(o), useTell: () => async () => undefined }));
 vi.mock('@/components/screens/tracking/TransferDialog', () => ({ TransferDialog: () => null }));
 vi.mock('@/components/screens/tracking/CollectDialog', () => ({ CollectDialog: () => null }));

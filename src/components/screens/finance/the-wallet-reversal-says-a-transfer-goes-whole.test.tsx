@@ -22,7 +22,6 @@ vi.mock('next/link', () => ({ default: ({ children }: { children: React.ReactNod
 vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ currentUser: { id: 'u1', status: 'ACTIVE', role: 'CUSTOM', permissions: ['finance.cashbox_view', 'finance.cashbox'] } }),
 }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>عنوان</h1> }));
 vi.mock('@/components/ui/Confirm', () => ({ useConfirm: () => vi.fn(async () => true), useAsk: () => async () => null, useTell: () => vi.fn() }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => ({ show: vi.fn(), push: vi.fn(), failed: vi.fn() }) }));
 vi.mock('@/hooks/useMayOpen', () => ({ useMayOpen: () => () => true }));

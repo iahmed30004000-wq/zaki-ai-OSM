@@ -27,7 +27,6 @@ const { apiJson, phone, who, toast } = vi.hoisted(() => ({
   toast: { done: vi.fn(), warn: vi.fn(), failed: vi.fn() },
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
-vi.mock('@/components/shell/ScreenTitle', () => ({ ScreenTitle: () => <h1>العنوان</h1> }));
 vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
 vi.mock('@/components/ui/Toast', () => ({ useToast: () => toast }));
 vi.mock('@/context/AppContext', () => ({

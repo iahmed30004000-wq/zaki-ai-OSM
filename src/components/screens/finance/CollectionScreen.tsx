@@ -10,7 +10,8 @@ import { userCan } from '@/lib/can';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { ScreenTitle } from '@/components/shell/ScreenTitle';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { routeLabel } from '@/lib/route-registry';
 import {
   RiAlertLine,
   RiCheckboxCircleLine,
@@ -533,7 +534,7 @@ export function CollectionScreen() {
 
   return (
     <div className="max-w-6xl space-y-3">
-      <ScreenTitle />
+      <PageHeader title={routeLabel('/finance/collection')} />
 
       {pointsToManual && (
         <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
