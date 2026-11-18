@@ -89,7 +89,6 @@ afterEach(() => {
 });
 
 type User = ReturnType<typeof userEvent.setup>;
-type Script = (user: User) => Promise<void>;
 
 /** What is on the screen, by kind: the count a lost or a doubled control changes. */
 function census() {
