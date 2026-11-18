@@ -1100,7 +1100,8 @@ describe('Ⅴ · the edges of the sentence, stated rather than implied', () => {
      * Pinned as present, so that if the backend ever DOES start sending one
      * of them this test fails and the screen is made to read it.
      */
-    const dash = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
+    // 18/11 (R9): the rejected tile and its rate moved with the state tiles to the performance board. Was: DashboardScreen.tsx.
+    const dash = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
     expect(dash).toMatch(/counts\.rejected \/ \(counts\.decided \?\? counts\.total\)/);
     const rates = stripComments(repoFile('src/lib/analytics-answer.ts'));
     expect(rates).not.toMatch(/rejectionRate/);

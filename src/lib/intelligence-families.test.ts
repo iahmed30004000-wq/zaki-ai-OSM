@@ -98,8 +98,10 @@ describe('the dashboard strip', () => {
     expect(src).toContain('FAMILIES');
   });
 
+  // 18/11 (R9): the strip left «اليوم» (three figures, one list, one chart) for the performance board, where it still leads the
+  // figures. Was: DashboardScreen.tsx.
   it('sits above the KPI tiles, not under them', () => {
-    const src = stripComments(repoFile('src/components/screens/DashboardScreen.tsx'));
+    const src = stripComments(repoFile('src/components/screens/PerformanceScreen.tsx'));
     const strip = src.indexOf('<IntelligenceStrip');
     const kpis = src.indexOf('<KpiCard');
     expect(strip, 'الشريط غائب عن اللوحة').toBeGreaterThan(-1);

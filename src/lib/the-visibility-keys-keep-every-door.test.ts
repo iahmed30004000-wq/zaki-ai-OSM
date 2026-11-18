@@ -896,11 +896,13 @@ describe('every card door asks insights.view, and every cost door asks costs.vie
     const must: Array<[string, RegExp]> = [
       ['src/components/screens/ProductsScreen.tsx', /userCan\(currentUser, 'insights\.view'\)/],
       ['src/components/screens/ProductDetailScreen.tsx', /userCan\(currentUser, 'insights\.view'\) && <ProductPerformance/],
-      ['src/components/screens/DashboardScreen.tsx', /canInsights && <LossPanel/],
+      // 18/11 (R9): the loss panel moved to the performance board, and «اليوم»'s ranking card (a second drawing of the board's
+      // headlines) left with it. Was: DashboardScreen.tsx for both.
+      ['src/components/screens/PerformanceScreen.tsx', /canInsights && <LossPanel/],
       ['src/components/screens/PerformanceScreen.tsx', /canInsights && <ChannelScoresSection/],
       ['src/components/screens/PerformanceScreen.tsx', /if \(!canScores\) return;/],
       ['src/components/screens/PerformanceScreen.tsx', /\{canScores && \(\s*<Card>/],
-      ['src/components/screens/DashboardScreen.tsx', /\{canInsights && \(\s*<Card>/],
+      ['src/components/screens/PerformanceScreen.tsx', /\{canInsights && \(\s*<div className="grid grid-cols-2 xl:grid-cols-4 gap-3">/],
       ['src/components/orders/OrderDetailModal.tsx', /userCan\(currentUser, 'insights\.view'\) && <ShapeRiskPanel/],
       ['src/components/orders/OrderDetailModal.tsx', /userCan\(currentUser, 'finance\.view'\) && userCan\(currentUser, 'costs\.view'\)/],
     ];
