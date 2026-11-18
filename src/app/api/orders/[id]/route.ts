@@ -317,6 +317,8 @@ export async function GET(
         // taken it» (the press of «إغلاق الشحنة — سُلّمت للشركة») from a
         // parcel that is only labelled and still on our floor.
         shippingBatch: { select: { id: true, batchNumber: true, status: true } },
+        // The bench mark: a confirmed bench order reads «مؤكَّد — تيست، ما بينشحن» (`test-store.ts`, B2).
+        store: { select: { isTest: true } },
         landingPage: { select: { id: true, name: true, slug: true } },
         addOns: { orderBy: { createdAt: 'asc' } },
         moderator: { select: { id: true, name: true, email: true, phone: true } },
@@ -533,12 +535,14 @@ export async function GET(
     const held = heldFor({ ...order, everClaimed: order.claimHistory.length > 0 }, asOf);
     const reservedFor = held ? { ...held, hoursLeft: reservationHoursLeft(order.assignedAt!, asOf) } : null;
     // The colleague's account status stays on the server: the screen is told whom it is held for, not what her account is.
-    const { assignee: _heldFor, ...orderToSend } = order;
+    // The store row stays on the server too: the screen is told only whether it is a bench (B2), derived, never stored.
+    const { assignee: _heldFor, store: _store, ...orderToSend } = order;
+    const testStore = _store?.isTest === true;
 
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...orderToSend, items, state, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...orderToSend, items, state, testStore, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money

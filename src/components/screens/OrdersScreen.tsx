@@ -1120,7 +1120,7 @@ export function OrdersScreen() {
                             <span className="font-bold text-[var(--sys-heading)] text-xs shrink-0 whitespace-nowrap" dir="ltr">{order.orderNumber}</span>
                             <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
                           </span>
-                          <OrderStateBadge state={order.state} />
+                          <OrderStateBadge state={order.state} testStore={order.testStore} />
                           {/*
                             A RETURNING CUSTOMER'S ORDER IS HELD FOR THE AGENT WHO WORKED HIM LAST — in her list and in a whole-company one, taken by her alone
                             (order-reservation.ts; a colleague on «المسندة إليه» no longer lists it, `orderListWhere`). The server sends `reservedFor` only while the hold stands: not after a day, not once

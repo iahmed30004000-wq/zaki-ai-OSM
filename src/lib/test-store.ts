@@ -1,3 +1,5 @@
+import { hasEverShipped } from './order-state';
+
 /**
  * A TEST BENCH IS NOT A SHOP, AND ITS NUMBERS ARE NOT THE BUSINESS'S.
  *
@@ -104,4 +106,62 @@ export function benchOnly(): { store: { isTest: true } } {
 export function benchExcludedAr(benchOrders: number): string | null {
   if (benchOrders <= 0) return null;
   return `لا يشمل ${benchOrders} طلباً على منصّة التجريب — أرقامها خارج كل حسبة.`;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * A BENCH ORDER STOPS AT CONFIRMATION (B2, 18/11).
+ *
+ * «منصة تجريب»: the team pulls and confirms a bench order like a real one —
+ * the owner judges the product on confirmation — and then it goes NOWHERE: no
+ * packing, no trolley, no courier, and no stock held for it. Until 18/11 it
+ * walked the whole road: prep → a trolley → a courier → a statement.
+ *
+ * NOT A NEW STATE AND NOT A NEW COLUMN. The core list stays closed
+ * (`order-state.ts`); the stop is DERIVED from `Store.isTest`, the mark that
+ * already exists, and enforced at the doors that move an order forward:
+ *
+ *   · the bulk trolley door  `POST /api/ops/shipments`
+ *   · the single order door  `POST /api/orders/[id]/shipping` (forward moves and «ضمّ لدفعة»)
+ *   · the courier send       `dispatchBatch` (`couriers/dispatch.ts`)
+ *   · the two lists          prep (`GET /api/ops/preparation`) and «إنشاء شحنة» (`GET /api/ops/shipments`)
+ *   · the shelf              `reserveOrderLines` reserves nothing for a bench order
+ *
+ * HISTORY IS NOT REWRITTEN. An order already on a trolley, or already gone,
+ * before its store became a bench keeps its road: its trolley may be handed
+ * over and its parcel delivered or returned. Only a NEW step onto that road is
+ * refused — see `benchStopsHere`.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/** The stable code every refusing door answers with. */
+export const BENCH_STOPS_CODE = 'TEST_STORE_STOPS_AT_CONFIRMATION' as const;
+
+/** The refusal, in the owner's words. */
+export const BENCH_STOPS_AR = 'هاي طلبية منصّة تجريب — ما بتنشحن';
+
+/** Why the prep and shipment lists of a bench are empty — so they do not look broken. */
+export const BENCH_LIST_EMPTY_AR = 'هاي منصّة تجريب — طلباتها بتوقف عند التأكيد';
+
+/** The state label of a confirmed bench order, in the owner's words. */
+export const BENCH_CONFIRMED_AR = 'مؤكَّد — تيست، ما بينشحن';
+
+/**
+ * DOES A BENCH ORDER STOP HERE?
+ *
+ * Yes unless it is already on the road: on a trolley, or shipped. Those two
+ * are history — they happened before the store became a bench — and refusing
+ * their next step would strand a parcel that physically exists. Everything
+ * else (not yet packed, packed, handed back without a trolley) stops.
+ *
+ * Pure, so a door that already holds the row asks it without a query.
+ */
+export function benchStopsHere(order: {
+  shippingBatchId?: string | null;
+  shippingStatus: string;
+  shippedAt?: Date | string | null;
+}): boolean {
+  if (order.shippingBatchId) return false;
+  // Shipped is `hasEverShipped`'s question, asked of it rather than of a second list of statuses.
+  return !hasEverShipped({ confirmationStatus: '', shippingStatus: order.shippingStatus, shippedAt: order.shippedAt });
 }

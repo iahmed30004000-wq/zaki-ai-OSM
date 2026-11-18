@@ -120,6 +120,8 @@ const ORDER_SELECT = {
   // listed only the lines read as a total that does not add up — and the agent on the phone read the wrong goods.
   addOns: { select: { id: true, productName: true, quantity: true, total: true } },
   _count: { select: { contactAttempts: true, notes: true } },
+  // The bench mark: a confirmed bench order reads «مؤكَّد — تيست، ما بينشحن» on the card (`test-store.ts`, B2).
+  store: { select: { isTest: true } },
 } as const;
 
 /*
@@ -459,6 +461,7 @@ export async function GET(request: Request) {
     const decorate = (o: (typeof inConfirmation)[number]) => ({
       ...o,
       state: deriveCoreState(o as unknown as StateSource),
+      testStore: o.store?.isTest === true,
       previousOrders: Math.max(0, (o.customer.totalOrders ?? 1) - 1),
       risk: riskByCustomer.get(o.customer.id) ?? null,
       noAnswerCount: noAnswer.get(o.id) ?? 0,
@@ -556,6 +559,7 @@ export async function GET(request: Request) {
         rows: confirmed.map((o) => ({
           ...o,
           state: deriveCoreState(o as unknown as StateSource),
+          testStore: o.store?.isTest === true,
           previousOrders: Math.max(0, (o.customer.totalOrders ?? 1) - 1),
           noAnswerCount: 0,
         })),

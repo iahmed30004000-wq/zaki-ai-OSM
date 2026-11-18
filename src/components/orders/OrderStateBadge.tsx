@@ -16,6 +16,6 @@ import { OrderStateChip } from '@/components/ui/StatusChip';
  * The cancellation split lives there too. It is the one thing this badge
  * ever decided that was worth deciding.
  */
-export function OrderStateBadge({ state, beforeShipping }: { state: string; beforeShipping?: boolean }) {
-  return <OrderStateChip state={state} beforeShipping={beforeShipping} />;
+export function OrderStateBadge({ state, beforeShipping, testStore }: { state: string; beforeShipping?: boolean; testStore?: boolean }) {
+  return <OrderStateChip state={state} beforeShipping={beforeShipping} testStore={testStore} />;
 }

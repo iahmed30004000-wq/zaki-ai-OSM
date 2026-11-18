@@ -50,7 +50,7 @@ interface Group {
 
 export function PreparationScreen() {
   const phone = useIsPhone();
-  const [data, setData] = useState<{ allowNegativeStock: boolean; totals: { products: number; orders: number; shortages: number }; groups: Group[] } | null>(null);
+  const [data, setData] = useState<{ allowNegativeStock: boolean; totals: { products: number; orders: number; shortages: number }; groups: Group[]; benchNote?: string } | null>(null);
   // Groups start OPEN: the screen has no action of its own, so a group closed
   // by default was a click for nothing before the packer could read a line.
   // Only the ones the person closes are remembered.
@@ -154,7 +154,8 @@ export function PreparationScreen() {
       {data.groups.length > 0 && mayPrint && <LabelSizePicker compact className="ms-auto flex items-center" />}
 
       {data.groups.length === 0 ? (
-        <MissionDone why="لا توجد طلبات مؤكدة بانتظار التجهيز." />
+        // A bench store (B2): its orders stop at confirmation, and the server says so instead of an empty «done».
+        <MissionDone why={data.benchNote ?? "لا توجد طلبات مؤكدة بانتظار التجهيز."} />
       ) : (
         data.groups.map((g) => (
         <section key={g.productId} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
