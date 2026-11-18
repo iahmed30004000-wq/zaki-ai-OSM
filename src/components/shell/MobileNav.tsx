@@ -157,7 +157,7 @@ export function MobileNav({ groups, slots }: { groups: NavGroup[]; slots?: strin
 
                 return (
                   <section key={group.key} className="mb-2">
-                    <h3 className="px-2 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)]">
+                    <h3 className="px-2 py-1 text-sm font-semibold text-[var(--sys-muted-foreground)]">
                       {group.label}
                     </h3>
                     {lines}

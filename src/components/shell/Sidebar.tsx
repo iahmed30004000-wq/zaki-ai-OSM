@@ -201,7 +201,7 @@ export function Sidebar({
           'rail-center flex items-center justify-between mx-3 px-2 py-2.5 rounded-lg text-sm font-medium transition-colors group',
           isActive
             ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
-            : 'text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-heading)] hover:bg-[var(--sys-primary-soft)]'
+            : 'text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-sidebar-heading)] hover:bg-[var(--sys-sidebar-hover)]'
         )}
       >
         <span className="rail-center flex items-center gap-3">
@@ -246,14 +246,15 @@ export function Sidebar({
           byRoute[route.path]
         ) : route.path === CARTS_PATH ? newCarts : 0) ? (
           <span
-            /* One badge, not two. A tinted chip carrying the
-               accent as its text reads on the row you stand on
-               and on the rows you do not — and the pair is
-               already guarded for contrast. Painting a wash of
-               `primary-foreground` for the active row would
-               have been a second style to keep legible.
+            /* One badge, not two. It wears the lit row's own pair
+               — the accent with its own text colour on it, guarded
+               at 4.5:1 in every palette — so it reads on the row you
+               stand on and on the rows you do not. 18/11 (R4): it
+               was a pale content wash with the accent as text, which
+               on a dark menu over a light page («نظيف») was a bright
+               chip whose number read at 2.3:1 against the menu.
                «السلات المهجورة» wears the same chip for its NEW carts. */
-            className="min-w-5 rounded-full bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary)]"
+            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary-foreground)]"
             aria-label={byRoute[route.path] ? `${byRoute[route.path]} إشعار غير مقروء` : `${newCarts} سلة جديدة`}
           >
             {byRoute[route.path] || newCarts}
@@ -292,7 +293,7 @@ export function Sidebar({
           'rail-center flex items-center justify-between mx-3 px-2 py-2.5 rounded-lg text-sm font-medium transition-colors group',
           isActive
             ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]'
-            : 'text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-heading)] hover:bg-[var(--sys-primary-soft)]'
+            : 'text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-sidebar-heading)] hover:bg-[var(--sys-sidebar-hover)]'
         )}
       >
         <span className="rail-center flex items-center gap-3">
@@ -303,7 +304,7 @@ export function Sidebar({
         </span>
         {unread ? (
           <span
-            className="min-w-5 rounded-full bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary)]"
+            className="min-w-5 rounded-full bg-[var(--sys-primary)] px-1.5 py-0.5 text-center text-xs font-bold tabular-nums text-[var(--sys-primary-foreground)]"
             aria-label={`${unread} إشعار غير مقروء`}
           >
             {unread}
@@ -347,7 +348,7 @@ export function Sidebar({
         {/* And it is as tall as the header is: when the header wraps to a second row the two borders
             used to part company. The header writes its height; 72 stays until it has. */}
         <div
-          className="rail-center relative flex items-center gap-2 min-h-[72px] px-5 border-b border-[var(--sys-border)] shrink-0"
+          className="rail-center relative flex items-center gap-2 min-h-[72px] px-5 border-b border-[var(--sys-sidebar-border)] shrink-0"
           style={{ minHeight: 'var(--sys-header-h, 72px)' }}
         >
           {/* The theme's own mood, in one of the three places it is allowed:
@@ -369,9 +370,9 @@ export function Sidebar({
                 near-invisible word looks like empty padding.
               */}
               <span className="font-bold text-[var(--sys-sidebar-foreground)] tracking-wide text-base leading-tight block" dir="ltr">
-                Zaki <span className="text-[var(--sys-primary)]">AI</span> OMS
+                Zaki <span className="text-[var(--sys-sidebar-accent)]">AI</span> OMS
               </span>
-              <span className="block text-xs text-[var(--sys-muted-foreground)] font-semibold uppercase tracking-wide" lang="en" dir="ltr">
+              <span className="block text-xs text-[var(--sys-sidebar-muted)] font-semibold uppercase tracking-wide" lang="en" dir="ltr">
                 Intelligent Systems
               </span>
             </div>
@@ -384,7 +385,7 @@ export function Sidebar({
             aria-label={rail ? 'وسّع القائمة' : 'اطوِ القائمة إلى شريط'}
             title={rail ? 'وسّع القائمة' : 'اطوِ القائمة إلى شريط'}
             aria-pressed={rail}
-            className="rail-hide hidden md:flex mr-auto h-11 md:h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sys-sidebar-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-heading)]"
+            className="rail-hide hidden md:flex mr-auto h-11 md:h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sys-sidebar-foreground)] hover:bg-[var(--sys-sidebar-hover)] hover:text-[var(--sys-sidebar-heading)]"
           >
             <RiSideBarLine className="icon-mirror w-5 h-5" />
           </button>
@@ -397,7 +398,7 @@ export function Sidebar({
             onClick={toggleRail}
             aria-label="وسّع القائمة"
             title="وسّع القائمة"
-            className="hidden md:flex mx-auto mt-2 h-11 md:h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sys-sidebar-foreground)] hover:bg-[var(--sys-primary-soft)] hover:text-[var(--sys-heading)]"
+            className="hidden md:flex mx-auto mt-2 h-11 md:h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--sys-sidebar-foreground)] hover:bg-[var(--sys-sidebar-hover)] hover:text-[var(--sys-sidebar-heading)]"
           >
             <RiSideBarLine className="icon-mirror w-5 h-5" />
           </button>
@@ -423,18 +424,18 @@ export function Sidebar({
             return (
             <div key={group.key} className="pb-1">
               {pinned ? (
-                <p className="rail-hide px-5 pt-3 pb-2 text-xs font-semibold tracking-[0.12em] text-[var(--sys-sidebar-foreground)]">
+                <p className="rail-hide px-5 pt-3 pb-2 text-sm font-semibold tracking-[0.12em] text-[var(--sys-sidebar-foreground)]">
                   {group.label}
                 </p>
               ) : (
                 <button
                   onClick={() => toggle(group.key)}
                   aria-expanded={isOpen}
-                  className="rail-hide w-full flex items-center justify-between gap-2 px-5 pt-3 pb-2 text-xs font-semibold tracking-[0.12em] text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-heading)] transition-colors"
+                  className="rail-hide w-full flex items-center justify-between gap-2 px-5 pt-3 pb-2 text-sm font-semibold tracking-[0.12em] text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-sidebar-heading)] transition-colors"
                 >
                   <span className="flex items-center gap-2">
                     {group.label}
-                    {!isOpen && <span className="text-[var(--sys-muted)] tabular-nums">{count}</span>}
+                    {!isOpen && <span className="text-[var(--sys-sidebar-muted)] tabular-nums">{count}</span>}
                   </span>
                   <RiArrowDownSLine
                     className={clsx('w-4 h-4 transition-transform', isOpen ? '' : '-rotate-90')}
@@ -463,7 +464,7 @@ export function Sidebar({
         <Link
           href="/admin/profile#menu-order"
           onClick={onClose}
-          className="rail-hide shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[var(--sys-border)] text-xs text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-heading)] transition-colors"
+          className="rail-hide shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[var(--sys-sidebar-border)] text-sm text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-sidebar-heading)] transition-colors"
         >
           <RiDraggable className="w-4 h-4" />
           رتّب القائمة
@@ -477,7 +478,7 @@ export function Sidebar({
         {groups.some((g) => !g.hub) && (
           <button
             onClick={togglePinned}
-            className="rail-hide shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[var(--sys-border)] text-xs text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-heading)] transition-colors"
+            className="rail-hide shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[var(--sys-sidebar-border)] text-sm text-[var(--sys-sidebar-foreground)] hover:text-[var(--sys-sidebar-heading)] transition-colors"
           >
             {pinned ? <RiListSettingsLine className="w-4 h-4" /> : <RiTreeLine className="w-4 h-4" />}
             {pinned ? 'اطوِ القوائم' : 'اعرض كل القوائم'}

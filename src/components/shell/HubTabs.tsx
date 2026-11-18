@@ -81,7 +81,7 @@ export function HubTabs({ groups }: { groups: NavGroup[] }) {
     const door = group.routes[0];
     if (!door || here.path === door.path) return null;
     return (
-      <nav aria-label={group.label} className="mb-3 text-xs">
+      <nav aria-label={group.label} className="mb-3 text-sm">
         <Link
           href={door.path}
           className="inline-flex min-h-11 items-center gap-1 font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
@@ -113,7 +113,7 @@ export function HubTabs({ groups }: { groups: NavGroup[] }) {
                 href={route.path}
                 aria-current={on ? 'page' : undefined}
                 className={clsx(
-                  'inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs md:min-h-0',
+                  'inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm md:min-h-0',
                   on
                     ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] font-semibold text-[var(--sys-primary)]'
                     : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:text-[var(--sys-heading)]'
@@ -131,7 +131,7 @@ export function HubTabs({ groups }: { groups: NavGroup[] }) {
       {next && (
         <Link
           href={next.path}
-          className="inline-flex min-h-11 shrink-0 items-center gap-1 text-xs font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
+          className="inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-[var(--sys-primary)] hover:underline md:min-h-0"
         >
           التالي: {next.label}
           <RiArrowRightLine className="icon-mirror h-4 w-4 shrink-0" aria-hidden />

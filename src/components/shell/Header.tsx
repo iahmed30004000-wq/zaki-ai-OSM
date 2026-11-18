@@ -110,8 +110,8 @@ export function Header({
           <>
             <RiStore2Line className="w-4 h-4 text-[var(--sys-primary)] shrink-0" />
             <div className="leading-tight min-w-0 text-start">
-              <p className="text-xs font-semibold text-[var(--sys-heading)] truncate max-w-[160px]">{context.storeName}</p>
-              <p className="text-xs text-[var(--sys-muted-foreground)] truncate">
+              <p className="text-sm font-semibold text-[var(--sys-heading)] truncate max-w-[160px]">{context.storeName}</p>
+              <p className="text-sm text-[var(--sys-muted-foreground)] truncate">
                 {context.countryName} · {context.currencyCode}
                 {context.storePaused && <span className="text-[var(--sys-destructive)]"> · موقوف</span>}
               </p>
@@ -175,7 +175,7 @@ export function Header({
 
       {/*
         WRAPS INSTEAD OF PUSHING THE PAGE SIDEWAYS.
-        Measured at 768 — the width where the sidebar appears and takes 280
+        Measured at 768 — the width where the sidebar appears and takes 280 (240 since 18/11)
         of it: this group is about 340px of shift chip, counter, bell and
         avatar, and `shrink-0` meant it would rather overflow the document by
         122px than give up a pixel. On a tablet a header that wraps to two
@@ -211,8 +211,8 @@ export function Header({
         <NotificationBell />
 
         <div className="text-left leading-tight hidden sm:block">
-          <p className="text-xs font-semibold text-[var(--sys-heading)]">{userName}</p>
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+          <p className="text-sm font-semibold text-[var(--sys-heading)]">{userName}</p>
+          <p className="text-sm text-[var(--sys-muted-foreground)]">
             {ROLE_LABELS[userRole as keyof typeof ROLE_LABELS]?.ar ?? userRole}
           </p>
         </div>

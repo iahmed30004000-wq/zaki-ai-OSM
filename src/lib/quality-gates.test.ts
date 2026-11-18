@@ -433,7 +433,26 @@ describe('the payload', () => {
    * falls (R19 takes the old names out and the budget comes down to the
    * measurement).
    */
-  const CSS_BUDGET_KB = 94.09;
+  /*
+   * 18/11 (R4, the shell) — 94.09 → 94.75, THE SECOND AND LAST RISE.
+   *
+   * What grew: the menu paints from its OWN five colours now (the tagline,
+   * the «AI», the dividers, the hover wash, the label on hover — see
+   * `SYS_VARS`), so a dark menu on a light page never borrows a content
+   * colour. That is ten custom properties in the sheet's two colour blocks
+   * (the default and «تلقائي»'s light branch, 5 × 2, ~29 bytes each) and five
+   * utilities that read them (~80 bytes each): 680 bytes counted in the built
+   * sheet. Nothing else: the 14px words reuse `text-sm`, the 240px menu is
+   * one value changed, and the tests build their class names from pieces.
+   * Measured by a production build (`NEXT_DIST_DIR=.next-verify`, Turbopack,
+   * both `.css` files): 97,017 bytes = 94.743 KB, against R2a's 96,341.
+   * The cap is the measurement rounded UP to the next hundredth — 97,024
+   * bytes, the same 7 bytes of CRLF/LF room — never a round figure.
+   *
+   * FROM NOW THIS NUMBER ONLY HOLDS OR FALLS. The restructure plan allowed
+   * two rises (R2a and this one); both are spent.
+   */
+  const CSS_BUDGET_KB = 94.75;
 
   it(`keeps the first-load stylesheet at or under ${CSS_BUDGET_KB} KB`, () => {
     /*
