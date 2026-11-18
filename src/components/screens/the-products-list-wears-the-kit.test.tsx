@@ -222,6 +222,20 @@ describe('the new-product form', () => {
     await user.click(within(tile('b.png')).getByRole('button', { name: 'أزل الصورة' }));
     expect(screen.queryByAltText('b.png')).toBeNull();
     expect(screen.getByAltText('a.png')).toBeTruthy();
+    // Neither press is the form's submit: nothing was created, nothing uploaded, and the form is still open.
+    expect(asked.some((a) => a.method !== 'GET'), 'ضغطة صورة حفظت المنتج').toBe(false);
+    expect(screen.getByText('إضافة منتج جديد')).toBeTruthy();
+  });
+
+  it('inside a form, every kit press that is not «حفظ» says type="button"', () => {
+    for (const f of FILES) {
+      const src = read(f);
+      const inForm = [...src.matchAll(/<form[\s\S]*?<\/form>/g)].map((m) => m[0]).join('\n');
+      for (const tag of inForm.match(/<(?:Icon)?Button\b(?:=>|[^>])*>/g) ?? []) {
+        if (tag.includes('type="submit"')) continue;
+        expect(tag, `${f}: ${tag}`).toContain('type="button"');
+      }
+    }
   });
 });
 

@@ -822,7 +822,7 @@ export function ProductsScreen() {
                     )}
                     {/* The kit's controls sit in a positioned wrapper: the button's own `relative` would beat an `absolute` passed to it. */}
                     <span className="absolute top-1 right-1 rtl:right-auto rtl:left-1 bg-[var(--sys-card)]/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                      <IconButton size="sm" label="أزل الصورة" onClick={() => removeFile(idx)}>
+                      <IconButton type="button" size="sm" label="أزل الصورة" onClick={() => removeFile(idx)}>
                         <RiCloseLine className="w-4 h-4 text-[var(--sys-destructive)]" />
                       </IconButton>
                     </span>
