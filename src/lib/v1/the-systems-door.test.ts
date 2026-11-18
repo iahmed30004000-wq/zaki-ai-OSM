@@ -96,6 +96,10 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
       // `the-abandoned-carts-door.test.ts`): the cart's upsert and its «recovered», both on the landing key's `orders.create`.
       'src/app/api/v1/landing/abandoned-carts/[externalId]/recovered/route.ts',
       'src/app/api/v1/landing/abandoned-carts/route.ts',
+      // And the landing chat inbox's two (18/11, contract §11, `the-landing-chat-inbox.test.ts`): the relay of a thread's lines,
+      // and the staff's updates read back — both on the landing key's `orders.create`, so no key is re-issued.
+      'src/app/api/v1/landing/chat/messages/route.ts',
+      'src/app/api/v1/landing/chat/updates/route.ts',
       'src/app/api/v1/landing/geo/[country]/route.ts',
       'src/app/api/v1/landing/health/route.ts',
       'src/app/api/v1/landing/orders/[orderNumber]/address/route.ts',

@@ -51,6 +51,7 @@ const TYPE_AR: Record<NotificationType, string> = {
   RETURNS_NOT_RECEIVED: 'مرتجعات لم تُستلم',
   PERFORMANCE: 'أداء',
   SYSTEM_ALERT: 'تنبيه',
+  LANDING_CHAT: 'رسائل اللاندينج',
 };
 
 const TONE: Record<NotificationType, string> = {
@@ -63,6 +64,7 @@ const TONE: Record<NotificationType, string> = {
   RETURNS_NOT_RECEIVED: 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]',
   PERFORMANCE: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]',
   SYSTEM_ALERT: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)]',
+  LANDING_CHAT: 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]',
 };
 
 const POLL_MS = 60_000;
