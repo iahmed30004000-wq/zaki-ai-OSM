@@ -12,7 +12,7 @@ import { HealthChip } from '@/components/ui/HealthChip';
 import { useApp } from '@/context/AppContext';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArrowUpDownLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { OpeningStockCountBanner } from '@/components/inventory/OpeningStockCount';
 import { ReceiveDialog } from '@/components/inventory/ReceiveDialog';
 import { userCan } from '@/lib/can';
@@ -298,19 +298,18 @@ export function InventoryBalancesScreen() {
 
   return (
     <>
-      <div className="space-y-6">
-        <PageHeader
-          title={routeLabel('/inventory/balances')}
-          description="كم بقي من كل منتج، وكم يخرج منه يومياً، وكم يوماً يكفي ما بقي."
-          actions={
-            <>
-              <Button size="sm" onClick={() => setAdjustModalOpen(true)} className="flex items-center space-x-1.5">
-                <RiArrowUpDownLine className="w-4 h-4" />
-                <span>جرد مخزون</span>
-              </Button>
-            </>
-          }
-        />
+      {/* The one frame (R12c): no `max-w-*` here before, so the width is `full`. */}
+      <PageShell
+        title={routeLabel('/inventory/balances')}
+        description="كم بقي من كل منتج، وكم يخرج منه يومياً، وكم يوماً يكفي ما بقي."
+        width="full"
+        actions={
+          <Button size="sm" onClick={() => setAdjustModalOpen(true)} className="flex items-center space-x-1.5">
+            <RiArrowUpDownLine className="w-4 h-4" />
+            <span>جرد مخزون</span>
+          </Button>
+        }
+      >
 
         {/* Before anything else, once: the store's stock has never been
             counted. It is not a warning that repeats — the server refuses the
@@ -575,7 +574,7 @@ export function InventoryBalancesScreen() {
             — هذه الشاشة تقول كم بقي، وتلك تقول ماذا حدث.
           </p>
         </Card>
-      </div>
+      </PageShell>
 
       {receiveFor && (
         <ReceiveDialog
