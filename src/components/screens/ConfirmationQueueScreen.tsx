@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiLoader4Line } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
@@ -44,8 +44,8 @@ export function ConfirmationQueueScreen() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      <PageHeader title={routeLabel('/confirmation/queue')} />
+    // The frame (R8e): `max-w-3xl` is the shell's `narrow`; the header is the one PageShell draws, with the same registry name.
+    <PageShell title={routeLabel('/confirmation/queue')} width="narrow">
       <PullPanel queue={queue} onPulled={() => router.push('/confirmation/mine')} />
 
       {data.orders && <QueueHealthBoard />}
@@ -91,6 +91,6 @@ export function ConfirmationQueueScreen() {
           />
         </Card>
       )}
-    </div>
+    </PageShell>
   );
 }
