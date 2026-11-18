@@ -292,9 +292,9 @@ const RENDERED_BY_NOTHING: Record<string, string> = {
    * The restructure moves every hand-written tick box, on/off toggle and compressed option pair onto these in the
    * requests after R2 (the screens are not touched in the PR that adds them). Each line leaves this list in the PR
    * that first renders its component; the «stale» test below fails the day one is rendered and still named here.
+   *
+   * 18/11 (R12e): `Checkbox` left — the three marks of a product's offer form (`ProductOffers.tsx`) are the first to render it.
    */
-  'src/components/ui/Checkbox.tsx:Checkbox':
-    'مربّع الاختيار الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Switch.tsx:Switch':
     'مفتاح التشغيل الموحَّد (٢٠٢٦/١١/١٨) — مبنيٌّ ومحروسٌ بفحص jsdom ولا شاشة ترسمه بعد؛ يخرج من القائمة بالطلب الذي ينقل أول شاشة إليه.',
   'src/components/ui/Segmented.tsx:Segmented':

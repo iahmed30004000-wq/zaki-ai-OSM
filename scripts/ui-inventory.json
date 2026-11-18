@@ -931,14 +931,16 @@
     "tabs": 0
   },
   "src/components/products/ProductOffers.tsx": {
-    "buttons": 11,
-    "inputs": 9,
+    "buttons": 5,
+    "inputs": 6,
     "columns": 0,
     "cards": 1,
     "modals": 0,
     "icons": 15,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 6,
+    "checkboxes": 3
   },
   "src/components/products/ProductPerformance.tsx": {
     "buttons": 0,
@@ -1274,7 +1276,7 @@
     "buttons": 1,
     "inputs": 2,
     "columns": 8,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 4,
     "links": 0,

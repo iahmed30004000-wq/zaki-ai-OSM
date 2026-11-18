@@ -1,11 +1,11 @@
 {
   "totals": {
-    "rawButtons": 672,
-    "rawCheckboxes": 77,
-    "rawSurfaces": 348,
+    "rawButtons": 665,
+    "rawCheckboxes": 74,
+    "rawSurfaces": 346,
     "rawDatePickers": 16,
     "screenTitle": 0,
-    "textXs": 2632
+    "textXs": 2612
   },
   "files": {
     "src/app/(system)/error.tsx": {
@@ -403,9 +403,7 @@
       "textXs": 4
     },
     "src/components/products/ProductOffers.tsx": {
-      "rawButtons": 7,
-      "rawCheckboxes": 3,
-      "textXs": 16
+      "rawButtons": 1
     },
     "src/components/products/ProductPerformance.tsx": {
       "textXs": 1
@@ -550,11 +548,6 @@
       "rawButtons": 4,
       "rawSurfaces": 5,
       "textXs": 20
-    },
-    "src/components/screens/InventoryMovementsScreen.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 2,
-      "textXs": 4
     },
     "src/components/screens/JobsScreen.tsx": {
       "rawButtons": 2,

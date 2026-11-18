@@ -5,6 +5,8 @@ import { onTheWire, typedFigure } from '@/lib/typed-box';
 import { offerCeiling } from '@/lib/offer-ceiling';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
 import { screenApi as crmApi } from '@/lib/screen-api';
 import { useConfirm } from '@/components/ui/Confirm';
@@ -391,21 +393,21 @@ export function ProductOffers({
         }
       />
       <CardContent className="space-y-3">
-        <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           هذه العروض هي المصدر الوحيد للأسعار — صفحات الهبوط والطلب السريع تقرأ منها،
           فتغيير السعر هنا يصل إلى كل مكان يبيع هذا المنتج.
         </p>
 
         {msg && (
-          <p className={`text-xs ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>
+          <p className={`text-sm ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>
         )}
 
         {offers === null ? (
-          <p className="flex items-center gap-2 text-xs text-[var(--sys-muted-foreground)]">
+          <p className="flex items-center gap-2 text-sm text-[var(--sys-muted-foreground)]">
             <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
           </p>
         ) : offers.length === 0 ? (
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-sm text-[var(--sys-muted)]">
             لا عروض بعد — النموذج سيعرض سعر المنتج الأساسي فقط.
           </p>
         ) : (
@@ -433,22 +435,22 @@ export function ProductOffers({
                     <div className="flex shrink-0 items-center gap-1">
                       <GripSlot />
                       <div className="flex shrink-0 flex-col">
-                        <button
+                        <IconButton
+                          size="sm"
                           onClick={() => move(i, -1)}
                           disabled={i === 0 || busy}
-                          className="cursor-pointer text-[var(--sys-muted)] hover:text-[var(--sys-primary)] disabled:opacity-25"
-                          aria-label="لأعلى" title="لأعلى"
+                          label="لأعلى"
                         >
                           <RiArrowUpSLine className="w-4 h-4" />
-                        </button>
-                        <button
+                        </IconButton>
+                        <IconButton
+                          size="sm"
                           onClick={() => move(i, 1)}
                           disabled={i === offers.length - 1 || busy}
-                          className="cursor-pointer text-[var(--sys-muted)] hover:text-[var(--sys-primary)] disabled:opacity-25"
-                          aria-label="لأسفل" title="لأسفل"
+                          label="لأسفل"
                         >
                           <RiArrowDownSLine className="w-4 h-4" />
-                        </button>
+                        </IconButton>
                       </div>
                     </div>
                   )}
@@ -465,7 +467,7 @@ export function ProductOffers({
                           price is the lowest in the list and it is the only
                           row the page does not show. */}
                       {o.postOrderOffer && (
-                        <span className="shrink-0 rounded-md bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-xs font-bold text-[var(--sys-primary)]">
+                        <span className="shrink-0 rounded-md bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-note font-bold text-[var(--sys-primary)]">
                           بعد الطلب
                         </span>
                       )}
@@ -473,7 +475,7 @@ export function ProductOffers({
                     {/* Every run of digits + Latin currency is isolated, or
                         Arabic bidi reorders "100 USD · 50 USD/قطعة" into
                         something that reads like a different price. */}
-                    <p className="text-xs text-[var(--sys-muted-foreground)]">
+                    <p className="text-note text-[var(--sys-muted-foreground)]">
                       {o.quantity} قطعة
                       {o.freeQuantity > 0 && <span className="text-[var(--sys-primary)]"> + {o.freeQuantity} مجاناً</span>}
                       {' — '}
@@ -492,7 +494,7 @@ export function ProductOffers({
                         owner decides each one — so the row says so, with the line the DOOR worked out. On a line of
                         its own, because the name beside the star already truncates on a phone. */}
                     {o.aboveBase && typeof o.maxPrice === 'number' && (
-                      <p className="mt-1 text-xs leading-relaxed">
+                      <p className="mt-1 text-note">
                         <span className="rounded-md bg-[var(--sys-destructive-soft)] px-1.5 py-0.5 font-bold text-[var(--sys-destructive)]">
                           أغلى من السعر الأساسي — الحدّ <bdi className="tabular-nums">{money(o.maxPrice)}</bdi>
                         </span>
@@ -503,25 +505,26 @@ export function ProductOffers({
                   {canManage && (
                     <div className="ms-auto flex shrink-0 items-center gap-1">
                       {!o.isDefault && o.status === 'ACTIVE' && (
-                        <button
-                          aria-label="اجعله الافتراضي" title="اجعله الافتراضي"
-                          onClick={() => patch(o.id, { isDefault: true })}
+                        <IconButton
+                          size="sm"
+                          label="اجعله الافتراضي"
+                          onClick={() => { void patch(o.id, { isDefault: true }); }}
                           disabled={busy}
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)]"
                         >
                           <RiStarLine className="w-4 h-4" />
-                        </button>
+                        </IconButton>
                       )}
-                      <button
-                        title={inactive ? 'تفعيل' : 'إيقاف'}
-                        onClick={() => patch(o.id, { status: inactive ? 'ACTIVE' : 'INACTIVE' })}
+                      <IconButton
+                        size="sm"
+                        label={inactive ? 'تفعيل' : 'إيقاف'}
+                        onClick={() => { void patch(o.id, { status: inactive ? 'ACTIVE' : 'INACTIVE' }); }}
                         disabled={busy}
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface-strong)]"
                       >
                         <RiEyeOffLine className="w-4 h-4" />
-                      </button>
-                      <button
-                        aria-label="تعديل" title="تعديل"
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        label="تعديل"
                         /*
                          * EDITING OPENS ON THE STORED ROW, including a
                          * stored `0` — which is a value, not a blank. The
@@ -537,18 +540,17 @@ export function ProductOffers({
                           })
                         }
                         disabled={busy}
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-foreground)] hover:bg-[var(--sys-surface-strong)]"
                       >
                         <RiPencilLine className="w-4 h-4" />
-                      </button>
-                      <button
-                        aria-label="حذف" title="حذف"
-                        onClick={() => remove(o.id, o.name)}
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        label="حذف"
+                        onClick={() => { void remove(o.id, o.name); }}
                         disabled={busy}
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 cursor-pointer rounded-lg p-1.5 text-[var(--sys-destructive)] hover:bg-[var(--sys-destructive-soft)]"
                       >
-                        <RiDeleteBinLine className="w-4 h-4" />
-                      </button>
+                        <RiDeleteBinLine className="w-4 h-4 text-[var(--sys-destructive)]" />
+                      </IconButton>
                     </div>
                   )}
                 </Item>
@@ -630,7 +632,7 @@ export function ProductOffers({
                 }
               />
             </div>
-            <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               «السعر» هو ما يدفعه الزبون فعلاً. «السعر قبل الخصم» للعرض فقط — لا يدخل في أي
               حساب مال، ولا يظهر مشطوباً إلا بقدر ما تسنده طلباتٌ مُسلَّمة فعلاً بهذا السعر
               من قبل: فإن لم يُبَع بهذا السعر خمس مرات على الأقل، لا يظهر شيء. ورقمٌ أعلى مما
@@ -639,35 +641,29 @@ export function ProductOffers({
             {/* The one sentence that makes an empty box mean something.
                 Before it, an empty box and a typed zero were the same
                 request — and the price box could not say «مطلوب» at all. */}
-            <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               خانة <b>فارغة</b> تعني «لم تُحدَّد»: العرض القائم يبقى على ما هو عليه، والعرض الجديد يأخذ
               افتراضي النظام. و<b>صفر مكتوب</b> يُحفَظ صفراً ويُحاسَب صفراً. أمّا «السعر» فلا افتراضيَّ
               له: عرضٌ جديد بلا سعر <b>مرفوض</b> والموقع يقول لك ذلك عند الحفظ، وتفريغُ سعرِ عرضٍ قائم
               يتركه على سعره المحفوظ — فالتخفيض إلى الصفر يُكتَب صفراً ولا يُفهَم من خانةٍ فارغة.
             </p>
-            <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               «ينتهي العرض» اختياري. حين تضعه، يتوقّف العرض عن البيع في تلك اللحظة — والعدّاد
               الذي يراه الزبون يقرأ الوقت نفسه، فلا يصل إلى الصفر بينما العرض ما زال قائماً.
             </p>
             <div className="flex flex-wrap items-center gap-4">
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-[var(--sys-primary)]"
-                  checked={!!draft.isDefault}
-                  onChange={(e) => setDraft({ ...draft, isDefault: e.target.checked })}
-                />
-                العرض الافتراضي
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-[var(--sys-primary)]"
-                  checked={draft.deliveryIncluded !== false}
-                  onChange={(e) => setDraft({ ...draft, deliveryIncluded: e.target.checked })}
-                />
-                السعر شامل التوصيل
-              </label>
+              <Checkbox
+                id="offer-draft-is-default"
+                label="العرض الافتراضي"
+                checked={!!draft.isDefault}
+                onChange={(on) => setDraft({ ...draft, isDefault: on })}
+              />
+              <Checkbox
+                id="offer-draft-delivery-included"
+                label="السعر شامل التوصيل"
+                checked={draft.deliveryIncluded !== false}
+                onChange={(on) => setDraft({ ...draft, deliveryIncluded: on })}
+              />
               {/*
                 «العرض بعد الطلب» — the one bundle the thank-you screen may
                 show, and the only one withheld from the page itself.
@@ -677,15 +673,12 @@ export function ProductOffers({
                 its own would have been a second place a price lives — which
                 is the defect this whole file exists to have fixed.
               */}
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--sys-foreground)]">
-                <input
-                  type="checkbox"
-                  className="h-5 w-5 accent-[var(--sys-primary)]"
-                  checked={!!draft.postOrderOffer}
-                  onChange={(e) => setDraft({ ...draft, postOrderOffer: e.target.checked })}
-                />
-                العرض بعد الطلب
-              </label>
+              <Checkbox
+                id="offer-draft-post-order"
+                label="العرض بعد الطلب"
+                checked={!!draft.postOrderOffer}
+                onChange={(on) => setDraft({ ...draft, postOrderOffer: on })}
+              />
             </div>
             {/*
               THE «NO» IS HEARD — ON THE SALES PAGE (the owner, 1/11: «من اللاندنج … أحدد إذا شامل ولا لأ بظبط»). An unticked box used to
@@ -694,7 +687,7 @@ export function ProductOffers({
               paragraph below says the flag has no effect there.
             */}
             {draft.deliveryIncluded === false && !draft.postOrderOffer && (
-              <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 «السعر شامل التوصيل» غير مؤشَّر: لما الزبون يطلب من صفحة البيع وكل عروض سلّته غير مؤشَّرة، تُضاف أجرة التوصيل عليه
                 <b> حتى لو</b> كان إعداد المتجر «السعر المُعلن يشمل التوصيل» مفعَّلاً. وسلّة فيها عرض مؤشَّر تُحسب شاملة، وأي منتج
                 بلا عرض بيتبع إعداد المتجر.
@@ -710,7 +703,7 @@ export function ProductOffers({
               order whose fee policy was already decided.
             */}
             {draft.postOrderOffer && (
-              <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 «العرض بعد الطلب» يظهر على شاشة الشكر وحده — بعد أن يصير الطلب، لا قبله: هذا
                 العرض <b>لا يظهر</b> في صفحة الهبوط ولا في المتجر ولا يمكن للزبون اختياره عند
                 الطلب. <b>عرضٌ واحد</b> لكل منتج: تأشيره هنا يرفع التأشير عن أيّ عرضٍ آخر لنفس
@@ -758,7 +751,7 @@ function CeilingHint({
   unit: number;
   canChangePrice: boolean;
 }) {
-  const look = 'mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]';
+  const look = 'mt-1 text-note text-[var(--sys-muted-foreground)]';
   if (!(basePrice > 0)) {
     return (
       <p className={look}>
