@@ -2799,6 +2799,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/ui/Checkbox.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/ui/Confirm.tsx": {
     "buttons": 3,
     "inputs": 3,
@@ -2959,6 +2969,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/ui/Segmented.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/ui/StatTile.tsx": {
     "buttons": 0,
     "inputs": 0,
@@ -2966,6 +2986,16 @@
     "cards": 1,
     "modals": 0,
     "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/ui/Switch.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   },
