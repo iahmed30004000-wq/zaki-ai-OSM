@@ -5,6 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Money } from '@/components/ui/Money';
 import { UNDO_REASON_MAX, UNDO_REASON_MIN, type UndoMeasure } from '@/lib/delivery-undo-words';
 
@@ -125,18 +127,18 @@ export function UndoDeliveryDialog({
       }
     >
       <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
-        <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+        <Card plain padding="sm" className="text-note space-y-1">
           <p className="text-[var(--sys-foreground)]">
             بتلغي تسجيل التسليم اللي انكتب بالغلط، وبيرجع الطلب لحالتو قبل التسليم، وبعدها بيكمّل مساره العادي (إرجاع أو تسليم صح).
           </p>
           <p className="text-[var(--sys-muted)]">
             مفتوح بأي وقت — ما في مدة محددة. بس بيرفض إذا انسوّى حسابو أو ذكرو كشف أو انعدّ مرتجعو أو صارت عمولتو قابلة للدفع.
           </p>
-        </div>
+        </Card>
 
         {loadError && <p className="text-sm text-[var(--sys-destructive)]">{loadError}</p>}
         {!measure && !loadError && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]" aria-live="polite">
+          <p className="text-note text-[var(--sys-muted-foreground)]" aria-live="polite">
             عم أعدّ…
           </p>
         )}
@@ -144,7 +146,7 @@ export function UndoDeliveryDialog({
         {measure && !measure.allowed && measure.refusal && (
           <div
             role="alert"
-            className="flex gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-xs leading-relaxed text-[var(--sys-destructive)]"
+            className="flex gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-note leading-relaxed text-[var(--sys-destructive)]"
           >
             <span>
               <b>ما بيتراجع عن هالتسليم:</b> {measure.refusal.text}
@@ -155,10 +157,10 @@ export function UndoDeliveryDialog({
         {measure && measure.allowed && (
           <div className="space-y-3" aria-live="polite">
             <div className="space-y-1">
-              <p className="text-xs font-medium text-[var(--sys-heading)]">اللي رح يرجع:</p>
+              <p className="text-note font-medium text-[var(--sys-heading)]">اللي رح يرجع:</p>
               <div className="border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
                 {measure.lines.map((l) => (
-                  <div key={l.key} className="px-3 py-1.5 text-xs text-[var(--sys-foreground)]">
+                  <div key={l.key} className="px-3 py-1.5 text-note text-[var(--sys-foreground)]">
                     {l.text}
                     {l.amount && (
                       <>
@@ -173,14 +175,14 @@ export function UndoDeliveryDialog({
               </div>
             </div>
 
-            <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+            <Card plain padding="sm" className="text-note space-y-1">
               <p className="font-medium text-[var(--sys-heading)]">واللي ما رح يتغيّر:</p>
               {measure.stays.map((l) => (
                 <p key={l.key} className="text-[var(--sys-muted-foreground)]">
                   {l.text}
                 </p>
               ))}
-            </div>
+            </Card>
 
             <Textarea
               label="سبب التراجع *"
@@ -192,15 +194,13 @@ export function UndoDeliveryDialog({
               helperText="بينكتب على الطلب وبسجل التدقيق باسمك."
             />
 
-            <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
-              <input
-                type="checkbox"
-                checked={acknowledged}
-                onChange={(e) => setAckKey(e.target.checked ? key : null)}
-                className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
-              />
-              <span>أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون وعمولتو، وبيتسجّل باسمي.</span>
-            </label>
+            <Checkbox
+              id="undo-delivery-ack"
+              className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2"
+              checked={acknowledged}
+              onChange={(checked) => setAckKey(checked ? key : null)}
+              label="أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون وعمولتو، وبيتسجّل باسمي."
+            />
           </div>
         )}
 

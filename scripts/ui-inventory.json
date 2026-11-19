@@ -2143,29 +2143,31 @@
   },
   "src/components/screens/tracking/CloseLegacyDialog.tsx": {
     "buttons": 2,
-    "inputs": 2,
+    "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 0,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/tracking/ClosePickedDialog.tsx": {
     "buttons": 2,
-    "inputs": 1,
+    "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 0,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/tracking/CollectDialog.tsx": {
     "buttons": 2,
     "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -2175,7 +2177,7 @@
     "buttons": 3,
     "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -2185,7 +2187,7 @@
     "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 0,
     "links": 0,
@@ -2213,13 +2215,14 @@
   },
   "src/components/screens/tracking/UndoDeliveryDialog.tsx": {
     "buttons": 2,
-    "inputs": 2,
+    "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 0,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/tracking/WriteOffDialog.tsx": {
     "buttons": 2,

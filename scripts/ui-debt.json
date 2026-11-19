@@ -544,45 +544,18 @@
       "rawDatePickers": 2,
       "textXs": 3
     },
-    "src/components/screens/tracking/CloseLegacyDialog.tsx": {
-      "rawCheckboxes": 1,
-      "rawSurfaces": 2,
-      "textXs": 7
-    },
-    "src/components/screens/tracking/ClosePickedDialog.tsx": {
-      "rawCheckboxes": 1,
-      "rawSurfaces": 2,
-      "textXs": 9
-    },
-    "src/components/screens/tracking/CollectDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 4
-    },
     "src/components/screens/tracking/DeliverDialog.tsx": {
-      "rawButtons": 3,
-      "rawSurfaces": 1,
-      "textXs": 10
+      "rawButtons": 1,
+      "textXs": 1
     },
     "src/components/screens/tracking/DifferenceDialog.tsx": {
-      "rawSurfaces": 2,
-      "textXs": 6
+      "textXs": 1
     },
     "src/components/screens/tracking/DifferenceMark.tsx": {
       "rawButtons": 1
     },
-    "src/components/screens/tracking/TransferDialog.tsx": {
-      "rawButtons": 2,
-      "textXs": 2
-    },
-    "src/components/screens/tracking/UndoDeliveryDialog.tsx": {
-      "rawCheckboxes": 1,
-      "rawSurfaces": 2,
-      "textXs": 6
-    },
     "src/components/screens/tracking/WriteOffDialog.tsx": {
-      "rawButtons": 2,
-      "textXs": 3
+      "textXs": 1
     },
     "src/components/screens/users/UserCommissionCurrency.tsx": {
       "rawButtons": 2,
