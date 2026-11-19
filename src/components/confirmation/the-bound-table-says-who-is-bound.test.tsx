@@ -33,6 +33,8 @@ vi.mock('@/lib/api-client', () => ({
   apiJson: vi.fn(async (url: string) => {
     h.calls.push(url);
     if (url === '/api/confirmation/rules/people') return { people: h.people };
+    // 19/11 (Q2b): the section also asks the day's figures of the rules (`/api/confirmation/rules/fired`) — an empty day here; its own test draws them.
+    if (url.startsWith('/api/confirmation/rules/fired')) return { day: '2026-11-19', today: true, timeZone: 'Asia/Damascus', refusalLog: true, truncated: false, people: [] };
     const id = new URL(url, 'http://x').searchParams.get('userId')!;
     const answer = h.check[id];
     if (answer instanceof Error) throw answer;
@@ -69,7 +71,8 @@ describe('the rows', () => {
   it('one row per person, each with her name, her role and a link to her page in «الموظفين»', async () => {
     const { container } = render(<DeskPeopleTable />);
     await screen.findAllByText(/سارة/);
-    expect(h.calls).toEqual(['/api/confirmation/rules/people']);
+    // 19/11 (Q2b): was `toEqual(['/api/confirmation/rules/people'])` — the section now also asks the rules' figures of the day (`/fired`); the people are still asked once, and the check never unasked.
+    expect(h.calls.filter((u) => !u.startsWith('/api/confirmation/rules/fired'))).toEqual(['/api/confirmation/rules/people']);
     const rows = container.querySelectorAll('[data-desk-people] > li');
     expect(rows).toHaveLength(5);
     for (const id of ['sara', 'lead', 'noissue', 'mod', 'owner']) {
@@ -200,7 +203,7 @@ describe('«افحص موظفة»', () => {
     await screen.findByLabelText('الموظفة');
     const button = screen.getByRole('button', { name: 'افحص' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    await waitFor(() => expect(h.calls).toEqual(['/api/confirmation/rules/people']));
+    await waitFor(() => expect(h.calls.filter((u) => !u.startsWith('/api/confirmation/rules/fired'))).toEqual(['/api/confirmation/rules/people']));
   });
 });
 

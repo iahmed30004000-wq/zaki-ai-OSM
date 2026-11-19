@@ -29,6 +29,8 @@ const REPORTS: Record<string, string> = {
   'src/lib/confirmation-team-answer.ts': 'the confirmation team table (and the drawer of one person)',
   'src/app/api/growth/attribution/route.ts': 'who brought the business, and through which door',
   'src/app/api/orders/shipping/performance/route.ts': 'the couriers',
+  // 19/11 (Q2b): the rules page's «القاعدة اشتغلت عندها كم مرة» — one store's day per person (`GET /api/confirmation/rules/fired`).
+  'src/lib/rule-fired.ts': 'how often each confirmation rule caught each person, one day of the store',
 };
 
 describe('every report of the performance board goes through the lane', () => {
