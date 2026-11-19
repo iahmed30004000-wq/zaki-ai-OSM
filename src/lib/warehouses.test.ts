@@ -182,6 +182,14 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',
+    // 19/11, W2c (the stock screens show places): the balances and the ledger read where units are; the runs list and the
+    // product page fold a split row into its run; the receive dialog sends the receive door's own `warehouseId` field.
+    'src/app/api/inventory/movements/route.ts',
+    'src/app/api/products/[id]/route.ts',
+    'src/components/inventory/ReceiveDialog.tsx',
+    'src/components/screens/InventoryBalancesScreen.tsx',
+    'src/lib/batch-grade.ts',
+    'src/lib/stock-places.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

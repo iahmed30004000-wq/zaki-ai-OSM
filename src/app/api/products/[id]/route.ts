@@ -104,7 +104,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      * shows what it and its twins still hold and sold (`batch-grade.foldSplitRows`). A store never placed has none.
      */
     const twins = await db.productionBatch.findMany({
-      where: { companyId, productId: product.id, splitFromBatchId: { not: null } },
+      where: { ...inStore(companyId, storeId), productId: product.id, splitFromBatchId: { not: null } },
       select: { id: true, splitFromBatchId: true, quantitySold: true, quantityRemaining: true },
     });
     product.batches = foldSplitRows(product.batches, twins);
