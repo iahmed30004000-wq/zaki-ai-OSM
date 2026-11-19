@@ -179,6 +179,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/lib/warehouse-intake.ts',
     'src/app/api/inventory/route.ts',
     'src/app/api/production/route.ts',
+    // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
+    // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
+    'src/components/inventory/PlacementSheet.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
