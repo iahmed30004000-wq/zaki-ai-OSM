@@ -10,6 +10,7 @@ import { QueuePriorityCard } from '@/components/settings/QueuePriorityCard';
 import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
 import { QueueModesCard } from '@/components/settings/QueueModesCard';
+import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';
 
 /**
  * «قواعد مركز التأكيد» — THE ONE PAGE OF THE CONFIRMATION RULES (the owner's plan of 17/11, request C1).
@@ -21,6 +22,8 @@ import { QueueModesCard } from '@/components/settings/QueueModesCard';
  *
  * The two OLD cards («نظام الجولات» and «الطلب يرجع للطابور فوراً») LEFT this page in request C2 (18/11): the one rule replaced them, and one line under the box says so.
  * Their doors keep GET and refuse every write (409 `RULE_RETIRED`); their stored values are not touched; their engine code leaves later (C4).
+ *
+ * «مين مربوطة بالقواعد» (request Q1b, 19/11) stands under the box: who is at the desk, bound or not and by which key, and «افحص موظفة» — read from the server, decided nowhere here.
  *
  * `lines` is the box's text, written on the server from the constants and the switches the engine reads (`confirmation-rule-summary.ts`) — this screen decides nothing and types no number.
  */
@@ -44,6 +47,8 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
             </p>
           </CardContent>
         </Card>
+
+        <DeskPeopleTable />
 
         <CallProofCard />
         <QueuePriorityCard />

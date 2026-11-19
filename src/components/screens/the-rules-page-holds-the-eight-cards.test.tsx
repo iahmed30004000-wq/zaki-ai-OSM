@@ -33,6 +33,9 @@ vi.mock('@/components/settings/QueueModesCard', () => ({ QueueModesCard: () => <
 vi.mock('@/components/settings/IntakeFilterCard', () => ({ IntakeFilterCard: () => <div data-card="IntakeFilterCard" /> }));
 vi.mock('@/components/settings/WinbackV2Card', () => ({ WinbackV2Card: () => <div data-card="WinbackV2Card" /> }));
 vi.mock('@/components/settings/LeadsV2Card', () => ({ LeadsV2Card: () => <div data-card="LeadsV2Card" /> }));
+// ADDED 2026-11-19 (request Q1b): the page gained «مين مربوطة بالقواعد» under the box. It is not one of the six cards (no `data-card`), it reads its own door, and its own
+// test (`confirmation/the-bound-table-says-who-is-bound.test.tsx`) pins what it says — here it is a marker, so «nothing else» and «no digit of its own» still mean the six and the box.
+vi.mock('@/components/confirmation/DeskPeopleTable', () => ({ DeskPeopleTable: () => <section data-desk-people-section /> }));
 
 import { ConfirmationRulesScreen, RULE_REPLACED_LINE } from './ConfirmationRulesScreen';
 import { ALL_ROUTES, NAV, canAccessRoute, findRoute } from '@/lib/route-registry';
