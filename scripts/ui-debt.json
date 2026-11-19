@@ -34,16 +34,6 @@
       "rawSurfaces": 1,
       "textXs": 13
     },
-    "src/components/confirmation/CustomerOnTheLine.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 2,
-      "textXs": 7
-    },
-    "src/components/confirmation/PullPanel.tsx": {
-      "rawButtons": 1,
-      "rawSurfaces": 5,
-      "textXs": 9
-    },
     "src/components/confirmation/WhatsAppAfterNoAnswer.tsx": {
       "rawButtons": 1,
       "textXs": 3
@@ -315,7 +305,7 @@
       "rawButtons": 8,
       "rawSurfaces": 2,
       "rawDatePickers": 1,
-      "textXs": 42
+      "textXs": 40
     },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
