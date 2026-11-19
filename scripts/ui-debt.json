@@ -282,10 +282,6 @@
     "src/components/screens/ConfirmationIssuesScreen.tsx": {
       "textXs": 12
     },
-    "src/components/screens/ConfirmationMineScreen.tsx": {
-      "rawButtons": 1,
-      "textXs": 23
-    },
     "src/components/screens/DiscountAlertsScreen.tsx": {
       "rawCheckboxes": 1,
       "rawSurfaces": 2,

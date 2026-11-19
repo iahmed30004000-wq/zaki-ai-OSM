@@ -273,9 +273,10 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     expect(f.querySelectorAll('details')).toHaveLength(0);
     // children are the buttons themselves, in the old order (the contact strip between «مغلق» and «تأكيد»)
     expect(names(f)).toEqual(['افتح وعدّل', 'لا يرد 1/3', 'مغلق أو خارج التغطية', 'تأكيد الطلب', 'تأجيل', 'ألغِ', 'إدخال إشكال', 'مساعدة']);
+    // 18/11 (R8d): the presses are the kit's `Button`, which always centres its label (`justify-center` is the kit's own, on a desk
+    // too). Was: `.not.toContain('justify-center')` beside the `w-full` line. The desk's rule is unchanged: no press fills the row.
     for (const b of f.querySelectorAll('button')) {
       expect(tokens(b), b.textContent!).not.toContain('w-full');
-      expect(tokens(b)).not.toContain('justify-center');
     }
   });
 
@@ -285,7 +286,8 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     const f = footer();
     expect(f.getAttribute('class')).toBe('space-y-3 pt-1 border-t border-[var(--sys-border)]');
     const confirm = screen.getByRole('button', { name: 'تأكيد الطلب' });
-    expect(tokens(confirm)).toEqual(expect.arrayContaining(['w-full', 'justify-center', 'min-h-11']));
+    // 18/11 (R8d): the kit's `Button` is 44px tall on a phone by its height (`h-11`), not by a floor. Was: `'min-h-11'`.
+    expect(tokens(confirm)).toEqual(expect.arrayContaining(['w-full', 'justify-center', 'h-11']));
     // «تأجيل» and «ألغِ» side by side under it
     const pair = screen.getByRole('button', { name: /^تأجيل/ }).parentElement!;
     expect(tokens(pair)).toContain('grid-cols-2');

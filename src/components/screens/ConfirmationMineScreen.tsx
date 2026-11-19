@@ -17,7 +17,7 @@ import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import {
   ChangeRequestDialog,
@@ -412,7 +412,7 @@ function RegionGate({
   const value = picked ?? guess?.id ?? '';
   return (
     <div className="rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] p-2 space-y-2">
-      <label htmlFor={fieldId} className="block text-xs font-medium text-[var(--sys-warning)]">
+      <label htmlFor={fieldId} className="block text-note font-medium text-[var(--sys-warning)]">
         المحافظة — لازم قبل التأكيد{countryName ? ` (${countryName})` : ''}
       </label>
       <div className="flex flex-wrap items-center gap-2">
@@ -440,12 +440,12 @@ function RegionGate({
         </Action>
       </div>
       {written && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           المكتوب: <span dir="auto">{written}</span>
         </p>
       )}
       {guess && picked === null && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           اقتراح من المكتوب: {guess.name} — لم يُحفظ بعد، اضغط «احفظ المحافظة».
         </p>
       )}
@@ -1274,19 +1274,19 @@ export function ConfirmationMineScreen() {
         : [];
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <PageHeader
-        title={routeLabel('/confirmation/mine')}
-        actions={
-          canCreate &&
-          !readOnly && (
-            <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
-              <RiAddCircleLine className="w-4 h-4" />
-              <span>إنشاء طلب</span>
-            </Button>
-          )
-        }
-      />
+    <PageShell
+      title={routeLabel('/confirmation/mine')}
+      width="wide"
+      actions={
+        canCreate &&
+        !readOnly && (
+          <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
+            <RiAddCircleLine className="w-4 h-4" />
+            <span>إنشاء طلب</span>
+          </Button>
+        )
+      }
+    >
       {canCreate && !readOnly && (
         <CreateOrderModal
           isOpen={creating}
@@ -1555,7 +1555,7 @@ export function ConfirmationMineScreen() {
             );
             // Said only where it is true: the base rule's arithmetic, or the plan's own fact for this card (`closesOnNext`). Under the rounds, and under the plan when a press now would not close it: nothing.
             // The server's words (`noAnswerHint`): only what is true for the rule in force — the desk counts nothing (finding #11, and its bundle is at its ceiling).
-            const remainingHint = order.noAnswerHint && <span className="text-xs text-[var(--sys-muted)]">{order.noAnswerHint}</span>;
+            const remainingHint = order.noAnswerHint && <span className="text-note text-[var(--sys-muted)]">{order.noAnswerHint}</span>;
             /*
               CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
               Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —
@@ -1653,7 +1653,7 @@ export function ConfirmationMineScreen() {
               </Action>
             );
             const contactFirstHint = needsContact(order) && (
-              <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+              <p className="w-full text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                 {proofOn && canLogContact ? (
                   CALL_PROOF_WORDS.contactFirstV2
                 ) : (
@@ -1668,10 +1668,10 @@ export function ConfirmationMineScreen() {
             );
             /* «إثبات المكالمات»: why «لا يرد» and «مغلق أو خارج التغطية» are shut — in words, because a phone has no tooltip. */
             const proofHint = canLogContact && lock.text && (
-              <p className="w-full text-xs leading-relaxed tabular-nums text-[var(--sys-warning)]">{lock.text}</p>
+              <p className="w-full text-note leading-relaxed tabular-nums text-[var(--sys-warning)]">{lock.text}</p>
             );
             const regionHint = lacksRegion(order) && (
-              <p className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">اختر المحافظة لتفتح التأكيد</p>
+              <p className="w-full text-note leading-relaxed text-[var(--sys-warning)]">اختر المحافظة لتفتح التأكيد</p>
             );
             /*
               «إدخال إشكال», not «إشكال إدخال»: the button is the act she performs, and the old name read as the
@@ -1690,7 +1690,7 @@ export function ConfirmationMineScreen() {
               </Action>
             );
             const storeOrderNote = !order.moderatorId && (
-              <span className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">
+              <span className="w-full text-note leading-relaxed text-[var(--sys-warning)]">
                 طلب من المتجر — ما في مودريتور يصلّحه.
                 <span className="text-[var(--sys-muted-foreground)]">
                   {' '}
@@ -1712,8 +1712,9 @@ export function ConfirmationMineScreen() {
               <article
                 key={order.id}
                 id={deskCardId(order.id)}
-                className={`scroll-mt-24 border rounded-lg p-4 space-y-3 transition-shadow ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}${flashId === order.id ? ' ring-2 ring-[var(--sys-primary)]' : ''}`}
+                className={`scroll-mt-24 rounded-lg${flashId === order.id ? ' ring-2 ring-[var(--sys-primary)]' : ''}`}
               >
+                <Card padding="md" className={`space-y-3 ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}`}>
                 <header className="flex flex-wrap items-center gap-2">
                   {/* Text, not `OrderRef`: a number that opened the order would be the way around «افتح وعدّل»,
                       which stays locked until she has rung the customer. Only the copy button is added. */}
@@ -1725,13 +1726,13 @@ export function ConfirmationMineScreen() {
                   {/* Where it came from — see `sourceLabel`. It decides what
                       she can do about bad data, so it belongs beside the
                       number rather than three cards deep. */}
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">{sourceLabel(order)}</span>
+                  <span className="text-note text-[var(--sys-muted-foreground)]">{sourceLabel(order)}</span>
                   {/* ⚠️ The count in words, because the card's colour must
                       never be the only place it is said. */}
                   {/* Under the plan the server's own line (`dueWords`, below) already says «محاولة N من 5»; the chip would be a second counter beside it («ما ردّ مرّتين (2/5)»). It is drawn only where
                       that line is not (a colleague's desk, a complete plan) — and then in the same words, from the same function. */}
                   {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && !(planned && !readOnly && order.dueWords) && (
-                    <span className="text-xs font-medium text-[var(--sys-warning)]">
+                    <span className="text-note font-medium text-[var(--sys-warning)]">
                       {planned ? (
                         order.attemptWords
                       ) : (
@@ -1747,7 +1748,7 @@ export function ConfirmationMineScreen() {
                       it is ready. */}
                   {!closed && !readOnly && order.dueWords && (
                     <span
-                      className={`text-xs px-2 py-0.5 rounded-md border ${
+                      className={`text-note px-2 py-0.5 rounded-md border ${
                         order.dueNow
                           ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
                           : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums'
@@ -1757,7 +1758,7 @@ export function ConfirmationMineScreen() {
                     </span>
                   )}
                   {closed && (
-                    <span className="text-xs font-medium text-[var(--sys-destructive)]">
+                    <span className="text-note font-medium text-[var(--sys-destructive)]">
                       أُغلق اليوم تلقائيّاً — {order.closedWords ?? noAnswerWords(order.noAnswerCount)}
                     </span>
                   )}
@@ -1768,7 +1769,7 @@ export function ConfirmationMineScreen() {
                     holderId={readOnly ? null : holderId}
                   />
                   {order.risk && (
-                    <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK_LABEL[order.risk.tier].cls}`}>
+                    <span className={`text-note px-2 py-0.5 rounded-md border ${RISK_LABEL[order.risk.tier].cls}`}>
                       {RISK_LABEL[order.risk.tier].text} · {Math.round(order.risk.returnRate * 100)}% مرتجع من{' '}
                       {order.risk.orders} طلب
                     </span>
@@ -1798,9 +1799,9 @@ export function ConfirmationMineScreen() {
                     <>{order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}</>
                   )}
                   {governorateOf(order.region?.name, order.customer.city) && (
-                    <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">المحافظة: {governorateOf(order.region?.name, order.customer.city)}</p>
+                    <p className="text-note text-[var(--sys-muted-foreground)] mt-1">المحافظة: {governorateOf(order.region?.name, order.customer.city)}</p>
                   )}
-                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
+                  <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
                 </div>
                 {/* An order with no governorate cannot be confirmed: the select that sets it is HERE, drawn without a click. */}
                 {lacksRegion(order) && !readOnly && (
@@ -1813,7 +1814,7 @@ export function ConfirmationMineScreen() {
                   />
                 )}
 
-                <ul className="text-xs text-[var(--sys-muted-foreground)] space-y-0.5">
+                <ul className="text-note text-[var(--sys-muted-foreground)] space-y-0.5">
                   {order.items.map((it) => (
                     <li key={it.id}>
                       {it.productName} × {it.quantity}
@@ -1831,7 +1832,7 @@ export function ConfirmationMineScreen() {
                 <OrderNotes customer={order.customerNotes} />
 
                 {order.postponedUntil && (
-                  <p className="text-xs text-[var(--sys-warning)]">
+                  <p className="text-note text-[var(--sys-warning)]">
                     مؤجل حتى{' '}
                     <span dir="ltr">{arDate(order.postponedUntil)}</span>
                     {order.postponePreferredTime && ` · ${order.postponePreferredTime}`} · تأجيل رقم{' '}
@@ -1840,7 +1841,7 @@ export function ConfirmationMineScreen() {
                 )}
 
                 {order.risk?.requiresPrepaymentOrApproval && (
-                  <p className="flex items-center gap-2 text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2">
+                  <p className="flex items-center gap-2 text-note text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2">
                     <RiShieldFlashLine className="w-4 h-4" /> عميل عالي الخطورة: يتطلب دفعاً مسبقاً أو موافقة المشرف.
                   </p>
                 )}
@@ -1855,12 +1856,12 @@ export function ConfirmationMineScreen() {
                   call sees what it did rather than watching the card vanish.
                 */}
                 {closed ? (
-                  <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
+                  <p className="text-note leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
                     للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${data.cadenceOn ? order.noAnswerCount : data.noAnswerLimit} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
                   </p>
                 ) : readOnly ? (
                   /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */
-                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)] pt-1 border-t border-[var(--sys-border)]">
+                  <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)] pt-1 border-t border-[var(--sys-border)]">
                     للقراءة فقط — هذا الطلب بيد {watchedName}.
                   </p>
                 ) : phone ? (
@@ -1925,6 +1926,7 @@ export function ConfirmationMineScreen() {
                   {assistBtn}
                 </footer>
                 )}
+                </Card>
               </article>
             );
           })}
@@ -2137,7 +2139,7 @@ export function ConfirmationMineScreen() {
           onRefresh={load}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -2163,7 +2165,7 @@ function ResponseClock({
   if (firstActionAt && claimedAt) {
     const took = Math.max(0, Math.round((+new Date(firstActionAt) - +new Date(claimedAt)) / 60000));
     return (
-      <span className="text-xs px-2 py-0.5 rounded-md border bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums">
+      <span className="text-note px-2 py-0.5 rounded-md border bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums">
         رددت خلال {humanMinutes(took)}
       </span>
     );
@@ -2174,7 +2176,7 @@ function ResponseClock({
   const late = waiting >= 30;
   return (
     <span
-      className={`text-xs px-2 py-0.5 rounded-md border tabular-nums ${
+      className={`text-note px-2 py-0.5 rounded-md border tabular-nums ${
         late
           ? 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
           : 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
@@ -2215,22 +2217,27 @@ function Action({
   /** A phone's button fills the cell it is in (a full row, or half of one). */
   wide?: boolean;
 }) {
+  /*
+    THE KIT'S BUTTON (R8d, 18/11), AND THE PRESS IS STILL THE SCREEN'S. The handler returns nothing to the kit (`{ onClick(); }`): a
+    promise handed to `Button` would make it run its own busy flag beside the screen's `busyId`, and the screen's is the one every
+    press of the card shares. The tone is the old one's: the confirmation `primary`, a press that closes or cancels `danger`, the
+    rest `secondary`. `type="button"`: it is never a form's submit.
+  */
   return (
-    <button
-      onClick={onClick}
+    <Button
+      type="button"
+      size="sm"
+      variant={primary ? 'primary' : danger ? 'danger' : 'secondary'}
+      onClick={() => {
+        onClick();
+      }}
       disabled={busy || locked}
       title={locked ? lockedTitle : undefined}
       aria-disabled={locked || undefined}
-      className={`${wide ? 'w-full justify-center ' : ''}min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50 ${
-        primary
-          ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
-          : danger
-            ? 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
-            : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)] hover:border-[var(--sys-primary)]'
-      }`}
+      className={wide ? 'w-full' : undefined}
     >
       {icon}
       {children}
-    </button>
+    </Button>
   );
 }
