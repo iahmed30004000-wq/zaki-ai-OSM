@@ -9,7 +9,7 @@ import { logAudit } from '@/lib/audit';
 import { normalizeAuthenticityCode } from '@/lib/authenticity';
 
 /**
- * GET/POST/DELETE /api/settings/authenticity-codes — the owner's own list, behind `settings.authenticity_codes`.
+ * GET/POST/DELETE /api/settings/authenticity-codes — the owner's own list, read on `settings.view`; adding and deleting on `settings.edit` (the system card's own edit key).
  *
  * One add at a time, as asked: no bulk import. `GET` also returns the company's active stores, so the screen can
  * show the exact `/verify/[id]` link to share for each — the same id the public route resolves the company by.
@@ -20,7 +20,7 @@ const CAP = 500;
 export async function GET() {
   try {
     const { companyId } = await requireContext();
-    await requirePermission('settings.authenticity_codes');
+    await requirePermission('settings.view');
 
     const [codes, stores] = await Promise.all([
       db.authenticityCode.findMany({
@@ -46,7 +46,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.authenticity_codes');
+    await requirePermission('settings.edit');
 
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   try {
     const { user, companyId } = await requireContext();
-    await requirePermission('settings.authenticity_codes');
+    await requirePermission('settings.edit');
 
     const body = (await req.json().catch(() => null)) as { id?: string } | null;
     if (!body?.id) {

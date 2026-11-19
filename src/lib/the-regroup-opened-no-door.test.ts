@@ -132,7 +132,7 @@ const DATED: Dated[] = [
     path: '/settings/authenticity',
     change: 'added',
     permissions: ['settings.view'],
-    sentence: 'رموز الأصالة: صفحة جديدة بمفتاح الإعدادات نفسه، قائمة الرموز التي يفحصها زائر عام على /verify/[id]؛ الإضافة والحذف يسألان مفتاحاً أدق (settings.authenticity_codes).',
+    sentence: 'رموز الأصالة: صفحة جديدة بمفتاح الإعدادات نفسه، قائمة الرموز التي يفحصها زائر عام على /verify/[id]؛ الإضافة والحذف يسألان مفتاح تعديل الإعدادات (settings.edit).',
   },
 ];
 

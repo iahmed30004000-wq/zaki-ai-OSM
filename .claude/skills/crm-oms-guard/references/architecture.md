@@ -171,7 +171,7 @@ nothing they may open is not drawn. `/settings` is also where an ad platform's O
 التطبيقات المثبتة          /apps/installed
 إعدادات النظام            /settings/system
 المهام المجدولة            /admin/jobs         (on the system card; gate settings.view)
-رموز الأصالة              /settings/authenticity  (the owner's own codes for the public `/verify/[id]` checker, on the system card; gate settings.view — add/delete asks settings.authenticity_codes)
+رموز الأصالة              /settings/authenticity  (the owner's own codes for the public `/verify/[id]` checker, on the system card; gate settings.view — add/delete asks settings.edit)
 قواعد الموظفين             /admin/staff-rules  (the score and the deductions cards, moved from إعدادات النظام on 19/11; settings.view)
 الموظفين                  /admin/users
 الصلاحيات                 /admin/permissions
@@ -358,7 +358,7 @@ moved there unchanged, beside الموظفين in الإدارة. Opens on `sett
 
 **/settings/authenticity** — «رموز الأصالة» (19/11): the owner's own list of codes, added one at a time, that the public
 `/verify/[id]` page checks a scanned barcode/QR against — never the list itself. Opens on `settings.view`; adding
-or deleting a code asks `settings.authenticity_codes`. `AuthenticityCode` is per-company (`companyId` + `@@unique([companyId, code])`),
+or deleting a code asks `settings.edit`. `AuthenticityCode` is per-company (`companyId` + `@@unique([companyId, code])`),
 and a code is never marked "used": the same code reads «أصلي» every time.
 
 **/finance/closing** — Per wallet: book balance, manually entered actual balance, computed difference,

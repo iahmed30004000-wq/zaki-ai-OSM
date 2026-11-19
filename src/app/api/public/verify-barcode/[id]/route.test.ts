@@ -40,7 +40,7 @@ beforeEach(() => {
 
 describe('a code on the list', () => {
   it('answers genuine, and only that — no product, no note, no company, no id', async () => {
-    db.authenticityCode.findUnique.mockResolvedValue({ id: 'row-1' });
+    db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
     const res = await scan('ABC-123');
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -48,18 +48,18 @@ describe('a code on the list', () => {
   });
 
   it('bumps the scan count, but the verdict does not wait on it, and a write failure cannot flip the answer', async () => {
-    db.authenticityCode.findUnique.mockResolvedValue({ id: 'row-1' });
+    db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
     db.authenticityCode.update.mockRejectedValue(new Error('db down'));
     const res = await scan('abc-123');
     expect((await res.json()).genuine).toBe(true);
     expect(db.authenticityCode.update).toHaveBeenCalledWith({
-      where: { id: 'row-1' },
+      where: { id: 'acode1' },
       data: { scanCount: { increment: 1 }, lastScanAt: expect.any(Date) },
     });
   });
 
   it('is case-insensitive and trims whitespace, like the stored code', async () => {
-    db.authenticityCode.findUnique.mockResolvedValue({ id: 'row-1' });
+    db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
     await scan('  abc-123  ');
     expect(db.authenticityCode.findUnique).toHaveBeenCalledWith({
       where: { companyId_code: { companyId: 'company-1', code: 'ABC-123' } },

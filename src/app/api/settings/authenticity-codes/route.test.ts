@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 /**
  * `/api/settings/authenticity-codes` — the owner's own list, one add at a time.
  *
- * Covers: permission-gated (GET and every write ask `settings.authenticity_codes`), dedupe on add with a
+ * Covers: permission-gated (GET asks `settings.view`, every write `settings.edit`), dedupe on add with a
  * clear message, delete removes exactly the row asked for (never another company's), and the public shape
  * (`note`/`productId`/`createdById`) never leaks anywhere this route does not explicitly return it from.
  */
@@ -39,30 +39,30 @@ beforeEach(() => {
   db.store.findMany.mockResolvedValue([]);
 });
 
-describe('every door asks settings.authenticity_codes', () => {
-  it('GET asks it', async () => {
+describe('the list reads on settings.view, the writes on settings.edit', () => {
+  it('GET asks settings.view', async () => {
     await GET();
-    expect(requirePermission).toHaveBeenCalledWith('settings.authenticity_codes');
+    expect(requirePermission).toHaveBeenCalledWith('settings.view');
   });
 
   it('a refusal on GET is a 403, not a crash and not the list', async () => {
-    requirePermission.mockRejectedValue(new Error('Forbidden: missing required permission settings.authenticity_codes'));
+    requirePermission.mockRejectedValue(new Error('Forbidden: missing required permission settings.view'));
     const res = await GET();
     expect(res.status).toBe(403);
   });
 
-  it('POST and DELETE ask it too, before touching the database', async () => {
+  it('POST and DELETE ask settings.edit, before touching the database', async () => {
     requirePermission.mockRejectedValue(new Error('Forbidden'));
     expect((await post({ code: 'ABC-123' })).status).toBe(403);
     expect(db.authenticityCode.create).not.toHaveBeenCalled();
-    expect((await del({ id: 'row-1' })).status).toBe(403);
+    expect((await del({ id: 'acode1' })).status).toBe(403);
     expect(db.authenticityCode.delete).not.toHaveBeenCalled();
   });
 });
 
 describe('adding a code', () => {
   it('stores it uppercased, scoped to the caller’s own company', async () => {
-    db.authenticityCode.create.mockResolvedValue({ id: 'row-1', code: 'ABC-123' });
+    db.authenticityCode.create.mockResolvedValue({ id: 'acode1', code: 'ABC-123' });
     const res = await post({ code: '  abc-123  ', note: 'دفعة أكتوبر' });
     expect(res.status).toBe(201);
     expect(db.authenticityCode.create).toHaveBeenCalledWith({
@@ -89,10 +89,10 @@ describe('adding a code', () => {
 
 describe('deleting a code', () => {
   it('only a row of the caller’s own company can be deleted', async () => {
-    db.authenticityCode.findFirst.mockResolvedValue({ id: 'row-1', code: 'ABC-123' });
-    await del({ id: 'row-1' });
-    expect(db.authenticityCode.findFirst).toHaveBeenCalledWith({ where: { id: 'row-1', companyId: 'co-1' }, select: { id: true, code: true } });
-    expect(db.authenticityCode.delete).toHaveBeenCalledWith({ where: { id: 'row-1' } });
+    db.authenticityCode.findFirst.mockResolvedValue({ id: 'acode1', code: 'ABC-123' });
+    await del({ id: 'acode1' });
+    expect(db.authenticityCode.findFirst).toHaveBeenCalledWith({ where: { id: 'acode1', companyId: 'co-1' }, select: { id: true, code: true } });
+    expect(db.authenticityCode.delete).toHaveBeenCalledWith({ where: { id: 'acode1' } });
   });
 
   it('a row that is missing, or belongs to another company, is a 404 — never deleted', async () => {

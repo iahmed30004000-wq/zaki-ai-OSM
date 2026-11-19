@@ -43,7 +43,7 @@ export function AuthenticityCodesScreen() {
   const toast = useToast();
   const confirm = useConfirm();
   // The list is read by `settings.view` (the page's own door); adding and removing ask the finer key.
-  const canManage = useCan('settings.authenticity_codes');
+  const canManage = useCan('settings.edit');
   const [codes, setCodes] = useState<Code[] | null>(null);
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [draft, setDraft] = useState({ code: '', note: '' });
