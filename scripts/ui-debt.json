@@ -13,9 +13,7 @@
       "rawButtons": 1
     },
     "src/components/apps/SystemTokensPanel.tsx": {
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
-      "textXs": 18
+      "textXs": 4
     },
     "src/components/attendance/ShiftChip.tsx": {
       "rawButtons": 2,
@@ -272,12 +270,6 @@
     "src/components/screens/AuditScreen.tsx": {
       "textXs": 5
     },
-    "src/components/screens/BlacklistScreen.tsx": {
-      "rawButtons": 6,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 4,
-      "textXs": 13
-    },
     "src/components/screens/CampaignsScreen.tsx": {
       "rawButtons": 1,
       "rawSurfaces": 1,
@@ -306,9 +298,8 @@
       "rawSurfaces": 2
     },
     "src/components/screens/InstalledAppsScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 5,
-      "textXs": 19
+      "rawButtons": 1,
+      "textXs": 7
     },
     "src/components/screens/IntelligenceScreen.tsx": {
       "rawSurfaces": 1
@@ -478,27 +469,8 @@
     "src/components/screens/finance/CollectionScreen.tsx": {
       "rawSurfaces": 1
     },
-    "src/components/screens/finance/CourierReason.tsx": {
-      "textXs": 5
-    },
-    "src/components/screens/finance/DifferenceActions.tsx": {
-      "rawButtons": 4,
-      "textXs": 11
-    },
     "src/components/screens/finance/LinkLineDialog.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 1,
-      "textXs": 15
-    },
-    "src/components/screens/finance/ManualMatching.tsx": {
-      "rawButtons": 12,
-      "rawSurfaces": 2,
-      "textXs": 20
-    },
-    "src/components/screens/finance/ManualStatementDialog.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 1,
-      "textXs": 1
+      "rawButtons": 1
     },
     "src/components/screens/finance/MatchingScreen.tsx": {
       "rawButtons": 1,
@@ -511,8 +483,7 @@
       "rawButtons": 1
     },
     "src/components/screens/finance/SwapDialog.tsx": {
-      "rawButtons": 5,
-      "textXs": 11
+      "rawButtons": 1
     },
     "src/components/screens/finance/TransfersScreen.tsx": {
       "textXs": 1

@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { useConfirm } from '@/components/ui/Confirm';
 import { arDateTime } from '@/lib/format';
@@ -165,15 +167,15 @@ export function SystemTokensPanel() {
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-1.5 text-xs font-bold text-[var(--sys-muted-foreground)]">
+        <h2 className="flex items-center gap-1.5 text-note font-bold text-[var(--sys-muted-foreground)]">
           <RiKey2Line className="h-4 w-4" /> توكنات الأنظمة
         </h2>
-        <Button size="sm" variant="outline" onClick={() => setAdding(!adding)}>
+        <Button size="sm" variant="secondary" onClick={() => setAdding(!adding)}>
           <RiAddLine className="h-4 w-4" /> مفتاح جديد
         </Button>
       </div>
 
-      <p className="mb-2 text-xs text-[var(--sys-muted-foreground)]">
+      <p className="mb-2 text-note text-[var(--sys-muted-foreground)]">
         مفتاح واحد لكل نظام خارجي يرسل لنا طلبات على <span dir="ltr" className="font-mono">/api/v1</span>.
         المفتاح يُعرض مرة واحدة عند إنشائه ولا يمكن استرجاعه بعدها.
       </p>
@@ -186,7 +188,7 @@ export function SystemTokensPanel() {
 
       {issued && (
         <div className="mb-2 rounded-lg border border-[var(--sys-warning)] bg-[var(--sys-warning-soft)] p-3">
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-[var(--sys-warning)]">
+          <p className="mb-1.5 flex items-center gap-1.5 text-note font-bold text-[var(--sys-warning)]">
             <RiAlertLine className="h-4 w-4" /> {issued.notice}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -196,10 +198,10 @@ export function SystemTokensPanel() {
             >
               {issued.secret}
             </code>
-            <Button size="sm" variant="outline" onClick={copy}>
+            <Button size="sm" variant="secondary" onClick={copy}>
               <RiFileCopyLine className="h-4 w-4" /> {copied ? 'نُسخ' : 'انسخ'}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setIssued(null)}>
+            <Button size="sm" variant="quiet" onClick={() => setIssued(null)}>
               أخفِه
             </Button>
           </div>
@@ -207,9 +209,9 @@ export function SystemTokensPanel() {
       )}
 
       {adding && (
-        <div className="mb-2 space-y-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+        <Card padding="sm" className="mb-2 space-y-2">
           <fieldset>
-            <legend className="mb-1 text-xs font-semibold text-[var(--sys-muted-foreground)]">المفتاح لأي نظام؟</legend>
+            <legend className="mb-1 text-note font-semibold text-[var(--sys-muted-foreground)]">المفتاح لأي نظام؟</legend>
             <div className="flex flex-wrap gap-2">
               {shelf.systems.map((s) => (
                 <label
@@ -228,14 +230,14 @@ export function SystemTokensPanel() {
                     onChange={() => pickSystem(s)}
                   />
                   {s.ar}
-                  <span className="text-xs font-normal text-[var(--sys-muted-foreground)]">
+                  <span className="text-note font-normal text-[var(--sys-muted-foreground)]">
                     · {s.scopes.length} صلاحيات
                   </span>
                 </label>
               ))}
             </div>
             {system === 'mediabuyer' && (
-              <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">
+              <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
                 قراءة فقط: مصدر الطلبات وحالتها والمنتجات وتكلفتها — بلا اسم ولا هاتف ولا عنوان زبون، وما بيقدر ينشئ طلب.
               </p>
             )}
@@ -247,33 +249,32 @@ export function SystemTokensPanel() {
             onChange={(e) => setName(e.target.value)}
           />
           <div>
-            <p className="mb-1 text-xs font-semibold text-[var(--sys-muted-foreground)]">الصلاحيات</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-1 text-note font-semibold text-[var(--sys-muted-foreground)]">الصلاحيات</p>
+            <div className="flex flex-wrap gap-x-4">
               {shelf.scopeCatalog.map((s) => (
-                <label
+                <span
                   key={s.key}
                   // A scope this person lacks the key for is shown, and says why, rather than failing later.
                   title={s.mintable === false ? `يحتاج «${s.needsAr}» بنطاق كامل` : undefined}
-                  className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-2.5 py-1 text-xs md:min-h-0"
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                    id={`scope-${s.key}`}
                     name={`scope-${s.key}`}
+                    label={s.ar}
                     disabled={s.mintable === false}
                     checked={chosen.includes(s.key)}
-                    onChange={(e) =>
+                    onChange={(on) =>
                       setChosen((was) =>
-                        e.target.checked ? [...was, s.key] : was.filter((k) => k !== s.key)
+                        on ? [...was, s.key] : was.filter((k) => k !== s.key)
                       )
                     }
                   />
-                  {s.ar}
-                </label>
+                </span>
               ))}
             </div>
           </div>
           {shelf.scopeCatalog.some((s) => s.mintable === false) && (
-            <p className="text-xs text-[var(--sys-muted)]">
+            <p className="text-note text-[var(--sys-muted)]">
               مش متاح لك:{' '}
               {shelf.scopeCatalog
                 .filter((s) => s.mintable === false)
@@ -282,26 +283,27 @@ export function SystemTokensPanel() {
             </p>
           )}
           {shelf.mayMint === false && (
-            <p className="text-xs text-[var(--sys-warning)]">
+            <p className="text-note text-[var(--sys-warning)]">
               المفتاح بيقرا الشركة كلها، فإصداره بدّه دخول كل الدول والمتاجر.
             </p>
           )}
-          <p className="text-xs text-[var(--sys-muted)]">
+          <p className="text-note text-[var(--sys-muted)]">
             ينتهي بعد {shelf.defaultDays} يوماً، وبحدّ{' '}
             {shelf.systems.find((s) => s.key === system)?.rateLimitPerMin ?? 60} طلباً في الدقيقة.
           </p>
           <Button size="sm" onClick={create} disabled={chosen.length === 0 || shelf.mayMint === false}>
             أنشئ المفتاح
           </Button>
-        </div>
+        </Card>
       )}
 
       {shelf.tokens.length === 0 ? (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-xs text-[var(--sys-muted-foreground)]">
-          لا مفاتيح بعد — أنشئ واحداً والصقه في إعدادات النظام الخارجي.
-        </p>
+        <Card padding="lg" className="text-center text-note text-[var(--sys-muted-foreground)]">
+          <p>لا مفاتيح بعد — أنشئ واحداً والصقه في إعدادات النظام الخارجي.</p>
+        </Card>
       ) : (
-        <ul className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+        <Card plain>
+        <ul className="divide-y divide-[var(--sys-border)]">
           {shelf.tokens.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3">
               {t.state === 'ACTIVE' ? (
@@ -322,10 +324,10 @@ export function SystemTokensPanel() {
               >
                 {STATE_AR[t.state]}
               </span>
-              <span className="text-xs text-[var(--sys-muted)]">
+              <span className="text-note text-[var(--sys-muted)]">
                 {t.lastUsedAt ? `آخر استخدام ${arDateTime(t.lastUsedAt)}` : 'لم يُستخدم بعد'}
               </span>
-              <span className="text-xs text-[var(--sys-muted)]">
+              <span className="text-note text-[var(--sys-muted)]">
                 {t.expiresAt ? `ينتهي ${arDateTime(t.expiresAt)}` : 'بلا انتهاء'}
               </span>
               <span className="flex flex-wrap gap-1">
@@ -349,6 +351,7 @@ export function SystemTokensPanel() {
             </li>
           ))}
         </ul>
+        </Card>
       )}
     </section>
   );

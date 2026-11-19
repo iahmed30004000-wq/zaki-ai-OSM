@@ -55,6 +55,8 @@ const TABLE: [string, string, number, string | null][] = [
   ['src/components/screens/ConfirmationQueueScreen.tsx', '/confirmation/queue', 1, 'src/app/(system)/(shell)/confirmation/queue/page.tsx'],
   ['src/components/screens/CouriersScreen.tsx', '/settings/couriers', 1, 'src/app/(system)/(shell)/settings/couriers/page.tsx'],
   ['src/components/screens/DiscountAlertsScreen.tsx', '/control/discount-alerts', 1, 'src/app/(system)/(shell)/control/discount-alerts/page.tsx'],
+  // 18/11 (R15i): «التطبيقات المثبتة» typed its own title; on the frame it reads it from the registry, so it joins the table.
+  ['src/components/screens/InstalledAppsScreen.tsx', '/apps/installed', 1, 'src/app/(system)/(shell)/apps/installed/page.tsx'],
   ['src/components/screens/IntelligenceScreen.tsx', '/growth/intelligence', 1, 'src/app/(system)/(shell)/growth/intelligence/page.tsx'],
   ['src/components/screens/InventoryMovementsScreen.tsx', '/inventory/movements', 1, 'src/app/(system)/(shell)/inventory/movements/page.tsx'],
   ['src/components/screens/JobsScreen.tsx', '/admin/jobs', 1, 'src/app/(system)/(shell)/admin/jobs/page.tsx'],
