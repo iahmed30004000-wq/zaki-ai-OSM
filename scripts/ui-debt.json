@@ -279,12 +279,6 @@
       "rawSurfaces": 5,
       "textXs": 42
     },
-    "src/components/screens/AppStoreScreen.tsx": {
-      "rawButtons": 2,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
-      "textXs": 20
-    },
     "src/components/screens/AuditScreen.tsx": {
       "textXs": 5
     },
