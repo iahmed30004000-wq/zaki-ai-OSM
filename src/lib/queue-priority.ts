@@ -47,6 +47,8 @@ export const QUEUE_PRIORITY = {
  * minutes (was 30). The study: 718 pulls were returned untouched in one week, 404 of them at the 17:00 shift change. Where the key is off, `RETURNS_MODE` (5 and 30) is asked as ever.
  */
 export const QUEUE_PRIORITY_LIMITS = { handLimit: CONFIRMATION_RULE.hand, idleBusinessMinutes: CONFIRMATION_RULE.idleMinutes } as const;
+// Request Q3b (19/11): the three figures above and `freshMinutes` are the DEFAULT rule's. The engine reads the rule in force (`readConfirmationRule`) and hands it down:
+// `returnsLimits` answers its hand and idle minutes, the pull its fresh minutes (`freshSince`), the confirmation door its postpone cap.
 
 /**
  * A postponed order may be postponed at most this many times (the spec: «Postponed max 2»). With the key on, the third postpone is refused — and, since request C2
@@ -71,9 +73,9 @@ export function queueModeAt(localMinutes: number, modes: { nightFirst: { from: n
   return 'NORMAL';
 }
 
-/** An order created AFTER this instant is «fresh» (younger than `freshMinutes`). */
-export function freshSince(now: Date): Date {
-  return new Date(now.getTime() - QUEUE_PRIORITY.freshMinutes * 60_000);
+/** An order created AFTER this instant is «fresh» (younger than `freshMinutes` — the rule in force's, handed in by the pull since request Q3b; absent = the default 15). */
+export function freshSince(now: Date, freshMinutes: number = QUEUE_PRIORITY.freshMinutes): Date {
+  return new Date(now.getTime() - freshMinutes * 60_000);
 }
 
 /** A retry whose due is more than `agingHours` behind `now`. */

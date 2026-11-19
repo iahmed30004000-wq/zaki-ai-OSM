@@ -98,7 +98,7 @@ const ROW = {
 };
 
 /** What the next desk answers carry: the switch and the card's proof. */
-let desk: { callProofOn?: boolean; row?: Record<string, unknown> } = {};
+let desk: { callProofOn?: boolean; proofSeconds?: number; row?: Record<string, unknown> } = {};
 let sent: { url: string; method: string; body: unknown; raw?: string }[] = [];
 let mineReads = 0;
 /** The next POST to the contact log is refused with this (for the result named). */
@@ -142,6 +142,7 @@ beforeEach(() => {
         closedToday: [],
         confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
         ...(desk.callProofOn ? { callProofOn: true } : {}),
+        ...(desk.proofSeconds ? { proofSeconds: desk.proofSeconds } : {}),
       };
     }
     if (url === '/api/confirmation/queue') {
@@ -311,6 +312,19 @@ describe('WITH THE SWITCH ON: «لا يرد» and «مغلق أو خارج ال�
     fireEvent.click(screen.getByRole('button', { name: 'تأكيد الطلب' }));
     await waitFor(() => expect(mineReads).toBe(2));
     await waitFor(() => expect(noAnswer().disabled).toBe(false));
+  });
+
+  // Request Q3b (19/11): the seconds are the rule in force's, and they reach the desk from the server's answer — the desk imports no rule.
+  it('an edited rule: the server says 45 seconds, and the press waits 45 + the clocks\' margin — not the default thirty', async () => {
+    desk = { callProofOn: true, proofSeconds: 45, row: { callProof: { state: 'NO_OPENED', unlocksAtMs: null } } };
+    await draw();
+    ring();
+    await waitFor(() => expect(posts('OPENED')).toHaveLength(1));
+    expect(screen.getByText(CALL_PROOF_WORDS.wait(45 + CLIENT_MARGIN_MS / 1000))).toBeTruthy();
+    await tick(WAIT_MS + 1_000);
+    expect(noAnswer().disabled, 'still shut after the default thirty').toBe(true);
+    await tick(15_000);
+    expect(noAnswer().disabled).toBe(false);
   });
 
   it('«CALL_TOO_SOON» on the card’s own press: the red line says it and the card waits again for exactly what the server said', async () => {

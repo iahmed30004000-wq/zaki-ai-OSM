@@ -87,6 +87,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'warehousePlacement', label: 'توزيع المخزون على المخازن', how: 'blocks' },
   // W8a: the ledger of a combination's count per warehouse (size/colour) — a store with one has a stock history.
   { model: 'variantStockMovement', label: 'حركات عدد الخيارات', how: 'blocks' },
+  // Transfers between the store's warehouses (W3a): a document of goods that moved — never deleted, so the store stays.
+  { model: 'stockTransfer', label: 'نقل البضاعة بين المخازن', how: 'blocks' },
   { model: 'productionBatch', label: 'تشغيلات الإنتاج', how: 'blocks' },
   { model: 'shippingBatch', label: 'دفعات الشحن', how: 'blocks' },
   { model: 'courierStatement', label: 'كشوف شركات الشحن', how: 'blocks' },

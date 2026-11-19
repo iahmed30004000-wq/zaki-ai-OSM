@@ -4,6 +4,7 @@ import { CONTACT_RESULTS, NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { OPEN_CONFIRMATION } from './confirmation-queue';
 import { localDayKey, startOfLocalDay } from './local-day';
 import { cadenceCalOf, cadenceLineNumbers, type CadenceCal, type CadenceFact } from './no-answer-cadence';
+import { readConfirmationRule } from './confirmation-rule-settings';
 import { cadenceSince } from './no-answer-cadence-switch';
 
 /**
@@ -570,7 +571,8 @@ export async function answerRateReport(input: {
       else priorLines.set(l.orderId, [l]);
     }
     const country = input.calendar ?? { timezone, weekendDays: [], workHoursStart: '', workHoursEnd: '' };
-    plan = { cal: cadenceCalOf(since!, { ...country, timezone }), priorLines };
+    // Request Q3b: the lines are numbered by the rule in force (read once, cached), as the door and the desk number them.
+    plan = { cal: cadenceCalOf(since!, { ...country, timezone }, await readConfirmationRule(db, companyId)), priorLines };
   }
   return {
     ...tallyAnswerRate(rows, priorCalls, timezone, plan),

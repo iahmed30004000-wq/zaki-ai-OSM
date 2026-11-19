@@ -98,6 +98,9 @@ const ACTION_AR: Record<string, string> = {
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', EXPENSE_VOIDED: 'إلغاء مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
   // The warehouses (`/api/geo/warehouses/**`): created, renamed and stopped read «verb + مخزن»; these two do not end in a verb that says it.
   WAREHOUSE_STARTED: 'تشغيل مخزن', WAREHOUSE_KEEPERS_SET: 'تحديد أمناء مخزن', STOCK_PLACED_IN_WAREHOUSES: 'توزيع المخزون على المخازن',
+  // The stock transfers between a store's warehouses (`/api/inventory/transfers/**`, W3a).
+  STOCK_TRANSFER_SENT: 'إرسال نقل بضاعة', STOCK_TRANSFER_RECEIVED: 'استلام نقل بضاعة', STOCK_TRANSFER_CANCELLED: 'إلغاء نقل بضاعة',
+  STOCK_TRANSFER_DIFFERENCE_APPROVED: 'اعتماد فرق نقل بضاعة',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
   SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',

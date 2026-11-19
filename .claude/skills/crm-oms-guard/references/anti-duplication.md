@@ -115,6 +115,9 @@ units still live only in batches. Extend `src/lib/warehouses.ts`; never add a se
 in a placed store it is split per warehouse in `ProductVariantStock` (one «بلا مكان» row with no warehouse) and written
 ONLY by `src/lib/variant-stock.ts` (`onHand` = Σ of the places; a `VariantStockMovement` line per change). The product's
 units still live only in batches — this splits the existing combination count, it is not a second count of the product.
+(20/11, W3a) A transfer between two warehouses of ONE store: `StockTransfer` + `StockTransferLine` and
+`src/lib/stock-transfers.ts` (send = split into twins on the road, receive by count, a shortfall approved by a third person,
+cancel before receipt; kind read by `stock-transfer-kind.ts`). Between stores / countries is NOT built (refused by the door).
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

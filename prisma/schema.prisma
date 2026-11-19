@@ -56,6 +56,7 @@ model Company {
   trackingPixels        TrackingPixel[]
   countries             Country[]
   warehouses            Warehouse[]
+  stockTransfers        StockTransfer[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -465,6 +466,7 @@ model Product {
   category           Category?                   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   batches            ProductionBatch[]
   inventoryMovements InventoryMovement[]
+  stockTransferLines StockTransferLine[]
   offers             Offer[]
   orders             Order[]
   orderItems         OrderItem[]
@@ -676,9 +678,10 @@ model ProductionBatch {
   quantityMovedOut    Int     @default(0) @map("quantity_moved_out")
   /// The batch this row was split from by a move (its twin's parent).
   splitFromBatchId    String? @map("split_from_batch_id")
-  /// Set while this row is on the road. The transfers table arrives with its
-  /// own request; until then nothing writes this column, and it carries no
-  /// foreign key yet.
+  /// Set while this row is on the road: the stock transfer carrying it
+  /// (`stock_transfers`, W3a). Its foreign key arrived with that table
+  /// (NO ACTION: a transfer is never deleted). A row emptied by an approved
+  /// shortfall keeps the id — the history of where its units went.
   inTransitTransferId String? @map("in_transit_transfer_id")
 
   company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -689,11 +692,13 @@ model ProductionBatch {
   warehouse          Warehouse?            @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
   splitFrom          ProductionBatch?      @relation("BatchSplit", fields: [splitFromBatchId], references: [id], onDelete: SetNull)
   splits             ProductionBatch[]     @relation("BatchSplit")
+  inTransitTransfer  StockTransfer?        @relation(fields: [inTransitTransferId], references: [id], onDelete: NoAction)
 
   @@unique([companyId, batchNumber])
   @@index([companyId, productId])
   @@index([companyId, productId, warehouseId])
   @@index([splitFromBatchId])
+  @@index([inTransitTransferId])
   @@map("production_batches")
 }
 
@@ -2423,6 +2428,8 @@ model Store {
   stockOpeningCount StockOpeningCount?
   /// The one placement of this store's stock in warehouses (`warehouse_placements`).
   warehousePlacement WarehousePlacement?
+  /// Stock transfers between this store's warehouses (`stock_transfers`).
+  stockTransfers    StockTransfer[]
   pages             StorePage[]
   menus             StoreMenu[]
   redirects         StoreRedirect[]
@@ -2583,6 +2590,8 @@ model Warehouse {
   sourcedOrders   Order[]
   variantStock    ProductVariantStock[]
   variantMoves    VariantStockMovement[]
+  transfersOut    StockTransfer[]       @relation("StockTransferFrom")
+  transfersIn     StockTransfer[]       @relation("StockTransferTo")
 
   // One name per country — two countries may each have «المخزن الرئيسي».
   @@unique([companyId, countryId, name])
@@ -2606,6 +2615,82 @@ model UserWarehouseAccess {
   @@unique([userId, warehouseId])
   @@index([warehouseId])
   @@map("user_warehouse_access")
+}
+
+/// A STOCK TRANSFER — one document with two ends, like a wallet transfer
+/// (`WalletTransfer`), plus a road: sent → in transit → received by count
+/// (the warehouse plan, W3a; `src/lib/stock-transfers.ts`).
+///
+/// The kind is READ from the two ends and stored (`stock-transfer-kind.ts`):
+/// INTERNAL (two warehouses holding one store's goods) is the only kind built;
+/// BETWEEN_STORES and BETWEEN_COUNTRIES are refused by the door until their
+/// own request. Nothing is ever deleted: a cancel and an approved shortfall are
+/// written on the row, and the batches keep the id of the road they took
+/// (`ProductionBatch.inTransitTransferId`). No money: a transfer inside one
+/// store moves no cost, and no wallet, expense or profit is touched.
+///
+/// status: SENT (on the road) · RECEIVED · RECEIVED_WITH_DIFFERENCE (counted
+/// short; the missing units stay on the road until a third person approves
+/// them out as LOSS or DAMAGE — `differenceApprovedAt`) · CANCELLED.
+/// Held by CHECKs in the migration, which this file cannot express:
+///   stock_transfers_kind_check, stock_transfers_status_check,
+///   stock_transfers_two_warehouses_check (from ≠ to),
+///   stock_transfers_difference_type_check (LOSS | DAMAGE),
+///   stock_transfer_lines_quantity_check (sent > 0; 0 ≤ received ≤ sent).
+model StockTransfer {
+  /// May be made by the client: the replay guard (same id + same deal = the same transfer).
+  id                     String    @id @default(uuid())
+  companyId              String
+  /// Whose goods (the source end's store; for INTERNAL, both ends').
+  storeId                String
+  kind                   String
+  fromWarehouseId        String
+  toWarehouseId          String
+  status                 String    @default("SENT")
+  note                   String?
+  sentById               String
+  sentAt                 DateTime  @default(now())
+  receivedById           String?
+  receivedAt             DateTime?
+  cancelledById          String?
+  cancelledAt            DateTime?
+  cancelReason           String?
+  differenceType         String?
+  differenceReason       String?
+  differenceApprovedById String?
+  differenceApprovedAt   DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store         Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  fromWarehouse Warehouse           @relation("StockTransferFrom", fields: [fromWarehouseId], references: [id], onDelete: NoAction)
+  toWarehouse   Warehouse           @relation("StockTransferTo", fields: [toWarehouseId], references: [id], onDelete: NoAction)
+  lines         StockTransferLine[]
+  batches       ProductionBatch[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([fromWarehouseId, status])
+  @@index([toWarehouseId, status])
+  @@map("stock_transfers")
+}
+
+/// One product of a transfer. One line per product (unique), so «the same
+/// product on two lines» cannot be stored even if a door forgot to refuse it.
+/// `quantityReceived` is what the receiver COUNTED (null until received).
+model StockTransferLine {
+  id               String @id @default(uuid())
+  transferId       String
+  productId        String
+  quantitySent     Int
+  quantityReceived Int?
+
+  transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([transferId, productId])
+  @@index([productId])
+  @@map("stock_transfer_lines")
 }
 
 // ─── ORDER LINES (Stage 3) ───
