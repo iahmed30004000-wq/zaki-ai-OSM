@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { apiJson } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
@@ -26,6 +28,12 @@ interface Answer {
 
 const valid = (x: unknown): x is Answer => !!x && typeof x === 'object' && Array.isArray((x as Answer).system) && typeof (x as Answer).day === 'string';
 type Draft = Record<string, Record<EodMetric, string>>;
+
+/** The two days she may report: one choice of two, so the kit's `Segmented` (a radio group), not two hand-made toggles. */
+const DAYS = [
+  { value: 'today', label: 'اليوم' },
+  { value: 'yesterday', label: 'أمس' },
+];
 
 export function EodReportForm() {
   const toast = useToast();
@@ -69,22 +77,14 @@ export function EodReportForm() {
     }
   };
 
-  const box = 'h-8 w-20 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs tabular-nums';
+  const box = 'h-8 w-20 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-sm tabular-nums';
 
   return (
     <Card>
       <CardHeader
         title="تقرير نهاية اليوم"
         subtitle="أرقام النظام جنب أرقامك لكل موظفة. التقرير مرة وحدة باليوم وما بيتعدّل بعد الإرسال، وبيتحفظ مع أرقام النظام وقت الإرسال. لليوم أو لأمس بس."
-        action={
-          <div className="flex gap-1" role="group" aria-label="اليوم">
-            {(['today', 'yesterday'] as const).map((w) => (
-              <button key={w} type="button" aria-pressed={which === w} onClick={() => setWhich(w)} className={`rounded-md border px-2.5 py-1 text-xs ${which === w ? 'border-[var(--sys-primary)] font-bold text-[var(--sys-primary)]' : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'}`}>
-                {w === 'today' ? 'اليوم' : 'أمس'}
-              </button>
-            ))}
-          </div>
-        }
+        action={<Segmented size="sm" aria-label="اليوم" options={DAYS} value={which} onChange={(v) => setWhich(v === 'yesterday' ? 'yesterday' : 'today')} />}
       />
       <CardContent className="space-y-4">
         {data === null ? (
@@ -92,11 +92,11 @@ export function EodReportForm() {
             <SkeletonRows rows={4} />
           </div>
         ) : data.system.length === 0 ? (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">ما في نشاط للموظفات بهاليوم.</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">ما في نشاط للموظفات بهاليوم.</p>
         ) : (
           <>
             {data.submitted && (
-              <p className="rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-surface)] p-2.5 text-xs text-[var(--sys-foreground)]">
+              <p className="rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-surface)] p-2.5 text-note text-[var(--sys-foreground)]">
                 أرسلتي تقرير {data.day} وما بيتعدّل. اللي أرسلتيه تحت.
               </p>
             )}
@@ -107,7 +107,7 @@ export function EodReportForm() {
                   <h4 className="text-sm font-bold text-[var(--sys-foreground)]">{s.name}</h4>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                     {EOD_METRICS.map((m) => (
-                      <label key={m} className="space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                      <label key={m} className="space-y-1 text-note text-[var(--sys-muted-foreground)]">
                         <span className="block">{EOD_METRIC_AR[m]}</span>
                         <span className="block tabular-nums">النظام: {s[m]}</span>
                         {data.submitted ? (
@@ -119,32 +119,33 @@ export function EodReportForm() {
                     ))}
                   </div>
                   {Object.keys(s.rejectedByReason).length > 0 && (
-                    <p className="text-xs text-[var(--sys-muted-foreground)]">
+                    <p className="text-note text-[var(--sys-muted-foreground)]">
                       الرفض حسب السبب (النظام): {Object.entries(s.rejectedByReason).map(([reason, n]) => `${data.reasons[reason] ?? reason} ${n}`).join(' · ')}
                     </p>
                   )}
-                  {s.winback > 0 && <p className="text-xs text-[var(--sys-muted-foreground)]">الاسترجاع (النظام): {s.winback} عرض، {s.winbackConverted} صار طلب مؤكَّد.</p>}
+                  {s.winback > 0 && <p className="text-note text-[var(--sys-muted-foreground)]">الاسترجاع (النظام): {s.winback} عرض، {s.winbackConverted} صار طلب مؤكَّد.</p>}
                 </section>
               );
             })}
             {data.submitted ? (
-              <div className="space-y-1 text-xs text-[var(--sys-foreground)]">
+              <div className="space-y-1 text-sm text-[var(--sys-foreground)]">
                 <p>أكبر مشكلة: {data.submitted.payload.biggestProblem || '—'}</p>
                 <p>نصيحة بكرا: {data.submitted.payload.tip || '—'}</p>
               </div>
             ) : (
               <>
-                <label className="block space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                <label className="block space-y-1 text-note text-[var(--sys-muted-foreground)]">
                   أكبر مشكلة اليوم
-                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={problem} disabled={busy || !data.mayReport} onChange={(e) => setProblem(e.target.value)} />
+                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-sm" rows={2} maxLength={MAX_TEXT} value={problem} disabled={busy || !data.mayReport} onChange={(e) => setProblem(e.target.value)} />
                 </label>
-                <label className="block space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                <label className="block space-y-1 text-note text-[var(--sys-muted-foreground)]">
                   نصيحة لبكرا
-                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-xs" rows={2} maxLength={MAX_TEXT} value={tip} disabled={busy || !data.mayReport} onChange={(e) => setTip(e.target.value)} />
+                  <textarea className="w-full rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] p-2 text-sm" rows={2} maxLength={MAX_TEXT} value={tip} disabled={busy || !data.mayReport} onChange={(e) => setTip(e.target.value)} />
                 </label>
-                <button type="button" className="rounded-md bg-[var(--sys-primary)] px-3 py-1.5 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50" disabled={busy || !data.mayReport} onClick={() => void send()}>
+                {/* «Sends once» rests on the screen's own `busy` (it also freezes the boxes), so the handler's promise is not handed to the kit button. */}
+                <Button type="button" size="sm" disabled={busy || !data.mayReport} onClick={() => { void send(); }}>
                   إرسال التقرير (مرة وحدة)
-                </button>
+                </Button>
               </>
             )}
           </>

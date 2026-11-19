@@ -5,7 +5,9 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiJson } from '@/lib/api-client';
 import { RiEyeLine, RiInformationLine, RiLoader4Line, RiPercentLine, RiShoppingBagLine, RiTrophyLine } from '@remixicon/react';
+import { Card } from '@/components/ui/Card';
 import { Rows } from '@/components/ui/Rows';
+import { StatTile } from '@/components/ui/StatTile';
 import { MIN_DELIVERED, MIN_VISITORS, type Verdict } from '@/lib/page-verdict';
 
 /**
@@ -58,7 +60,11 @@ export function LandingAnalyticsTab({ dateQuery, from }: { dateQuery: string; fr
   }, [dateQuery]);
 
   if (failed) {
-    return <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-xs text-[var(--sys-muted-foreground)]">تعذّر تحميل التحليلات.</p>;
+    return (
+      <Card padding="lg" className="text-center text-note text-[var(--sys-muted-foreground)]">
+        تعذّر تحميل التحليلات.
+      </Card>
+    );
   }
   if (!data) {
     return (
@@ -82,7 +88,7 @@ export function LandingAnalyticsTab({ dateQuery, from }: { dateQuery: string; fr
       </div>
 
       {partial && (
-        <p className="flex items-start gap-1.5 rounded-lg bg-[var(--sys-surface-strong)] px-3 py-2 text-xs leading-relaxed text-[var(--sys-foreground)]">
+        <p className="flex items-start gap-1.5 rounded-lg bg-[var(--sys-surface-strong)] px-3 py-2 text-note leading-relaxed text-[var(--sys-foreground)]">
           <RiInformationLine className="mt-0.5 h-4 w-4 shrink-0" />
           {data.countingSince
             ? `المشاهدات تُعدّ يومياً منذ ${data.countingSince}. عمود الطلبات يشمل المدة كلها، أما نسبة التحويل فتُحسب من طلبات الأيام التي عُدّت فيها المشاهدات فقط.`
@@ -107,7 +113,7 @@ export function LandingAnalyticsTab({ dateQuery, from }: { dateQuery: string; fr
         and the module behind it has no way to turn a page off.
       */}
       {data.verdicts !== undefined && data.verdicts.length > 0 && (
-        <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+        <Card>
           <h3 className="border-b border-[var(--sys-surface-strong)] px-4 py-2.5 text-sm font-bold text-[var(--sys-heading)]">
             <RiTrophyLine className="me-1 inline h-4 w-4" />
             المقارنة بين نسخ الصفحة
@@ -117,18 +123,18 @@ export function LandingAnalyticsTab({ dateQuery, from }: { dateQuery: string; fr
               <VerdictBlock key={v.productId} {...v} />
             ))}
           </div>
-          <p className="border-t border-[var(--sys-surface-strong)] px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-muted)]">
+          <p className="border-t border-[var(--sys-surface-strong)] px-4 py-2.5 text-note leading-relaxed text-[var(--sys-muted)]">
             المقياس: طلبات مُسلَّمة ومحصَّلة لكل 100 زائر — لا عدد النماذج المرسلة. صفحةٌ تجمع نماذج كثيرة
             وترتجع كثيراً خاسرة، وأجرةُ المندوب تُدفع في الاتجاهين. هذا اقتراحٌ مع حجم العيّنة، ولا يُطفئ
             النظامُ أيَّ صفحة من تلقاء نفسه.
           </p>
-        </section>
+        </Card>
       )}
       <div className="grid gap-4 lg:grid-cols-2">
         <Table title="حسب الجهاز" rows={data.byDevice} empty="لا بيانات." />
         <Table title="حسب الحملة" rows={data.byCampaign} empty="لا حملات لها زيارات أو طلبات في هذه المدة." />
       </div>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted)]">
         المشاهدة زيارة حقيقية لصفحة منشورة — المعاينة من لوحة التحكم وروابط المعاينة في المحادثات لا تُعدّ. الطلب
         كل طلب جاء من صفحة هبوط خلال المدة، والحملة من رمز ?c= في رابطها.
       </p>
@@ -147,17 +153,17 @@ function CountCheckBlock({ check }: { check: CountCheckData }) {
   const diff = (server: number, browser: number) =>
     server > 0 ? `${browser >= server ? '+' : ''}${Math.round(((browser - server) / server) * 100)}٪` : '—';
   return (
-    <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+    <Card>
       <h3 className="border-b border-[var(--sys-surface-strong)] px-4 py-2.5 text-sm font-bold text-[var(--sys-heading)]">
         <RiEyeLine className="me-1 inline h-4 w-4" />
         تجربة العدّ: السيرفر مقابل المتصفح
       </h3>
-      <p className="px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-foreground)]">
+      <p className="px-4 py-2.5 text-note leading-relaxed text-[var(--sys-foreground)]">
         من {check.since}: السيرفر عدّ {fmt(check.server)} زيارة، والمتصفح {fmt(check.browser)} — الفرق {diff(check.server, check.browser)}.
       </p>
       <div className="divide-y divide-[var(--sys-surface-strong)]">
         {check.byPage.map((r) => (
-          <div key={r.key} className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs">
+          <div key={r.key} className="flex items-center justify-between gap-2 px-4 py-2.5 text-note">
             <span className="truncate text-[var(--sys-heading)]">{r.label}</span>
             <span className="shrink-0 tabular-nums text-[var(--sys-muted-foreground)]" dir="ltr">
               {fmt(r.server)} · {fmt(r.browser)} · {diff(r.server, r.browser)}
@@ -165,12 +171,12 @@ function CountCheckBlock({ check }: { check: CountCheckData }) {
           </div>
         ))}
       </div>
-      <p className="border-t border-[var(--sys-surface-strong)] px-4 py-2.5 text-xs leading-relaxed text-[var(--sys-muted)]">
+      <p className="border-t border-[var(--sys-surface-strong)] px-4 py-2.5 text-note leading-relaxed text-[var(--sys-muted)]">
         السيرفر يعدّ الزيارة حين يبني الصفحة، والمتصفح حين تُفتح عند الزائر. المتصفح لا يعدّ التحميل المسبق من ميتا
         ولا الروبوتات، فمن الطبيعي أن يكون أقلّ قليلاً. الطلبات والمال لا يتأثران بأيٍّ منهما. بعد أسبوع تقرّر إن
         كنّا ننتقل إلى الكاش.
       </p>
-    </section>
+    </Card>
   );
 }
 
@@ -192,12 +198,12 @@ function VerdictBlock({
 }) {
   return (
     <div className="px-4 py-3">
-      <p className="text-xs font-bold text-[var(--sys-heading)]">
+      <p className="text-note font-bold text-[var(--sys-heading)]">
         {productName} <span className="font-normal text-[var(--sys-muted)]">· {pages} صفحات</span>
       </p>
 
       {!verdict.ok ? (
-        <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           لا حكم بعد. المطلوب لكل نسخة {fmt(MIN_VISITORS)} زائر و{fmt(MIN_DELIVERED)} طلبات مُسلَّمة، وما
           زال ينقص:{' '}
           {verdict.waiting
@@ -214,14 +220,14 @@ function VerdictBlock({
         </p>
       ) : (
         <>
-          <p className="mt-1 text-xs font-semibold text-[var(--sys-foreground)]">
+          <p className="mt-1 text-note font-semibold text-[var(--sys-foreground)]">
             {verdict.tooClose
               ? 'الفرق بينهما أصغر من أن يُسمّى فائزاً — اتركهما تعملان.'
               : `المقترَح: «${verdict.ranked.find((r) => r.pageId === verdict.winner)?.label ?? ''}»`}
           </p>
           <div className="mt-1.5 space-y-1">
             {verdict.ranked.map((r) => (
-              <div key={r.pageId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+              <div key={r.pageId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-note">
                 <span
                   className={
                     r.pageId === verdict.winner
@@ -256,21 +262,27 @@ function VerdictBlock({
   );
 }
 
+/** One of the three totals: the kit's `StatTile` (a `Card plain`), its icon beside its name. */
 function Tile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-      <p className="flex items-center gap-1 text-xs font-semibold text-[var(--sys-muted-foreground)]">{icon}{label}</p>
-      <p className="mt-1 text-xl font-black tabular-nums text-[var(--sys-heading)]" dir="ltr">{value}</p>
-    </div>
+    <StatTile
+      label={
+        <span className="flex items-center gap-1">
+          {icon}
+          {label}
+        </span>
+      }
+      value={value}
+    />
   );
 }
 
 function Table({ title, rows, empty, linkPages }: { title: string; rows: Row[]; empty: string; linkPages?: boolean }) {
   return (
-    <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+    <Card>
       <h3 className="border-b border-[var(--sys-surface-strong)] px-4 py-2.5 text-sm font-bold text-[var(--sys-heading)]">{title}</h3>
       {rows.length === 0 || rows.every((r) => !r.views && !r.orders) ? (
-        <p className="p-4 text-center text-xs text-[var(--sys-muted)]">{empty}</p>
+        <p className="p-4 text-center text-note text-[var(--sys-muted)]">{empty}</p>
       ) : (
         <div className="overflow-x-auto">
                     <Rows
@@ -285,7 +297,7 @@ function Table({ title, rows, empty, linkPages }: { title: string; rows: Row[]; 
                       ) : r.label}
                     </span>
                     {r.hint && !r.hint.startsWith('/lp/') && (
-                      <span className="ms-1.5 text-xs text-[var(--sys-muted)]" dir={r.hint.startsWith('?') ? 'ltr' : undefined}>{r.hint}</span>
+                      <span className="ms-1.5 text-note text-[var(--sys-muted)]" dir={r.hint.startsWith('?') ? 'ltr' : undefined}>{r.hint}</span>
                     )}</>
                 ) },
               { key: 'c1', label: "مشاهدات", primary: true, align: 'end',
@@ -298,7 +310,7 @@ function Table({ title, rows, empty, linkPages }: { title: string; rows: Row[]; 
           />
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 

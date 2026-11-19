@@ -87,7 +87,9 @@ describe('the form', () => {
     render(<EodReportForm />);
     await screen.findByText('سارة');
     for (const input of screen.getAllByRole('spinbutton')) expect((input as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByText('إرسال التقرير (مرة وحدة)') as HTMLButtonElement).disabled).toBe(true);
+    // UPDATED 2026-11-18 (request R14a2): it read `getByText(...)` as the button itself; the send is now the kit `Button`, whose words sit in an
+    // inner span, so the button is found by its role and name. Same claim: read-only means the send cannot be pressed.
+    expect((screen.getByRole('button', { name: 'إرسال التقرير (مرة وحدة)' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('draws nothing on a refusal or an odd answer', async () => {

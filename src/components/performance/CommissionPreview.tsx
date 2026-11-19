@@ -67,8 +67,8 @@ export function CommissionPreview() {
               hideOnPhone: true,
               render: (r: PreviewRow) => (
                 <details>
-                  <summary className="cursor-pointer text-xs text-[var(--sys-primary)]">كيف انحسب</summary>
-                  <ul className="mt-1 space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                  <summary className="cursor-pointer text-note text-[var(--sys-primary)]">كيف انحسب</summary>
+                  <ul className="mt-1 space-y-1 text-note text-[var(--sys-muted-foreground)]">
                     {r.estimate.steps.map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}
