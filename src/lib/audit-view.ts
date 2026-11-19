@@ -27,7 +27,7 @@ export const ENTITY_AR: Record<string, string> = {
   Region: 'منطقة', Country: 'دولة', AdAccount: 'حساب إعلانات', Campaign: 'حملة', TrackingPixel: 'بكسل تتبّع',
   CustomConversion: 'تحويل مخصّص', TelegramSource: 'مصدر تلجرام', TelegramWebhook: 'ويب هوك تلجرام', WhatsAppConnection: 'ربط واتساب',
   WhatsAppConversation: 'محادثة واتساب', WhatsAppMessage: 'رسالة واتساب', SystemToken: 'مفتاح نظام', SystemSetting: 'إعداد نظام',
-  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك',
+  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك', Warehouse: 'مخزن',
 };
 
 /** The last word of an action code, as a verb. Applied to the row's own record kind. */
@@ -96,6 +96,8 @@ const ACTION_AR: Record<string, string> = {
   STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',
   STATEMENT_UNMENTIONED_ORDER_ANSWERED: 'قرار بشأن طلب لم يذكره كشف', STATEMENT_LINE_LINKED_BY_HAND: 'ربط سطر كشف بطلب يدوياً',
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', EXPENSE_VOIDED: 'إلغاء مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
+  // The warehouses (`/api/geo/warehouses/**`): created, renamed and stopped read «verb + مخزن»; these two do not end in a verb that says it.
+  WAREHOUSE_STARTED: 'تشغيل مخزن', WAREHOUSE_KEEPERS_SET: 'تحديد أمناء مخزن',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
   SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',

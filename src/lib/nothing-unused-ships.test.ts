@@ -492,6 +492,10 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
   // 18/11 (R9): '/api/analytics/daily' left — «اليوم»'s one chart (`dashboard/DailyChart.tsx`) calls it.
   // 18/11 (R14a1): '/api/orders/confirmation/team/[userId]' left — the drawer under a row of the team table (`performance/TeamMemberDrawer.tsx`) calls it.
+  // Built ahead of its screen, 19/11 (warehouse plan, request W0a): the warehouses' three doors. W0b («المخازن» on the geo screen) calls them and removes these lines.
+  '/api/geo/warehouses': 'أبواب المخازن انبنت قبل شاشتها (W0a) — بطاقة «المخازن» بصفحة البلدان والمتاجر (W0b) هي اللي بتستدعيها',
+  '/api/geo/warehouses/[id]': 'تسمية وإيقاف وتشغيل مخزن (W0a) — بطاقة «المخازن» (W0b) بتستدعيه',
+  '/api/geo/warehouses/[id]/keepers': 'أمناء المخزن (W0a) — منتقي الأمناء ببطاقة «المخازن» (W0b) بيستدعيه',
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
@@ -677,6 +681,10 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/landing-tracking.ts:META_PIXEL_EVENTS': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
   'src/lib/landing-tracking.ts:pixelActive': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
+  // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
+  'src/lib/warehouses.ts:storeIsPlaced': 'خطة المخازن W0a: «هالمتجر موزّع على مخازن؟» — كل باب مخزون بيسألها من W1a/W2a؛ لهلق جوابها «لا» لكل متجر',
+  'src/lib/warehouses.ts:reachesWarehouse': 'خطة المخازن W0a: «هالشخص بيوصل لهالمخزن؟» لمخزن واحد — أول قارئ W2a (الاستلام باسم مخزن)',
+  'src/lib/warehouses.ts:warehousesOfStore': 'خطة المخازن W0a: مخازن بلد المتجر الشغّالة — أول قارئ W1a (التوزيع الافتتاحي)',
 };
 
 /**

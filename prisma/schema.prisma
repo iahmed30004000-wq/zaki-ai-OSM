@@ -55,6 +55,7 @@ model Company {
   telegramUpsells       TelegramUpsellProduct[]
   trackingPixels        TrackingPixel[]
   countries             Country[]
+  warehouses            Warehouse[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -370,6 +371,7 @@ model User {
   whatsappAssignedConversations WhatsAppConversation[]  @relation("WhatsAppAssignee")
   countryAccess                 UserCountryAccess[]
   storeAccess                   UserStoreAccess[]
+  warehouseAccess               UserWarehouseAccess[]
   penalties                     Penalty[]
   payslips                      Payslip[]
   notifications                 Notification[]
@@ -659,14 +661,39 @@ model ProductionBatch {
   /// nowhere else, so there is no second copy of them to drift.
   openingCountId String?
 
+  // ─── The warehouse dimension (added inert; nothing reads or writes these yet) ───
+  // `storeId` says WHOSE goods these are; `warehouseId` says WHERE they are.
+  // NULL = not placed yet (every row today) — or, with `inTransitTransferId`
+  // set, on the road between two warehouses.
+  //
+  // The row's arithmetic once moves exist:
+  //   quantityRemaining = quantityProduced + quantityMovedIn − quantitySold − quantityMovedOut
+  // A move never touches `quantityProduced` (the production cost fix divides
+  // the batch's total by it), so «دخل», «خرج», the stock value and the FIFO
+  // order do not move when goods change place inside one store.
+  warehouseId         String? @map("warehouse_id")
+  quantityMovedIn     Int     @default(0) @map("quantity_moved_in")
+  quantityMovedOut    Int     @default(0) @map("quantity_moved_out")
+  /// The batch this row was split from by a move (its twin's parent).
+  splitFromBatchId    String? @map("split_from_batch_id")
+  /// Set while this row is on the road. The transfers table arrives with its
+  /// own request; until then nothing writes this column, and it carries no
+  /// foreign key yet.
+  inTransitTransferId String? @map("in_transit_transfer_id")
+
   company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   product            Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
   inventoryMovements InventoryMovement[]
   costLines          ProductionBatchCost[]
   openingCount       StockOpeningCount?    @relation(fields: [openingCountId], references: [id], onDelete: SetNull)
+  warehouse          Warehouse?            @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  splitFrom          ProductionBatch?      @relation("BatchSplit", fields: [splitFromBatchId], references: [id], onDelete: SetNull)
+  splits             ProductionBatch[]     @relation("BatchSplit")
 
   @@unique([companyId, batchNumber])
   @@index([companyId, productId])
+  @@index([companyId, productId, warehouseId])
+  @@index([splitFromBatchId])
   @@map("production_batches")
 }
 
@@ -689,6 +716,10 @@ model ProductionBatch {
 /// (`ProductionBatch.storeId`), and a store here is a separate business with
 /// its own shelf. So «stock per warehouse» is stock per store, which for the
 /// launch scope is one count for صحة بلس.
+///
+/// 19/11: a `Warehouse` model exists now (a place of one country), but it is
+/// inert — until a store's opening placement, its stock is still the store's,
+/// and this count is still per store.
 model StockOpeningCount {
   id            String   @id @default(uuid())
   companyId     String
@@ -741,15 +772,21 @@ model InventoryMovement {
   reason       String?
   createdById  String?
   createdAt    DateTime @default(now())
+  /// The warehouse whose shelf this line moved. NULL = a store-level line
+  /// (every line written before warehouses, and every line of an unplaced store).
+  warehouseId  String?  @map("warehouse_id")
 
   company Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   product Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
   batch   ProductionBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  warehouse Warehouse?       @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
 
   @@index([companyId, productId])
   @@index([batchId])
   // The ledger is read per store, newest first.
   @@index([companyId, storeId, createdAt(sort: Desc)])
+  // …and per warehouse, newest first.
+  @@index([companyId, warehouseId, createdAt(sort: Desc)])
   @@map("inventory_movements")
 }
 
@@ -1050,6 +1087,9 @@ model Order {
   // Geo context (Stage 1). Nullable until every order-creation path writes it.
   countryId                 String?
   storeId                   String?
+  /// The warehouse this order's units leave from — stamped when it joins a
+  /// shipment of a placed store. NULL = today (inert until that request).
+  sourceWarehouseId         String?
   // Stage 3: courier-facing reference, generated for EVERY order (POS, landing
   // page, Telegram). Read-only once set; sent in the courier reference field.
   merchantRef               String?
@@ -1126,6 +1166,7 @@ model Order {
   company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
   country               Country?               @relation(fields: [countryId], references: [id], onDelete: Restrict)
   store                 Store?                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  sourceWarehouse       Warehouse?             @relation(fields: [sourceWarehouseId], references: [id], onDelete: NoAction)
   customer              Customer               @relation(fields: [customerId], references: [id], onDelete: Cascade)
   channel               OrderChannel?          @relation(fields: [channelId], references: [id], onDelete: SetNull)
   campaign              Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
@@ -1204,6 +1245,7 @@ model Order {
   @@index([lockedById, lockExpiresAt])
   @@index([storeId, createdAt])
   @@index([countryId])
+  @@index([sourceWarehouseId])
   @@index([companyId, labelPrintedAt])
   @@index([companyId, courierSendStartedAt])
   @@index([regionId])
@@ -1717,10 +1759,15 @@ model ShippingBatch {
   // Geo context (Stage 2): a batch only holds orders of one store.
   storeId  String?
   store    Store?            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  /// The ONE warehouse this shipment is packed in. NULL = an unplaced store's
+  /// shipment (every one today). Inert until the shipment request writes it.
+  warehouseId String?
+  warehouse   Warehouse?        @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
 
   @@unique([companyId, batchNumber])
   @@index([companyId, status])
   @@index([storeId, status])
+  @@index([warehouseId])
   @@map("shipping_batches")
 }
 
@@ -2146,6 +2193,7 @@ model Country {
   wallets        Wallet[]
   orders         Order[]
   access         UserCountryAccess[]
+  warehouses     Warehouse[]
 
   @@unique([companyId, code])
   @@index([companyId, isActive])
@@ -2455,6 +2503,59 @@ model UserStoreAccess {
   @@unique([userId, storeId])
   @@index([storeId])
   @@map("user_store_access")
+}
+
+/// A PLACE WHERE GOODS ARE KEPT — a warehouse of one country.
+///
+/// It may hold the goods of any store of its country: a batch keeps
+/// `storeId` (whose goods) and gains `warehouseId` (where). There is no
+/// second quantity table — units live only in batches, and a warehouse's
+/// figure is always a sum over them.
+///
+/// Never deleted: a warehouse is stopped (`isActive = false`) and stays in
+/// the history of every batch, movement and shipment that names it. The
+/// stop door refuses while it still holds units (see `src/lib/warehouses.ts`).
+///
+/// Inert until a store is placed: no stock door reads it in this request.
+model Warehouse {
+  id        String   @id @default(uuid())
+  companyId String
+  countryId String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company         Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  country         Country               @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  keepers         UserWarehouseAccess[]
+  batches         ProductionBatch[]
+  movements       InventoryMovement[]
+  shippingBatches ShippingBatch[]
+  sourcedOrders   Order[]
+
+  // One name per country — two countries may each have «المخزن الرئيسي».
+  @@unique([companyId, countryId, name])
+  @@index([companyId, isActive])
+  @@index([countryId])
+  @@map("warehouses")
+}
+
+/// The warehouses a person keeps. Rows here CONFINE her: a person with any
+/// row reaches only the warehouses named, and only while she still reaches
+/// their country. No rows = every warehouse of the countries she reaches.
+model UserWarehouseAccess {
+  id          String   @id @default(uuid())
+  userId      String
+  warehouseId String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, warehouseId])
+  @@index([warehouseId])
+  @@map("user_warehouse_access")
 }
 
 // ─── ORDER LINES (Stage 3) ───

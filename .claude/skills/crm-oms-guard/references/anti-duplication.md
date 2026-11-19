@@ -102,8 +102,12 @@ notes (`OrderNote`).
 
 ## Verified ABSENT (re-checked 2026-09-25) — do not assume they exist
 
-QR on labels (Code 128 barcodes only) · a stock LOCATION dimension on
-inventory movements (custody is per batch, not per place).
+QR on labels (Code 128 barcodes only).
+
+NO LONGER ABSENT (19/11, warehouse plan W0a): a stock LOCATION dimension. `Warehouse` (a place of one
+country) and `UserWarehouseAccess` (keepers) exist; `ProductionBatch.warehouseId`, `InventoryMovement.warehouseId`,
+`ShippingBatch.warehouseId` and `Order.sourceWarehouseId` exist but are INERT until a store is placed —
+units still live only in batches. Extend `src/lib/warehouses.ts`; never add a second quantity table.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

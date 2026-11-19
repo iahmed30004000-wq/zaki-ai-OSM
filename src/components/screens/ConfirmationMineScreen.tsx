@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { apiJson } from '@/lib/api-client';
-import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
+import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue-messages';
 import { useRegions } from '@/hooks/useRegions';
 import { matchRegion } from '@/lib/regions';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';

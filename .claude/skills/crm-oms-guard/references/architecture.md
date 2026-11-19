@@ -365,7 +365,12 @@ and a code is never marked "used": the same code reads «أصلي» every time.
 mandatory explanation when non-zero. The user who records movements cannot approve the closing.
 
 **/settings/geo** — Countries with currency, minor unit, work hours, weekend days, order prefix,
-allow_negative_stock. Stores under countries.
+allow_negative_stock. Stores under countries. Warehouses under countries (19/11, warehouse plan W0a): a warehouse is a
+place of ONE country and may hold the goods of any store of it; it has a name, keepers and a stop switch, and
+is never deleted. Doors under api/geo/warehouses: the list (geo.view, reach-filtered) and create (geo.manage);
+one warehouse (rename / stop / start, geo.manage; stop refused while it holds units); its keepers (geo.manage).
+A keeper row confines the person to the warehouses she keeps (`src/lib/warehouses.ts`). Until a store is
+placed (a later request) no stock door reads a warehouse: every store works exactly as before.
 
 **/settings/couriers** — A courier and its fees are ONE screen. Fees: a separate table per courier per country
 per governorate, with fee and late-threshold days. A manual override requires a reason and is written to the

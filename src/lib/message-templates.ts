@@ -1,6 +1,4 @@
-import { updateCompanySettings } from './company-settings';
 import { DEFAULT_LANGUAGE, STORE_LANGUAGES } from './store-languages';
-import { db } from './db';
 import { toLatinDigits } from './latin-digits';
 
 /**
@@ -309,29 +307,6 @@ export function whatsappAppLink(phone: string, countryCode?: string | null, text
   const to = waNumber(phone, countryCode);
   if (!to) return '';
   return text ? `whatsapp://send?phone=${to}&text=${encodeURIComponent(text)}` : `whatsapp://send?phone=${to}`;
-}
-
-export async function templatesFor(companyId: string): Promise<MessageTemplate[]> {
-  const company = await db.company.findUnique({ where: { id: companyId }, select: { settings: true } });
-  try {
-    const stored = (company?.settings ? JSON.parse(company.settings) : {}).messageTemplates;
-    // Normalised on the way out, so a template written before situations
-    // existed reads as a template and not as a missing field.
-    if (Array.isArray(stored) && stored.length > 0) return stored.map(normalizeTemplate);
-  } catch {
-    /* a broken settings blob must not take the tracking screen down */
-  }
-  return DEFAULT_TEMPLATES;
-}
-
-export async function saveTemplates(
-  companyId: string,
-  templates: MessageTemplate[]
-): Promise<MessageTemplate[]> {
-  // Only this key, under a row lock — never the whole document from a read
-  // that another save may already have overtaken.
-  await updateCompanySettings<MessageTemplate[]>(companyId, 'messageTemplates', () => templates);
-  return templates;
 }
 
 /**
