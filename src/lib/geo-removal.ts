@@ -106,6 +106,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'confirmationEodReport', label: 'تقارير نهاية اليوم', how: 'blocks' },
   // The leads the pages system sent (step E1): a record of people who left their details — never deleted with a store.
   { model: 'lead', label: 'ليدز الصفحات', how: 'blocks' },
+  // «سجل الرفض» of the confirmation desk (request Q2a, 19/11): no foreign key on purpose (a refusal must never fail a door), so it stops a removal like every keyless record; kept 90 days.
+  { model: 'deskRefusal', label: 'سجل رفض مكتب التأكيد', how: 'blocks' },
   { model: 'trackingPixel', label: 'بكسلات التتبّع', how: 'blocks' },
   { model: 'telegramSource', label: 'مصادر تلجرام', how: 'blocks' },
   // «أسماء المنتجات» of the Telegram door (10/11): switched off, never deleted — a store that has them is not empty.
