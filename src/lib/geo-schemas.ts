@@ -146,6 +146,40 @@ export const geoAccessSchema = z.object({
   storeIds: z.array(z.string().uuid()).max(500).default([]),
 });
 
+/*
+ * Warehouses — a place of one country (`src/lib/warehouses.ts`). The country
+ * is fixed at creation, like a store's: goods placed in a warehouse belong to
+ * that country's stores, so a warehouse never moves country. Never deleted:
+ * `isActive: false` stops it, and the door refuses while it still holds units.
+ */
+const warehouseName = z
+  .string({ error: 'اكتب اسم المخزن' })
+  .trim()
+  .min(2, 'اسم المخزن حرفين على الأقل')
+  .max(60, 'اسم المخزن أطول من 60 حرف');
+
+/** A key this door does not take is refused in words — never «Unrecognized key». */
+const onlyTheseFields = { error: (issue: { code?: string }) => (issue.code === 'unrecognized_keys' ? 'في حقل ما بينقبل هون. حدّث الصفحة.' : undefined) };
+
+export const warehouseCreateSchema = z.strictObject(
+  {
+    countryId: z.string({ error: 'اختار البلد' }).uuid('اختار البلد'),
+    name: warehouseName,
+  },
+  onlyTheseFields
+);
+
+export const warehouseUpdateSchema = z
+  .strictObject({ name: warehouseName, isActive: z.boolean() }, onlyTheseFields)
+  .partial()
+  .refine((v) => v.name !== undefined || v.isActive !== undefined, 'ما في شي يتغيّر');
+
+/** PUT …/keepers — the whole list, replacing the old one. Empty = nobody is confined to it. */
+export const warehouseKeepersSchema = z.strictObject(
+  { userIds: z.array(z.string().min(1), { error: 'اختار الأمناء' }).max(100, 'أكتر من 100 أمين') },
+  onlyTheseFields
+);
+
 export function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message || 'بيانات غير صالحة';
 }
