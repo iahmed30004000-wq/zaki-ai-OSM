@@ -16,6 +16,9 @@ import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { routeLabel } from '@/lib/route-registry';
 import {
@@ -1408,7 +1411,7 @@ export function ConfirmationMineScreen() {
           />
         )}
       </div>
-      {phone && <p className="-mt-3 text-xs text-[var(--sys-muted)]">{tabNotes[tab]}</p>}
+      {phone && <p className="-mt-3 text-note text-[var(--sys-muted)]">{tabNotes[tab]}</p>}
 
       {(tab === 'work' || tab === 'noAnswer') && (
       <section>
@@ -1439,7 +1442,7 @@ export function ConfirmationMineScreen() {
             screen contradicted itself.
           */}
           {rows.length === 0 && (
-            <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg">
+            <Card plain>
               {findOpen.trim() ? (
                 <EmptyState
                   title="لا طلبَ في هذا التبويب يطابق هذا البحث"
@@ -1463,7 +1466,7 @@ export function ConfirmationMineScreen() {
                   why="اسحب طلباً من مركز التأكيد. ما تسحبه يبقى لك حتى تؤكّده أو ترفضه أو يُحرَّر تلقائيّاً."
                 />
               )}
-            </div>
+            </Card>
           )}
           {rows.map(({ order, closed }) => {
             const remaining = Math.max(0, data.noAnswerLimit - order.noAnswerCount);
@@ -1955,46 +1958,46 @@ export function ConfirmationMineScreen() {
             setDonePage(1);
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-[var(--sys-muted-foreground)]">
-            اليوم
-            <input
+          {/* The kit's field (R8c, 18/11): ONE day, as it always was — the box hands its own `yyyy-MM-dd` to the same state, so the
+              address the desk asks (`?day=`) is the same bytes (`the-done-tab-asks-the-same-address.test.tsx`). */}
+          <div className="w-56">
+            <Input
+              id="done-day"
               type="date"
+              label="اليوم"
               value={doneDay || confirmed.day}
               onChange={(e) => {
                 setDoneDay(e.target.value);
                 setDonePage(1);
               }}
-              className="h-11 md:h-8 px-2.5 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] tabular-nums focus:outline-none focus:border-[var(--sys-primary)]"
+              className="tabular-nums"
             />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--sys-muted-foreground)]">
-            رقم الطلب أو الاسم أو الهاتف
-            <input
+          </div>
+          <div className="w-56">
+            <Input
+              id="done-find"
+              label="رقم الطلب أو الاسم أو الهاتف"
               value={doneTyped}
               onChange={(e) => setDoneTyped(e.target.value)}
               placeholder="ابحث في هذا اليوم"
-              className="h-11 md:h-8 w-56 px-2.5 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]"
             />
-          </label>
-          <button
-            type="submit"
-            className="h-11 md:h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs font-medium bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border border-[var(--sys-primary)]"
-          >
+          </div>
+          <Button type="submit">
             <RiSearchLine className="w-4 h-4" /> ابحث
-          </button>
+          </Button>
           {(doneQuery || doneDay) && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => {
                 setDoneTyped('');
                 setDoneQuery('');
                 setDoneDay('');
                 setDonePage(1);
               }}
-              className="h-11 md:h-8 inline-flex items-center gap-1.5 px-3 rounded-lg text-xs border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)]"
             >
               <RiCloseLine className="w-4 h-4" /> رجّعني لليوم
-            </button>
+            </Button>
           )}
         </form>
         <h2 className="text-sm font-bold text-[var(--sys-heading)]">
@@ -2008,8 +2011,8 @@ export function ConfirmationMineScreen() {
             {confirmed.pages > 1 && ` · صفحة ${confirmed.page} من ${confirmed.pages}`}
           </span>
         </h2>
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
-                    <Rows
+        <Card plain className="overflow-hidden">
+          <Rows
             rows={confirmed.rows}
             keyOf={(order) => order.id}
             columns={[
@@ -2086,25 +2089,27 @@ export function ConfirmationMineScreen() {
             }
             actions={readOnly ? undefined : (order) => (
               <>{order.changeRequests && order.changeRequests.length > 0 ? (
-                      <span className="text-xs text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
+                      <span className="text-note text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
                     ) : onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status }) ? (
                       /* On a trolley still being filled: nothing to ask (the owner's ruling 4/11) — said, with the whole sentence on hover. */
-                      <span className="text-xs text-[var(--sys-muted-foreground)]" title={ON_TROLLEY_AR}>
+                      <span className="text-note text-[var(--sys-muted-foreground)]" title={ON_TROLLEY_AR}>
                         على دفعة شحن — ما في تعديل
                       </span>
                     ) : (
-                      <button
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        size="sm"
                         onClick={() => setDialog({ kind: 'change', order })}
                         disabled={busyId === order.id}
-                        className="text-xs text-[var(--sys-primary)] hover:underline disabled:opacity-50"
                       >
                         {/* «تعديل» for the orders she changes herself (`orders.edit_confirmed`, 2/11) — the same word the order window's button uses. */}
                         {editsNow(currentUser, order, 'CANCEL') ? 'تعديل' : 'طلب تعديل'}
-                      </button>
+                      </Button>
                     )}</>
             )}
           />
-        </div>
+        </Card>
         {/*
           PAGES, AND THE NUMBER OF THEM.
 
@@ -2116,25 +2121,27 @@ export function ConfirmationMineScreen() {
         */}
         {confirmed.pages > 1 && (
           <div className="flex items-center justify-between gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={confirmed.page <= 1}
               onClick={() => setDonePage((p) => Math.max(1, p - 1))}
-              className="h-11 md:h-8 px-3 rounded-lg text-xs border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] disabled:opacity-50"
             >
               الأحدث
-            </button>
-            <span className="text-xs text-[var(--sys-muted-foreground)] tabular-nums" dir="ltr">
+            </Button>
+            <span className="text-note text-[var(--sys-muted-foreground)] tabular-nums" dir="ltr">
               {confirmed.page} / {confirmed.pages}
             </span>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={confirmed.page >= confirmed.pages}
               onClick={() => setDonePage((p) => p + 1)}
-              className="h-11 md:h-8 px-3 rounded-lg text-xs border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] disabled:opacity-50"
             >
               الأقدم
-            </button>
+            </Button>
           </div>
         )}
       </section>
@@ -2363,36 +2370,41 @@ function TabButton({
   /** A phone keeps the tab to its label and count, on one line that never wraps. */
   phone?: boolean;
 }) {
+  /*
+   * The kit's `Button` (R8c, 18/11): the open tab is `secondary` (the card fill and an edge), the others `quiet`. Its name is said
+   * outright — the label and the count — because a button whose only child is a box would otherwise take its `title` (the note) as
+   * its name, and «اتصلي هلّق» would be announced as «اللي لازم ترني عليه هلّق».
+   */
   return (
-    <button
+    <Button
       type="button"
       role="tab"
       aria-selected={active}
+      aria-label={count !== undefined ? `${label} ${count}` : label}
+      variant={active ? 'secondary' : 'quiet'}
       onClick={onClick}
       title={note}
-      className={`${phone ? 'shrink-0 whitespace-nowrap ' : ''}min-h-11 md:min-h-0 px-3 py-2 -mb-px border-b-2 text-start ${
-        active
-          ? 'border-[var(--sys-primary)] text-[var(--sys-heading)]'
-          : 'border-transparent text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
-      }`}
+      className={phone ? 'shrink-0 whitespace-nowrap mb-1' : 'mb-1'}
     >
-      <span className="flex items-center gap-1.5 text-sm font-bold">
-        {label}
-        {count !== undefined && (
-        <span
-          className={`text-xs px-1.5 py-0.5 rounded-md border tabular-nums font-normal ${
-            tone === 'warning'
-              ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/40'
-              : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]'
-          }`}
-          dir="ltr"
-        >
-          {count}
+      <span className="flex flex-col items-start">
+        <span className="flex items-center gap-1.5 text-sm font-bold">
+          {label}
+          {count !== undefined && (
+          <span
+            className={`text-note leading-tight px-1.5 py-0.5 rounded-md border tabular-nums font-normal ${
+              tone === 'warning'
+                ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/40'
+                : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]'
+            }`}
+            dir="ltr"
+          >
+            {count}
+          </span>
+          )}
         </span>
-        )}
+        {note && !phone && <span className="block text-note leading-tight font-normal text-[var(--sys-muted)]">{note}</span>}
       </span>
-      {note && !phone && <span className="block text-xs font-normal text-[var(--sys-muted)]">{note}</span>}
-    </button>
+    </Button>
   );
 }
 
@@ -2425,24 +2437,22 @@ function SectionHead({
       <h2 className="text-sm font-bold text-[var(--sys-heading)]">
         {title} ({value.trim() ? `${count} من ${total}` : total})
       </h2>
-      {note && !phone && <span className="text-xs text-[var(--sys-muted)]">{note}</span>}
-      <div className={phone ? 'relative w-full' : 'relative ms-auto'}>
-        <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute top-1/2 -translate-y-1/2 end-2.5" />
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="رقم الهاتف أو الطلب أو الاسم"
-          className={`h-11 md:h-8 ${phone ? 'w-full' : 'w-56'} ps-2.5 pe-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]`}
-        />
+      {note && !phone && <span className="text-note text-[var(--sys-muted)]">{note}</span>}
+      {/* The box and its «امسح البحث» side by side — the kit's `IconButton` beside the field, not laid over the text she typed. */}
+      <div className={phone ? 'flex items-center gap-1 w-full' : 'flex items-center gap-1 ms-auto'}>
+        <div className={phone ? 'relative w-full min-w-0' : 'relative'}>
+          <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute top-1/2 -translate-y-1/2 end-2.5" />
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="رقم الهاتف أو الطلب أو الاسم"
+            className={`h-11 md:h-8 ${phone ? 'w-full' : 'w-56'} ps-2.5 pe-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]`}
+          />
+        </div>
         {value && (
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            aria-label="امسح البحث"
-            className="absolute top-1/2 -translate-y-1/2 start-1.5 text-[var(--sys-muted)] hover:text-[var(--sys-destructive)]"
-          >
+          <IconButton type="button" label="امسح البحث" size="sm" onClick={() => onChange('')}>
             <RiCloseLine className="w-4 h-4" />
-          </button>
+          </IconButton>
         )}
       </div>
     </div>
