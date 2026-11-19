@@ -3,7 +3,8 @@
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Button } from '@/components/ui/Button';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { Card } from '@/components/ui/Card';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiArrowGoBackLine, RiCheckboxCircleLine, RiCloseCircleLine, RiLoader4Line, RiPlayLine, RiTimerLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
@@ -85,17 +86,81 @@ export function JobsScreen() {
 
   const overdue = (data?.jobs ?? []).filter((j) => j.overdue);
 
-  return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/admin/jobs')} />
+  // The three presses, moved out of the JSX unchanged (R15j, 18/11): same requests, same bodies, same sentences.
+  // The screen keeps its own busy flags, so each button calls them as `() => { void handler(); }`.
+  const runAll = async () => {
+    setAllBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const res = await apiJson<{ ran: { job: string; ok: boolean }[] }>('/api/admin/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job: '*' }),
+      });
+      const failed = res.ran.filter((r) => !r.ok).length;
+      setDone(
+        failed === 0
+          ? `شُغّلت ${res.ran.length} مهمة بالترتيب، كلُّها نجحت.`
+          : `شُغّلت ${res.ran.length} مهمة — ${failed} منها لم تنجح. راجع «آخر التشغيلات».`
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذّر التشغيل');
+    } finally {
+      setAllBusy(false);
+    }
+  };
 
-      <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
-        المهام تعمل في عملية مستقلة عن المتصفح:{' '}
-        <code className="font-mono text-xs bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg px-1.5 py-0.5" dir="ltr">
-          npx tsx scripts/worker.ts
-        </code>
-        . إن لم تكن تعمل، ستظهر المهام هنا «متأخرة».
-      </p>
+  const runOne = async (job: JobRow) => {
+    setRunning(job.name);
+    setError(null);
+    setDone(null);
+    try {
+      const res = await apiJson<{ processed: number; detail?: string }>('/api/admin/jobs', {
+        method: 'POST',
+        body: JSON.stringify({ job: job.name }),
+      });
+      setDone(`${job.name}: ${res.detail ?? res.processed}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'فشلت المهمة');
+    } finally {
+      setRunning(null);
+      await load();
+    }
+  };
+
+  const unpark = async (job: JobRow) => {
+    setRunning(job.name);
+    setError(null);
+    setDone(null);
+    try {
+      await apiJson('/api/admin/jobs', {
+        method: 'POST',
+        body: JSON.stringify({ job: job.name, action: 'unpark' }),
+      });
+      setDone(`${job.name}: أُعيد تفعيلها`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'تعذّر إعادة التفعيل');
+    } finally {
+      setRunning(null);
+      await load();
+    }
+  };
+
+  return (
+    // On the frame (R15j, 18/11). `wide` and not `medium`: a job row holds its name, its last success and two presses side by side.
+    <PageShell title={routeLabel('/admin/jobs')} width="wide">
+
+      <Card plain padding="sm">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
+          المهام تعمل في عملية مستقلة عن المتصفح:{' '}
+          <code className="font-mono text-note bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg px-1.5 py-0.5" dir="ltr">
+            npx tsx scripts/worker.ts
+          </code>
+          . إن لم تكن تعمل، ستظهر المهام هنا «متأخرة».
+        </p>
+      </Card>
 
       {overdue.length > 0 && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3 flex items-center gap-2">
@@ -119,42 +184,20 @@ export function JobsScreen() {
         rest.
       */}
       {canManage && data && data.jobs.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
-          <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <Card plain padding="sm" className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-note text-[var(--sys-muted-foreground)]">
             بعد توقّف المجدول، تشغيلُها واحدةً واحدةً اثنتا عشرة ضغطة — وبترتيبٍ يهمّ.
           </p>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             loading={allBusy}
-            onClick={async () => {
-              setAllBusy(true);
-              setError(null);
-              setDone(null);
-              try {
-                const res = await apiJson<{ ran: { job: string; ok: boolean }[] }>('/api/admin/jobs', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ job: '*' }),
-                });
-                const failed = res.ran.filter((r) => !r.ok).length;
-                setDone(
-                  failed === 0
-                    ? `شُغّلت ${res.ran.length} مهمة بالترتيب، كلُّها نجحت.`
-                    : `شُغّلت ${res.ran.length} مهمة — ${failed} منها لم تنجح. راجع «آخر التشغيلات».`
-                );
-                await load();
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'تعذّر التشغيل');
-              } finally {
-                setAllBusy(false);
-              }
-            }}
+            onClick={() => { void runAll(); }}
           >
             <RiPlayLine className="h-4 w-4" />
             شغّلها كلَّها بالترتيب
           </Button>
-        </div>
+        </Card>
       )}
 
       {!data ? (
@@ -188,12 +231,12 @@ export function JobsScreen() {
                         <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
                       )}
                       <span className="text-sm font-medium text-[var(--sys-heading)]" dir="ltr">{job.name}</span>
-                      <span className="text-xs text-[var(--sys-muted)]">{job.schedule}</span>
+                      <span className="text-note text-[var(--sys-muted)]">{job.schedule}</span>
                     </div>
-                    <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{job.description}</p>
+                    <p className="text-note text-[var(--sys-muted-foreground)] mt-1">{job.description}</p>
                   </div>
 
-                  <div className="text-xs text-[var(--sys-muted-foreground)] flex-1 min-w-[200px]">
+                  <div className="text-note text-[var(--sys-muted-foreground)] flex-1 min-w-[200px]">
                     <p>
                       آخر نجاح: <span className={job.overdue ? 'text-[var(--sys-destructive)] font-medium' : ''}>{ago(job.lastSuccessAt)}</span>
                     </p>
@@ -217,64 +260,34 @@ export function JobsScreen() {
                   </div>
 
                   {canManage && (
-                  <button
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     disabled={running === job.name}
-                    onClick={async () => {
-                      setRunning(job.name);
-                      setError(null);
-                      setDone(null);
-                      try {
-                        const res = await apiJson<{ processed: number; detail?: string }>('/api/admin/jobs', {
-                          method: 'POST',
-                          body: JSON.stringify({ job: job.name }),
-                        });
-                        setDone(`${job.name}: ${res.detail ?? res.processed}`);
-                      } catch (e) {
-                        setError(e instanceof Error ? e.message : 'فشلت المهمة');
-                      } finally {
-                        setRunning(null);
-                        await load();
-                      }
-                    }}
-                    className="h-8 px-3 rounded-lg border border-[var(--sys-border)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+                    onClick={() => { void runOne(job); }}
                   >
                     {running === job.name ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiPlayLine className="w-4 h-4" />}
                     شغّلها الآن
-                  </button>
+                  </Button>
                   )}
 
                   {canManage && job.parked && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="danger"
                       disabled={running === job.name}
-                      onClick={async () => {
-                        setRunning(job.name);
-                        setError(null);
-                        setDone(null);
-                        try {
-                          await apiJson('/api/admin/jobs', {
-                            method: 'POST',
-                            body: JSON.stringify({ job: job.name, action: 'unpark' }),
-                          });
-                          setDone(`${job.name}: أُعيد تفعيلها`);
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : 'تعذّر إعادة التفعيل');
-                        } finally {
-                          setRunning(null);
-                          await load();
-                        }
-                      }}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-3 text-xs font-medium text-[var(--sys-destructive)] disabled:opacity-50"
+                      onClick={() => { void unpark(job); }}
                     >
                       <RiArrowGoBackLine className="icon-mirror h-4 w-4" />
                       أعد تفعيلها
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
+          <Card plain className="overflow-hidden">
             <h2 className="text-sm font-medium text-[var(--sys-heading)] px-4 py-3 border-b border-[var(--sys-border)]">آخر التشغيلات</h2>
             {data.recent.length === 0 ? (
               <p className="text-sm text-[var(--sys-muted-foreground)] py-8 text-center">لم تعمل أي مهمة بعد.</p>
@@ -288,7 +301,7 @@ export function JobsScreen() {
                   { key: 'c1', label: "الحالة", primary: true,
                     render: (run) => (
                   <><span
-                          className={`text-xs px-2 py-0.5 rounded-full border ${
+                          className={`text-note px-2 py-0.5 rounded-full border ${
                             run.status === 'SUCCEEDED'
                               ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success)]/40 text-[var(--sys-success)]'
                               : run.status === 'FAILED'
@@ -316,9 +329,9 @@ export function JobsScreen() {
                 }
               />
             )}
-          </div>
+          </Card>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

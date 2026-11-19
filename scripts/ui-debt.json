@@ -325,9 +325,7 @@
       "rawSurfaces": 1
     },
     "src/components/screens/JobsScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 5,
-      "textXs": 9
+      "rawSurfaces": 2
     },
     "src/components/screens/LandingLibraryScreen.tsx": {
       "rawButtons": 3,
