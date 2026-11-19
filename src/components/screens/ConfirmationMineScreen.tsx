@@ -16,9 +16,7 @@ import { CopyValue } from '@/components/orders/CopyValue';
 import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { Button } from '@/components/ui/Button';
-import { IconButton } from '@/components/ui/IconButton';
 import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { routeLabel } from '@/lib/route-registry';
 import {
@@ -33,7 +31,7 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
-import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
+import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
@@ -41,12 +39,13 @@ import { useMayOpen } from '@/hooks/useMayOpen';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { CustomerOnTheLine } from '@/components/confirmation/CustomerOnTheLine';
 import { DeskHead } from './confirmation/DeskHead';
+import { SectionHead, TabButton } from './confirmation/DeskTabs';
+import { DoneList } from './confirmation/DoneList';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
 import { editsNow } from '@/lib/edit-confirmed-window';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
-import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { arDate } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
@@ -55,7 +54,7 @@ import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { OrderGoods, OrderNotes, OrderPlace, governorateOf, streetOf } from '@/components/orders/OrderGoods';
+import { OrderNotes, governorateOf } from '@/components/orders/OrderGoods';
 import { CallOutcomeSheet, type LoggedOutcome } from '@/components/confirmation/CallOutcomeSheet';
 import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNoAnswer';
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
@@ -1935,216 +1934,60 @@ export function ConfirmationMineScreen() {
 
       {tab === 'postponed' && !readOnly && <ConfirmationPostponedScreen embedded />}
 
+      {/*
+        «أكّدتها» — a day, a search, the table and its pages, drawn by `DoneList` (R8c, 18/11). The four states, the read they go into
+        and every «may she» stay here: the number opens the order only for a reader who may read it, the history's holder is hers only
+        on her own desk, and the row's presses (drawn below) are not on a colleague's desk at all.
+      */}
       {tab === 'done' && (
-      <section className="space-y-3">
-        {/*
-          ── A DAY, A SEARCH AND A PAGE — ALL THREE REAL CONTROLS ──
-
-          This list was `take: 100` by `confirmedAt desc`: the last hundred
-          she ever confirmed. An agent who has confirmed a thousand orders
-          cannot reach Tuesday's from here, and the search box on top of it
-          searched only those hundred — so it answered «لا شيء يطابق» about
-          a list it had never looked in.
-
-          «اليوم» is the question she actually asks of this list, so today
-          is where it opens. The date, the text and the page all go to the
-          server, and the heading says how many are behind them.
-        */}
-        <form
-          className="flex flex-wrap items-end gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
+        <DoneList
+          confirmed={confirmed}
+          day={doneDay || confirmed.day}
+          onDay={(day) => {
+            setDoneDay(day);
+            setDonePage(1);
+          }}
+          typed={doneTyped}
+          onTyped={setDoneTyped}
+          onSearch={() => {
             setDoneQuery(doneTyped.trim());
             setDonePage(1);
           }}
-        >
-          {/* The kit's field (R8c, 18/11): ONE day, as it always was — the box hands its own `yyyy-MM-dd` to the same state, so the
-              address the desk asks (`?day=`) is the same bytes (`the-done-tab-asks-the-same-address.test.tsx`). */}
-          <div className="w-56">
-            <Input
-              id="done-day"
-              type="date"
-              label="اليوم"
-              value={doneDay || confirmed.day}
-              onChange={(e) => {
-                setDoneDay(e.target.value);
-                setDonePage(1);
-              }}
-              className="tabular-nums"
-            />
-          </div>
-          <div className="w-56">
-            <Input
-              id="done-find"
-              label="رقم الطلب أو الاسم أو الهاتف"
-              value={doneTyped}
-              onChange={(e) => setDoneTyped(e.target.value)}
-              placeholder="ابحث في هذا اليوم"
-            />
-          </div>
-          <Button type="submit">
-            <RiSearchLine className="w-4 h-4" /> ابحث
-          </Button>
-          {(doneQuery || doneDay) && (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setDoneTyped('');
-                setDoneQuery('');
-                setDoneDay('');
-                setDonePage(1);
-              }}
-            >
-              <RiCloseLine className="w-4 h-4" /> رجّعني لليوم
-            </Button>
+          canReset={!!(doneQuery || doneDay)}
+          onReset={() => {
+            setDoneTyped('');
+            setDoneQuery('');
+            setDoneDay('');
+            setDonePage(1);
+          }}
+          onClearSearch={() => { setDoneTyped(''); setDoneQuery(''); setDonePage(1); }}
+          onNewer={() => setDonePage((p) => Math.max(1, p - 1))}
+          onOlder={() => setDonePage((p) => p + 1)}
+          onOpenOrder={!readOnly && (holderId !== null || userCan(currentUser, 'orders.view')) ? (orderId) => setOpenOrderId(orderId) : undefined}
+          historyHolderId={readOnly ? null : holderId}
+          editsItself={userCan(currentUser, EDIT_CONFIRMED_KEY)}
+          rowActions={readOnly ? undefined : (order) => (
+            <>{order.changeRequests && order.changeRequests.length > 0 ? (
+                    <span className="text-note text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
+                  ) : onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status }) ? (
+                    /* On a trolley still being filled: nothing to ask (the owner's ruling 4/11) — said, with the whole sentence on hover. */
+                    <span className="text-note text-[var(--sys-muted-foreground)]" title={ON_TROLLEY_AR}>
+                      على دفعة شحن — ما في تعديل
+                    </span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="quiet"
+                      size="sm"
+                      onClick={() => setDialog({ kind: 'change', order })}
+                      disabled={busyId === order.id}
+                    >
+                      {/* «تعديل» for the orders she changes herself (`orders.edit_confirmed`, 2/11) — the same word the order window's button uses. */}
+                      {editsNow(currentUser, order, 'CANCEL') ? 'تعديل' : 'طلب تعديل'}
+                    </Button>
+                  )}</>
           )}
-        </form>
-        <h2 className="text-sm font-bold text-[var(--sys-heading)]">
-          أكّدتها{' '}
-          <span className="tabular-nums font-normal text-[var(--sys-muted-foreground)]" dir="ltr">
-            {confirmed.total}
-          </span>
-          <span className="font-normal text-[var(--sys-muted-foreground)]">
-            {' '}· <span dir="ltr" className="tabular-nums">{confirmed.day}</span>
-            {confirmed.q && ` · «${confirmed.q}»`}
-            {confirmed.pages > 1 && ` · صفحة ${confirmed.page} من ${confirmed.pages}`}
-          </span>
-        </h2>
-        <Card plain className="overflow-hidden">
-          <Rows
-            rows={confirmed.rows}
-            keyOf={(order) => order.id}
-            columns={[
-              { key: 'c0', label: "الطلب", primary: true,
-                // The number opens the order's panel here, on her desk — only for
-                // whoever may read it (the work key, or «عرض الطلبات»); else what
-                // `OrderLink` decides. The copy button sits beside it either way.
-                render: (order) => (
-                  <OrderRef
-                    id={order.id}
-                    number={order.orderNumber}
-                    onOpen={
-                      !readOnly && (holderId !== null || userCan(currentUser, 'orders.view'))
-                        ? () => setOpenOrderId(order.id)
-                        : undefined
-                    }
-                    className="min-h-11 md:min-h-0"
-                  />
-                ) },
-              { key: 'c1', label: "العميل", primary: true,
-                render: (order) => (
-                  <><span className="flex items-center gap-2">
-                      {order.customer.fullName}
-                      <CustomerHistoryButton
-                        customerId={order.customer.id}
-                        orderId={order.id}
-                        previousOrders={order.previousOrders}
-                        holderId={readOnly ? null : holderId}
-                      />
-                    </span></>
-                ) },
-              { key: 'c2', label: "الهاتف",
-                render: (order) => (
-                  <><a href={`tel:${order.customer.rawPhone}`} className="tabular-nums hover:text-[var(--sys-primary)]">
-                      {order.customer.rawPhone}
-                    </a></>
-                ) },
-              /* What is in the order and where it goes — on the row, so she does not open it to read it. Display only. */
-              { key: 'goods', label: "المنتجات", wide: true,
-                render: (order) => (
-                  <><OrderGoods items={order.items} addOns={order.addOns} />
-                    <OrderNotes customer={order.customerNotes} /></>
-                ) },
-              { key: 'place', label: "العنوان", wide: true,
-                render: (order) => (
-                  <OrderPlace region={order.region?.name} city={order.customer.city} address={streetOf(order.deliveryAddress, order.customer.address)} />
-                ) },
-              { key: 'c3', label: "المبلغ", align: 'end',
-                render: (order) => (
-                  <><Money value={order.totalAmount} currency={order.currency} /></>
-                ) },
-            ]}
-            /* The CONFIRMED list's own words. It used to carry the copy of
-               the section above it — «اسحب طلباً من الطابور» — which is
-               advice about the other list, and it said it while a search
-               was hiding rows too. */
-            empty={
-              confirmed.q ? (
-                <EmptyState
-                  title="لا طلبَ مؤكَّداً في هذا اليوم يطابق هذا البحث"
-                  why={`البحث «${confirmed.q}» جرى على يوم ${confirmed.day} وحده — على رقم الطلب والاسم والهاتف. جرّبه على يومٍ آخر.`}
-                  action={{ label: 'امسح البحث', onClick: () => { setDoneTyped(''); setDoneQuery(''); setDonePage(1); } }}
-                />
-              ) : (
-                <EmptyState
-                  title={`لم تؤكّد طلباً في ${confirmed.day}`}
-                  why={
-                    userCan(currentUser, EDIT_CONFIRMED_KEY)
-                      ? 'ما تؤكّده يظهر هنا — وتعدّل أو تؤجّل أو تلغي ما لم يدخل دفعة شحن بنفسك، وما دخل دفعة بيمرّ بطلبِ تعديل. غيِّر اليومَ أعلاه لترى يوماً آخر.'
-                      : 'ما تؤكّده يظهر هنا للقراءة — وتعديلُه بعدها يمرّ بطلبِ تعديل، لا بتحريرٍ مباشر. غيِّر اليومَ أعلاه لترى يوماً آخر.'
-                  }
-                />
-              )
-            }
-            actions={readOnly ? undefined : (order) => (
-              <>{order.changeRequests && order.changeRequests.length > 0 ? (
-                      <span className="text-note text-[var(--sys-warning)]">طلب تعديل قيد المراجعة</span>
-                    ) : onOpenTrolley({ shippingBatchId: order.shippingBatchId, batchStatus: order.shippingBatch?.status }) ? (
-                      /* On a trolley still being filled: nothing to ask (the owner's ruling 4/11) — said, with the whole sentence on hover. */
-                      <span className="text-note text-[var(--sys-muted-foreground)]" title={ON_TROLLEY_AR}>
-                        على دفعة شحن — ما في تعديل
-                      </span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="quiet"
-                        size="sm"
-                        onClick={() => setDialog({ kind: 'change', order })}
-                        disabled={busyId === order.id}
-                      >
-                        {/* «تعديل» for the orders she changes herself (`orders.edit_confirmed`, 2/11) — the same word the order window's button uses. */}
-                        {editsNow(currentUser, order, 'CANCEL') ? 'تعديل' : 'طلب تعديل'}
-                      </Button>
-                    )}</>
-            )}
-          />
-        </Card>
-        {/*
-          PAGES, AND THE NUMBER OF THEM.
-
-          «السابق/التالي» with no total is a corridor: she cannot tell
-          whether she is near the end or three hundred rows from it. The
-          count and the page number are both said above, and the two
-          buttons shut at the ends rather than asking for a page that is
-          not there.
-        */}
-        {confirmed.pages > 1 && (
-          <div className="flex items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={confirmed.page <= 1}
-              onClick={() => setDonePage((p) => Math.max(1, p - 1))}
-            >
-              الأحدث
-            </Button>
-            <span className="text-note text-[var(--sys-muted-foreground)] tabular-nums" dir="ltr">
-              {confirmed.page} / {confirmed.pages}
-            </span>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={confirmed.page >= confirmed.pages}
-              onClick={() => setDonePage((p) => p + 1)}
-            >
-              الأقدم
-            </Button>
-          </div>
-        )}
-      </section>
+        />
       )}
 
       {dialog?.kind === 'postpone' && (
@@ -2339,123 +2182,6 @@ function ResponseClock({
     >
       بانتظار أول اتصال منذ {humanMinutes(waiting)}
     </span>
-  );
-}
-
-/**
- * ONE OF THE THREE, WITH ITS COUNT AND WHAT IT HOLDS.
- *
- * The count and the note are on the tab and not inside it, because «which
- * of these do I do now» is decided before either list is open.
- *
- * `role="tab"` and `aria-selected` and not three styled buttons: the strip
- * announces itself as one choice of three to a screen reader, and arrow
- * keys move through it. A coloured underline alone would say nothing.
- */
-function TabButton({
-  active,
-  onClick,
-  label,
-  count,
-  note,
-  tone,
-  phone,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count?: number;
-  note?: string;
-  tone?: 'warning';
-  /** A phone keeps the tab to its label and count, on one line that never wraps. */
-  phone?: boolean;
-}) {
-  /*
-   * The kit's `Button` (R8c, 18/11): the open tab is `secondary` (the card fill and an edge), the others `quiet`. Its name is said
-   * outright — the label and the count — because a button whose only child is a box would otherwise take its `title` (the note) as
-   * its name, and «اتصلي هلّق» would be announced as «اللي لازم ترني عليه هلّق».
-   */
-  return (
-    <Button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      aria-label={count !== undefined ? `${label} ${count}` : label}
-      variant={active ? 'secondary' : 'quiet'}
-      onClick={onClick}
-      title={note}
-      className={phone ? 'shrink-0 whitespace-nowrap mb-1' : 'mb-1'}
-    >
-      <span className="flex flex-col items-start">
-        <span className="flex items-center gap-1.5 text-sm font-bold">
-          {label}
-          {count !== undefined && (
-          <span
-            className={`text-note leading-tight px-1.5 py-0.5 rounded-md border tabular-nums font-normal ${
-              tone === 'warning'
-                ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/40'
-                : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)]'
-            }`}
-            dir="ltr"
-          >
-            {count}
-          </span>
-          )}
-        </span>
-        {note && !phone && <span className="block text-note leading-tight font-normal text-[var(--sys-muted)]">{note}</span>}
-      </span>
-    </Button>
-  );
-}
-
-/**
- * A section's title, its count, and a box to find one row in it.
- *
- * The count says "3 of 12" while a search is running, because a filtered
- * list that says 3 with no context reads as "you only have three".
- */
-function SectionHead({
-  title,
-  count,
-  total,
-  value,
-  onChange,
-  note,
-  phone,
-}: {
-  title: string;
-  count: number;
-  total: number;
-  value: string;
-  onChange: (v: string) => void;
-  note?: string;
-  /** A phone drops the sentence (the open tab already says it) and gives the search box the whole line. */
-  phone?: boolean;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 mb-3">
-      <h2 className="text-sm font-bold text-[var(--sys-heading)]">
-        {title} ({value.trim() ? `${count} من ${total}` : total})
-      </h2>
-      {note && !phone && <span className="text-note text-[var(--sys-muted)]">{note}</span>}
-      {/* The box and its «امسح البحث» side by side — the kit's `IconButton` beside the field, not laid over the text she typed. */}
-      <div className={phone ? 'flex items-center gap-1 w-full' : 'flex items-center gap-1 ms-auto'}>
-        <div className={phone ? 'relative w-full min-w-0' : 'relative'}>
-          <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute top-1/2 -translate-y-1/2 end-2.5" />
-          <input
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="رقم الهاتف أو الطلب أو الاسم"
-            className={`h-11 md:h-8 ${phone ? 'w-full' : 'w-56'} ps-2.5 pe-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]`}
-          />
-        </div>
-        {value && (
-          <IconButton type="button" label="امسح البحث" size="sm" onClick={() => onChange('')}>
-            <RiCloseLine className="w-4 h-4" />
-          </IconButton>
-        )}
-      </div>
-    </div>
   );
 }
 
