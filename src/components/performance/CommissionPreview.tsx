@@ -21,6 +21,9 @@ interface PreviewAnswer {
 const valid = (x: unknown): x is PreviewAnswer => !!x && typeof x === 'object' && Array.isArray((x as PreviewAnswer).rows) && !!(x as PreviewAnswer).window;
 const money = (n: number) => n.toLocaleString('en-US');
 
+/** The estimate's own window, said beside it: the month so far, never the board's date box (R14 DoD 2: «كل رقم بنافذة ثابتة بيذكرها جنبو»). */
+const ESTIMATE_WINDOW_LINE = 'التقدير على الشهر الحالي من أولو لهلّق — ما بيتبع المدة المختارة فوق.';
+
 export function CommissionPreview() {
   const [answer, setAnswer] = useState<PreviewAnswer | null | 'none'>(null);
 
@@ -43,6 +46,7 @@ export function CommissionPreview() {
         subtitle="تقدير بس، مش المحسوب ولا المصروف (هاد بشاشة العمولة). كل مبلغ جنب عدد التأكيدات اللي انبنى عليه، وقاعدة احتسابو تحت."
       />
       <CardContent className="p-0">
+        <p className="px-5 pt-3 text-note text-[var(--sys-muted-foreground)]">{ESTIMATE_WINDOW_LINE}</p>
         <Rows
           rows={answer.rows}
           keyOf={(r: PreviewRow) => r.userId}
@@ -67,8 +71,8 @@ export function CommissionPreview() {
               hideOnPhone: true,
               render: (r: PreviewRow) => (
                 <details>
-                  <summary className="cursor-pointer text-xs text-[var(--sys-primary)]">كيف انحسب</summary>
-                  <ul className="mt-1 space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                  <summary className="cursor-pointer text-note text-[var(--sys-primary)]">كيف انحسب</summary>
+                  <ul className="mt-1 space-y-1 text-note text-[var(--sys-muted-foreground)]">
                     {r.estimate.steps.map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}

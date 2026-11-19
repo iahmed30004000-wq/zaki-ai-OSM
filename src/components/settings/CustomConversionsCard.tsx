@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/Confirm';
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiCheckLine, RiDeleteBinLine, RiFocus3Line, RiKey2Line, RiLoader4Line, RiPlugLine } from '@remixicon/react';
@@ -265,12 +267,13 @@ export function CustomConversionsCard() {
   const labelOf = (t: string) => options?.triggers.find((x) => x.value === t)?.label ?? t;
 
   return (
-    <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4" dir="rtl">
+    <Card padding="md">
+    <div dir="rtl">
       <div className="mb-1 flex items-center gap-2">
         <RiFocus3Line className="h-4 w-4 text-[var(--sys-primary)]" />
         <h2 className="text-sm font-bold text-[var(--sys-heading)]">التحويلات المخصّصة</h2>
       </div>
-      <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="mb-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         البكسل أعلاه يُطلق حدثه لحظة تعبئة النموذج. هنا تختار أنت لحظة أخرى من رحلة الطلب — التأكيد
         أو الاستلام — ويرسلها خادمنا إلى ميتا باسم حدث خاصّ بها. البكسل لا يتغيّر، ولا ازدواج في العدّ.
         تُرسَل طلبات صفحات الهبوط والمتجر وحدها، ولبكسل متجرها فقط — طلبات الرسائل والهاتف والشيت لا تُرسَل.
@@ -281,7 +284,7 @@ export function CustomConversionsCard() {
           <RiLoader4Line className="h-4 w-4 animate-spin" />
         </div>
       ) : pixels.length === 0 ? (
-        <p className="rounded-lg bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="rounded-lg bg-[var(--sys-surface)] p-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           أضف بكسل ميتا أعلاه أولاً — التحويل يُرسَل إلى بكسل بعينه.
         </p>
       ) : (
@@ -305,20 +308,16 @@ export function CustomConversionsCard() {
           <div className="mb-3 rounded-lg bg-[var(--sys-surface)] p-3">
             {connected ? (
               <>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-success)]">
+                <p className="flex items-center gap-1.5 text-note font-semibold text-[var(--sys-success)]">
                   <RiCheckLine className="h-4 w-4" />
                   واجهة التحويلات مربوطة
-                  <span className="font-mono text-xs text-[var(--sys-muted)]" dir="ltr">••••{pixel?.capiTokenHint}</span>
-                  <button
-                    onClick={() => void removeToken()}
-                    className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 mr-auto rounded-lg p-1 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]"
-                    aria-label="فصل" title="فصل"
-                  >
+                  <span className="font-mono text-note text-[var(--sys-muted)]" dir="ltr">••••{pixel?.capiTokenHint}</span>
+                  <IconButton type="button" size="sm" label="فصل" onClick={() => void removeToken()} className="mr-auto">
                     <RiDeleteBinLine className="h-4 w-4" />
-                  </button>
+                  </IconButton>
                 </p>
                 <div className="mt-2">
-                  <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">
+                  <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">
                     رمز الاختبار (اختياري)
                   </label>
                   <div className="flex gap-2">
@@ -329,17 +328,17 @@ export function CustomConversionsCard() {
                       className={INPUT}
                       dir="ltr"
                     />
-                    <Button size="sm" variant="outline" onClick={saveTestCode} disabled={busy === 'test'}>
+                    <Button type="button" size="sm" variant="secondary" onClick={() => { void saveTestCode(); }} disabled={busy === 'test'}>
                       حفظ
                     </Button>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+                  <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
                     من Events Manager ← Test Events. حين يكون موجوداً تظهر الأحداث في لوحة الاختبار
                     و<b>لا تُحتسب تحويلات</b> — فامسحه حين تنتهي، وإلا رأيت أحداثاً تصل بلا تحويلات أبداً.
                   </p>
                 </div>
                 <div className="mt-2">
-                  <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
+                  <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
                   <div className="flex gap-2">
                     <input
                       value={dataset}
@@ -351,14 +350,15 @@ export function CustomConversionsCard() {
                     />
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={saveDataset}
+                      variant="secondary"
+                      type="button"
+                      onClick={() => { void saveDataset(); }}
                       disabled={busy === 'dataset' || dataset === (pixel?.capiDatasetId ?? '')}
                     >
                       حفظ
                     </Button>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+                  <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
                     فارغ = الأحداث تذهب إلى البكسل نفسه، وهو نفس رقم الـ Dataset في بكسل الويب. عبّئه فقط إن
                     أنشأت في Events Manager مجموعة بيانات منفصلة لأحداث الخادم.
                   </p>
@@ -366,7 +366,7 @@ export function CustomConversionsCard() {
               </>
             ) : (
               <>
-                <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-[var(--sys-foreground)]">
+                <label className="mb-1 flex items-center gap-1.5 text-note font-semibold text-[var(--sys-foreground)]">
                   <RiKey2Line className="h-4 w-4 text-[var(--sys-primary)]" />
                   رمز واجهة التحويلات
                 </label>
@@ -381,11 +381,11 @@ export function CustomConversionsCard() {
                   dir="ltr"
                   autoComplete="off"
                 />
-                <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+                <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
                   يُشفَّر قبل الحفظ ولا يُعرَض بعدها أبداً، ولا يُكتب في سجل التدقيق. نتحقق منه مع ميتا
                   قبل حفظه — الخلل هنا لا يظهر إلا بعد أيام داخل عامل لا يراقبه أحد.
                 </p>
-                <label className="mb-1 mt-2 block text-xs font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
+                <label className="mb-1 mt-2 block text-note font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
                 <input
                   value={dataset}
                   onChange={(e) => setDataset(e.target.value.replace(/\D/g, ''))}
@@ -397,7 +397,8 @@ export function CustomConversionsCard() {
                 <Button
                   size="sm"
                   className="mt-2"
-                  onClick={saveToken}
+                  type="button"
+                  onClick={() => { void saveToken(); }}
                   disabled={busy === 'token' || token.trim().length < 20}
                 >
                   {busy === 'token' ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPlugLine className="h-4 w-4" />}
@@ -414,22 +415,22 @@ export function CustomConversionsCard() {
                   <div key={c.id} className="rounded-lg border border-[var(--sys-border)] p-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[var(--sys-heading)]">
+                        <p className="flex flex-wrap items-center gap-1.5 text-note font-semibold text-[var(--sys-heading)]">
                           {c.name}
-                          <span className="rounded-lg bg-[var(--sys-surface-strong)] px-1.5 py-0.5 font-mono text-xs text-[var(--sys-foreground)]" dir="ltr">
+                          <span className="rounded-lg bg-[var(--sys-surface-strong)] px-1.5 py-0.5 font-mono text-note text-[var(--sys-foreground)]" dir="ltr">
                             {c.eventName}
                           </span>
                           {!c.enabled && (
-                            <span className="rounded-lg bg-[var(--sys-surface-strong)] px-1.5 py-0.5 text-xs font-semibold text-[var(--sys-muted-foreground)]">
+                            <span className="rounded-lg bg-[var(--sys-surface-strong)] px-1.5 py-0.5 text-note font-semibold text-[var(--sys-muted-foreground)]">
                               موقوف
                             </span>
                           )}
                         </p>
-                        <p className="mt-0.5 text-xs text-[var(--sys-muted-foreground)]">
+                        <p className="mt-0.5 text-note text-[var(--sys-muted-foreground)]">
                           عند: {labelOf(c.trigger)} ·{' '}
                           {options?.valueSources.find((v) => v.value === c.valueSource)?.label}
                         </p>
-                        <p className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-[var(--sys-muted-foreground)]">
+                        <p className="mt-0.5 flex flex-wrap gap-x-2 text-note text-[var(--sys-muted-foreground)]">
                           <span>أُرسل <b className="text-[var(--sys-success)]">{c.stats.sent}</b></span>
                           {c.stats.pending > 0 && <span>بالانتظار {c.stats.pending}</span>}
                           {c.stats.failed > 0 && <span className="text-[var(--sys-destructive)]">فشل {c.stats.failed}</span>}
@@ -444,24 +445,17 @@ export function CustomConversionsCard() {
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          onClick={() => void toggle(c)}
-                          className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg px-2 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]"
-                        >
+                        <Button type="button" variant="quiet" size="sm" onClick={() => void toggle(c)}>
                           {c.enabled ? 'أوقف' : 'شغّل'}
-                        </button>
-                        <button
-                          onClick={() => void remove(c)}
-                          aria-label="حذف" title="حذف"
-                          className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]"
-                        >
+                        </Button>
+                        <IconButton type="button" size="sm" label="حذف" onClick={() => void remove(c)}>
                           <RiDeleteBinLine className="h-4 w-4" />
-                        </button>
+                        </IconButton>
                       </div>
                     </div>
 
                     {c.stats.matchQuality !== null && c.stats.matchQuality < 0.4 && (
-                      <p className="mt-1.5 flex items-start gap-1 rounded-lg bg-[var(--sys-warning-soft)] p-1.5 text-xs leading-relaxed text-[var(--sys-warning)]">
+                      <p className="mt-1.5 flex items-start gap-1 rounded-lg bg-[var(--sys-warning-soft)] p-1.5 text-note leading-relaxed text-[var(--sys-warning)]">
                         <RiAlertLine className="mt-px h-4 w-4 shrink-0" />
                         جودة المطابقة منخفضة — الأحداث تصل لكن ميتا تربط قليلاً منها بأشخاص. تحقّق أن
                         أرقام الهواتف مخزّنة كاملة.
@@ -474,14 +468,14 @@ export function CustomConversionsCard() {
 
           {/* ── Add one ── */}
           {!showForm ? (
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)} className="w-full gap-1.5">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(true)} className="w-full gap-1.5">
               <RiAddCircleLine className="h-4 w-4 text-[var(--sys-primary)]" />
               أضف تحويلاً
             </Button>
           ) : (
             <div className="space-y-2 rounded-lg bg-[var(--sys-surface)] p-3">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-[var(--sys-foreground)]">
+                <label className="mb-1.5 block text-note font-semibold text-[var(--sys-foreground)]">
                   متى يُحتسب التحويل؟
                 </label>
                 <div className="space-y-1.5">
@@ -496,8 +490,8 @@ export function CustomConversionsCard() {
                           : 'border-[var(--sys-border)] bg-[var(--sys-card)] hover:border-[var(--sys-border-strong)]'
                       }`}
                     >
-                      <span className="block text-xs font-bold text-[var(--sys-heading)]">{t.label}</span>
-                      <span className="mt-0.5 block text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{t.hint}</span>
+                      <span className="block text-note font-bold text-[var(--sys-heading)]">{t.label}</span>
+                      <span className="mt-0.5 block text-note leading-relaxed text-[var(--sys-muted-foreground)]">{t.hint}</span>
                     </button>
                   ))}
                 </div>
@@ -506,7 +500,7 @@ export function CustomConversionsCard() {
               {form.trigger && (
                 <>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">الاسم عندك</label>
+                    <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">الاسم عندك</label>
                     <input
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -515,7 +509,7 @@ export function CustomConversionsCard() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">
+                    <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">
                       اسم الحدث في ميتا
                     </label>
                     <input
@@ -525,14 +519,14 @@ export function CustomConversionsCard() {
                       dir="ltr"
                       placeholder="OrderDelivered"
                     />
-                    <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+                    <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
                       حروف إنجليزية وأرقام وشرطة سفلية فقط. من هذا الاسم تبني التحويل المخصّص في مدير
                       الأحداث. لا تستخدم <code className="font-mono">Purchase</code> — البكسل يرسله أصلاً
                       وسيتضاعف العدّ.
                     </p>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">القيمة المرسَلة</label>
+                    <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">القيمة المرسَلة</label>
                     <select
                       value={form.valueSource}
                       onChange={(e) => setForm({ ...form, valueSource: e.target.value })}
@@ -545,12 +539,12 @@ export function CustomConversionsCard() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button size="sm" onClick={create} disabled={busy === 'create' || !ready}>
+                    <Button type="button" size="sm" onClick={() => { void create(); }} disabled={busy === 'create' || !ready}>
                       {busy === 'create' ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
                       أضف
                     </Button>
                     {mine.length > 0 && (
-                      <Button size="sm" variant="outline" onClick={() => setAdding(false)}>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setAdding(false)}>
                         إلغاء
                       </Button>
                     )}
@@ -561,24 +555,27 @@ export function CustomConversionsCard() {
           )}
 
           {msg && (
-            <p className={`mt-2 text-xs font-medium leading-relaxed ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>
+            <p className={`mt-2 text-note font-medium leading-relaxed ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>
               {msg.text}
             </p>
           )}
         </>
       )}
 
-      <button
+      <Button
         type="button"
+        variant="quiet"
+        size="sm"
+        aria-expanded={howOpen}
         onClick={() => setHowOpen((v) => !v)}
-        className="mt-2 flex items-center gap-1 text-xs font-semibold text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
+        className="mt-2 font-semibold"
       >
         <RiArrowDownSLine className={`h-4 w-4 transition ${howOpen ? 'rotate-180' : ''}`} />
         كيف أُشغّلها؟
-      </button>
+      </Button>
 
       {howOpen && (
-        <ol className="mt-2 space-y-2 rounded-lg bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-foreground)]">
+        <ol className="mt-2 space-y-2 rounded-lg bg-[var(--sys-surface)] p-3 text-note leading-relaxed text-[var(--sys-foreground)]">
           <li>
             <b>1.</b> في{' '}
             <a
@@ -608,6 +605,7 @@ export function CustomConversionsCard() {
         </ol>
       )}
     </div>
+    </Card>
   );
 }
 

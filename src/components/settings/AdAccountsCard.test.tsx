@@ -69,13 +69,19 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+/*
+ * 18/11 (R15e, the cards on the kit): the two ways and the platforms were hand-drawn buttons marked pressed. They are the
+ * kit's segmented choice now, which draws each choice as a radio marked checked — the same two names, the same one chosen,
+ * the same press. So these lines ask for a radio and its checked mark where they asked for a button and its pressed mark;
+ * nothing else moved.
+ */
 const mount = async () => {
   render(<AdAccountsCard storeName="المتجر" />);
-  await screen.findByRole('button', { name: 'ربط تلقائي' });
+  await screen.findByRole('radio', { name: 'ربط تلقائي' });
 };
 const chooseManual = async () => {
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'إدخال يدوي بالكامل' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'إدخال يدوي بالكامل' }));
   });
 };
 const nameField = () => screen.getByPlaceholderText(/مثلاً: حساب/) as HTMLInputElement;
@@ -84,10 +90,10 @@ const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: 
 describe('the two ways, before anything is pressed', () => {
   it('— both names are on the card, and the automatic one is the one chosen', async () => {
     await mount();
-    const auto = screen.getByRole('button', { name: 'ربط تلقائي' });
-    const manual = screen.getByRole('button', { name: 'إدخال يدوي بالكامل' });
-    expect(auto.getAttribute('aria-pressed')).toBe('true');
-    expect(manual.getAttribute('aria-pressed')).toBe('false');
+    const auto = screen.getByRole('radio', { name: 'ربط تلقائي' });
+    const manual = screen.getByRole('radio', { name: 'إدخال يدوي بالكامل' });
+    expect(auto.getAttribute('aria-checked')).toBe('true');
+    expect(manual.getAttribute('aria-checked')).toBe('false');
   });
 
   it('and the automatic way is exactly what it was: the sign-in, the id, the token, «اربط الحساب»', async () => {
@@ -106,7 +112,7 @@ describe('the manual way', () => {
   it('— swaps the form, and never asks for a secret, a sign-in or a platform’s instructions', async () => {
     await mount();
     await chooseManual();
-    expect(screen.getByRole('button', { name: 'إدخال يدوي بالكامل' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'إدخال يدوي بالكامل' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByText('احفظ الحساب اليدوي')).toBeTruthy();
     expect(screen.getByText('اسم الحساب')).toBeTruthy();
     expect(screen.getByText(/رقم الحساب الإعلاني \(اختياري\)/)).toBeTruthy();
@@ -128,7 +134,7 @@ describe('the manual way', () => {
     await mount();
     await chooseManual();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'ربط تلقائي' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'ربط تلقائي' }));
     });
     expect(screen.getByText('اربط الحساب')).toBeTruthy();
     expect(screen.queryByText('احفظ الحساب اليدوي')).toBeNull();
@@ -177,7 +183,7 @@ describe('the manual way', () => {
   it('and is for the platform picked in the tabs above it', async () => {
     await mount();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'تيك توك' }));
+      fireEvent.click(screen.getByRole('radio', { name: 'تيك توك' }));
     });
     await chooseManual();
     type(nameField(), 'حساب تيك توك');
