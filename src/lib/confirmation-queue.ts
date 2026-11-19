@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
+import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from './confirmation-queue-messages';
+export { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE };
 import { businessMinutesBetween, zonedParts, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
 import { notHeldForOthersWhere, reservedForOthersWhere, reservedForWhere } from './order-reservation';
@@ -634,8 +636,7 @@ export function needsContactFirst(args: {
   return (CONTACT_FIRST_ACTIONS as readonly string[]).includes(args.action);
 }
 
-/** The one sentence the server and the screen both say. */
-export const CONTACT_FIRST_MESSAGE = 'اتصل بالزبون أول — أو اكبس «لا يرد»';
+/** The one sentence the server and the screen both say — it lives in confirmation-queue-messages.ts (see there). */
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -665,8 +666,7 @@ export function needsRegionFirst(order: { regionId?: string | null }): boolean {
   return typeof order.regionId !== 'string' || order.regionId.trim() === '';
 }
 
-/** The one sentence the server and the screen both say about it. */
-export const REGION_REQUIRED_MESSAGE = 'حدّد المحافظة أولاً — أجرة التوصيل مبنية عليها ولا يُؤكَّد طلب بلا محافظة';
+/** The one sentence the server and the screen both say about it — in confirmation-queue-messages.ts. */
 
 export type PullRefusal =
   | { code: 'NOT_YOUR_DESK'; message: string }

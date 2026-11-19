@@ -9,13 +9,12 @@ import { db } from '@/lib/db';
 import {
   SITUATIONS,
   SITUATION_KEYS,
-  saveTemplates,
-  templatesFor,
   TEMPLATE_VARS,
   orderDetailsContext,
   normalizeTemplate,
   type FillContext,
 } from '@/lib/message-templates';
+import { saveTemplates, templatesFor } from '@/lib/message-templates-store';
 import { STORE_LANGUAGES, storeLanguageSchema } from '@/lib/store-languages';
 
 /**
