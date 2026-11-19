@@ -30,13 +30,14 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
-import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiRefreshLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
+import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiCloseLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiSearchLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { PullPanel, useQueue } from '@/components/confirmation/PullPanel';
 import { CustomerOnTheLine } from '@/components/confirmation/CustomerOnTheLine';
+import { DeskHead } from './confirmation/DeskHead';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
@@ -1294,73 +1295,25 @@ export function ConfirmationMineScreen() {
           }}
         />
       )}
-      {desks && desks.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="desk-watch" className="text-xs font-medium text-[var(--sys-muted-foreground)]">
-            شاشة موظفة
-          </label>
-          <select
-            id="desk-watch"
-            value={watched?.id ?? ''}
-            onChange={(e) => watch(e.target.value)}
-            className="h-11 md:h-10 w-56 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm"
-          >
-            <option value="">شاشتي أنا</option>
-            {desks.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name} ({d.holding})
-              </option>
-            ))}
-          </select>
-          <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={refreshing}>
-            {refreshing ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiRefreshLine className="w-4 h-4" />}
-            تحديث
-          </Button>
-        </div>
-      )}
-      {readOnly && (
-        <p role="status" className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-3">
-          عم تشوف شاشة {watchedName} — قراءة بس
-        </p>
-      )}
       {/*
-        «الشغل أول»: WHAT SHE OWES, AT THE TOP. The count is the server's (`due`, the verdict the pull's refusal asks too): a call
-        owed on a new pull, on a «لا يرد» whose round came, or on a date that arrived. With none owed and a pull possible it says so.
-        Her own desk only: on a colleague's desk it would be her sentence about somebody else's orders.
+        THE HEAD OF THE DESK — the watcher's picker and «تحديث», «قراءة بس», «الشغل أول» and the watcher's return press — drawn by
+        `DeskHead` (R8b, 18/11). Every condition stays here, word for word: the banner only on her own desk and only when the server
+        sent `due` and there is something owed or something to pull; the return press only on a colleague's desk, with the server's
+        plan, for the holder of the key its door asks — the door decides again.
       */}
-      {!readOnly && data.due && (data.due.count > 0 || (queue.data?.canPull && queue.data.waiting > 0)) && (
-        <p
-          className={`text-sm border rounded-lg p-3 ${
-            data.due.count > 0
-              ? 'text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30'
-              : 'text-[var(--sys-success)] bg-[var(--sys-success-soft)] border-[var(--sys-success)]/30'
-          }`}
-        >
-          {data.due.sentence}
-        </p>
-      )}
-      {/* The one press a watcher makes here. Drawn only on a colleague's desk, for the holder of the key its door asks, and only when the
-          server sent the plan; the door decides again. */}
-      {data.viewing && data.returnPile && userCan(currentUser, 'orders.unlock') && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => void returnHerPile()}
-            disabled={returning || data.returnPile.eligible === 0}
-          >
-            {returning && <RiLoader4Line className="w-4 h-4 animate-spin" />}
-            أرجِع «لا يرد» للطابور
-          </Button>
-          <span className="text-xs font-medium text-[var(--sys-muted-foreground)]">
-            {data.returnPile.eligible === 0
-              ? 'ما في «لا يرد» يرجع هلأ — اللي عليه موعد أو اللي ردّ زبونه بيضل عندها'
-              : data.returnPile.remainingAfter > 0
-                ? `${data.returnPile.eligible} طلب «لا يرد» يرجعوا — ${data.returnPile.thisPress} بكل ضغطة`
-                : `${data.returnPile.eligible} طلب «لا يرد» يرجعوا`}
-          </span>
-        </div>
-      )}
+      <DeskHead
+        desks={desks}
+        watchedId={watched?.id ?? ''}
+        onWatch={watch}
+        refreshing={refreshing}
+        onRefresh={() => void refresh()}
+        readOnly={readOnly}
+        watchedName={watchedName}
+        due={!readOnly && data.due && (data.due.count > 0 || (queue.data?.canPull && queue.data.waiting > 0)) ? data.due : null}
+        returnPile={data.viewing && data.returnPile && userCan(currentUser, 'orders.unlock') ? data.returnPile : null}
+        returning={returning}
+        onReturnPile={() => void returnHerPile()}
+      />
       {canPull && !readOnly && (
         <PullPanel
           queue={queue}
