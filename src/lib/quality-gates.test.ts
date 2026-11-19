@@ -455,7 +455,18 @@ describe('the payload', () => {
    * FROM NOW THIS NUMBER ONLY HOLDS OR FALLS. The restructure plan allowed
    * two rises (R2a and this one); both are spent.
    */
-  const CSS_BUDGET_KB = 94.7;
+  /*
+   * 19/11 (R19 — the ceilings come down): 94.70 → 91.99, MEASURED. By then every screen that had a rise had spent it and the
+   * restructure had taken more out than it put in; the ceiling still stood at R4's figure, 2.7 KB above what the site weighs.
+   * Measured by a production build in a worktree (`NEXT_TURBOPACK_ROOT=<the main checkout> NEXT_DIST_DIR=.next-verify`
+   * `next build`, Turbopack, on osm/main 473ab6ac plus this change; the build compiles and writes its manifests, then stops at the
+   * type-check step on a stale shared database client that is not this code, which does not touch the stylesheets): the two `.css`
+   * files are 85,462 + 8,731 = 94,193 bytes = 91.985 KB. The cap is the measurement rounded UP to the next hundredth, 91.99 KB =
+   * 94,197.76 bytes — CI's own «Payload budget» step reads 94,195 bytes (run 44471751451), so the room is about 2.8 bytes — and not a
+   * round figure.
+   * Never a rise: it only holds or falls from here.
+   */
+  const CSS_BUDGET_KB = 91.99;
 
   it(`keeps the first-load stylesheet at or under ${CSS_BUDGET_KB} KB`, () => {
     /*
