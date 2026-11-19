@@ -2397,12 +2397,12 @@
     "checkboxes": 1
   },
   "src/components/settings/AuthenticityCodesCard.tsx": {
-    "buttons": 3,
+    "buttons": 4,
     "inputs": 2,
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 4,
+    "icons": 5,
     "links": 0,
     "tabs": 0
   },
