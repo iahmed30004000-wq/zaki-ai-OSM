@@ -111,6 +111,10 @@ units still live only in batches. Extend `src/lib/warehouses.ts`; never add a se
 (19/11, W1a) A store becomes «placed» once: `WarehousePlacement` (one row per store) + `src/lib/warehouse-placement.ts`
 (`storeIsPlaced` reads the row). Units change place inside one store ONLY through `src/lib/batch-split.ts`
 (`splitBatch`: a twin row, `quantityProduced` 0, the parent's cost and dates) — never draw-down + receive.
+(20/11, W8a) A COMBINATION's count (size/colour, `ProductVariant.onHand`) was already its own number beside the batches;
+in a placed store it is split per warehouse in `ProductVariantStock` (one «بلا مكان» row with no warehouse) and written
+ONLY by `src/lib/variant-stock.ts` (`onHand` = Σ of the places; a `VariantStockMovement` line per change). The product's
+units still live only in batches — this splits the existing combination count, it is not a second count of the product.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one
