@@ -741,6 +741,30 @@ model StockOpeningCount {
   @@map("stock_opening_counts")
 }
 
+/// THE OPENING PLACEMENT OF A STORE'S STOCK IN WAREHOUSES — once per store.
+///
+/// Until it exists the store has no places and every stock door behaves as it
+/// always has (`warehouses.storeIsPlaced`). Written in the same transaction that
+/// gives the store's batches their `warehouseId` (`warehouse-placement.placeStore`);
+/// the batches ARE its lines, so no quantity is copied here.
+model WarehousePlacement {
+  id            String   @id @default(uuid())
+  companyId     String
+  storeId       String   @unique
+  /// Who physically counted — free text, like the opening count: the keeper may have no login.
+  countedByName String
+  countedAt     DateTime
+  note          String?
+  /// The system user who pressed. Distinct from countedByName by design.
+  recordedById  String
+  createdAt     DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, countedAt])
+  @@map("warehouse_placements")
+}
+
 model ProductionBatchCost {
   id        String   @id @default(uuid())
   companyId String
@@ -2397,6 +2421,8 @@ model Store {
   notifications     Notification[]
   /// The one signed physical count of stock this store started from.
   stockOpeningCount StockOpeningCount?
+  /// The one placement of this store's stock in warehouses (`warehouse_placements`).
+  warehousePlacement WarehousePlacement?
   pages             StorePage[]
   menus             StoreMenu[]
   redirects         StoreRedirect[]

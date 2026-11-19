@@ -397,6 +397,12 @@ const SCENARIOS: Scenario[] = [
 function withoutTheCost(list: { call: string; args: any }[]) {
   return list
     .filter((w) => !(w.call === 'order.update' && Object.keys(w.args?.data ?? {}).join() === 'estimatedCostOfGoods'))
+    /*
+     * 19/11 (W1a review): the draw-down's batch update gained a CONDITION, not a value — `where: { id }` became
+     * `where: { id, quantityRemaining: <what was read> }`, so a write never lands on a row a concurrent split already changed.
+     * The figures written (`data`) are compared exactly as before; only that guard field is set aside here.
+     */
+    .map((w) => (w.call === 'productionBatch.update' && w.args?.where ? { ...w, args: { ...w.args, where: { id: w.args.where.id } } } : w))
     .map((w) => {
       if (!w.args?.data || Array.isArray(w.args.data)) return w;
       const { estimatedCostOfGoods: _cost, ...rest } = w.args.data;

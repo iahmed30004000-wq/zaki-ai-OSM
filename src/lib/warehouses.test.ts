@@ -71,9 +71,55 @@ describe('another company’s warehouse is never reached — answered before any
   });
 });
 
+/*
+ * 19/11, W1a: this answered «no» for every store by construction (old: `storeIsPlaced('any-store') === false` with no
+ * read). The placement table exists now, so the answer is the row's: still «no» for every store without one — which is
+ * every store until somebody places it — and «yes» only for the store whose row it is.
+ */
 describe('a store is not placed until its placement exists', () => {
-  it('storeIsPlaced answers no — every store behaves as before', async () => {
-    expect(await storeIsPlaced('any-store')).toBe(false);
+  const client = (rows: { storeId: string }[]) => {
+    const findUnique = vi.fn(async ({ where }: { where: { storeId: string } }) => (rows.some((r) => r.storeId === where.storeId) ? { id: 'p1' } : null));
+    return { client: { warehousePlacement: { findUnique } } as never, findUnique };
+  };
+
+  it('storeIsPlaced answers no for a store with no placement row — every store behaves as before', async () => {
+    expect(await storeIsPlaced('any-store', client([]).client)).toBe(false);
+  });
+
+  it('NEGATIVE: another store’s placement does not place this one', async () => {
+    expect(await storeIsPlaced('s1', client([{ storeId: 's2' }]).client)).toBe(false);
+  });
+
+  it('yes once its own row exists — asked by the store, nothing else', async () => {
+    const { client: c, findUnique } = client([{ storeId: 's1' }]);
+    expect(await storeIsPlaced('s1', c)).toBe(true);
+    expect(findUnique).toHaveBeenCalledWith({ where: { storeId: 's1' }, select: { id: true } });
+  });
+});
+
+/*
+ * warehousesOfStore — its first caller is the placement door (W1a). W0a's review noted two things untested: the company
+ * scope, and whether a stopped warehouse is offered. Both pinned here against the query it really sends.
+ */
+describe('the warehouses a store may place its goods in', () => {
+  it('NEGATIVE: a store of another company finds none — and no warehouse is asked for', async () => {
+    const { db } = await import('./db');
+    const findFirst = vi.fn(async () => null);
+    const findMany = vi.fn(async () => [{ id: 'w1' }]);
+    Object.assign(db as object, { store: { findFirst }, warehouse: { findMany } });
+    const { warehousesOfStore } = await import('./warehouses');
+    expect(await warehousesOfStore('c1', 'store-of-c2')).toEqual([]);
+    expect(findFirst).toHaveBeenCalledWith({ where: { id: 'store-of-c2', companyId: 'c1' }, select: { countryId: true } });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('only the RUNNING warehouses of the store’s own country and company (NEGATIVE: a stopped one is not offered)', async () => {
+    const { db } = await import('./db');
+    const findMany = vi.fn(async () => []);
+    Object.assign(db as object, { store: { findFirst: async () => ({ countryId: 'k1' }) }, warehouse: { findMany } });
+    const { warehousesOfStore } = await import('./warehouses');
+    await warehousesOfStore('c1', 's1');
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 'c1', countryId: 'k1', isActive: true } }));
   });
 });
 
@@ -113,8 +159,29 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/geo/warehouses/route.ts',
     'src/app/api/geo/warehouses/[id]/route.ts',
     'src/app/api/geo/warehouses/[id]/keepers/route.ts',
+    // 19/11, W1a (the opening placement): the split primitive, the placement, its two doors and their shared helper; the
+    // cost fix that carries a run's corrected cost to the rows split from it; the store-removal list that counts the
+    // placement row.
+    'src/lib/batch-split.ts',
+    'src/lib/warehouse-placement.ts',
+    'src/lib/placement-door.ts',
+    'src/app/api/inventory/placement/route.ts',
+    'src/app/api/inventory/placement/preview/route.ts',
+    'src/app/api/production/[id]/route.ts',
+    'src/lib/geo-removal.ts',
+    // 19/11, W1a review: the money readers cost a run and the rows split from it as one layer (`batch-family.ts`), and the
+    // draw-down writes a row only while it still holds what was read.
+    'src/lib/batch-family.ts',
+    'src/lib/receiving.ts',
+    'src/lib/product-cost.ts',
+    // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
+    // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
+    'src/components/inventory/PlacementSheet.tsx',
   ]);
-  const NEW_NAMES = /\b(warehouseId|sourceWarehouseId|quantityMovedIn|quantityMovedOut|splitFromBatchId|inTransitTransferId|userWarehouseAccess|warehouse_id|quantity_moved_in|quantity_moved_out|split_from_batch_id|in_transit_transfer_id)\b|\b(db|tx)\.warehouse\./;
+  // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
+  // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
+  const NEW_NAMES =
+    /\b(warehouseId|sourceWarehouseId|quantityMovedIn|quantityMovedOut|splitFromBatchId|inTransitTransferId|userWarehouseAccess|warehousePlacement|warehouse_id|quantity_moved_in|quantity_moved_out|split_from_batch_id|in_transit_transfer_id|warehouse_placements|splitFrom|sourcedOrders)\b|\b(db|tx)\.warehouse\.|\b(warehouse|warehouses|splits|keepers)\s*:\s*(\{|true)/;
 
   function files(dir: string): string[] {
     const out: string[] = [];

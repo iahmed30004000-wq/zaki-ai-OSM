@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
+import { FamilyCost, familyRootOf } from './batch-family';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -56,12 +57,16 @@ export async function productCost(tx: Tx, companyId: string, productId: string):
   const batches = await tx.productionBatch.findMany({
     where: { companyId, productId, quantityRemaining: { gt: 0 } },
     orderBy: { productionDate: 'asc' },
-    select: { quantityRemaining: true, costPerUnit: true },
+    select: { id: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true },
   });
   if (batches.length === 0) return ZERO;
 
   const onHand = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
-  const stockValue = batches.reduce((sum, b) => sum + b.quantityRemaining * b.costPerUnit, 0);
+  // One run's units are costed once, however many places they sit in (`batch-family.ts`).
+  const familyOf = await familyRootOf(tx, companyId, [productId], batches);
+  const value = new FamilyCost();
+  for (const b of batches) value.add(familyOf(b), b.quantityRemaining, b.costPerUnit);
+  const stockValue = value.total();
 
   return {
     onHand,
@@ -84,25 +89,28 @@ export async function productCosts(
   const batches = await tx.productionBatch.findMany({
     where: { companyId, productId: { in: productIds }, quantityRemaining: { gt: 0 } },
     orderBy: { productionDate: 'asc' },
-    select: { productId: true, quantityRemaining: true, costPerUnit: true },
+    select: { id: true, productId: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true },
   });
 
   for (const id of productIds) out.set(id, ZERO);
 
-  const grouped = new Map<string, { qty: number; value: number; first: number; count: number }>();
+  // One run's units are costed once, however many places they sit in (`batch-family.ts`).
+  const familyOf = await familyRootOf(tx, companyId, productIds, batches);
+  const grouped = new Map<string, { qty: number; value: FamilyCost; first: number; count: number }>();
   for (const b of batches) {
-    const g = grouped.get(b.productId) ?? { qty: 0, value: 0, first: b.costPerUnit, count: 0 };
+    const g = grouped.get(b.productId) ?? { qty: 0, value: new FamilyCost(), first: b.costPerUnit, count: 0 };
     g.qty += b.quantityRemaining;
-    g.value += b.quantityRemaining * b.costPerUnit;
+    g.value.add(familyOf(b), b.quantityRemaining, b.costPerUnit);
     g.count += 1;
     grouped.set(b.productId, g);
   }
 
   for (const [id, g] of grouped) {
+    const value = g.value.total();
     out.set(id, {
       onHand: g.qty,
-      stockValue: round(g.value),
-      average: g.qty > 0 ? round(g.value / g.qty) : 0,
+      stockValue: round(value),
+      average: g.qty > 0 ? round(value / g.qty) : 0,
       nextOut: g.first,
       batchCount: g.count,
     });

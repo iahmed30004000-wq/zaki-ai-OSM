@@ -108,6 +108,9 @@ NO LONGER ABSENT (19/11, warehouse plan W0a): a stock LOCATION dimension. `Wareh
 country) and `UserWarehouseAccess` (keepers) exist; `ProductionBatch.warehouseId`, `InventoryMovement.warehouseId`,
 `ShippingBatch.warehouseId` and `Order.sourceWarehouseId` exist but are INERT until a store is placed —
 units still live only in batches. Extend `src/lib/warehouses.ts`; never add a second quantity table.
+(19/11, W1a) A store becomes «placed» once: `WarehousePlacement` (one row per store) + `src/lib/warehouse-placement.ts`
+(`storeIsPlaced` reads the row). Units change place inside one store ONLY through `src/lib/batch-split.ts`
+(`splitBatch`: a twin row, `quantityProduced` 0, the parent's cost and dates) — never draw-down + receive.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

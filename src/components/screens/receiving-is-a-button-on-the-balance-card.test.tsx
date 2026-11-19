@@ -39,6 +39,8 @@ vi.mock('@/context/AppContext', () => ({
   useApp: () => ({ t: {}, locale: 'ar', currentUser: user.current }),
 }));
 vi.mock('@/components/inventory/OpeningStockCount', () => ({ OpeningStockCountBanner: () => null }));
+// 19/11 (W1b): the placement banner reads its own door on mount; the first call this file reads is the receive's, as before.
+vi.mock('@/components/inventory/PlacementSheet', () => ({ PlacementBanner: () => null }));
 vi.mock('@/components/ui/ProductPicker', () => ({ ProductPicker: () => null }));
 
 import { InventoryBalancesScreen } from './InventoryBalancesScreen';

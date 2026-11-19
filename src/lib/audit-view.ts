@@ -97,7 +97,7 @@ const ACTION_AR: Record<string, string> = {
   STATEMENT_UNMENTIONED_ORDER_ANSWERED: 'قرار بشأن طلب لم يذكره كشف', STATEMENT_LINE_LINKED_BY_HAND: 'ربط سطر كشف بطلب يدوياً',
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', EXPENSE_VOIDED: 'إلغاء مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
   // The warehouses (`/api/geo/warehouses/**`): created, renamed and stopped read «verb + مخزن»; these two do not end in a verb that says it.
-  WAREHOUSE_STARTED: 'تشغيل مخزن', WAREHOUSE_KEEPERS_SET: 'تحديد أمناء مخزن',
+  WAREHOUSE_STARTED: 'تشغيل مخزن', WAREHOUSE_KEEPERS_SET: 'تحديد أمناء مخزن', STOCK_PLACED_IN_WAREHOUSES: 'توزيع المخزون على المخازن',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
   SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',
