@@ -285,9 +285,6 @@
       "rawSurfaces": 3,
       "textXs": 20
     },
-    "src/components/screens/AuditScreen.tsx": {
-      "textXs": 5
-    },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
       "rawCheckboxes": 1,
@@ -456,7 +453,7 @@
     },
     "src/components/screens/TeamLeaderAudit.tsx": {
       "rawDatePickers": 1,
-      "textXs": 10
+      "textXs": 1
     },
     "src/components/screens/TelegramAliasesDialog.tsx": {
       "textXs": 1
