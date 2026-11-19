@@ -20,7 +20,8 @@ import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard
 import { callProofState } from '@/lib/call-proof';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadenceCalOf, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
+import { cadenceCalOf, cadenceLimit, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
+import { readConfirmationRule } from '@/lib/confirmation-rule-settings';
 import { MAX_TALK_S } from '@/lib/call-helper/core';
 
 /**
@@ -50,8 +51,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      * «إثبات المكالمات» — with the switch on, the answer also says what the VIEWER's «لا يرد» is waiting for on this order (`callProof`), computed by the same function
      * the door asks, so the order window never decides the rule: it ticks `unlocksAtMs` against `serverNow`. With it off the answer has no such key.
      */
+    // Request Q3b: the wait is the rule in force's seconds (read once, cached), so the order window unlocks when the door would.
     const proof = (await callProofOn(db, companyId))
-      ? { callProof: { on: true, serverNow: Date.now(), ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date() }) } }
+      ? {
+          callProof: {
+            on: true,
+            serverNow: Date.now(),
+            ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date(), proofSeconds: (await readConfirmationRule(db, companyId)).proofSeconds }),
+          },
+        }
       : {};
     return NextResponse.json({
       attempts,
@@ -200,7 +208,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * went on — the floor of every count — or null; `cal` is what the pure plan needs of the world (the country's timezone, rest days and work hours — the SAME builder the desk uses). Null, and every line below is today's, key for key.
      */
     const cadenceAt = proofOn ? await cadenceSince(db, companyId) : null;
-    const cal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
+    /*
+     * REQUEST Q3b (19/11): THE RULE IN FORCE, read ONCE for this press (cached thirty seconds) and only with the switch on — off, nothing new is read and every line below is
+     * today's. Its proof seconds go to the guard, its steps, days and clocks into the plan's calendar, its attempts into the answer. The due a line STORED is never rewritten:
+     * an edit judges the next press only.
+     */
+    const rule = proofOn ? await readConfirmationRule(db, companyId) : null;
+    const cal = cadenceAt && rule ? cadenceCalOf(cadenceAt, country, rule) : null;
     let enteredDuration: number | null = null;
     if (proofOn && !guardedClass && durationSeconds !== undefined && durationSeconds !== null && durationSeconds !== '') {
       if (typeof durationSeconds !== 'number' || !Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > MAX_TALK_S) {
@@ -218,7 +232,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       let measured: number | null = null;
       if (proofOn) {
         measured = (
-          await assertCallProven(tx, { companyId, orderId: id, employeeId: user.id, claimedAt: order.claimedAt ?? null, result: result!, door: 'ATTEMPT' })
+          await assertCallProven(tx, { companyId, orderId: id, employeeId: user.id, claimedAt: order.claimedAt ?? null, result: result!, door: 'ATTEMPT', proofSeconds: rule?.proofSeconds })
         ).durationSeconds;
       }
       /*
@@ -399,7 +413,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       success: true,
       attempt,
       noAnswerCount,
-      noAnswerLimit: cal ? CADENCE_LIMIT : NO_ANSWER_LIMIT,
+      noAnswerLimit: cal ? cadenceLimit(cal.rule) : NO_ANSWER_LIMIT,
       autoClosed,
       // Said only when it happened (the mode is off otherwise, and the answer is what it always was): the order is out of her hand.
       ...(returned ? { returnedToQueue: true } : {}),
@@ -408,7 +422,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         ? {
             cadence: {
               attempt: cad.next.counted.length,
-              of: CADENCE_LIMIT,
+              of: cadenceLimit(cal!.rule),
               counted: cad.counted,
               dueAt: cad.next.dueAt?.toISOString() ?? null,
               words: cadencePressWords({
@@ -419,6 +433,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 dueAt: cad.next.dueAt,
                 now: pressedAt,
                 timeZone: country.timezone,
+                limit: cadenceLimit(cal!.rule),
               }),
             },
           }

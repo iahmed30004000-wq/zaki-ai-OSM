@@ -19,7 +19,8 @@ import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 import { readingLine } from './call-outcome';
 import { cadenceSince } from './no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadenceCalOf, cadenceLineNumbers } from './no-answer-cadence';
+import { cadenceCalOf, cadenceLimit, cadenceLineNumbers } from './no-answer-cadence';
+import { readConfirmationRule } from './confirmation-rule-settings';
 import { attemptWords } from './attempt-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -405,8 +406,11 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
  */
 const ROUND_RELEASE_UNDER_PLAN_AR = 'تحرير تلقائي — مرّت مدة التحرير بلا ردّ، ورجع للطابور';
 
-/** What the timeline needs of the plan: the number each «لا يرد» line counted as, or null for a press that did not count. Null as a whole = the plan is off. */
-type TimelinePlan = Map<object, number | null>;
+/**
+ * What the timeline needs of the plan: the number each «لا يرد» line counted as, or null for a press that did not count, and the rule's attempts (request Q3b: «محاولة N
+ * من M» says the rule in force's M). Null as a whole = the plan is off.
+ */
+type TimelinePlan = { numbers: Map<object, number | null>; limit: number };
 
 /**
  * ONE COUNTER ON THE TIMELINE TOO (request C2, decision 9). With «إثبات المكالمات وجدول المحاولات» on, the order's lines are folded by the plan's own function
@@ -427,15 +431,17 @@ async function planOfTimeline(
     select: { country: { select: { timezone: true, weekendDays: true, workHoursStart: true, workHoursEnd: true } } },
   });
   if (!order?.country) return null;
-  return cadenceLineNumbers(contacts, cadenceCalOf(since, order.country)) as TimelinePlan;
+  // Request Q3b: the rule in force, read once for this timeline (cached) — the lines are numbered by the rule the door judges the next press by.
+  const rule = await readConfirmationRule(tx, contacts[0].companyId);
+  return { numbers: cadenceLineNumbers(contacts, cadenceCalOf(since, order.country, rule)) as Map<object, number | null>, limit: cadenceLimit(rule) };
 }
 
 /** The words before «عبر …» of a contact line: main's «محاولة اتصال N» with the plan off; the plan's counted attempt with it on. */
 function contactLineWords(row: { attemptNumber: number; result: string }, plan: TimelinePlan | null): string {
   if (!plan) return `محاولة اتصال ${row.attemptNumber}`;
   if (!(NO_ANSWER_RESULTS as readonly string[]).includes(row.result)) return 'اتصال';
-  const n = plan.get(row);
-  return typeof n === 'number' ? attemptWords(n, CADENCE_LIMIT) : 'ضغطة ما انحسبت محاولة';
+  const n = plan.numbers.get(row);
+  return typeof n === 'number' ? attemptWords(n, plan.limit) : 'ضغطة ما انحسبت محاولة';
 }
 
 function claimReasonWords(row: { reason: string | null; metadata: string | null }, plan: TimelinePlan | null = null): string | null {

@@ -306,7 +306,9 @@ describe('4 · the words live in one place', () => {
   it('the server writes the attempt through `nextAttemptWords` (the screen prints it), and neither it nor the cadence file spells «محاولة N من 5» by hand', () => {
     const screenSrc = read('src/components/screens/ConfirmationMineScreen.tsx');
     expect(screenSrc).not.toContain("from '@/lib/attempt-words'"); // the server writes the words (the desk bundle is at its ceiling)
-    expect(read('src/app/api/confirmation/mine/route.ts')).toContain('nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT)');
+    // UPDATED 2026-11-19 (request Q3b): was `nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT)` — the limit is now the rule in force's (`planLimit` =
+    // `cadenceLimit(rule)`, 5 for the default rule). Still the one function, still written by the server.
+    expect(read('src/app/api/confirmation/mine/route.ts')).toContain('nextAttemptWords(desks.get(o.id)!.counted, planLimit)');
     expect(screenSrc).not.toMatch(/محاولة \$\{/);
     // 18/11 (R8d): the card that prints the words moved to confirmation/OrderCard.tsx — the same two, asked of it too.
     const cardSrc = read('src/components/screens/confirmation/OrderCard.tsx');
