@@ -125,7 +125,8 @@ describe('the tripwires — each names the line a removal would break', () => {
     for (const f of [
       'src/components/screens/OrdersScreen.tsx',
       'src/components/orders/OrderDetailModal.tsx',
-      'src/components/screens/ConfirmationMineScreen.tsx',
+      // 18/11 (R8d): the desk's card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertion, read there.
+      'src/components/screens/confirmation/OrderCard.tsx',
     ]) {
       expect(src(f), f).toContain('<OrderStateBadge state={order.state} testStore={order.testStore} />');
     }

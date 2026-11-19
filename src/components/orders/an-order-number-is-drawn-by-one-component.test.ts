@@ -73,7 +73,7 @@ const LINK_CEILING = 0;
  * the start; 6 now). Each falls to zero when its reason goes:
  *   · ProductRecentOrders — its link leads to the list with the row lit, not
  *     to the order; the copy button sits beside it already;
- *   · ConfirmationMineScreen (the card) — a number that opened the order would
+ *   · OrderCard of «طلباتي» (the card) — a number that opened the order would
  *     be the way around «افتح وعدّل», locked until she has rung; the copy
  *     button sits beside it already;
  *   · OrdersScreen — the whole row already opens the order; a second
@@ -88,7 +88,8 @@ const LINK_CEILING = 0;
  */
 const HAND_DEBT: Ledger = new Map<string, number>([
   ['src/components/products/ProductRecentOrders.tsx', 1],
-  ['src/components/screens/ConfirmationMineScreen.tsx', 1],
+  // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — the same one number, the same reason.
+  ['src/components/screens/confirmation/OrderCard.tsx', 1],
   ['src/components/screens/finance/MatchingScreen.tsx', 1],
   ['src/components/screens/OrdersScreen.tsx', 1],
   ['src/components/screens/ShipmentsNewScreen.tsx', 1],

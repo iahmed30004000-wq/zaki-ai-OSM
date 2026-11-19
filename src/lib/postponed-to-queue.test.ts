@@ -100,7 +100,8 @@ describe('handing a due postponed order back', () => {
    * renders «مؤجل حتى …» and the postpone count from those two fields.
    */
   it('and the screen that pulls it says it is postponed', () => {
-    const mine = stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+    // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertions, read there.
+    const mine = stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
     expect(mine).toContain('مؤجل حتى');
     expect(mine).toContain('order.postponeCount');
   });

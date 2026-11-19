@@ -8,16 +8,10 @@ import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from '@/lib/confirmati
 import { useRegions } from '@/hooks/useRegions';
 import { matchRegion } from '@/lib/regions';
 import { useOrderPatch } from '@/components/orders/useOrderPatch';
-import { humanMinutes, useElapsedMinutes } from '@/components/ui/Elapsed';
-import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
-import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
-import { OrderRef } from '@/components/orders/OrderRef';
-import { CopyValue } from '@/components/orders/CopyValue';
-import { orderNumberToCopy } from '@/lib/copy-values';
 import { ContactButtons } from '@/components/orders/ContactButtons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import {
   ChangeRequestDialog,
@@ -31,7 +25,7 @@ import { raiseChangeRequest } from '@/components/orders/raiseChangeRequest';
 import { onOpenTrolley, ON_TROLLEY_AR } from '@/lib/order-seal';
 import { TwinConfirmedDialog } from '@/components/orders/TwinConfirmedDialog';
 import { confirmAnywayBody, rejectAsDuplicateBody, twinsFromRefusal, type ConfirmedTwinView } from '@/lib/twin-refusal';
-import { RiAddCircleLine, RiAlertLine, RiCheckboxCircleLine, RiCloseCircleLine, RiLoader4Line, RiPencilLine, RiPhoneLockLine, RiShieldFlashLine, RiSparkling2Line, RiTimerLine } from '@remixicon/react';
+import { RiAddCircleLine, RiLoader4Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
 import { deskIsEmpty, openPreparationStep } from '@/lib/next-step';
@@ -41,20 +35,15 @@ import { CustomerOnTheLine } from '@/components/confirmation/CustomerOnTheLine';
 import { DeskHead } from './confirmation/DeskHead';
 import { SectionHead, TabButton } from './confirmation/DeskTabs';
 import { DoneList } from './confirmation/DoneList';
+import { Action, OrderCard, lacksRegion, needsContact } from './confirmation/OrderCard';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
 import { editsNow } from '@/lib/edit-confirmed-window';
 import { EDIT_CONFIRMED_KEY } from '@/lib/edit-confirmed-key';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { arDate } from '@/lib/format';
-import { Money } from '@/components/ui/Money';
-import { cardTone, noAnswerWords, roundWords } from '@/lib/no-answer-tone';
-import { POST_ORDER_ADDITION_AR } from '@/lib/post-order-offer-copy';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
-import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { OrderNotes, governorateOf } from '@/components/orders/OrderGoods';
 import { CallOutcomeSheet, type LoggedOutcome } from '@/components/confirmation/CallOutcomeSheet';
 import { WhatsAppAfterNoAnswer } from '@/components/confirmation/WhatsAppAfterNoAnswer';
 import { useOutbox, usePendingCall, type SendAnswer } from '@/components/confirmation/useCallOutcome';
@@ -259,36 +248,11 @@ interface WatchableAgent {
   holding: number;
 }
 
-const RISK_LABEL: Record<string, { text: string; cls: string }> = {
-  SAFE: { text: 'خطورة منخفضة', cls: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/30' },
-  WATCH: { text: 'تحت المراقبة', cls: 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30' },
-  HIGH: { text: 'خطورة عالية', cls: 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]' },
-};
-
 type DialogState =
   | { kind: 'postpone' | 'issue' | 'change' | 'reject' | 'assist'; order: OrderRow }
   // The door held her yes back: this customer already has a confirmed order for the same product (`TWIN_CONFIRMED`).
   | { kind: 'twin'; order: OrderRow; twins: ConfirmedTwinView[] }
   | null;
-
-/**
- * HAS ANYBODY TRIED TO REACH THIS CUSTOMER YET?
- *
- * One question, asked of the count the row already carries, so the three
- * buttons and the line under them can never disagree about it.
- */
-const needsContact = (order: { _count: { contactAttempts: number } }) =>
-  order._count.contactAttempts === 0;
-
-/**
- * DOES THIS ORDER LACK ITS GOVERNORATE? (the owner, 30/10 — «ما يسمح لموظفة التأكيد تأكّد غير لما تحدد المحافظة»)
- *
- * Asked of the id and never of the written city: `customer.city` is free text, and a town typed there is not a row in
- * the fee table. An answer that has not arrived (`undefined`, a response from before the id was read) is NOT «none» —
- * the door is the authority and refuses it anyway; the screen only avoids shutting a button on a guess.
- */
-const lacksRegion = (order: { regionId?: string | null }) =>
-  order.regionId === null || (typeof order.regionId === 'string' && order.regionId.trim() === '');
 
 /** Why the call sheet's «تأكيد الطلب» is shut — the card's own two locks, in the card's own words. */
 const sheetConfirmLock = (order: { _count: { contactAttempts: number }; regionId?: string | null }, first = CONTACT_FIRST_MESSAGE) =>
@@ -353,29 +317,6 @@ const askedOrderId = (value: string | null): string | null =>
 const deskCardId = (orderId: string) => `desk-order-${orderId}`;
 
 /**
- * WHERE THE ORDER CAME FROM, IN THE WORDS THE AGENT USES.
- *
- * The card never said. And it decides what she can do about bad data: an
- * entry issue goes to the MODERATOR who typed it, so on an order nobody
- * typed there is nobody to send it to.
- *
- * Read in order of how much it tells her: a named moderator first, then a
- * named person who entered it by hand, then the channel's own name, then
- * the bare source. `source` values are the door's («LANDING_PAGE»,
- * «TELEGRAM», «POS»), and the unknown ones are passed through rather than
- * swallowed — a word she can ask about beats «أخرى».
- */
-const SOURCE_AR: Record<string, string> = {
-  LANDING_PAGE: 'المتجر',
-  STORE: 'المتجر',
-  STOREFRONT: 'المتجر',
-  TELEGRAM: 'تيليجرام',
-  WHATSAPP: 'واتساب',
-  POS: 'نقطة بيع',
-  MANUAL: 'إدخال يدوي',
-};
-
-/**
  * THE GOVERNORATE, ASKED ON THE CARD THAT NEEDS IT (the owner, 30/10).
  *
  * An order with no `regionId` cannot be confirmed (`REGION_REQUIRED`), so the field that sets it is drawn on the card
@@ -412,7 +353,7 @@ function RegionGate({
   const value = picked ?? guess?.id ?? '';
   return (
     <div className="rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] p-2 space-y-2">
-      <label htmlFor={fieldId} className="block text-xs font-medium text-[var(--sys-warning)]">
+      <label htmlFor={fieldId} className="block text-note font-medium text-[var(--sys-warning)]">
         المحافظة — لازم قبل التأكيد{countryName ? ` (${countryName})` : ''}
       </label>
       <div className="flex flex-wrap items-center gap-2">
@@ -440,25 +381,17 @@ function RegionGate({
         </Action>
       </div>
       {written && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           المكتوب: <span dir="auto">{written}</span>
         </p>
       )}
       {guess && picked === null && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           اقتراح من المكتوب: {guess.name} — لم يُحفظ بعد، اضغط «احفظ المحافظة».
         </p>
       )}
     </div>
   );
-}
-
-function sourceLabel(order: OrderRow): string {
-  if (order.moderator?.name) return `مودريتور: ${order.moderator.name}`;
-  if (order.source === 'MANUAL' && order.createdBy?.name) return `إدخال يدوي: ${order.createdBy.name}`;
-  if (order.channel?.name) return order.channel.name;
-  if (order.source) return SOURCE_AR[order.source] ?? order.source;
-  return 'مصدر غير مسجَّل';
 }
 
 /** The phone's clock, read ONLY inside an event handler (a «اتصال» press) — never during a render. */
@@ -1274,19 +1207,19 @@ export function ConfirmationMineScreen() {
         : [];
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <PageHeader
-        title={routeLabel('/confirmation/mine')}
-        actions={
-          canCreate &&
-          !readOnly && (
-            <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
-              <RiAddCircleLine className="w-4 h-4" />
-              <span>إنشاء طلب</span>
-            </Button>
-          )
-        }
-      />
+    <PageShell
+      title={routeLabel('/confirmation/mine')}
+      width="wide"
+      actions={
+        canCreate &&
+        !readOnly && (
+          <Button size="sm" onClick={() => setCreating(true)} className="flex items-center space-x-1.5">
+            <RiAddCircleLine className="w-4 h-4" />
+            <span>إنشاء طلب</span>
+          </Button>
+        )
+      }
+    >
       {canCreate && !readOnly && (
         <CreateOrderModal
           isOpen={creating}
@@ -1467,343 +1400,28 @@ export function ConfirmationMineScreen() {
               )}
             </Card>
           )}
-          {rows.map(({ order, closed }) => {
-            const remaining = Math.max(0, data.noAnswerLimit - order.noAnswerCount);
-            /*
-              THE «لا يرد» BUTTON AND THE HINT BESIDE IT SAY WHAT THE SERVER KNOWS (the owner, 17/11 — «أزرار بتناقض بطاقاتها»).
-
-              Under the plan (`cadenceOn`) the button prints the attempt THIS press will be — «محاولة 2 من 5», the very words of the card's tag (`attemptWords`, written by the server through `nextAttemptWords`,
-              one function) — and it is red only when the server said a press now would close the order (`closesOnNext`). Under the rounds the number of presses
-              left is not the number of rounds left, so the card says nothing it cannot know: no countdown, no red. Only the base rule (neither switch) keeps
-              the client's arithmetic, because there every press counts and the arithmetic is true.
-            */
-            const planned = !!data.cadenceOn;
-            const closesNow = planned ? !!order.closesOnNext : !data.rounds && remaining <= 1;
-            /*
-              EACH BUTTON OF THE CARD, DRAWN ONCE, PLACED BY THE WIDTH.
-
-              A desk lays them in one wrapping row, in the order the work happens in; a phone groups them in
-              three rows (see the footer below). Nothing about a button changes with the width — its handler,
-              its lock and its words are the same — so the only thing the width decides is where it sits.
-            */
-            /*
-              THE ORDER SHE IS WORKING ON, OPENED IN THE SAME SCREEN EVERYONE ELSE SEES IT IN.
-
-              She fixes what the customer just told her — a wrong name, a wrong street, a second unit —
-              without leaving the queue. The fields she has no authority over are not shown, and are refused
-              by the server even if they were.
-
-              AND THIS ONE WAS THE WAY AROUND THE OTHER THREE. «تأكيد» and «تأجيل» and «ألغِ» have been locked
-              until the order carries a contact attempt since C1 — and «افتح وعدّل» was not. So an agent who
-              had rung nobody could open the order, change the quantity, the price or the address, and save.
-              The server refuses it now too (`CONTACT_FIRST`), so this is not the rule — it is her being told
-              it before she retypes an address rather than after.
-            */
-            const openBtn = (
-              <Action
-                onClick={() => setOpenOrderId(order.id)}
-                locked={needsContact(order)}
-                lockedTitle={contactFirstText}
-                icon={<RiPencilLine className="w-4 h-4" />}
-              >
-                افتح وعدّل
-              </Action>
-            );
-            /* 1/2/3 counter — the third no-answer closes the order by rule */
-            const lock = proofLock(order);
-            const lockProps = lock.text ? { locked: true, lockedTitle: lock.text } : {};
-            const noAnswerBtn = (
-              <Action
-                onClick={() => logAttempt(order, 'PHONE', 'NO_ANSWER')}
-                {...lockProps}
-                busy={busyId === order.id}
-                icon={<RiPhoneLockLine className="w-4 h-4" />}
-                danger={closesNow}
-                wide={phone}
-              >
-                لا يرد
-                {order.attemptWords ? (
-                  ` — ${order.attemptWords}`
-                ) : (
-                  <span className="tabular-nums" dir="ltr">
-                    {' '}
-                    {order.noAnswerCount}/{data.noAnswerLimit}
-                  </span>
-                )}
-              </Action>
-            );
-            /*
-              THE PHONE THAT CANNOT RING AT ALL.
-
-              She calls, hears the network's own recording, and had to file it as «لا يرد» — which says the
-              customer did not pick up, a different fact about a different person. The two read the same in a
-              counter and differently to whoever opens the order next: one is somebody ignoring the phone, the
-              other is what a wrong digit looks like. It counts toward the three like the others, because
-              three calls that never reached anybody is the same evidence whichever way the line failed.
-            */
-            const unreachableBtn = (
-              <Action
-                onClick={() => logAttempt(order, 'PHONE', 'UNREACHABLE')}
-                {...lockProps}
-                busy={busyId === order.id}
-                icon={<RiPhoneLockLine className="w-4 h-4" />}
-                danger={closesNow}
-                wide={phone}
-              >
-                مغلق أو خارج التغطية
-              </Action>
-            );
-            // Said only where it is true: the base rule's arithmetic, or the plan's own fact for this card (`closesOnNext`). Under the rounds, and under the plan when a press now would not close it: nothing.
-            // The server's words (`noAnswerHint`): only what is true for the rule in force — the desk counts nothing (finding #11, and its bundle is at its ceiling).
-            const remainingHint = order.noAnswerHint && <span className="text-xs text-[var(--sys-muted)]">{order.noAnswerHint}</span>;
-            /*
-              CALL, SMS AND WHATSAPP — THE SAME STRIP THE REST OF THE PRODUCT USES.
-              Two buttons were hand-rolled here and both were poorer for it: the WhatsApp one opened NOTHING —
-              it recorded a contact and left the agent to find the customer in WhatsApp themselves — and there
-              was no SMS at all, on the one screen where the whole job is reaching somebody. `ContactButtons`
-              already carries the ready-made messages, filtered by channel and filled with this order's own
-              words, and the tracking and couriers screens already use it.
-
-              THE PRESS IS LOGGED BY THE STRIP, AND IS NOT AN OUTCOME. This screen used to file a dialled call
-              as `ANSWERED` — the strongest result there is — because it had nothing weaker to say. The answer
-              rate then counted every dial as a conversation, which is the same inflation the note beside
-              `MESSAGE_SENT` warns about for messages. The strip records `OPENED` on every screen now, so a
-              call placed from the orders list leaves the same trace as one placed here. The outcome is still
-              recorded by the person who knows it: «لا يرد» or «تأكيد».
-            */
-            const contact = (
-              <ContactButtons
-                phone={order.customer.rawPhone}
-                countryCode={data.dialCode}
-                context={{
-                  orderNumber: order.orderNumber,
-                  customerName: order.customer.fullName,
-                  amount: order.totalAmount,
-                  region: order.customer.city,
-                }}
-                orderId={order.id}
-                callHref={order.callHelperLink}
-                onContacted={
-                  sheetOn || proofOn
-                    ? (method) => {
-                        if (method !== 'PHONE') return;
-                        // Every phone press, sheet or not: the card's «لا يرد» starts its thirty seconds now.
-                        if (proofOn) holdFor(order.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS);
-                        if (sheetOn) startCall(order);
-                      }
-                    : undefined
-                }
-              />
-            );
-            /*
-              IN THE ORDER THE WORK HAPPENS IN.
-
-              She rings, and then one of four things is true. The confirmation is what most calls end in, and
-              it was last — past «تأجيل», «ألغِ», «إشكال» and «مساعدة» — so the commonest press was the
-              furthest from the thumb and sat beside the one that cancels. Confirm first, then postpone, then
-              cancel. The two that are neither an outcome of the call — the entry issue and the assistant —
-              come after them.
-
-              THE ONES THAT DISPOSE OF THE ORDER, SHUT UNTIL SHE HAS TRIED TO REACH THE CUSTOMER («ألغِ» is not among
-              them: it opens the dialog, which shuts only the reasons that need a word — the owner, 30/10). The server
-              refuses them anyway (`needsContactFirst`), so this is not the rule — it is the agent being told
-              the rule before she presses rather than after. The measured failure was «تأجيل» pressed with no
-              call: the order went postponed, left her list, kept her claim, and blocked her next pull for
-              ninety business minutes. «إدخال إشكال» and «مساعدة» stay open: neither decides anything about the
-              order, and they are how she gets help when the call itself is the problem.
-            */
-            /*
-              AND SHUT UNTIL IT HAS ITS GOVERNORATE (the owner, 30/10). The door refuses it too (`REGION_REQUIRED`); the
-              line under the button says what opens it, and the select that does is on this very card.
-            */
-            const confirmBtn = (
-              <Action
-                primary
-                onClick={() => confirm(order)}
-                busy={busyId === order.id}
-                locked={needsContact(order) || lacksRegion(order)}
-                lockedTitle={needsContact(order) ? contactFirstText : REGION_REQUIRED_MESSAGE}
-                icon={<RiCheckboxCircleLine className="w-4 h-4" />}
-                wide={phone}
-              >
-                تأكيد الطلب
-              </Action>
-            );
-            const postponeBtn = (
-              <Action
-                onClick={() => setDialog({ kind: 'postpone', order })}
-                busy={busyId === order.id}
-                locked={needsContact(order)}
-                lockedTitle={contactFirstText}
-                icon={<RiTimerLine className="w-4 h-4" />}
-                wide={phone}
-              >
-                تأجيل {order.postponeCount > 0 && `(${order.postponeCount})`}
-              </Action>
-            );
-            const rejectBtn = (
-              <Action
-                onClick={() => setDialog({ kind: 'reject', order })}
-                busy={busyId === order.id}
-                danger
-                icon={<RiCloseCircleLine className="w-4 h-4" />}
-                wide={phone}
-              >
-                ألغِ
-              </Action>
-            );
-            const contactFirstHint = needsContact(order) && (
-              <p className="w-full text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-                {proofOn && canLogContact ? (
-                  CALL_PROOF_WORDS.contactFirstV2
-                ) : (
-                  <>
-                    اتصل بالزبون أول — بعدها بتفتح الأزرار
-                    {canLogContact
-                      ? ' (سجّل المحاولة بـ«لا يرد» أو «مغلق أو خارج التغطية» إذا ما ردّ).'
-                      : ' (تسجيل نتيجة الاتصال يحتاج صلاحية ما عندك — اطلبها من المسؤول).'}
-                  </>
-                )}
-              </p>
-            );
-            /* «إثبات المكالمات»: why «لا يرد» and «مغلق أو خارج التغطية» are shut — in words, because a phone has no tooltip. */
-            const proofHint = canLogContact && lock.text && (
-              <p className="w-full text-xs leading-relaxed tabular-nums text-[var(--sys-warning)]">{lock.text}</p>
-            );
-            const regionHint = lacksRegion(order) && (
-              <p className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">اختر المحافظة لتفتح التأكيد</p>
-            );
-            /*
-              «إدخال إشكال», not «إشكال إدخال»: the button is the act she performs, and the old name read as the
-              name of the thing — so it looked like a filter, not a door.
-
-              AND ONLY ON AN ORDER A MODERATOR ENTERED. `POST /api/confirmation/issues` accepts `moderatorId`
-              orders only: a store order — a landing page, Telegram, the POS — is refused with «لا يمكن فتح
-              إشكال إدخال على طلب من مصدر خارجي». The button was drawn on every card, so the agent learned that
-              by pressing it, and pressed it again on the next one. A button that exists in order to refuse
-              teaches nothing the first four times. What replaces it on a store order is the note: the fact,
-              and what to do instead.
-            */
-            const issueBtn = order.moderatorId && canRaiseIssue && (
-              <Action onClick={() => setDialog({ kind: 'issue', order })} busy={busyId === order.id} icon={<RiAlertLine className="w-4 h-4" />}>
-                إدخال إشكال
-              </Action>
-            );
-            const storeOrderNote = !order.moderatorId && (
-              <span className="w-full text-xs leading-relaxed text-[var(--sys-warning)]">
-                طلب من المتجر — ما في مودريتور يصلّحه.
-                <span className="text-[var(--sys-muted-foreground)]">
-                  {' '}
-                  إذا البيانات غلط: سجّل «رقم خطأ» أو ألغِ واكتب السبب.
-                </span>
-              </span>
-            );
-            /* Reads this order and this customer's history, and says what it would open with. It changes
-               nothing — every button that does is on either side of it. */
-            const assistBtn = canAskAssistant && (
-              <Action onClick={() => setDialog({ kind: 'assist', order })} icon={<RiSparkling2Line className="w-4 h-4" />}>
-                مساعدة
-              </Action>
-            );
-            const moreHolds = ['افتح وعدّل', !!(order.moderatorId && canRaiseIssue) && 'إدخال إشكال', canAskAssistant && 'مساعدة']
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              <article
-                key={order.id}
-                id={deskCardId(order.id)}
-                className={`scroll-mt-24 border rounded-lg p-4 space-y-3 transition-shadow ${cardTone(order.noAnswerCount, data.noAnswerLimit, closed)}${flashId === order.id ? ' ring-2 ring-[var(--sys-primary)]' : ''}`}
-              >
-                <header className="flex flex-wrap items-center gap-2">
-                  {/* Text, not `OrderRef`: a number that opened the order would be the way around «افتح وعدّل»,
-                      which stays locked until she has rung the customer. Only the copy button is added. */}
-                  <span className="inline-flex items-center gap-1">
-                    <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">{order.orderNumber}</span>
-                    <CopyValue text={orderNumberToCopy(order.orderNumber)} noun="رقم الطلب" shown={order.orderNumber} />
-                  </span>
-                  <OrderStateBadge state={order.state} testStore={order.testStore} />
-                  {/* Where it came from — see `sourceLabel`. It decides what
-                      she can do about bad data, so it belongs beside the
-                      number rather than three cards deep. */}
-                  <span className="text-xs text-[var(--sys-muted-foreground)]">{sourceLabel(order)}</span>
-                  {/* ⚠️ The count in words, because the card's colour must
-                      never be the only place it is said. */}
-                  {/* Under the plan the server's own line (`dueWords`, below) already says «محاولة N من 5»; the chip would be a second counter beside it («ما ردّ مرّتين (2/5)»). It is drawn only where
-                      that line is not (a colleague's desk, a complete plan) — and then in the same words, from the same function. */}
-                  {order.noAnswerCount > 0 && !closed && !(order.dueNow && order.dueReason === 'ROUND' && !readOnly) && !(planned && !readOnly && order.dueWords) && (
-                    <span className="text-xs font-medium text-[var(--sys-warning)]">
-                      {planned ? (
-                        order.attemptWords
-                      ) : (
-                        <>
-                          {data.rounds ? roundWords(order.noAnswerCount, data.noAnswerLimit) : noAnswerWords(order.noAnswerCount)}
-                          <span className="tabular-nums" dir="ltr"> ({order.noAnswerCount}/{data.noAnswerLimit})</span>
-                        </>
-                      )}
-                    </span>
-                  )}
-                  {/* «الشغل أول»: what she pulled, in a few words (written by the server) — a new order, a «لا يرد» that came back
-                      (with its round, so the chip above is not said twice), a customer's date that arrived; a waiting card says when
-                      it is ready. */}
-                  {!closed && !readOnly && order.dueWords && (
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-md border ${
-                        order.dueNow
-                          ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
-                          : 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums'
-                      }`}
-                    >
-                      {order.dueWords}
-                    </span>
-                  )}
-                  {closed && (
-                    <span className="text-xs font-medium text-[var(--sys-destructive)]">
-                      أُغلق اليوم تلقائيّاً — {order.closedWords ?? noAnswerWords(order.noAnswerCount)}
-                    </span>
-                  )}
-                  <CustomerHistoryButton
-                    customerId={order.customer.id}
-                    orderId={order.id}
-                    previousOrders={order.previousOrders}
-                    holderId={readOnly ? null : holderId}
-                  />
-                  {order.risk && (
-                    <span className={`text-xs px-2 py-0.5 rounded-md border ${RISK_LABEL[order.risk.tier].cls}`}>
-                      {RISK_LABEL[order.risk.tier].text} · {Math.round(order.risk.returnRate * 100)}% مرتجع من{' '}
-                      {order.risk.orders} طلب
-                    </span>
-                  )}
-                  <ResponseClock
-                    claimedAt={order.claimedAt}
-                    firstActionAt={order.firstActionAt}
-                    serverNow={data.serverNow}
-                  />
-                  <span className="mr-auto text-sm font-semibold text-[var(--sys-heading)] tabular-nums" dir="ltr">
-                    <Money value={order.totalAmount} currency={order.currency} />
-                  </span>
-                </header>
-
-                <div className="text-sm text-[var(--sys-foreground)]">
-                  {/* A PHONE: EACH FACT IN ITS OWN BOX (ORD-23). A name, a number and a city typed into one string are
-                      one bidirectional run — the number lands against the name with its separator on the far side of
-                      it, and the line breaks in the middle of a fact. The orders list fixed this exact defect; a desk's
-                      line is left as it was. */}
-                  {phone ? (
-                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span dir="auto">{order.customer.fullName}</span>
-                      <span dir="ltr">{order.customer.rawPhone}</span>
-                      <span dir="auto">{order.customer.city}</span>
-                    </span>
-                  ) : (
-                    <>{order.customer.fullName} · <span dir="ltr">{order.customer.rawPhone}</span> · {order.customer.city}</>
-                  )}
-                  {governorateOf(order.region?.name, order.customer.city) && (
-                    <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">المحافظة: {governorateOf(order.region?.name, order.customer.city)}</p>
-                  )}
-                  <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{order.deliveryAddress ?? order.customer.address}</p>
-                </div>
-                {/* An order with no governorate cannot be confirmed: the select that sets it is HERE, drawn without a click. */}
-                {lacksRegion(order) && !readOnly && (
+          {rows.map(({ order, closed }) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              closed={closed}
+              domId={deskCardId(order.id)}
+              flash={flashId === order.id}
+              data={data}
+              readOnly={readOnly}
+              watchedName={watchedName}
+              phone={phone}
+              busy={busyId === order.id}
+              canLogContact={canLogContact}
+              canRaiseIssue={canRaiseIssue}
+              canAskAssistant={canAskAssistant}
+              proofOn={proofOn}
+              lock={proofLock(order)}
+              contactFirstText={contactFirstText}
+              holderId={holderId}
+              regionGate={
+                lacksRegion(order) &&
+                !readOnly && (
                   <RegionGate
                     order={order}
                     locked={needsContact(order)}
@@ -1811,123 +1429,26 @@ export function ConfirmationMineScreen() {
                     busy={busyId === order.id}
                     onSave={(regionId) => void saveRegion(order, regionId)}
                   />
-                )}
-
-                <ul className="text-xs text-[var(--sys-muted-foreground)] space-y-0.5">
-                  {order.items.map((it) => (
-                    <li key={it.id}>
-                      {it.productName} × {it.quantity}
-                      {it.freeQuantity > 0 && ` (+${it.freeQuantity} هدية)`}
-                      {/* The size and colour of every piece — read out on the call (product variants). */}
-                      {it.variantSummary && <span className="font-semibold text-[var(--sys-heading)]"> — {it.variantSummary}</span>}
-                    </li>
-                  ))}
-                  {order.addOns?.map((a) => (
-                    <li key={a.id}>
-                      {POST_ORDER_ADDITION_AR}: {a.productName} ×{a.quantity} ({a.total})
-                    </li>
-                  ))}
-                </ul>
-                <OrderNotes customer={order.customerNotes} />
-
-                {order.postponedUntil && (
-                  <p className="text-xs text-[var(--sys-warning)]">
-                    مؤجل حتى{' '}
-                    <span dir="ltr">{arDate(order.postponedUntil)}</span>
-                    {order.postponePreferredTime && ` · ${order.postponePreferredTime}`} · تأجيل رقم{' '}
-                    {order.postponeCount}
-                  </p>
-                )}
-
-                {order.risk?.requiresPrepaymentOrApproval && (
-                  <p className="flex items-center gap-2 text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2">
-                    <RiShieldFlashLine className="w-4 h-4" /> عميل عالي الخطورة: يتطلب دفعاً مسبقاً أو موافقة المشرف.
-                  </p>
-                )}
-
-                {/*
-                  ── AND NO FOOTER AT ALL ON A CLOSED ONE ──
-
-                  A row of greyed buttons reads as «try again in a minute».
-                  The order is cancelled: the only thing left to do about it
-                  is in «مركز التأكيد», by somebody who can reopen it. It is
-                  shown here, today only, so the agent who made the third
-                  call sees what it did rather than watching the card vanish.
-                */}
-                {closed ? (
-                  <p className="text-xs leading-relaxed text-[var(--sys-destructive)] pt-1 border-t border-[var(--sys-destructive-border)]">
-                    للقراءة فقط — أُغلق {order.closedWords ?? `بعد ${data.cadenceOn ? order.noAnswerCount : data.noAnswerLimit} محاولات بلا رد`}. إعادةُ فتحِه من مركز التأكيد، بيد مَن يملك ذلك.
-                  </p>
-                ) : readOnly ? (
-                  /* A colleague's desk: not one button of hers — no call, no result, no confirm, no postpone, no cancel. */
-                  <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)] pt-1 border-t border-[var(--sys-border)]">
-                    للقراءة فقط — هذا الطلب بيد {watchedName}.
-                  </p>
-                ) : phone ? (
-                /*
-                  A PHONE: THREE ROWS, EACH ONE A DECISION (ORD-05).
-
-                  The footer was one wrapping row of up to eleven things — the contact strip, two call results,
-                  three outcomes, a hint, two helpers — and at 311px they piled into five or six rows of mixed
-                  heights with the confirmation in the middle of the pile, beside «ألغِ». Now: reaching the
-                  customer (the strip, then the two call results); then what the call decided — «تأكيد الطلب»
-                  alone and full width, «تأجيل» and «ألغِ» side by side below it; and the rest behind one fold
-                  that names what it holds. The same buttons, the same handlers, the same locks: `Action` is
-                  drawn once per card and only the place it sits changes.
-                */
-                <footer className="space-y-3 pt-1 border-t border-[var(--sys-border)]">
-                  {canLogContact && (
-                    <div className="space-y-2">
-                      {contact}
-                      <div className="grid grid-cols-2 gap-2">
-                        {noAnswerBtn}
-                        {unreachableBtn}
-                      </div>
-                      {remainingHint}
-                      {proofHint}
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    {confirmBtn}
-                    <div className="grid grid-cols-2 gap-2">
-                      {postponeBtn}
-                      {rejectBtn}
-                    </div>
-                    {contactFirstHint}
-                    {regionHint}
-                  </div>
-                  {storeOrderNote}
-                  <AdvancedGroup label="المزيد" holds={moreHolds}>
-                    {openBtn}
-                    {issueBtn}
-                    {assistBtn}
-                  </AdvancedGroup>
-                </footer>
-                ) : (
-                <footer className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--sys-border)]">
-                  {openBtn}
-                  {canLogContact && (
-                  <>
-                  {noAnswerBtn}
-                  {unreachableBtn}
-                  {remainingHint}
-                  {contact}
-                  </>
-                  )}
-                  {confirmBtn}
-                  {postponeBtn}
-                  {rejectBtn}
-                  {contactFirstHint}
-                  {proofHint}
-                  {regionHint}
-                  {issueBtn}
-                  {storeOrderNote}
-                  {assistBtn}
-                </footer>
-                )}
-              </article>
-            );
-          })}
+                )
+              }
+              presses={{
+                onOpenOrder: (o) => setOpenOrderId(o.id),
+                onNoAnswer: (o) => logAttempt(o, 'PHONE', 'NO_ANSWER'),
+                onUnreachable: (o) => logAttempt(o, 'PHONE', 'UNREACHABLE'),
+                onConfirm: (o) => confirm(o),
+                onDialog: (kind, o) => setDialog({ kind, order: o }),
+                onContacted:
+                  sheetOn || proofOn
+                    ? (o, method) => {
+                        if (method !== 'PHONE') return;
+                        // Every phone press, sheet or not: the card's «لا يرد» starts its thirty seconds now.
+                        if (proofOn) holdFor(o.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS);
+                        if (sheetOn) startCall(o);
+                      }
+                    : undefined,
+              }}
+            />
+          ))}
         </div>
       </section>
       )}
@@ -2137,100 +1658,6 @@ export function ConfirmationMineScreen() {
           onRefresh={load}
         />
       )}
-    </div>
-  );
-}
-
-/**
- * How long this order has been waiting on her.
- *
- * An order pulled from the pool and not yet called is the most expensive
- * thing on this desk: the customer is still warm, and nobody else can take
- * it. Once she has done something, the clock stops and reports what it took
- * — a record, not a nag.
- */
-function ResponseClock({
-  claimedAt,
-  firstActionAt,
-  serverNow,
-}: {
-  claimedAt: string | null;
-  firstActionAt: string | null;
-  serverNow: string;
-}) {
-  const waiting = useElapsedMinutes(firstActionAt ? null : claimedAt, serverNow);
-
-  if (firstActionAt && claimedAt) {
-    const took = Math.max(0, Math.round((+new Date(firstActionAt) - +new Date(claimedAt)) / 60000));
-    return (
-      <span className="text-xs px-2 py-0.5 rounded-md border bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-border)] tabular-nums">
-        رددت خلال {humanMinutes(took)}
-      </span>
-    );
-  }
-  if (waiting === null) return null;
-
-  // Half an hour is the point at which a fresh order stops being fresh.
-  const late = waiting >= 30;
-  return (
-    <span
-      className={`text-xs px-2 py-0.5 rounded-md border tabular-nums ${
-        late
-          ? 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
-          : 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
-      }`}
-    >
-      بانتظار أول اتصال منذ {humanMinutes(waiting)}
-    </span>
-  );
-}
-
-function Action({
-  children,
-  onClick,
-  busy,
-  /**
-   * SHUT, AND NOT MERELY WAITING.
-   *
-   * Separate from `busy` on purpose: `busy` is «this is saving, a moment»
-   * and `locked` is «you have not earned this yet». Folding the second
-   * into the first would give the agent a button that looks like it is
-   * thinking and never comes back, with no way to learn why.
-   */
-  locked,
-  lockedTitle,
-  primary,
-  danger,
-  icon,
-  wide,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  busy?: boolean;
-  locked?: boolean;
-  lockedTitle?: string;
-  primary?: boolean;
-  danger?: boolean;
-  icon?: React.ReactNode;
-  /** A phone's button fills the cell it is in (a full row, or half of one). */
-  wide?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={busy || locked}
-      title={locked ? lockedTitle : undefined}
-      aria-disabled={locked || undefined}
-      className={`${wide ? 'w-full justify-center ' : ''}min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-50 ${
-        primary
-          ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
-          : danger
-            ? 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
-            : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)] hover:border-[var(--sys-primary)]'
-      }`}
-    >
-      {icon}
-      {children}
-    </button>
+    </PageShell>
   );
 }

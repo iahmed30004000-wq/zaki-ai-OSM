@@ -14,7 +14,8 @@ import { repoFile, stripComments } from '@/lib/guard-source';
 
 const mine = () => stripComments(repoFile('src/app/api/confirmation/mine/route.ts'));
 const pull = () => stripComments(repoFile('src/app/api/confirmation/pull/route.ts'));
-const screen = () => stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+// 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertions, read there.
+const screen = () => stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
 
 describe('the doors', () => {
   it('both the desk and the pull read the add-ons, and only what the line needs', () => {

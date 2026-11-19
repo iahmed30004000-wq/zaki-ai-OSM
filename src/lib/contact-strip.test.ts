@@ -115,6 +115,8 @@ describe('the contact strip', () => {
       'src/components/screens/OrdersScreen.tsx',
       'src/components/screens/CustomersScreen.tsx',
       'src/components/screens/ConfirmationMineScreen.tsx',
+      // 18/11 (R8d): the desk's card moved to confirmation/OrderCard.tsx with its strip — read there too.
+      'src/components/screens/confirmation/OrderCard.tsx',
       'src/components/screens/TrackingScreen.tsx',
       'src/components/orders/CustomerCard.tsx',
     ]) {
@@ -135,6 +137,8 @@ describe('the contact strip', () => {
     for (const rel of [
       'src/components/screens/OrdersScreen.tsx',
       'src/components/screens/ConfirmationMineScreen.tsx',
+      // 18/11 (R8d): the card's strip moved to confirmation/OrderCard.tsx (the screen's first strip is now the call sheet's) — read there too.
+      'src/components/screens/confirmation/OrderCard.tsx',
       'src/components/orders/CustomerCard.tsx',
     ]) {
       const body = stripComments(repoFile(rel));

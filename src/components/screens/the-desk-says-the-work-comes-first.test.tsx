@@ -418,6 +418,8 @@ describe('the screen ships no wording logic', () => {
       'src/components/screens/ConfirmationMineScreen.tsx',
       'src/components/confirmation/PullPanel.tsx',
       'src/components/screens/confirmation/DeskHead.tsx',
+      // 18/11 (R8d): the card (with «الشغل أول»'s line) moved to confirmation/OrderCard.tsx — read there too.
+      'src/components/screens/confirmation/OrderCard.tsx',
     ]) {
       const code = stripComments(repoFile(file));
       expect(code, file).not.toMatch(/import (?!type)[^;]*from '@\/lib\/work-first'/);

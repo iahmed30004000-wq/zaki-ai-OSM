@@ -257,10 +257,6 @@
     "src/components/screens/ConfirmationIssuesScreen.tsx": {
       "textXs": 12
     },
-    "src/components/screens/ConfirmationMineScreen.tsx": {
-      "rawButtons": 1,
-      "textXs": 23
-    },
     "src/components/screens/FinanceProfitScreen.tsx": {
       "textXs": 1
     },

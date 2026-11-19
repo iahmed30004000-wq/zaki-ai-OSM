@@ -245,7 +245,9 @@ describe('2 · the hint says only what the server told the card', () => {
 });
 
 describe('2b · the red «لا يرد» follows the same fact as the hint (review of C1, 18/11)', () => {
-  const red = (text: string) => (buttonSaying(text)?.className ?? '').includes('text-[var(--sys-destructive)]');
+  // 18/11 (R8d): the card's presses are the kit's `Button` now, and «red» is its `danger` look — the destructive FILL — where the
+  // hand-drawn press was the destructive TEXT on a soft fill. Was: `.includes('text-[var(--sys-destructive)]')`. Same fact asked: is it red.
+  const red = (text: string) => (buttonSaying(text)?.className ?? '').split(/\s+/).includes(['bg', '[var(--sys-destructive)]'].join('-'));
 
   it('the plan: red only when the server said a press now closes it — 4 of 5 with closesOnNext false is NOT red, though the old arithmetic (remaining ≤ 1) would make it red', async () => {
     phone.value = false;
@@ -306,6 +308,10 @@ describe('4 · the words live in one place', () => {
     expect(screenSrc).not.toContain("from '@/lib/attempt-words'"); // the server writes the words (the desk bundle is at its ceiling)
     expect(read('src/app/api/confirmation/mine/route.ts')).toContain('nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT)');
     expect(screenSrc).not.toMatch(/محاولة \$\{/);
+    // 18/11 (R8d): the card that prints the words moved to confirmation/OrderCard.tsx — the same two, asked of it too.
+    const cardSrc = read('src/components/screens/confirmation/OrderCard.tsx');
+    expect(cardSrc).not.toContain("from '@/lib/attempt-words'");
+    expect(cardSrc).not.toMatch(/محاولة \$\{/);
     const cadence = read('src/lib/no-answer-cadence.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(cadence).not.toMatch(/محاولة \$\{[^}]*\} من/);
     expect(cadence).not.toMatch(/المحاولة \$\{[^}]*\} من/);
