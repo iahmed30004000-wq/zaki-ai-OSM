@@ -108,20 +108,24 @@ export function AuditScreen() {
     <PageShell
       title={routeLabel('/control/audit')}
       description="سجلٌّ لا يُمحى: كلُّ تعديلٍ على طلبٍ أو مالٍ أو صلاحيةٍ أو إعداد — مَن فعله ومتى وعلى أيّ سجلّ."
+      // 18/11 (R16h, the arrangement): the span of days acts on the whole log, so it is the frame's toolbar row, under the title;
+      // the search and the two dropdowns narrow the list, so they are its filters row. Same controls, same values, same query.
+      toolbar={
+        <div className="w-56">
+          <DateRange value={range} onChange={setRange} label="كل المدة" />
+        </div>
+      }
+      filters={
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          placeholder="بحث بالإجراء (حذف، تأكيد…) أو نوع السجلّ أو معرّفه…"
+          filters={filters}
+          activeCount={activeCount}
+          onReset={reset}
+        />
+      }
     >
-
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        placeholder="بحث بالإجراء (حذف، تأكيد…) أو نوع السجلّ أو معرّفه…"
-        filters={filters}
-        activeCount={activeCount}
-        onReset={reset}
-      />
-      <div className="w-56">
-        <DateRange value={range} onChange={setRange} label="كل المدة" />
-      </div>
-
       {list.error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
           {list.error}
