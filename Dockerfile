@@ -143,8 +143,14 @@ EXPOSE 3000
 #   is the slowest part of the start. Nothing inside this window counts as
 #   a failure.
 # --interval=30s: one in-memory answer every 30 seconds, no query.
-# --retries=3: a single refused connection during a long migration or a
-#   brief database blip is not a dead container. Three in a row is.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health/live >/dev/null 2>&1 || exit 1
+# --timeout=10s, --retries=6 (18/11, the owner's choice; was 5s × 3): a
+#   hang — an exhausted pool, a long query — can keep the process from
+#   answering for a slow minute, and with 5 s × 3 that minute was enough to
+#   mark the container «unhealthy», so a slow site was shown as a dead one.
+#   A slow minute is not a dead process: now it takes six misses in a row,
+#   6 × 30 s ≈ three minutes of failed probes, before «unhealthy».
+#   Coolify's own health-check setting must say the same numbers
+#   (docs/ops/DEPLOY.md §٣).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=6 CMD wget -qO- http://127.0.0.1:3000/api/health/live >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

@@ -81,6 +81,47 @@ describe('the image says whether it is ready', () => {
     expect(Number(retries![1])).toBeGreaterThanOrEqual(2);
   });
 
+  /*
+   * 18/11 — the owner's choice: «10 ثواني × 6» instead of 5 s × 3. During a
+   * hang (an exhausted pool, a long query) the old probe gave up after five
+   * seconds, three times in a row, and the container turned «unhealthy» for
+   * what was only a slow minute. Six misses 30 s apart ≈ three minutes of
+   * failed probes before «unhealthy». The interval stays 30 s: that is what
+   * makes six retries mean three minutes and not one.
+   */
+  function patienceProblems(rest: string): string[] {
+    const problems: string[] = [];
+    const timeout = /--timeout=(\d+)s\b/.exec(rest);
+    if (!timeout || Number(timeout[1]) < 10) problems.push('مهلة الفحص أقل من 10 ثواني');
+    const retries = /--retries=(\d+)\b/.exec(rest);
+    if (!retries || Number(retries[1]) < 6) problems.push('أقل من 6 محاولات قبل «مش سليمة»');
+    const interval = /--interval=(\d+)s\b/.exec(rest);
+    if (!interval || Number(interval[1]) !== 30) problems.push('الفاصل بين الفحوص مش 30 ثانية');
+    return problems;
+  }
+
+  it('waits ten seconds, six times, before a slow minute reads as a dead site (18/11)', () => {
+    const [health] = instructions().filter((i) => i.keyword === 'HEALTHCHECK');
+    expect(patienceProblems(health.rest), 'فحص الصحة رجع يستعجل').toEqual([]);
+  });
+
+  it('and the old 5 s × 3 line, or any half of it, fails that pin', () => {
+    const old =
+      '--interval=30s --timeout=5s --start-period=120s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health/live >/dev/null 2>&1 || exit 1';
+    expect(patienceProblems(old)).toHaveLength(2);
+    expect(patienceProblems(old.replace('--retries=3', '--retries=6'))).toHaveLength(1);
+    expect(patienceProblems(old.replace('--timeout=5s', '--timeout=10s'))).toHaveLength(1);
+    expect(patienceProblems(old.replace('--timeout=5s', '').replace('--retries=3', ''))).toHaveLength(2);
+    expect(
+      patienceProblems(old.replace('--timeout=5s', '--timeout=10s').replace('--retries=3', '--retries=6'))
+    ).toEqual([]);
+    expect(
+      patienceProblems(
+        old.replace('--timeout=5s', '--timeout=10s').replace('--retries=3', '--retries=6').replace('--interval=30s', '--interval=5s')
+      )
+    ).toHaveLength(1);
+  });
+
   it('probes a route this app actually serves', () => {
     const [health] = instructions().filter((i) => i.keyword === 'HEALTHCHECK');
     const url = /https?:\/\/[^/\s]+(\/[^\s"']*)/.exec(health.rest);

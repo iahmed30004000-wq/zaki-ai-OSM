@@ -67,8 +67,8 @@ export const SCHEDULER_STALE_SECONDS = 180;
  * the route hangs with it, and the probe reading it learns nothing:
  *
  *   - Docker's `HEALTHCHECK` eventually kills its own `wget` on `--timeout`
- *     and counts a failure, so the container does come out right, three
- *     intervals late.
+ *     and counts a failure, so the container does come out right, six
+ *     intervals late (18/11: `--retries=6`, was three).
  *   - An uptime monitor records a slow 200 or a client timeout, which is
  *     not the same as 503 and does not page anybody.
  *   - And the hung request is holding a connection from the same exhausted
@@ -146,7 +146,7 @@ function newest(rows: ({ startedAt: Date } | null)[]): { startedAt: Date } | nul
  * seconds. Calm, it cost tens of milliseconds. On 27/10, while a deploy was
  * building on the same server, it crossed the 2 s cap below for twenty
  * minutes. So the endpoint said «db: down» with a working database, and
- * the container's own HEALTHCHECK, three misses in a row, can mark the app
+ * the container's own HEALTHCHECK, six misses in a row (three until 18/11), can mark the app
  * unhealthy. A proxy that follows that stops routing to it.
  *
  * Three single-name reads in parallel cost one round trip of wall time and
