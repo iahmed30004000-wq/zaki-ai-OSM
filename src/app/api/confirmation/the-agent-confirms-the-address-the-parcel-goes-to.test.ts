@@ -29,7 +29,8 @@ describe('the desk and the pull', () => {
   });
 
   it('the card shows it before the customer\'s, and a response without it still draws', () => {
-    const s = src('src/components/screens/ConfirmationMineScreen.tsx');
+    // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertions, read there.
+    const s = src('src/components/screens/confirmation/OrderCard.tsx');
     expect(s).toContain('{order.deliveryAddress ?? order.customer.address}');
     expect(s).toContain('deliveryAddress?: string | null;');
   });

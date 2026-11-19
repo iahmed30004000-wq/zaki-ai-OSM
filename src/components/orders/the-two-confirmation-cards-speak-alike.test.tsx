@@ -35,7 +35,8 @@ describe('the order panel’s quick actions', () => {
   });
 
   it('and the desk still says them — one vocabulary, not two that happen to match today', () => {
-    const desk = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationMineScreen.tsx'), 'utf8');
+    // 18/11 (R8d): the desk's card and its presses moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertion, read there.
+    const desk = readFileSync(join(process.cwd(), 'src/components/screens/confirmation/OrderCard.tsx'), 'utf8');
     expect(desk).toContain('لا يرد');
     expect(desk).toContain('تأجيل');
   });

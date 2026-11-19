@@ -161,7 +161,8 @@ const walk = (dir: string): string[] =>
 const ON_PURPOSE: Record<string, string> = {
   // Inside her own "work" card: the card's own «افتح وعدّل» opens the order, and it is LOCKED until the first contact
   // attempt (CONTACT_FIRST). A number that opened the panel would be the way round that lock.
-  'ConfirmationMineScreen.tsx': 'the held card — opening is the locked button beside it',
+  // 18/11 (R8d): the held card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same span, same reason.
+  'OrderCard.tsx': 'the held card — opening is the locked button beside it',
   // The whole card is the control here: pressing it opens the order's panel (aria-label «افتح الطلب …»).
   'OrdersScreen.tsx': 'the row itself opens the order',
   // Two dialogs that name the order they act on in a heading line; they open over the list the order was chosen from.

@@ -140,6 +140,7 @@ describe('the rule is kept where it cannot be walked around', () => {
 
 describe('the screen says it before she presses, not after', () => {
   const screen = () => stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+  const cardSrc = () => stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
 
   it('the four actions are locked until an attempt exists', () => {
     const src = screen();
@@ -156,17 +157,24 @@ describe('the screen says it before she presses, not after', () => {
     // teaches her nothing.
     // CHANGED 30/10 (the owner: «٥ تمام») — was 4, now 3: «ألغِ» is no longer a locked button; it opens a dialog that
     // shuts only the reasons that need a word with the customer (and the server keeps the same line).
-    expect((src.match(/locked=\{needsContact\(order\)\}/g) ?? []).length, 'ليست الثلاثة').toBe(3);
+    // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx with «افتح وعدّل», «تأجيل» and the
+    // question itself (`needsContact`); the governorate's «احفظ المحافظة» and the dialog's `hasAttempt` stayed in the screen. Same
+    // three, counted in the two files that hold them — 2 on the card, 1 in the screen — and each file read on its own.
+    const card = cardSrc();
+    expect((card.match(/locked=\{needsContact\(order\)\}/g) ?? []).length, 'ليست الاثنتين على البطاقة').toBe(2);
+    expect((src.match(/locked=\{needsContact\(order\)\}/g) ?? []).length, 'ليست واحدة بالشاشة').toBe(1);
     expect(src, 'الحوار لا يعرف إن كان للطلب محاولة').toMatch(/hasAttempt=\{!needsContact\(dialog\.order\)\}/);
-    expect(src).toMatch(/const needsContact = \(order: \{ _count: \{ contactAttempts: number \} \}\) =>\s*order\._count\.contactAttempts === 0/);
+    expect(card).toMatch(/export const needsContact = \(order: \{ _count: \{ contactAttempts: number \} \}\) =>\s*order\._count\.contactAttempts === 0/);
   });
 
   it('and a line under them says why', () => {
-    expect(screen()).toContain('اتصل بالزبون أول — بعدها بتفتح الأزرار');
+    // 18/11 (R8d): moved with the card to confirmation/OrderCard.tsx — same assertion, read there.
+    expect(cardSrc()).toContain('اتصل بالزبون أول — بعدها بتفتح الأزرار');
   });
 
   it('and the doors that are not a disposal stay open', () => {
-    const src = screen();
+    // 18/11 (R8d): moved with the card to confirmation/OrderCard.tsx — same assertion, read there.
+    const src = cardSrc();
     for (const open of ['إدخال إشكال', 'مساعدة']) {
       const at = src.indexOf(open);
       expect(at, `«${open}» غير موجود`).toBeGreaterThan(-1);

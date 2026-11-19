@@ -308,6 +308,10 @@ describe('4 · the words live in one place', () => {
     expect(screenSrc).not.toContain("from '@/lib/attempt-words'"); // the server writes the words (the desk bundle is at its ceiling)
     expect(read('src/app/api/confirmation/mine/route.ts')).toContain('nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT)');
     expect(screenSrc).not.toMatch(/محاولة \$\{/);
+    // 18/11 (R8d): the card that prints the words moved to confirmation/OrderCard.tsx — the same two, asked of it too.
+    const cardSrc = read('src/components/screens/confirmation/OrderCard.tsx');
+    expect(cardSrc).not.toContain("from '@/lib/attempt-words'");
+    expect(cardSrc).not.toMatch(/محاولة \$\{/);
     const cadence = read('src/lib/no-answer-cadence.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(cadence).not.toMatch(/محاولة \$\{[^}]*\} من/);
     expect(cadence).not.toMatch(/المحاولة \$\{[^}]*\} من/);

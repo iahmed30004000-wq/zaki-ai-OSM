@@ -102,6 +102,9 @@ describe('«طلباتي»', () => {
 
   it('is a whole screen, with its actions still on it', () => {
     expect(src().length).toBeGreaterThan(2000);
-    expect(src()).toContain('تأكيد الطلب');
+    // 18/11 (R8d): the card's presses moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — the screen draws it,
+    // and the press's words are asked of the card (the screen's own text names them only in comments now).
+    expect(src()).toContain('<OrderCard');
+    expect(repoFile('src/components/screens/confirmation/OrderCard.tsx')).toContain('تأكيد الطلب');
   });
 });

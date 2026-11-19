@@ -234,7 +234,10 @@ const RENDERS_ONLY: Record<string, string> = {
     'سعرُ القطعة عرضٌ مشتقٌّ للمقارنة، والسعرُ المقترَحُ بمضاعفٍ اقتراحٌ يكتبه البائع ويعدّله — وسقفُه وسقفُ التلميح من offerCeiling، الدالّةِ نفسِها التي يرفض بها الخادم، وسقفُ العرض المحفوظ يأتي من الخادم كما هو',
   'src/components/screens/confirmation/AssistantDialog.tsx':
     'نسبةُ الإرجاع من الخادم، والضربُ في مئة كتابةٌ لا قياس',
-  'src/components/screens/ConfirmationMineScreen.tsx':
+  // 18/11 (R8d): the card of «طلباتي» — and the two lines this entry is about (the risk's `× 100`, the attempts left) — moved from
+  // ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx. The entry moves with its code and its reason, word for word; the
+  // screen no longer sweeps.
+  'src/components/screens/confirmation/OrderCard.tsx':
     'الدرجةُ ونسبتُها من الخادم؛ والمتبقي من المحاولات عدَدٌ لا مالٌ ولا مخزون',
   'src/components/screens/tracking/CollectDialog.tsx':
     'يجمع expectedCollection التي حسبها الخادم لكل طلب — والجمعُ ليس إعادةَ اشتقاقِ القاعدة، وملفُّه يقول ذلك بنفسه',

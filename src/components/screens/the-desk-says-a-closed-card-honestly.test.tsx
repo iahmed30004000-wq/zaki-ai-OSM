@@ -184,7 +184,13 @@ describe('what did not change', () => {
   });
 
   it('the screen still imports no plan logic, and the three edits are string-level (the `closedWords` read, the card’s own count)', () => {
-    const src = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationMineScreen.tsx'), 'utf8');
+    const screenSrc = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationMineScreen.tsx'), 'utf8');
+    expect(screenSrc).not.toMatch(/no-answer-cadence/);
+    expect(screenSrc).not.toMatch(/from ['"]@\/lib\/work-first['"]/);
+    expect(screenSrc).toMatch(/closedWords\?: string;/);
+    // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertions, read there
+    // (the two imports it must not have are asked of BOTH files: the screen above, the card here).
+    const src = readFileSync(join(process.cwd(), 'src/components/screens/confirmation/OrderCard.tsx'), 'utf8');
     expect(src).not.toMatch(/no-answer-cadence/);
     expect(src).not.toMatch(/from ['"]@\/lib\/work-first['"]/);
     expect(src).toMatch(/closedWords\?: string;/);

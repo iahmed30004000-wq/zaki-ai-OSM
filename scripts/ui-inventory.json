@@ -1222,12 +1222,12 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 3,
+    "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 2,
+    "cards": 1,
     "modals": 0,
-    "icons": 12,
+    "icons": 3,
     "links": 0,
     "tabs": 0
   },
@@ -1930,6 +1930,16 @@
     "modals": 0,
     "icons": 2,
     "links": 1,
+    "tabs": 0
+  },
+  "src/components/screens/confirmation/OrderCard.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 9,
+    "links": 0,
     "tabs": 0
   },
   "src/components/screens/finance/AssembleStatementDialog.tsx": {

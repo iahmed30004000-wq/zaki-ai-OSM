@@ -260,6 +260,10 @@ describe('the screen ships no plan logic', () => {
   it('imports none of the cadence modules (nor work-first) — it prints strings and reads facts', () => {
     expect(src).not.toMatch(/no-answer-cadence/);
     expect(src).not.toMatch(/from ['"]@\/lib\/work-first['"]/);
+    // 18/11 (R8d): the card moved to confirmation/OrderCard.tsx — the same two, asked of it too.
+    const card = readFileSync(join(process.cwd(), 'src/components/screens/confirmation/OrderCard.tsx'), 'utf8');
+    expect(card).not.toMatch(/no-answer-cadence/);
+    expect(card).not.toMatch(/from ['"]@\/lib\/work-first['"]/);
   });
 
   it('the sheet’s prop reads the server’s fact first and falls back to the old arithmetic', () => {

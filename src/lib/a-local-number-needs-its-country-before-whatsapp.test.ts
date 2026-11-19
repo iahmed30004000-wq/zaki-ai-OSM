@@ -140,7 +140,9 @@ describe('every <ContactButtons> on a screen is given the country', () => {
   });
 
   it('and «لا يرد» in particular passes the one the desk was sent', () => {
-    const screen = stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+    // 18/11 (R8d): the card's strip (the one beside «لا يرد») moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx —
+    // same assertion, read there (the card is handed the desk's answer as `data`).
+    const screen = stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
     const from = screen.indexOf('<ContactButtons');
     const call = screen.slice(from, screen.indexOf('/>', from));
     expect(call).toContain('countryCode={data.dialCode}');

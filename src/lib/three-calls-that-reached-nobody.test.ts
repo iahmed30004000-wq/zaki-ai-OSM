@@ -116,13 +116,15 @@ describe('«افتح وعدّل» joined the rule', () => {
     // The comment on the screen used to name «افتح وعدّل» among the ones
     // that stay available. A stale sentence beside a changed rule is how
     // the next person restores the bug.
-    const screen = repoFile('src/components/screens/ConfirmationMineScreen.tsx');
-    expect(screen).not.toMatch(/«افتح وعدّل», «إدخال إشكال» and «مساعدة» stay open/);
+    // 18/11 (R8d): the card's comments moved with it to confirmation/OrderCard.tsx — asked of both files.
+    for (const f of ['src/components/screens/ConfirmationMineScreen.tsx', 'src/components/screens/confirmation/OrderCard.tsx'])
+      expect(repoFile(f), f).not.toMatch(/«افتح وعدّل», «إدخال إشكال» and «مساعدة» stay open/);
   });
 });
 
 describe('and the card says where the order came from', () => {
-  const screen = () => stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+  // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertions, read there.
+  const screen = () => stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
 
   it('because an entry issue goes to the moderator who typed it', () => {
     expect(screen()).toContain('sourceLabel(order)');
@@ -306,7 +308,8 @@ describe('and the card says the count, not only the colour', () => {
   it('and a closed card carries no footer of greyed buttons', () => {
     // A row of disabled buttons reads as «try again in a minute». The
     // order is cancelled; what is left to do about it is somewhere else.
-    const screen = stripComments(repoFile('src/components/screens/ConfirmationMineScreen.tsx'));
+    // 18/11 (R8d): the card moved from ConfirmationMineScreen.tsx to confirmation/OrderCard.tsx — same assertion, read there.
+    const screen = stripComments(repoFile('src/components/screens/confirmation/OrderCard.tsx'));
     expect(screen).toMatch(/\{closed \? \(/);
     expect(screen).toContain('للقراءة فقط');
   });
