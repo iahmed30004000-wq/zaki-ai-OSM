@@ -163,7 +163,7 @@ export function ListToolbar({
           ))}
 
           {activeCount > 0 && (
-            <Button variant="outline" onClick={onReset} className="w-full gap-1.5 text-[var(--sys-destructive)]">
+            <Button variant="secondary" onClick={onReset} className="w-full gap-1.5 text-[var(--sys-destructive)]">
               <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
               إعادة تعيين ({activeCount})
             </Button>

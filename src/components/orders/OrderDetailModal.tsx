@@ -303,7 +303,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
             {loadError}
           </p>
           <div className="flex justify-center gap-2">
-            <Button size="sm" variant="outline" onClick={onClose}>
+            <Button size="sm" variant="secondary" onClick={onClose}>
               {ar ? 'إغلاق' : 'Close'}
             </Button>
           </div>
@@ -535,7 +535,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
       >
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           disabled={!navIds.nextOrderId || isNavigating}
           onClick={() => navIds.nextOrderId && navigateToOrder(navIds.nextOrderId, 'next')}
           title={ar ? 'الطلب التالي (الأحدث)' : 'Next order (newer)'}
@@ -554,7 +554,7 @@ export function OrderDetailModal({ orderId, isOpen, onClose, onRefresh, filters 
 
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           disabled={!navIds.previousOrderId || isNavigating}
           onClick={() => navIds.previousOrderId && navigateToOrder(navIds.previousOrderId, 'prev')}
           title={ar ? 'الطلب السابق (الأقدم)' : 'Previous order (older)'}

@@ -336,7 +336,7 @@ export function CustomersScreen() {
             </Select>
 
             {activeFilters > 0 && (
-              <Button variant="outline" onClick={resetFilters} className="w-full gap-1.5 text-[var(--sys-destructive)]">
+              <Button variant="secondary" onClick={resetFilters} className="w-full gap-1.5 text-[var(--sys-destructive)]">
                 <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
                 إعادة تعيين ({activeFilters})
               </Button>
@@ -660,7 +660,7 @@ export function CustomersScreen() {
           </div>
 
           <div className="flex justify-end space-x-2 rtl:space-x-reverse pt-2">
-            <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setCreateModalOpen(false)}>
               إلغاء
             </Button>
             <Button type="submit" loading={modalLoading}>

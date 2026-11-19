@@ -116,7 +116,7 @@ export function ProductStock({
             // opened onto a search box. The balances screen now reads
             // `?product=` and opens that product's dialog directly.
             <Link href={made ? '/manufacturing' : `/inventory/balances?product=${productId}`}>
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="secondary">
                 {made ? <RiBuilding4Line className="h-4 w-4" /> : <RiInboxArchiveLine className="h-4 w-4" />}
                 {made ? 'تشغيلة إنتاج' : 'إضافة مخزون'}
               </Button>

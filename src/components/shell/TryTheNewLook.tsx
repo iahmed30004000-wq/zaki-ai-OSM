@@ -103,7 +103,7 @@ export function TryTheNewLook() {
         <Button size="sm" onClick={yes} disabled={busy}>
           جرّب الشكل الجديد
         </Button>
-        <Button size="sm" variant="ghost" onClick={no} disabled={busy}>
+        <Button size="sm" variant="quiet" onClick={no} disabled={busy}>
           لا، شكراً
         </Button>
       </div>

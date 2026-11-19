@@ -196,10 +196,10 @@ export function CollectDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
           </Button>
-          {/* `success`: the kit's green, which this press always wore — «استلمت منه» on the screen behind is green too. */}
+          {/* `primary` since R19a (19/11): the old green alias is out; «استلمت منه» on the screen behind is primary too. */}
           <Button
             type="submit"
-            variant="success"
+            variant="primary"
             disabled={saving || !walletId}
           >
             <RiHandCoinLine className="w-4 h-4" />

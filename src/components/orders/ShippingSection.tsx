@@ -417,7 +417,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
             rows={2} value={note} onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
             <Button
               size="sm" loading={actionLoading === 'attempt'}
               disabled={!attemptResult || (attemptResult === 'OTHER' && note.trim().length < 5)}
@@ -443,7 +443,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
             rows={2} value={note} onChange={(e) => setNote(e.target.value)}
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
             <Button
               size="sm" loading={actionLoading === 'transition'}
               disabled={!failureReason || (failureReason === 'OTHER' && note.trim().length < 5)}
@@ -473,7 +473,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
           </Select>
           <Textarea label={ar ? 'ملاحظة' : 'Note'} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
             <Button
               size="sm" loading={actionLoading === 'transition'} className="bg-[var(--sys-warning)] hover:bg-[var(--sys-warning)]"
               disabled={!returnReason}
@@ -527,7 +527,7 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
             />
           )}
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setOpenForm(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
             <Button
               size="sm" loading={actionLoading !== null}
               onClick={async () => {

@@ -129,7 +129,7 @@ export function TelegramCorrectDialog({
           <Button type="submit" loading={busy}>
             احفظ وحوّلها لطلب
           </Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>
+          <Button type="button" variant="quiet" disabled={busy} onClick={onClose}>
             إلغاء
           </Button>
         </div>

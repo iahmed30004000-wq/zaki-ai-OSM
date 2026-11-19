@@ -266,12 +266,12 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
   const actions = (m: Message) => (
     <div className="flex flex-wrap items-center gap-2">
       {canManage && mayCorrect(m) && (
-        <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => setCorrecting(m)}>
+        <Button size="sm" variant="secondary" disabled={busyId === m.id} onClick={() => setCorrecting(m)}>
           <RiEditLine className="w-4 h-4 ml-1" /> تعديل وترحيل
         </Button>
       )}
       {canManage && mayRetry(m) && (
-        <Button size="sm" variant="outline" disabled={busyId === m.id} onClick={() => retry(m)}>
+        <Button size="sm" variant="secondary" disabled={busyId === m.id} onClick={() => retry(m)}>
           <RiArrowGoBackLine className="icon-mirror w-4 h-4 ml-1" /> إعادة المعالجة
         </Button>
       )}
@@ -279,7 +279,7 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
         <span className="text-note text-[var(--sys-muted-foreground)]">صحّح الرسالة وابعتها من جديد</span>
       )}
       {canManage && mayIgnore(m) && (
-        <Button size="sm" variant="ghost" disabled={busyId === m.id} onClick={() => ignore(m)}>
+        <Button size="sm" variant="quiet" disabled={busyId === m.id} onClick={() => ignore(m)}>
           تجاهل
         </Button>
       )}
@@ -335,20 +335,20 @@ function TelegramOrdersList({ canManage, canConnect }: { canManage: boolean; can
       }
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setNames(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setNames(true)}>
             منتجات الأب سيل
           </Button>
           {canManage && (
-            <Button variant="outline" size="sm" onClick={() => setMerging(true)}>
+            <Button variant="secondary" size="sm" onClick={() => setMerging(true)}>
               دمج الأب سيل — تجربة
             </Button>
           )}
           {canConnect && (
             <Link href="/settings/links#telegram">
-              <Button variant="outline" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
+              <Button variant="secondary" size="sm"><RiEqualizer2Line className="w-4 h-4 ml-1" /> الإعدادات</Button>
             </Link>
           )}
-          <Button variant="ghost" size="sm" onClick={refresh}>
+          <Button variant="quiet" size="sm" onClick={refresh}>
             <RiRefreshLine className="w-4 h-4 ml-1" /> تحديث
           </Button>
         </div>

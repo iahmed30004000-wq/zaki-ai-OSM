@@ -314,10 +314,10 @@ export function DeliverDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
           </Button>
-          {/* `success`: the kit's green, which this press always wore (the four looks have no green yet — see `Button`). */}
+          {/* `primary` since R19a (19/11): the old green alias is out of the screens (see `Button`). */}
           <Button
             type="submit"
-            variant="success"
+            variant="primary"
             disabled={saving || !lines}
           >
             <RiArchiveDrawerLine className="w-4 h-4" />

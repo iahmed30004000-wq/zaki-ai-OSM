@@ -135,7 +135,7 @@ export function TelegramUpsellMergeDialog({ canManage, onClose, onApplied }: { c
               نعم، نفّذ الدمج
             </Button>
           )}
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="quiet" onClick={onClose}>
             سكّر
           </Button>
         </div>

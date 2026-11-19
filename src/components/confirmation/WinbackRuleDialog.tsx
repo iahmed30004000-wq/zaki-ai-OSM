@@ -195,10 +195,10 @@ export function WinbackRuleDialog({
           <Button type="submit" loading={busy}>
             احفظ القاعدة
           </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => fill(DEFAULT_WINBACK_RULE)}>
+          <Button type="button" variant="secondary" disabled={busy} onClick={() => fill(DEFAULT_WINBACK_RULE)}>
             القيم الأصلية
           </Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>
+          <Button type="button" variant="quiet" disabled={busy} onClick={onClose}>
             إلغاء
           </Button>
         </div>

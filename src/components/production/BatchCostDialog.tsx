@@ -225,7 +225,7 @@ export function BatchCostDialog({
 
 
         <div className="flex gap-2 justify-end pt-1">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
             إلغاء
           </Button>
           <Button size="sm" onClick={save} disabled={busy}>

@@ -627,7 +627,7 @@ export function ShipmentsNewScreen() {
       /* The door refuses an order that has no barcode from its courier (it would print our reference twice). So
          while none has one, there is nothing to print, and the line above says what to press first. */
       noBarcodeYet ? null : phone ? (
-        <Button size="md" variant={sendNode ? 'outline' : 'primary'} className="w-full" onClick={printJustMade} disabled={printing}>
+        <Button size="md" variant={sendNode ? 'secondary' : 'primary'} className="w-full" onClick={printJustMade} disabled={printing}>
           {printLabel}
         </Button>
       ) : (

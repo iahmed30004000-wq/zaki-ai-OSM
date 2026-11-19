@@ -73,7 +73,7 @@ export function Pager({
       <div className="flex items-center space-x-2 rtl:space-x-reverse">
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           loading={loading}
           disabled={loading || page <= 1}
           onClick={() => onPage(page - 1)}
@@ -88,7 +88,7 @@ export function Pager({
         </span>
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           loading={loading}
           disabled={loading || page >= last}
           onClick={() => onPage(page + 1)}

@@ -554,7 +554,7 @@ export function InventoryBalancesScreen() {
         </div>
 
         {phone && visible.length > cards.length && (
-          <Button variant="outline" className="w-full" onClick={() => setPages((n) => n + 1)}>
+          <Button variant="secondary" className="w-full" onClick={() => setPages((n) => n + 1)}>
             اعرض المزيد ({visible.length - cards.length})
           </Button>
         )}
@@ -705,7 +705,7 @@ export function InventoryBalancesScreen() {
           </p>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setAdjustModalOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setAdjustModalOpen(false)}>
               {t.cancel}
             </Button>
             <Button type="submit" loading={modalLoading} disabled={difference === null || difference === 0 || reason.trim().length < 3}>

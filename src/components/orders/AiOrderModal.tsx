@@ -306,7 +306,7 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
             <label className="block text-xs font-medium text-[var(--sys-foreground)]">
               1. الصق نص الطلب
             </label>
-            <Button size="sm" variant="outline" onClick={handlePaste} className="text-xs">
+            <Button size="sm" variant="secondary" onClick={handlePaste} className="text-xs">
               <RiClipboardLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
               لصق من الحافظة
             </Button>
@@ -593,7 +593,7 @@ export function AiOrderModal({ isOpen, onClose, onSuccess }: AiOrderModalProps) 
             )}
 
             <div className="flex items-center justify-end space-x-3 rtl:space-x-reverse pt-3 border-t border-[var(--sys-destructive-border)]">
-              <Button variant="outline" onClick={() => setResult(null)}>
+              <Button variant="secondary" onClick={() => setResult(null)}>
                 إلغاء
               </Button>
               <Button onClick={handleConfirm} loading={saving}>

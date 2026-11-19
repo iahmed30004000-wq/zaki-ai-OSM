@@ -481,13 +481,13 @@ export function UsersScreen({ twoFactorRequired = true }: { twoFactorRequired?: 
               <h4 className="text-sm font-bold text-[var(--sys-foreground)]">حالة الحساب</h4>
               <div className="flex flex-wrap gap-2">
                 {manageUser.status === 'PENDING' && (
-                  <Button size="sm" variant="success" loading={actionLoading} onClick={() => handleAction('changeStatus', { status: 'ACTIVE' })}>
+                  <Button size="sm" variant="primary" loading={actionLoading} onClick={() => handleAction('changeStatus', { status: 'ACTIVE' })}>
                     <RiPlayCircleLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
                     اعتماد الحساب
                   </Button>
                 )}
                 {manageUser.status !== 'ACTIVE' && manageUser.status !== 'PENDING' && (
-                  <Button size="sm" variant="success" loading={actionLoading} onClick={() => handleAction('changeStatus', { status: 'ACTIVE' })}>
+                  <Button size="sm" variant="primary" loading={actionLoading} onClick={() => handleAction('changeStatus', { status: 'ACTIVE' })}>
                     <RiPlayCircleLine className="w-4 h-4 ml-1 rtl:ml-0 rtl:mr-1" />
                     تنشيط الحساب
                   </Button>

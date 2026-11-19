@@ -787,12 +787,12 @@ function ReceiveDialog({
             {/*
               Two `Button`s, not a `Segmented`: the pair starts with no answer, and a second press on «نعم» puts the count
               back to the whole expected figure — a segmented bar calls its handler only on a CHANGE, so it would swallow it.
-              The chosen answer wears its colour (green yes, red no); the other stays framed.
+              The chosen answer wears its colour (the brand colour for yes since R19a, red no); the other stays framed.
             */}
             <div className="flex gap-2">
               <Button
                 type="button"
-                variant={arrived === true ? 'success' : 'secondary'}
+                variant={arrived === true ? 'primary' : 'secondary'}
                 aria-pressed={arrived === true}
                 onClick={() => {
                   setArrived(true);

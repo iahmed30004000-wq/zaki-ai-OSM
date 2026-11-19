@@ -58,7 +58,12 @@ import { hapticConfirm, hapticRefuse } from '@/lib/haptics';
  * Button.kit.test.tsx holds that against a frozen copy of the old lists.
  */
 type Variant = 'primary' | 'secondary' | 'quiet' | 'danger' | LegacyVariant;
-/** Accepted until R19 removes them from the call sites. */
+/**
+ * 19/11 (R19a): accepted ONLY in the storefront owner's files until R18.
+ * Every other call site now says secondary / quiet / primary, and
+ * src/lib/no-legacy-button-names.test.ts pins it. When R18 is merged, the
+ * next pull request deletes this type and `tsc` proves nobody still uses it.
+ */
 type LegacyVariant = 'outline' | 'ghost' | 'success';
 
 export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> {

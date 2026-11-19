@@ -398,11 +398,11 @@ export function CampaignsScreen() {
                   One button doing both would mean a seller who wanted
                   today's spend also got nine archived campaigns. */}
               <AdvancedGroup holds="اسحب الحملات · اسحب الإنفاق">
-              <Button size="sm" variant="outline" onClick={() => void importCampaigns()} disabled={importing}>
+              <Button size="sm" variant="secondary" onClick={() => void importCampaigns()} disabled={importing}>
                 {importing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiDownloadLine className="h-4 w-4" />}
                 اسحب الحملات
               </Button>
-              <Button size="sm" variant="outline" onClick={sync} disabled={syncing}>
+              <Button size="sm" variant="secondary" onClick={sync} disabled={syncing}>
                 {syncing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiRefreshLine className="h-4 w-4" />}
                 اسحب الإنفاق
               </Button>
@@ -909,7 +909,7 @@ function Editor({
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
             {campaign ? 'احفظ' : 'أنشئ الحملة'}
           </Button>
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
         </div>
       </div>
     </div>
@@ -1056,11 +1056,11 @@ function LinkDialog({
             اربط
           </Button>
           {campaign.spendSource === 'SYNCED' && (
-            <Button variant="outline" onClick={() => save(true)} disabled={busy}>
+            <Button variant="secondary" onClick={() => save(true)} disabled={busy}>
               فكّ الربط
             </Button>
           )}
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
         </div>
 
         {campaign.spendSource === 'SYNCED' && (

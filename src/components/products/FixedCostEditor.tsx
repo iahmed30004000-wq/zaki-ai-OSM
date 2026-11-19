@@ -101,7 +101,7 @@ export function FixedCostEditor({
           {fixedCost === null && (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={busy}
               onClick={() =>
                 void save(batchAverage, {
@@ -117,7 +117,7 @@ export function FixedCostEditor({
           {fixedCost !== null && (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               disabled={busy}
               onClick={() =>
                 void save(null, {

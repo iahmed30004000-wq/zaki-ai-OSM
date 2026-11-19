@@ -193,7 +193,7 @@ export function ProductDetailScreen() {
               والحذف», so this is where they looked.
             */}
             {canManage && (
-              <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+              <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
                 <RiPencilLine className="w-4 h-4 ml-1.5 rtl:ml-0 rtl:mr-1.5" />
                 تعديل المنتج
               </Button>
@@ -400,7 +400,7 @@ export function ProductDetailScreen() {
         <Card>
           <CardHeader
             title={<span className="flex items-center space-x-2 rtl:space-x-reverse"><RiBuilding4Line className="w-4 h-4 text-[var(--sys-destructive)]" /><span>تشغيلات الإنتاج</span></span>}
-            action={<Link href="/manufacturing"><Button size="sm" variant="outline">إدارة التشغيلات</Button></Link>}
+            action={<Link href="/manufacturing"><Button size="sm" variant="secondary">إدارة التشغيلات</Button></Link>}
           />
           <CardContent className="p-0 overflow-x-auto">
                         <Rows
