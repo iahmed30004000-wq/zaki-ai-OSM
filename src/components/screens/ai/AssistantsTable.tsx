@@ -8,6 +8,8 @@ import { RiAlertLine, RiShieldCheckLine, RiShieldCrossLine, RiToolsLine } from '
 import { Rows } from '@/components/ui/Rows';
 import { useCan } from '@/hooks/useCan';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 /**
  * EVERY ASSISTANT, AND WHAT IT IS ALLOWED TO SEE.
@@ -82,7 +84,7 @@ function ModelPicker({
         }}
         dir="ltr"
         aria-label={label}
-        className="h-11 md:h-8 w-44 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs"
+        className="h-11 md:h-8 w-44 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note"
       >
         <option value="">{fallbackLabel ? `\u200fالافتراضي — ${fallbackLabel}` : '\u200fالافتراضي'}</option>
         {models.map((m) => (
@@ -101,7 +103,7 @@ function ModelPicker({
           dir="ltr"
           autoComplete="off"
           aria-label={`${label} — اسم آخر`}
-          className="h-11 md:h-8 w-44 rounded-lg border border-[var(--sys-warning)]/60 bg-[var(--sys-card)] px-2 text-xs"
+          className="h-11 md:h-8 w-44 rounded-lg border border-[var(--sys-warning)]/60 bg-[var(--sys-card)] px-2 text-note"
         />
       )}
     </span>
@@ -166,13 +168,13 @@ export function AssistantsTable({
 
   return (
     <div className="space-y-3">
-      <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         كل مساعد يقرأ ما هو مكتوب في سطره فقط — الخدمة ترفض جلب غيره، فالسطر وعدٌ يحفظه الكود لا وصفٌ
         على برومبت. ولا مساعد، مهما كان نطاقه، ينقل حالة طلب أو يسجّل حركة صندوق أو يغيّر سعراً أو
         يعتمد تسوية.
       </p>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+      <Card plain className="overflow-hidden">
                 <Rows
           rows={ASSISTANTS}
           keyOf={(a) => a.key}
@@ -180,12 +182,12 @@ export function AssistantsTable({
             { key: 'c0', label: "المساعد", primary: true,
               render: (a) => (
                   <><p className="font-semibold text-[var(--sys-heading)]">{a.label}</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{a.note}</p></>
+                  <p className="mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{a.note}</p></>
                 ) },
             { key: 'c1', label: "لمن", primary: true,
               render: (a) => (
                   <>{a.who}
-                  <span className="mt-0.5 block text-xs text-[var(--sys-muted)]" dir="ltr">{a.gate ? `${a.needs} + ${a.gate}` : a.needs}</span></>
+                  <span className="mt-0.5 block text-note text-[var(--sys-muted)]" dir="ltr">{a.gate ? `${a.needs} + ${a.gate}` : a.needs}</span></>
                 ) },
             { key: 'c2', label: "يقرأ",
               render: (a) => (
@@ -197,7 +199,7 @@ export function AssistantsTable({
                     </span>
                   )}
                   {a.optionalScopes && (
-                    <span className="mt-0.5 block text-xs text-[var(--sys-muted)]">
+                    <span className="mt-0.5 block text-note text-[var(--sys-muted)]">
                       {enabled.length === 0 ? 'ولا مجال مؤشَّر' : `مؤشَّر: ${enabled.map((s) => SCOPE_LABEL_AR[s as AiScope]).join(' · ')}`}
                     </span>
                   )}</>
@@ -257,7 +259,7 @@ export function AssistantsTable({
                       disabled={!canManage}
                       value={mine.provider ?? ''}
                       onChange={(e) => set({ provider: e.target.value || undefined })}
-                      className="h-11 md:h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs"
+                      className="h-11 md:h-8 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note"
                       aria-label={`مزوّد ${a.label}`}
                     >
                       <option value="">الافتراضي — {providers.find((p) => p.id === fallback.provider)?.label}</option>
@@ -286,7 +288,7 @@ export function AssistantsTable({
                       the company's.
                     */}
                     {actual && (
-                      <span className="text-xs text-[var(--sys-muted)]">
+                      <span className="text-note text-[var(--sys-muted)]">
                         بيروح على: {vendorLabel} · {actual.model}
                         {unreachable ? (
                           <span className="text-[var(--sys-warning)]">
@@ -304,7 +306,7 @@ export function AssistantsTable({
                       making, beside the control that makes it.
                     */}
                     {actual && a.pii && actual.provider !== 'LOCAL' && (
-                      <span className="flex flex-col gap-0.5 text-xs">
+                      <span className="flex flex-col gap-0.5 text-note">
                         <span className="flex items-start gap-1 text-[var(--sys-warning)]">
                           <RiAlertLine className="mt-px h-4 w-4 shrink-0" />
                           هالمساعد بيقرا بيانات زبون — الاسم والملاحظات ما بيطلعوا لمزوّد خارجي
@@ -326,41 +328,39 @@ export function AssistantsTable({
             />
           }
         />
-      </div>
+      </Card>
 
       {/* The one assistant whose reach is a decision rather than a job. */}
-      <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+      <Card padding="md">
         <h3 className="text-sm font-bold text-[var(--sys-heading)]">ما يقرؤه مركز الذكاء</h3>
-        <p className="mb-3 mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mb-3 mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           يبدأ بلا مجال واحد. أشّر ما تسمح له بقراءته — وغير المؤشَّر لا يُجلَب أصلاً، فلا يمكن
           استخراجه بسؤال ذكي.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           {AI_SCOPES.filter((s) => s !== 'customer').map((scope) => (
-            <label
+            <div
               key={scope}
-              className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 ${
+              className={`rounded-lg border px-2.5 ${
                 enabled.includes(scope) ? 'border-[var(--sys-success-soft)] bg-[var(--sys-success-soft)]' : 'border-[var(--sys-border)]'
               }`}
             >
-              <input
-                type="checkbox"
+              {/* 18/11 (R15g): the kit's tick, with an id of its own per scope (four on one screen). */}
+              <Checkbox
+                id={`ai-scope-${scope}`}
                 checked={enabled.includes(scope)}
                 disabled={busy || !canManage}
-                onChange={() => void toggle(scope)}
-                className="h-5 w-5 mt-0.5"
+                onChange={() => { void toggle(scope); }}
+                label={<span className="font-semibold">{SCOPE_LABEL_AR[scope]}</span>}
+                hint={SCOPE_NOTE_AR[scope]}
               />
-              <span>
-                <span className="block text-xs font-semibold text-[var(--sys-heading)]">{SCOPE_LABEL_AR[scope]}</span>
-                <span className="block text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{SCOPE_NOTE_AR[scope]}</span>
-              </span>
-            </label>
+            </div>
           ))}
         </div>
         {msg && (
-          <p className={`mt-2 text-xs ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>
+          <p className={`mt-2 text-note ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>
         )}
-      </section>
+      </Card>
     </div>
   );
 }
