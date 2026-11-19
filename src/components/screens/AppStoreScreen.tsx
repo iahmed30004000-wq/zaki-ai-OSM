@@ -4,12 +4,16 @@ import React, { useCallback, useState } from 'react';
 import { useTell } from '@/components/ui/Confirm';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { apiJson } from '@/lib/api-client';
 import { copyText } from '@/lib/clipboard';
+import { routeLabel } from '@/lib/route-registry';
 import { RiAddCircleLine, RiAlertLine, RiCheckLine, RiCloseLine, RiEqualizer2Line, RiFileCopyLine, RiLoader4Line, RiShieldCheckLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 
@@ -95,23 +99,23 @@ export function AppStoreScreen() {
   }
 
   return (
-    <div className="max-w-5xl space-y-5">
-      <PageHeader title="متجر التطبيقات"
-          description="ما يمكن وصل النظام به. الجاهزة يعرفها النظام مسبقاً ويكفي تفعيلها وإدخال
+    <PageShell
+      title={routeLabel('/apps/store')}
+      width="wide"
+      description="ما يمكن وصل النظام به. الجاهزة يعرفها النظام مسبقاً ويكفي تفعيلها وإدخال
             حسابها؛ والمسجَّلة من مطوّرين تُخبَر بما يحدث عبر ويبهوك موقَّع."
-          actions={
-            <><Button size="sm" onClick={() => setRegistering(true)}>
+      actions={
+        <Button size="sm" onClick={() => setRegistering(true)}>
           <RiAddCircleLine className="h-4 w-4" /> سجّل تطبيقاً
-        </Button></>
-          }
-        />
-
+        </Button>
+      }
+    >
       {error && (
         <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-sm text-[var(--sys-destructive)]">{error}</p>
       )}
 
       <section>
-        <h2 className="mb-2 text-xs font-bold text-[var(--sys-muted-foreground)]">تكاملات جاهزة</h2>
+        <h2 className="mb-2 text-note font-bold text-[var(--sys-muted-foreground)]">تكاملات جاهزة</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {shelf.builtIn.map((a) => (
             <div
@@ -123,20 +127,20 @@ export function AppStoreScreen() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-[var(--sys-heading)]">{a.name}</p>
-                  <p className="text-xs text-[var(--sys-muted-foreground)]">{a.summary}</p>
+                  <p className="text-note text-[var(--sys-muted-foreground)]">{a.summary}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-xs font-semibold text-[var(--sys-foreground)]">
+                <span className="shrink-0 rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]">
                   {a.categoryLabel}
                 </span>
               </div>
 
-              <p className="mt-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{a.description}</p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--sys-muted-foreground)]">{a.description}</p>
 
               {/* Installed is not the same as working. A courier whose
                   credentials were cleared is installed and useless, and the
                   card says which. */}
               {a.installed && (
-                <p className={`mt-2 flex items-center gap-1.5 text-xs ${a.configured ? 'text-[var(--sys-success)]' : 'text-[var(--sys-warning)]'}`}>
+                <p className={`mt-2 flex items-center gap-1.5 text-note ${a.configured ? 'text-[var(--sys-success)]' : 'text-[var(--sys-warning)]'}`}>
                   {a.configured ? <RiShieldCheckLine className="h-4 w-4" /> : <RiAlertLine className="h-4 w-4" />}
                   {a.configured ? 'مهيَّأ ويعمل' : 'مثبَّت لكن غير مهيَّأ — أدخل بياناته'}
                 </p>
@@ -144,36 +148,37 @@ export function AppStoreScreen() {
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {!a.installed ? (
-                  <Button size="sm" disabled={!a.canManage || busy === a.code} onClick={() => act(a.code, 'install')}>
+                  <Button size="sm" disabled={!a.canManage || busy === a.code} onClick={() => { void act(a.code, 'install'); }}>
                     {busy === a.code ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
                     تثبيت
                   </Button>
                 ) : (
                   <>
                     <Link href={a.settingsPath}>
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="secondary">
                         <RiEqualizer2Line className="h-4 w-4" /> الإعدادات
                       </Button>
                     </Link>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       disabled={!a.canManage || busy === a.code}
-                      onClick={() => act(a.code, a.enabled ? 'disable' : 'enable')}
+                      onClick={() => { void act(a.code, a.enabled ? 'disable' : 'enable'); }}
                     >
                       {a.enabled ? 'إيقاف' : 'تفعيل'}
                     </Button>
-                    <button
-                      onClick={() => act(a.code, 'uninstall')}
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      onClick={() => { void act(a.code, 'uninstall'); }}
                       disabled={!a.canManage || busy === a.code}
-                      className="cursor-pointer text-xs text-[var(--sys-muted)] hover:text-[var(--sys-destructive)]"
                     >
                       إزالة
-                    </button>
+                    </Button>
                   </>
                 )}
                 {!a.canManage && (
-                  <span className="text-xs text-[var(--sys-muted)]">تحتاج صلاحية لتثبيته</span>
+                  <span className="text-note text-[var(--sys-muted)]">تحتاج صلاحية لتثبيته</span>
                 )}
               </div>
             </div>
@@ -182,35 +187,37 @@ export function AppStoreScreen() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-bold text-[var(--sys-muted-foreground)]">
+        <h2 className="mb-2 text-note font-bold text-[var(--sys-muted-foreground)]">
           تطبيقات مسجَّلة عندك
         </h2>
         {shelf.external.length === 0 ? (
-          <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-            لا تطبيقات مسجَّلة بعد. سجّل واحداً ليصله ويبهوك موقَّع عند كل حدث تختاره —
-            طلب جديد، تأكيد، شحن، تسليم، إرجاع.
-          </p>
+          <Card padding="lg">
+            <p className="text-center text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
+              لا تطبيقات مسجَّلة بعد. سجّل واحداً ليصله ويبهوك موقَّع عند كل حدث تختاره —
+              طلب جديد، تأكيد، شحن، تسليم، إرجاع.
+            </p>
+          </Card>
         ) : (
           <div className="space-y-2">
             {shelf.external.map((a) => (
-              <div key={a.id} className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+              <Card key={a.id} plain padding="md">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-[var(--sys-heading)]">
-                      {a.name} <span className="font-mono text-xs text-[var(--sys-muted)]" dir="ltr">{a.code}</span>
+                      {a.name} <span className="font-mono text-note text-[var(--sys-muted)]" dir="ltr">{a.code}</span>
                     </p>
-                    {a.developerName && <p className="text-xs text-[var(--sys-muted-foreground)]">{a.developerName}</p>}
+                    {a.developerName && <p className="text-note text-[var(--sys-muted-foreground)]">{a.developerName}</p>}
                     {a.webhookUrl && (
-                      <p className="mt-1 truncate font-mono text-xs text-[var(--sys-muted-foreground)]" dir="ltr">{a.webhookUrl}</p>
+                      <p className="mt-1 truncate font-mono text-note text-[var(--sys-muted-foreground)]" dir="ltr">{a.webhookUrl}</p>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {!a.installed ? (
-                      <Button size="sm" disabled={busy === a.code} onClick={() => act(a.code, 'install')}>
+                      <Button size="sm" disabled={busy === a.code} onClick={() => { void act(a.code, 'install'); }}>
                         تثبيت
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" disabled={busy === a.code} onClick={() => act(a.code, a.enabled ? 'disable' : 'enable')}>
+                      <Button size="sm" variant="secondary" disabled={busy === a.code} onClick={() => { void act(a.code, a.enabled ? 'disable' : 'enable'); }}>
                         {a.enabled ? 'إيقاف' : 'تفعيل'}
                       </Button>
                     )}
@@ -219,13 +226,13 @@ export function AppStoreScreen() {
                 {a.events.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {a.events.map((e) => (
-                      <span key={e} className="rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 font-mono text-xs text-[var(--sys-foreground)]" dir="ltr">
+                      <span key={e} className="rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 font-mono text-note text-[var(--sys-foreground)]" dir="ltr">
                         {e}
                       </span>
                     ))}
                   </div>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -238,7 +245,7 @@ export function AppStoreScreen() {
           onDone={async () => { setRegistering(false); await load(); }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -285,14 +292,17 @@ function RegisterApp({
     return (
       <Modal isOpen onClose={onDone} title="سرّ التوقيع" subtitle="يُعرض مرة واحدة فقط">
         <div className="space-y-3">
-          <p className="text-xs leading-relaxed text-[var(--sys-foreground)]">
+          <p className="text-sm leading-relaxed text-[var(--sys-foreground)]">
             احفظه الآن. يوقّع كل ويبهوك بترويسة <code dir="ltr">RiCloseLine-Zaki-Signature</code> بصيغة
             {' '}<code dir="ltr">sha256=HMAC(secret, &quot;&lt;timestamp&gt;.&lt;body&gt;&quot;)</code>؛
             الوقت داخل النصّ الموقَّع حتى لا يُعاد إرسال طلب مُلتقَط بعد أسبوع بنفس التوقيع.
           </p>
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-2.5">
-            <code className="min-w-0 flex-1 break-all font-mono text-xs text-[var(--sys-heading)]" dir="ltr">{secret}</code>
-            <button
+          <Card plain padding="sm" className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all font-mono text-note text-[var(--sys-heading)]" dir="ltr">{secret}</code>
+            <IconButton
+              label="انسخ السرّ"
+              type="button"
+              className="shrink-0"
               onClick={async () => {
                 // Shown once and never again, so a copy that silently
                 // fails loses the secret for good.
@@ -303,11 +313,10 @@ function RegisterApp({
                   value: secret,
                 });
               }}
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 shrink-0 cursor-pointer rounded-lg p-2 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-card)]"
             >
               {copied ? <RiCheckLine className="h-4 w-4 text-[var(--sys-success)]" /> : <RiFileCopyLine className="h-4 w-4" />}
-            </button>
-          </div>
+            </IconButton>
+          </Card>
           <div className="flex justify-end">
             <Button size="sm" onClick={onDone}>حفظته</Button>
           </div>
@@ -343,34 +352,37 @@ function RegisterApp({
         <Input label="وصف" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[var(--sys-heading)]">الأحداث *</label>
+          <label className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">الأحداث *</label>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {events.map((ev) => (
-              <label key={ev.code} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--sys-border)] px-2.5 py-1.5 text-xs text-[var(--sys-foreground)]">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 cursor-pointer accent-[var(--sys-primary)]"
-                  checked={chosen.includes(ev.code)}
-                  onChange={(e) =>
-                    setChosen(e.target.checked ? [...chosen, ev.code] : chosen.filter((c) => c !== ev.code))
-                  }
-                />
-                {ev.label}
-                <span className="ms-auto font-mono text-xs text-[var(--sys-muted)]" dir="ltr">{ev.code}</span>
-              </label>
+              <Checkbox
+                key={ev.code}
+                id={`app-event-${ev.code}`}
+                className="rounded-lg border border-[var(--sys-border)] px-2.5"
+                checked={chosen.includes(ev.code)}
+                onChange={(checked) =>
+                  setChosen(checked ? [...chosen, ev.code] : chosen.filter((c) => c !== ev.code))
+                }
+                label={
+                  <>
+                    {ev.label}{' '}
+                    <span className="font-mono text-note text-[var(--sys-muted)]" dir="ltr">{ev.code}</span>
+                  </>
+                }
+              />
             ))}
           </div>
         </div>
 
-        <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
           التطبيق يُخبَر فقط — لا يقرأ بياناتك ولا يعدّلها. عنوان الويبهوك يجب أن يكون
           <code dir="ltr"> https</code>، والإرسال يُعاد خمس مرات بتباعد متزايد قبل أن يُعلَّم فاشلاً.
         </p>
 
-        {error && <p className="text-xs text-[var(--sys-destructive)]">{error}</p>}
+        {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             <RiCloseLine className="h-4 w-4" /> إلغاء
           </Button>
           <Button type="submit" loading={saving} disabled={chosen.length === 0}>
