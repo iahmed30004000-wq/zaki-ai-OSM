@@ -137,8 +137,15 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * (`NEXT_TURBOPACK_ROOT=<the main checkout> NEXT_DIST_DIR=.next-verify` `next build`, which stops at the type-check step on a stale
    * shared database client after it has written its manifests) reads 413.09 KB, 28 files: about 0.24 KB LOWER than CI, so a local
    * build cannot set this number. Never above today's 416; from here it only holds or falls.
+   *
+   * MOVED 2026-11-19, 413.34 → 413.39, MEASURED BY CI, on the owner's word (the barcode authenticity checker, #407). CI's «Payload
+   * budget» read main at 413.3 (run 44514324937, a4646b8) and this change at 413.384 KB, 28 files (run 44524518445, 348e4a1):
+   * +0.056 KB. Nothing of the feature is in the route: its codes are a card of «إعدادات النظام», not a registry line; its verdict
+   * reuses icons the dashboard already draws; and a local build of this change reads every one of the 28 files byte for byte
+   * equal to main's. The 56 bytes are how CI's build splits the shared chunks once a new public route exists. The ceiling is
+   * CI's reading rounded up to the next hundredth and then one more, as on 19/11. Still never above 416.
    */
-  const CEILING_KB = 413.34;
+  const CEILING_KB = 413.39;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();
