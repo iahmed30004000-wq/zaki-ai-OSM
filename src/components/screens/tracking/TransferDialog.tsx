@@ -5,6 +5,7 @@ import { apiFetch, apiJson } from '@/lib/api-client';
 import { useAsk } from '@/components/ui/Confirm';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 import { RiAlertLine, RiEBike2Line, RiTruckLine } from '@remixicon/react';
 
 /**
@@ -105,7 +106,7 @@ export function TransferDialog({
         className="space-y-3"
       >
         <div
-          className={`text-xs rounded-lg p-3 border ${
+          className={`text-note rounded-lg p-3 border ${
             fromAgent
               ? 'bg-[var(--sys-success-soft)] border-[var(--sys-success)]/40 text-[var(--sys-success)]'
               : 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/40 text-[var(--sys-warning)]'
@@ -151,7 +152,7 @@ export function TransferDialog({
         </Select>
 
         {to && (
-          <p className="text-xs text-[var(--sys-muted-foreground)] flex items-center gap-1.5">
+          <p className="text-note text-[var(--sys-muted-foreground)] flex items-center gap-1.5">
             {to.kind === 'AGENT' ? <RiEBike2Line className="w-4 h-4 text-[var(--sys-primary)]" /> : <RiTruckLine className="w-4 h-4" />}
             ستذهب إلى {to.name}
           </p>
@@ -167,16 +168,16 @@ export function TransferDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="primary"
             disabled={saving || !target}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ التحويل…' : fromAgent ? 'استلام وتحويل' : 'تحويل الشحنة'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
