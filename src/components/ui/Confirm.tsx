@@ -212,7 +212,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                   onFocus={(e) => e.currentTarget.select()}
                   className={`${FIELD} font-mono text-xs`}
                 />
-                <Button type="button" variant="outline" size="sm" onClick={() => void copy(open.options.value!)}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => void copy(open.options.value!)}>
                   {copied ? <RiCheckLine className="h-4 w-4 text-[var(--sys-success)]" /> : <RiFileCopyLine className="h-4 w-4" />}
                   {copied ? 'نُسخ' : 'انسخ'}
                 </Button>
@@ -221,7 +221,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
             <div className="flex items-center justify-end gap-2">
               {open.kind !== 'tell' && (
-                <Button type="button" variant="outline" size="sm" onClick={() => close(false)}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => close(false)}>
                   {open.options.cancelLabel ?? 'إلغاء'}
                 </Button>
               )}

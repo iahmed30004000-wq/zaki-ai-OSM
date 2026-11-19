@@ -589,7 +589,7 @@ export function OrdersScreen() {
   const lateToggle = (
     <span className="inline-flex shrink-0 items-center gap-1.5">
       <Button
-        variant={lateOnly ? undefined : 'outline'}
+        variant={lateOnly ? undefined : 'secondary'}
         onClick={() => setLateDays(lateOnly ? '' : DEFAULT_LATE_DAYS)}
         title={`شُحنت منذ ${shownLate} أيام أو أكثر ولم تُسلَّم بعد — من تاريخ الشحن`}
         className="shrink-0 gap-1.5"
@@ -617,7 +617,7 @@ export function OrdersScreen() {
     </span>
   );
   const resetButton = activeFilters > 0 && (
-    <Button variant="outline" onClick={resetFilters} className="shrink-0 gap-1.5 text-[var(--sys-destructive)]">
+    <Button variant="secondary" onClick={resetFilters} className="shrink-0 gap-1.5 text-[var(--sys-destructive)]">
       <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
       إعادة تعيين ({activeFilters})
     </Button>
@@ -643,7 +643,7 @@ export function OrdersScreen() {
             >
             {canExport && (
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleExportCSV}
               className="flex items-center space-x-1.5"
@@ -657,7 +657,7 @@ export function OrdersScreen() {
                 directions and somebody looking for one looks here. */}
             {canImport && (
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setImporting(true)}
               className="flex items-center space-x-1.5"
@@ -668,7 +668,7 @@ export function OrdersScreen() {
             )}
 
             {canMigrate && (
-            <Button variant="outline" size="sm" onClick={() => setMigrating(true)} className="flex items-center space-x-1.5">
+            <Button variant="secondary" size="sm" onClick={() => setMigrating(true)} className="flex items-center space-x-1.5">
               <RiUploadCloud2Line className="w-4 h-4" />
               <span>ترحيل طلبات قديمة</span>
             </Button>
@@ -677,7 +677,7 @@ export function OrdersScreen() {
             {canCreate && (
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               onClick={() => setAiModalOpen(true)}
               className="items-center gap-1.5 text-[var(--sys-primary)] border-[var(--sys-primary)]/35 hover:bg-[var(--sys-primary-soft)]"
             >
@@ -884,13 +884,13 @@ export function OrdersScreen() {
                 else, and a button that always answers 403 is a broken one. */}
             {canPrint && (
               <>
-                <Button size="sm" variant="outline" onClick={() => void handlePrintLabels('print')} loading={printing}>
+                <Button size="sm" variant="secondary" onClick={() => void handlePrintLabels('print')} loading={printing}>
                   <RiPrinterLine className="w-4 h-4" />
                   طباعة البوالص
                 </Button>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => void handlePrintLabels('pdf')}
                   disabled={printing}
                   title="نفس البوالص كملف PDF — الحفظ لا يعلّم الطلبات مطبوعة"
@@ -901,12 +901,12 @@ export function OrdersScreen() {
               </>
             )}
             {canExport && (
-            <Button size="sm" variant="outline" onClick={handleExportSelected}>
+            <Button size="sm" variant="secondary" onClick={handleExportSelected}>
               <RiDownload2Line className="w-4 h-4" />
               تصدير المحدَّد
             </Button>
             )}
-            <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+            <Button size="sm" variant="secondary" onClick={() => setSelected(new Set())}>
               إلغاء التحديد
             </Button>
           </>
@@ -926,7 +926,7 @@ export function OrdersScreen() {
             <span className="me-auto text-sm font-semibold text-[var(--sys-primary)]">
               محدَّد: {selected.size} طلب
             </span>
-            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} title="إلغاء التحديد">
+            <Button size="sm" variant="quiet" onClick={() => setSelected(new Set())} title="إلغاء التحديد">
               <RiCloseLine className="w-4 h-4" />
             </Button>
             {/* Shown only to whoever may print: the server refuses anyone
@@ -942,7 +942,7 @@ export function OrdersScreen() {
               {canPrint && (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={() => void handlePrintLabels('pdf')}
                   disabled={printing}
                   title="نفس البوالص كملف PDF — الحفظ لا يعلّم الطلبات مطبوعة"
@@ -952,7 +952,7 @@ export function OrdersScreen() {
                 </Button>
               )}
               {canExport && (
-                <Button size="sm" variant="outline" onClick={handleExportSelected}>
+                <Button size="sm" variant="secondary" onClick={handleExportSelected}>
                   <RiDownload2Line className="w-4 h-4" />
                   تصدير المحدَّد
                 </Button>

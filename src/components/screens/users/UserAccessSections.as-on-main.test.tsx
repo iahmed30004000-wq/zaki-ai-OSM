@@ -208,7 +208,7 @@ export function UserPhoneField({ userId, initial, canEdit }: { userId: string; i
             aria-label="هاتف الموظف"
             className="h-11 md:h-8 min-w-0 flex-1 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs font-bold text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
           />
-          <Button size="sm" variant="outline" onClick={save} disabled={busy || phone.trim() === saved.trim()}>
+          <Button size="sm" variant="secondary" onClick={save} disabled={busy || phone.trim() === saved.trim()}>
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : 'حفظ'}
           </Button>
         </div>

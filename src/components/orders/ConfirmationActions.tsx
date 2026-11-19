@@ -581,7 +581,7 @@ export function ConfirmationActions({ order, ar, isRtl, onRefreshOrder }: Confir
           )}
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button size="sm" variant="outline" onClick={() => setOpenForm(null)}>
+            <Button size="sm" variant="secondary" onClick={() => setOpenForm(null)}>
               {ar ? 'إلغاء' : 'Cancel'}
             </Button>
             <Button size="sm" loading={actionLoading} onClick={handleQuickSubmit} disabled={formDisabled()}>

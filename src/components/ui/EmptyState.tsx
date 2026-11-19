@@ -59,7 +59,7 @@ export function EmptyState({
             {action.label}
           </Link>
         ) : (
-          <Button size="sm" variant="outline" className="mt-1" onClick={action.onClick}>
+          <Button size="sm" variant="secondary" className="mt-1" onClick={action.onClick}>
             {action.label}
           </Button>
         ))}

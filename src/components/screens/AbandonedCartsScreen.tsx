@@ -250,7 +250,7 @@ function AbandonedCartsList() {
       <CartStatusControls cart={c} may={may} onChanged={() => list.reload()} />
       <ConvertCartButton cart={c} may={may} onStart={conversion.start} />
       <Link href={`/abandoned-carts/${c.id}`}>
-        <Button size="sm" variant="ghost">التفاصيل</Button>
+        <Button size="sm" variant="quiet">التفاصيل</Button>
       </Link>
     </div>
   );
@@ -277,7 +277,7 @@ function AbandonedCartsList() {
       width="wide"
       actions={
         tab !== 'leads' && (
-          <Button variant="ghost" size="sm" onClick={() => void list.reload()}>
+          <Button variant="quiet" size="sm" onClick={() => void list.reload()}>
             <RiRefreshLine className="w-4 h-4 ml-1" /> تحديث
           </Button>
         )
@@ -417,7 +417,7 @@ function RetentionEditor({ days, onSaved }: { days: number; onSaved: (days: numb
           className="tabular-nums"
         />
       </div>
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void save()}>
+      <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void save()}>
         احفظ المدة
       </Button>
       {said && <span>{said}</span>}

@@ -786,8 +786,8 @@ export function TrackingScreen() {
               {mixedCouriers && (
                 <span role="alert" className="text-note text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
               )}
-              {/* `success`: the kit's green, which this press always wore (the four looks have no green yet — see `Button`). */}
-              <Button type="button" variant="success" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers} className="mr-auto">
+              {/* `primary` since R19a (19/11): the old green alias is out of the screens (see `Button`). */}
+              <Button type="button" variant="primary" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers} className="mr-auto">
                 <RiHandCoinLine className="w-4 h-4" /> استلمت منه
               </Button>
             </>
@@ -818,7 +818,7 @@ export function TrackingScreen() {
               <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
                 إلغاء الاختيار
               </Button>
-              <Button type="button" variant="success" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking} className="mr-auto">
+              <Button type="button" variant="primary" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking} className="mr-auto">
                 {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
                 {`استلم المحدد (${toDeliver.length})`}
               </Button>
@@ -849,7 +849,7 @@ export function TrackingScreen() {
             <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
               إلغاء الاختيار
             </Button>
-            <Button type="button" variant="success" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking}>
+            <Button type="button" variant="primary" size="sm" onClick={() => { void deliverChosen(); }} disabled={bulking}>
               {bulking ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
               {`استلم المحدد (${toDeliver.length})`}
             </Button>
@@ -875,7 +875,7 @@ export function TrackingScreen() {
             {mixedCouriers && (
               <span role="alert" className="w-full text-note text-[var(--sys-destructive)]">اختر طرود شركة وحدة</span>
             )}
-            <Button type="button" variant="success" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers}>
+            <Button type="button" variant="primary" size="sm" onClick={() => setCollecting(true)} disabled={mixedCouriers}>
               <RiHandCoinLine className="w-4 h-4" /> استلمت منه
             </Button>
           </>

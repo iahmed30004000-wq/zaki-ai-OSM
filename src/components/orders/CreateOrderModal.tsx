@@ -356,7 +356,7 @@ export function CreateOrderModal({ isOpen, onClose, onSuccess, prefill }: Create
           not green, and was one more way out beside «إلغاء». The AI entry
           is its own button in the orders header. */}
       <div className={phone ? 'flex w-full items-center gap-3' : 'flex items-center gap-3'}>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="secondary" onClick={onClose}>
           إلغاء
         </Button>
         <Button type="submit" form={phone ? formId : undefined} loading={loading} disabled={!ready} className={phone ? 'flex-1' : undefined}>

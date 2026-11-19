@@ -343,7 +343,7 @@ export function ProductOffers({
           canManage && (
             <div className="flex items-center gap-2">
               {offers?.length === 0 && basePrice > 0 && (
-                <Button size="sm" variant="outline" onClick={generate} disabled={busy}>
+                <Button size="sm" variant="secondary" onClick={generate} disabled={busy}>
                   <RiMagicLine className="w-4 h-4" /> توليد سريع
                 </Button>
               )}

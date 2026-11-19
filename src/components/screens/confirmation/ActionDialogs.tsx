@@ -64,7 +64,7 @@ function Buttons({
       >
         {submitLabel}
       </Button>
-      <Button type="button" variant="outline" onClick={onCancel} className="flex-1 md:flex-none">
+      <Button type="button" variant="secondary" onClick={onCancel} className="flex-1 md:flex-none">
         {cancelLabel}
       </Button>
     </div>

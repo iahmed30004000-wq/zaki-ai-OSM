@@ -175,7 +175,7 @@ function PartnersForm() {
             </ul>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={add}>
+              <Button type="button" variant="secondary" size="sm" onClick={add}>
                 إضافة شريك
               </Button>
               <span

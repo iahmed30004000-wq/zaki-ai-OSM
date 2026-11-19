@@ -166,7 +166,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-[var(--sys-heading)]">{KIND_TITLE[kind]}</h3>
           {canManage && (
-            <Button size="sm" variant="outline" onClick={() => setDraft(blank(kind))}>
+            <Button size="sm" variant="secondary" onClick={() => setDraft(blank(kind))}>
               {kind === 'UPSELL' ? '+ أب سيل' : '+ اسم قديم'}
             </Button>
           )}
@@ -200,10 +200,10 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
                   ))}
                 {canManage && (
                   <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <Button size="sm" variant="outline" onClick={() => edit(row)}>
+                    <Button size="sm" variant="secondary" onClick={() => edit(row)}>
                       تعديل
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => toggle(row)}>
+                    <Button size="sm" variant="quiet" onClick={() => toggle(row)}>
                       {row.isActive ? 'تعطيل' : 'تفعيل'}
                     </Button>
                   </div>
@@ -259,13 +259,13 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
               <div className="flex items-end gap-2">
                 <Input label="الكمية" type="text" inputMode="numeric" dir="ltr" value={o.quantity} onChange={(e) => setDraft({ ...draft, offers: draft.offers.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)) })} />
                 <Input label="السعر" type="text" inputMode="decimal" dir="ltr" value={o.price} onChange={(e) => setDraft({ ...draft, offers: draft.offers.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)) })} />
-                <Button type="button" size="sm" variant="ghost" onClick={() => setDraft({ ...draft, offers: draft.offers.filter((_, j) => j !== i) })}>
+                <Button type="button" size="sm" variant="quiet" onClick={() => setDraft({ ...draft, offers: draft.offers.filter((_, j) => j !== i) })}>
                   شيل
                 </Button>
               </div>
             </div>
           ))}
-          <Button type="button" size="sm" variant="outline" onClick={() => setDraft({ ...draft, offers: [...draft.offers, { name: '', quantity: '1', price: '' }] })}>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setDraft({ ...draft, offers: [...draft.offers, { name: '', quantity: '1', price: '' }] })}>
             + عرض قديم
           </Button>
         </div>
@@ -277,7 +277,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit">احفظ</Button>
-        <Button type="button" variant="ghost" onClick={() => setDraft(null)}>
+        <Button type="button" variant="quiet" onClick={() => setDraft(null)}>
           إلغاء
         </Button>
       </div>
@@ -301,7 +301,7 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
         )}
         {canManage && (
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" onClick={seed}>
+            <Button size="sm" variant="secondary" onClick={seed}>
               أضف الأسماء الجاهزة
             </Button>
           </div>

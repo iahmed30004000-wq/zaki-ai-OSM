@@ -845,8 +845,10 @@ describe('the look is the kit', () => {
     }
   });
 
-  it('each submit keeps the colour it always had: green to record, red for the loss nobody can undo, the main colour to move', () => {
-    const want: Record<string, string> = { DeliverDialog: 'success', CollectDialog: 'success', WriteOffDialog: 'danger', TransferDialog: 'primary' };
+  // 19/11 (R19a): was «green to record» with DeliverDialog/CollectDialog on the old green alias; R19a renamed every
+  // legacy button name outside the storefront owner's files, so the two record presses now wear the main colour.
+  it('each submit keeps its colour: the main colour to record and to move, red for the loss nobody can undo', () => {
+    const want: Record<string, string> = { DeliverDialog: 'primary', CollectDialog: 'primary', WriteOffDialog: 'danger', TransferDialog: 'primary' };
     for (const [f, variant] of Object.entries(want)) {
       const submit = [...source(f).matchAll(/<Button\b[^>]*>/g)].map((m) => m[0]).find((t) => t.includes('type="submit"'));
       expect(submit, `${f} has a kit submit`).toBeTruthy();

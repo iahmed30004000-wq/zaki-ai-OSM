@@ -112,7 +112,7 @@ export function CartStatusControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => send({ action: 'no_answer' }, `ما رد — المحاولة ${cart.attempts + 1}`)}>
+      <Button size="sm" variant="secondary" disabled={busy} onClick={() => send({ action: 'no_answer' }, `ما رد — المحاولة ${cart.attempts + 1}`)}>
         ما رد
       </Button>
       <select

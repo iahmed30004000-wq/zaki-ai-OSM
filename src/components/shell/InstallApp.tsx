@@ -236,7 +236,7 @@ export function InstallAppStrip() {
       <Button size="sm" onClick={() => install()}>
         ثبّت
       </Button>
-      <Button size="sm" variant="ghost" onClick={rest}>
+      <Button size="sm" variant="quiet" onClick={rest}>
         ليس الآن
       </Button>
       <InstallSteps way={way} open={steps} onClose={closeSteps} />

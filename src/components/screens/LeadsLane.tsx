@@ -143,7 +143,7 @@ export function LeadsLane({ empty = null }: { empty?: React.ReactNode } = {}) {
                     >
                       حوّل لطلب
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy !== null} onClick={() => void post(`d${l.id}`, { action: 'dismiss', leadId: l.id }, 'انشال من القايمة')}>
+                    <Button type="button" size="sm" variant="secondary" disabled={busy !== null} onClick={() => void post(`d${l.id}`, { action: 'dismiss', leadId: l.id }, 'انشال من القايمة')}>
                       ما بحتاج
                     </Button>
                   </span>

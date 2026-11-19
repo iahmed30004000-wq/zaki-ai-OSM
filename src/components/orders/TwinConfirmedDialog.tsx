@@ -68,10 +68,10 @@ export function TwinConfirmedDialog({
           <Button type="button" variant="danger" disabled={busy} onClick={onRejectAsDuplicate} className="w-full sm:w-auto">
             رفضه كمكرر
           </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={onConfirmAnyway} className="w-full sm:w-auto">
+          <Button type="button" variant="secondary" disabled={busy} onClick={onConfirmAnyway} className="w-full sm:w-auto">
             طلب تاني فعلاً — أكّد
           </Button>
-          <Button type="button" variant="ghost" disabled={busy} onClick={onBack} className="w-full sm:w-auto">
+          <Button type="button" variant="quiet" disabled={busy} onClick={onBack} className="w-full sm:w-auto">
             رجوع
           </Button>
         </div>

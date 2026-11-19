@@ -327,11 +327,11 @@ export function CollectionScreen() {
       return (
         <div className="flex w-full flex-col gap-2">
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={busy === s.id} onClick={() => void rematch()}>
+            <Button size="sm" variant="secondary" disabled={busy === s.id} onClick={() => void rematch()}>
               مطابقة
             </Button>
             {waiting > 0 && settling && (
-              <Button size="sm" variant="outline" disabled={busy === s.id} onClick={() => void settleClean(s)}>
+              <Button size="sm" variant="secondary" disabled={busy === s.id} onClick={() => void settleClean(s)}>
                 {settling.button} ({waiting})
               </Button>
             )}
@@ -526,7 +526,7 @@ export function CollectionScreen() {
           {/* The one that takes a thing back: last, and quiet until it is looked for. */}
           <Button
             size="sm"
-            variant="ghost"
+            variant="quiet"
             disabled={busy === s.id}
             onClick={() => void undoImport(s)}
             className="ms-auto text-[var(--sys-destructive)]"

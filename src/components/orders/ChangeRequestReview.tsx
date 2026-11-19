@@ -196,11 +196,11 @@ export function ChangeRequestReview({
         )}
 
         <div className="flex gap-2 justify-end pt-1">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={!!busy}>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={!!busy}>
             إغلاق
           </Button>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={() => decide('REJECTED')}
             disabled={!!busy || !row || !note.trim()}

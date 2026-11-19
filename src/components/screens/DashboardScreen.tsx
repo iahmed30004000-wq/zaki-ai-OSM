@@ -274,7 +274,7 @@ export function DashboardScreen() {
             {userCan(currentUser, 'orders.create') && (
             <>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => setAiModalOpen(true)}
               className="items-center gap-1.5 text-[var(--sys-primary)] border-[var(--sys-primary)]/35 hover:bg-[var(--sys-primary-soft)]"
             >

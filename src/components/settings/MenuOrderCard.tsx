@@ -345,7 +345,7 @@ export function MenuOrderCard({ forRole = '' }: { forRole?: string } = {}) {
         </div>
         <div className="flex items-center gap-2">
           {hasOwn && !forRole && (
-            <Button size="sm" variant="outline" onClick={reset} disabled={busy}>
+            <Button size="sm" variant="secondary" onClick={reset} disabled={busy}>
               رجّع الأساس
             </Button>
           )}

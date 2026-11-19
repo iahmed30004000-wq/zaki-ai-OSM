@@ -144,7 +144,7 @@ export function PreviewBanner({ name, roleName, ended = false }: { name: string;
         <span>
           {ended ? 'انتهت المعاينة: هالحساب ما عاد ينعاين — ارجع لحسابك لتكمّل' : `عم تعاين كـ ${name} (${roleName}) — قراءة بس`}
         </span>
-        <Button size="sm" variant="outline" onClick={leave} disabled={busy}>
+        <Button size="sm" variant="secondary" onClick={leave} disabled={busy}>
           رجوع لحسابي
         </Button>
       </Card>

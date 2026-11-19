@@ -235,7 +235,7 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
                 <Button
                   type="button"
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   disabled={busy}
                   onClick={() =>
                     void press(

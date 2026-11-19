@@ -439,7 +439,7 @@ export function PermissionsScreen() {
           <Card>
             <CardContent className="text-center py-10 space-y-3">
               <p className="text-sm text-[var(--sys-destructive)]">{loadError}</p>
-              <Button variant="outline" size="sm" onClick={loadRoles}>{ar ? 'إعادة المحاولة' : 'Retry'}</Button>
+              <Button variant="secondary" size="sm" onClick={loadRoles}>{ar ? 'إعادة المحاولة' : 'Retry'}</Button>
             </CardContent>
           </Card>
         )}
@@ -497,7 +497,7 @@ export function PermissionsScreen() {
                     ) : (
                       <>
                         {canEditThis && (
-                          <Button variant="outline" size="sm" onClick={() => openEdit(role)}>
+                          <Button variant="secondary" size="sm" onClick={() => openEdit(role)}>
                             <RiPencilLine className="w-4 h-4" />{ar ? 'تعديل' : 'Edit'}
                           </Button>
                         )}
@@ -507,12 +507,12 @@ export function PermissionsScreen() {
                           </span>
                         )}
                         {canCreate && (
-                          <Button variant="outline" size="sm" onClick={() => openDuplicate(role)}>
+                          <Button variant="secondary" size="sm" onClick={() => openDuplicate(role)}>
                             <RiFileCopyLine className="w-4 h-4" />{ar ? 'نسخ' : 'Duplicate'}
                           </Button>
                         )}
                         {canDeleteThis && (
-                          <Button variant="outline" size="sm" className="text-[var(--sys-destructive)]" onClick={() => { setDeletingRole(role); setReplacementRoleId(''); setDeleteError(null); }}>
+                          <Button variant="secondary" size="sm" className="text-[var(--sys-destructive)]" onClick={() => { setDeletingRole(role); setReplacementRoleId(''); setDeleteError(null); }}>
                             <RiDeleteBinLine className="w-4 h-4" />{ar ? 'حذف' : 'Delete'}
                           </Button>
                         )}
@@ -557,7 +557,7 @@ export function PermissionsScreen() {
               <div className="flex items-center gap-2">
                 {editingRole && defaultsAvailable && (
                   <AdvancedGroup holds={ar ? 'إرجاع للافتراضي' : 'Restore defaults'}>
-                  <Button variant="outline" size="sm" onClick={restoreDefaults} loading={restoring}>
+                  <Button variant="secondary" size="sm" onClick={restoreDefaults} loading={restoring}>
                     <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
                     {ar ? 'إرجاع للافتراضي' : 'Restore defaults'}
                   </Button>
@@ -823,7 +823,7 @@ export function PermissionsScreen() {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--sys-border)]">
-              <Button variant="outline" onClick={() => setEditorOpen(false)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="secondary" onClick={() => setEditorOpen(false)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button onClick={saveEditor} loading={saving}>
                 {editingRole ? (ar ? 'حفظ التغييرات' : 'Save changes') : (ar ? 'إنشاء الدور' : 'Create role')}
               </Button>
@@ -865,7 +865,7 @@ export function PermissionsScreen() {
             )}
             {deleteError && <p className="text-xs text-[var(--sys-destructive)]">{deleteError}</p>}
             <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeletingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="secondary" onClick={() => setDeletingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button variant="danger" onClick={confirmDelete} loading={deleting}>{ar ? 'حذف نهائي' : 'Delete'}</Button>
             </div>
           </div>
@@ -886,7 +886,7 @@ export function PermissionsScreen() {
             />
             {duplicateError && <p className="text-xs text-[var(--sys-destructive)]">{duplicateError}</p>}
             <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => setDuplicatingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="secondary" onClick={() => setDuplicatingRole(null)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
               <Button onClick={confirmDuplicate} loading={duplicating}>{ar ? 'نسخ' : 'Duplicate'}</Button>
             </div>
           </div>
