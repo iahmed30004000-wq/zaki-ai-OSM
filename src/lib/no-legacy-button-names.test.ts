@@ -29,6 +29,35 @@ const OWNER: RegExp[] = [
 ];
 const isOwner = (rel: string) => OWNER.some((r) => r.test(rel));
 
+/**
+ * The source with every `//` and `/* *\/` comment blanked to spaces (same
+ * length, same newlines), so a `<Button` or an apostrophe written in a
+ * comment never starts a tag or a string. A '…' or "…" string ends at its
+ * line's end, so an apostrophe in JSX text cannot swallow the file.
+ */
+function withoutComments(src: string): string {
+  const out = src.split('');
+  let q: string | null = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (q) {
+      if (c === '\\') i++;
+      else if (c === q || (c === '\n' && q !== '`')) q = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') q = c;
+    else if (c === '/' && src[i + 1] === '/') {
+      for (; i < src.length && src[i] !== '\n'; i++) out[i] = ' ';
+    } else if (c === '/' && src[i + 1] === '*') {
+      const close = src.indexOf('*/', i + 2);
+      const stop = close < 0 ? src.length : close + 2;
+      for (; i < stop; i++) if (src[i] !== '\n') out[i] = ' ';
+      i--;
+    }
+  }
+  return out.join('');
+}
+
 /** End (exclusive) of the JSX opening tag that starts at `start`, skipping strings and `{…}`. */
 function tagEnd(src: string, start: number): number {
   let depth = 0;
@@ -70,16 +99,18 @@ function exprEnd(s: string, open: number): number {
  * literal (`variant="…"`) or inside an expression (`variant={x ? '…' : …}`).
  * Returns `line: name` for each.
  */
-function legacyNamesIn(src: string): string[] {
+function legacyNamesIn(raw: string): string[] {
+  const src = withoutComments(raw);
   const found: string[] = [];
   const lineOf = (i: number) => src.slice(0, i).split('\n').length;
   const tagRe = /<(Button|IconButton)(?=[\s>/])/g;
   let m: RegExpExecArray | null;
   while ((m = tagRe.exec(src))) {
     const end = tagEnd(src, m.index);
-    if (end < 0) break;
+    // A tag that cannot be read to its end is skipped — never the rest of the file.
+    if (end < 0) continue;
     const tag = src.slice(m.index, end);
-    const attrRe = /\svariant=("([^"]*)"|'([^']*)'|\{)/g;
+    const attrRe = /\svariant\s*=\s*("([^"]*)"|'([^']*)'|\{)/g;
     let a: RegExpExecArray | null;
     while ((a = attrRe.exec(tag))) {
       const at = m.index + a.index;
@@ -149,6 +180,25 @@ describe('the scanner itself (negative tests)', () => {
 
   it('a tag with an arrow function before the variant is still read to its end', () => {
     expect(legacyNamesIn(`<Button onClick={() => a > b} variant="${quiet}">x</Button>`)).toEqual([`1: ${quiet}`]);
+  });
+
+  it('an apostrophe in a comment before a tag does not hide that tag or the rest of the file', () => {
+    const src = `{/* the press isn't a submit */}\n<Button type="button" variant="${framed}">a</Button>\n// it's the second one\n<Button variant="${quiet}">b</Button>`;
+    expect(legacyNamesIn(src)).toEqual([`2: ${framed}`, `4: ${quiet}`]);
+  });
+
+  it('a "<Button" written in a comment is not a tag, and the real one after it is still read', () => {
+    const src = `// the <Button here isn't real\n<Button variant="${green}">x</Button>`;
+    expect(legacyNamesIn(src)).toEqual([`2: ${green}`]);
+  });
+
+  it('a tag that cannot be read to its end is skipped, not the rest of the file', () => {
+    const src = `<Button title={never.closed\n<Button variant="${framed}" />`;
+    expect(legacyNamesIn(src)).toEqual([`2: ${framed}`]);
+  });
+
+  it('spaces around the equals sign do not hide a name', () => {
+    expect(legacyNamesIn(`<Button variant = "${framed}" />\n<Button variant= {x ? '${quiet}' : 'primary'} />`)).toEqual([`1: ${framed}`, `2: ${quiet}`]);
   });
 
   it('leaves the four names alone', () => {

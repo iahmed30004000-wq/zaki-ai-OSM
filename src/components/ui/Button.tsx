@@ -43,12 +43,14 @@ import { hapticConfirm, hapticRefuse } from '@/lib/haptics';
  *
  * and nothing more. The product's call sites were written against six
  * names, and the screens move onto the four ONE SCREEN PER PULL REQUEST, so
- * the old names keep working until request R19 takes them out:
+ * the old names kept working while they moved. 19/11 (R19a): every screen
+ * outside the storefront owner's files now says one of the four, and the
+ * old names answer only there, until R18:
  *
  *   outline  = secondary   (the look the new `secondary` took)
  *   ghost    = quiet
- *   success  = still its own green; the three screens that use it have no
- *              place in the four yet, so it is not folded into one
+ *   success  = its own green, kept for the owner's files; every other
+ *              screen that wore it now says `primary`
  *
  * THE ONE VISIBLE CHANGE of this request: what a call that says
  * `secondary` draws. It was a page-tinted fill with an edge; it is now the
