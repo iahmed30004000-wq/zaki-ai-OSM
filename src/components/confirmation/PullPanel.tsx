@@ -7,6 +7,8 @@ import { useToast } from '@/components/ui/Toast';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 
 /**
  * «اسحب الطلب التالي» — THE PULL, WHERE THE AGENT WORKS.
@@ -196,18 +198,22 @@ export function PullPanel({
 
   const message = error ?? data.refusal?.message ?? null;
 
+  /*
+    THE KIT'S BUTTON (R8b, 18/11). `doPull` returns a promise and the panel keeps its own flag (`pulling`, the hook's), so the press
+    is `void`ed: handed the promise, the kit button would hold a second busy state of its own over the same pull.
+  */
   const button = !notMyDesk && (
-    <button
-      onClick={doPull}
+    <Button
+      variant="primary"
+      size={compact ? 'md' : 'lg'}
+      onClick={() => {
+        void doPull();
+      }}
       disabled={owes ? pulling : !data.canPull || pulling || data.waiting === 0}
-      className={
-        compact
-          ? 'min-h-11 md:min-h-0 px-5 py-2.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
-          : 'mt-6 px-8 py-3 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-semibold disabled:opacity-50'
-      }
+      className={compact ? undefined : 'mt-6'}
     >
       {pulling ? 'جارٍ السحب…' : owes ? workFirst?.button : 'اسحب الطلب التالي'}
-    </button>
+    </Button>
   );
 
   /*
@@ -284,7 +290,7 @@ export function PullPanel({
   );
 
   const rule = !notMyDesk && (
-    <p className={`${compact ? 'mt-3' : 'mt-4'} text-xs text-[var(--sys-muted)]`}>
+    <p className={`${compact ? 'mt-3' : 'mt-4'} text-note text-[var(--sys-muted)]`}>
       {data.waitingPlan?.rule ?? data.waitingRule}
     </p>
   );
@@ -327,7 +333,7 @@ export function PullPanel({
   );
   /** The slim bar sits above the first order on every visit: the same parts, as ONE line instead of tiles. */
   const partsLine = shown && (
-    <p role="group" aria-label="تفصيل الطلبات الجاهزة للسحب" className="mt-3 text-xs text-[var(--sys-muted-foreground)]">
+    <p role="group" aria-label="تفصيل الطلبات الجاهزة للسحب" className="mt-3 text-note text-[var(--sys-muted-foreground)]">
       منها{' '}
       {shown.map((p, i) => (
         <React.Fragment key={p.label}>
@@ -348,7 +354,7 @@ export function PullPanel({
     counted, and said, separately.
   */
   const onADate = !!data.waitingOnADate && (
-    <p className="mt-1 text-xs text-[var(--sys-muted)]">
+    <p className="mt-1 text-note text-[var(--sys-muted)]">
       و{data.waitingOnADate} مؤجَّلة حتى موعدها — تُسحب في يومها وحدها
     </p>
   );
@@ -367,7 +373,7 @@ export function PullPanel({
   const issues = data.openIssues;
   const notReady = (farOnes > 0 || (issues ?? 0) > 0) && (
     <div className="mt-4">
-      <p className="text-xs text-[var(--sys-muted)]">مش جاهزة للسحب الآن</p>
+      <p className="text-note text-[var(--sys-muted)]">مش جاهزة للسحب الآن</p>
       <div
         role="group"
         aria-label="طلبات مش جاهزة للسحب"
@@ -386,65 +392,64 @@ export function PullPanel({
     number (that is what she may take), and they are not silent: «و٣ تابعة لزميلاتك».
   */
   const heldForColleagues = !!data.reservedForColleagues && (
-    <p className="mt-1 text-xs text-[var(--sys-muted)]">
+    <p className="mt-1 text-note text-[var(--sys-muted)]">
       و{data.reservedForColleagues} تابعة لزميلاتك — زبائنهنّ السابقين، تشوفها بقائمة «الطلبات» وما بتسحبها
     </p>
   );
 
   if (compact) {
     return (
-      <section
-        aria-label="سحب طلب جديد"
-        className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4"
-      >
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] flex items-center justify-center">
-              <RiInboxLine className="w-5 h-5 text-[var(--sys-primary)]" />
+      <section aria-label="سحب طلب جديد">
+        <Card padding="md">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Card plain className="w-11 h-11 flex items-center justify-center">
+                <RiInboxLine className="w-5 h-5 text-[var(--sys-primary)]" />
+              </Card>
+              <div>
+                <p className="text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{data.waiting}</p>
+                <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{data.waiting}</p>
-              <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
-            </div>
+            <div className="ms-auto">{button}</div>
           </div>
-          <div className="ms-auto">{button}</div>
-        </div>
-        {partsLine}
-        {onADate}
-        {heldForColleagues}
-        {sentence}
-        {/*
-          A PHONE: THE COUNT AND THE BUTTON, THEN ONE LINE (ORD-07).
+          {partsLine}
+          {onADate}
+          {heldForColleagues}
+          {sentence}
+          {/*
+            A PHONE: THE COUNT AND THE BUTTON, THEN ONE LINE (ORD-07).
 
-          The two caps and the rule paragraph took about 150px above the first order on every visit. They are
-          still here — the fold's own line says the two figures that matter («بلا محاولة» and «بيدك»), and
-          opening it shows the cards and the rule in full.
-        */}
-        {phone && !notMyDesk ? (
-          <div className="mt-3">
-            <AdvancedGroup
-              label="التفاصيل"
-              holds={`بلا محاولة ${data.owned.withoutAttempt}/${data.caps.withoutAttempt} · بيدك ${capShown}/${data.caps.total}`}
-            >
+            The two caps and the rule paragraph took about 150px above the first order on every visit. They are
+            still here — the fold's own line says the two figures that matter («بلا محاولة» and «بيدك»), and
+            opening it shows the cards and the rule in full.
+          */}
+          {phone && !notMyDesk ? (
+            <div className="mt-3">
+              <AdvancedGroup
+                label="التفاصيل"
+                holds={`بلا محاولة ${data.owned.withoutAttempt}/${data.caps.withoutAttempt} · بيدك ${capShown}/${data.caps.total}`}
+              >
+                {caps}
+                {rule}
+              </AdvancedGroup>
+            </div>
+          ) : (
+            <>
               {caps}
               {rule}
-            </AdvancedGroup>
-          </div>
-        ) : (
-          <>
-            {caps}
-            {rule}
-          </>
-        )}
+            </>
+          )}
+        </Card>
       </section>
     );
   }
 
   return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-6 text-center">
-      <div className="mx-auto w-14 h-14 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] flex items-center justify-center">
+    <Card padding="lg" className="text-center">
+      <Card plain className="mx-auto w-14 h-14 flex items-center justify-center">
         <RiInboxLine className="w-6 h-6 text-[var(--sys-primary)]" />
-      </div>
+      </Card>
       <p className="mt-4 text-4xl font-bold text-[var(--sys-heading)] tabular-nums">{data.waiting}</p>
       <p className="mt-1 text-sm text-[var(--sys-muted-foreground)]">طلب جاهز للسحب الآن</p>
       {parts}
@@ -454,7 +459,7 @@ export function PullPanel({
       {sentence}
       {caps}
       {rule}
-    </div>
+    </Card>
   );
 }
 
@@ -468,21 +473,21 @@ function Part({ label, hint, value, strong = false }: { label: string; hint: str
           : 'border-[var(--sys-border)] bg-[var(--sys-surface)]'
       }`}
     >
-      <p className="text-xs font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
+      <p className="text-note font-semibold text-[var(--sys-muted-foreground)]">{label}</p>
       <p className="mt-1 text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{value}</p>
-      <p className="mt-1 text-xs text-[var(--sys-muted)]">{hint}</p>
+      <p className="mt-1 text-note text-[var(--sys-muted)]">{hint}</p>
     </div>
   );
 }
 
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 p-3 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)]">
+    <Card plain padding="sm" className="flex items-center gap-2">
       <span className="text-[var(--sys-muted-foreground)]">{icon}</span>
       <div className="min-w-0">
-        <p className="text-xs text-[var(--sys-muted-foreground)] truncate">{label}</p>
+        <p className="text-note text-[var(--sys-muted-foreground)] truncate">{label}</p>
         <p className="text-sm font-semibold text-[var(--sys-heading)] tabular-nums" dir="ltr">{value}</p>
       </div>
-    </div>
+    </Card>
   );
 }
