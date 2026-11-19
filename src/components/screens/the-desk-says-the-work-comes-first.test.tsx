@@ -413,7 +413,12 @@ describe('5 · a pull the server refuses «الشغل أول» (a stale tab)', (
 describe('the screen ships no wording logic', () => {
   it('neither the desk nor the pull panel imports the wording helpers (types are erased and cost nothing)', async () => {
     const { repoFile, stripComments } = await import('@/lib/guard-source');
-    for (const file of ['src/components/screens/ConfirmationMineScreen.tsx', 'src/components/confirmation/PullPanel.tsx']) {
+    // 18/11 (R8b): the banner moved from ConfirmationMineScreen.tsx to confirmation/DeskHead.tsx — same assertion, read there too.
+    for (const file of [
+      'src/components/screens/ConfirmationMineScreen.tsx',
+      'src/components/confirmation/PullPanel.tsx',
+      'src/components/screens/confirmation/DeskHead.tsx',
+    ]) {
       const code = stripComments(repoFile(file));
       expect(code, file).not.toMatch(/import (?!type)[^;]*from '@\/lib\/work-first'/);
     }

@@ -5,6 +5,8 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Money } from '@/components/ui/Money';
 import { arDate } from '@/lib/format';
 import {
@@ -127,7 +129,7 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
       }
     >
       <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
-        <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+        <Card plain padding="sm" className="text-note space-y-1">
           <p className="text-[var(--sys-foreground)]">
             بتحوّل الطلبات المسلَّمة اللي لسا «بانتظار التحصيل» وما إلها باركود لـ«محصَّلة».
           </p>
@@ -137,7 +139,7 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
           <p className="text-[var(--sys-muted)]">
             بتطلع من «بانتظار التحصيل» ومن حساب «عند شركات الشحن»، وما بتنفتح من الشاشة بعد القفل.
           </p>
-        </div>
+        </Card>
 
         <Select
           label="اقفل اللي أقدم من"
@@ -164,7 +166,7 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
 
         {loadError && <p className="text-sm text-[var(--sys-destructive)]">{loadError}</p>}
         {!measure && !loadError && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]" aria-live="polite">
+          <p className="text-note text-[var(--sys-muted-foreground)]" aria-live="polite">
             عم أعدّ…
           </p>
         )}
@@ -181,8 +183,8 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
               <>
                 <div>
                   <p className="text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{count}</p>
-                  <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">طلب رح ينقفل كمحصَّل</p>
-                  <p className="mt-1 text-xs text-[var(--sys-muted)]">
+                  <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">طلب رح ينقفل كمحصَّل</p>
+                  <p className="mt-1 text-note text-[var(--sys-muted)]">
                     من {arDate(measure.closeable.oldestAt)} لـ {arDate(measure.closeable.newestAt)}
                     {measure.closeable.value.length > 0 && (
                       <>
@@ -203,13 +205,13 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
 
                 <div className="border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
                   {shown.map((c) => (
-                    <div key={c.name} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <div key={c.name} className="flex items-center justify-between px-3 py-1.5 text-note">
                       <span className="text-[var(--sys-foreground)]">{c.name}</span>
                       <span className="tabular-nums text-[var(--sys-muted-foreground)]">{c.count}</span>
                     </div>
                   ))}
                   {rest > 0 && (
-                    <div className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <div className="flex items-center justify-between px-3 py-1.5 text-note">
                       <span className="text-[var(--sys-muted-foreground)]">شركات تانية</span>
                       <span className="tabular-nums text-[var(--sys-muted-foreground)]">{rest}</span>
                     </div>
@@ -219,7 +221,7 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
             )}
 
             {left && (left.tooRecent > 0 || left.moneyRecorded > 0 || left.onAStatement > 0) && (
-              <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+              <Card plain padding="sm" className="text-note space-y-1">
                 <p className="font-medium text-[var(--sys-heading)]">اللي ما رح ينقفل:</p>
                 {left.tooRecent > 0 && (
                   <p className="text-[var(--sys-muted-foreground)]">
@@ -236,19 +238,17 @@ export function CloseLegacyDialog({ onClose, onDone }: { onClose: () => void; on
                     <b className="tabular-nums text-[var(--sys-foreground)]">{left.onAStatement}</b> ذكرها كشف — الكشف هو اللي بيسوّيها.
                   </p>
                 )}
-              </div>
+              </Card>
             )}
 
             {count > 0 && (
-              <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  onChange={(e) => setAckKey(e.target.checked ? key : null)}
-                  className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
-                />
-                <span>أقرّ: القفل بلا حركة مصاري، وما بيرجع من الشاشة.</span>
-              </label>
+              <Checkbox
+                id="close-legacy-ack"
+                className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2"
+                checked={acknowledged}
+                onChange={(checked) => setAckKey(checked ? key : null)}
+                label="أقرّ: القفل بلا حركة مصاري، وما بيرجع من الشاشة."
+              />
             )}
           </div>
         )}

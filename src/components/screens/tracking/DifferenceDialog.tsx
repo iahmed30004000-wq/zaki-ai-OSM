@@ -3,6 +3,7 @@
 import React from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
 import { CourierReason } from '@/components/screens/finance/CourierReason';
@@ -78,14 +79,14 @@ export function DifferenceDialog({
     >
       <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">{OURS_AR}</p>
+          <Card plain padding="sm">
+            <p className="text-note text-[var(--sys-muted-foreground)]">{OURS_AR}</p>
             <p className="mt-1 text-lg font-bold text-[var(--sys-heading)] tabular-nums">{figure(d.ours)}</p>
-          </div>
-          <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">{THEIRS_AR}</p>
+          </Card>
+          <Card plain padding="sm">
+            <p className="text-note text-[var(--sys-muted-foreground)]">{THEIRS_AR}</p>
             <p className="mt-1 text-lg font-bold text-[var(--sys-heading)] tabular-nums">{figure(d.theirs)}</p>
-          </div>
+          </Card>
         </div>
 
         {word && d.gap !== null && (
@@ -95,7 +96,7 @@ export function DifferenceDialog({
         )}
 
         {d.note && (
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
             {MATCHING_NOTE_AR}: {d.note}
           </p>
         )}
@@ -103,7 +104,7 @@ export function DifferenceDialog({
         {/* What the company wrote is the statement's content: the door sends it to whoever may open a statement, and to nobody else. */}
         {(d.courierWord || d.statementLine) && (
           <div className="space-y-1">
-            <p className="text-xs text-[var(--sys-muted-foreground)]">{COMPANY_LINE_AR}</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">{COMPANY_LINE_AR}</p>
             <div className="rounded-lg border border-[var(--sys-border)] p-3">
               <CourierReason m={{ courierWord: d.courierWord, statementLine: d.statementLine }} />
             </div>
@@ -112,7 +113,7 @@ export function DifferenceDialog({
 
         {d.closed && <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</p>}
         {!d.closed && !mayDecide && !d.answered && (
-          <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{NEEDS_REVIEW_KEY_AR}</p>
+          <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">{NEEDS_REVIEW_KEY_AR}</p>
         )}
 
         {showAnswers && (

@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiHandCoinLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 
@@ -105,7 +107,7 @@ export function CollectDialog({
         }}
         className="space-y-3"
       >
-        <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+        <Card plain padding="sm" className="text-note space-y-1">
           <p className="text-[var(--sys-foreground)]">
             المتوقَّع منه: <b className="tabular-nums"><Money value={expected} currency={currency} /></b>
           </p>
@@ -115,11 +117,11 @@ export function CollectDialog({
           <p className="text-[var(--sys-muted)]">
             «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية أو سعر صرف: «مطابق يدوي» ثم «تجميع».
           </p>
-        </div>
+        </Card>
 
         <div className="max-h-32 overflow-y-auto border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
           {orders.map((o) => (
-            <div key={o.id} className="flex items-center justify-between px-3 py-1.5 text-xs">
+            <div key={o.id} className="flex items-center justify-between px-3 py-1.5 text-note">
               <span className="text-[var(--sys-foreground)]">{o.orderNumber} · {o.customer.fullName}</span>
               <span className="tabular-nums text-[var(--sys-muted-foreground)]">
                 {/* The server's figure, not the browser's arithmetic — a
@@ -155,7 +157,7 @@ export function CollectDialog({
             ))}
           </Select>
           {wallets.length === 0 && (
-            <span className="block text-xs text-[var(--sys-destructive)] mt-1">
+            <span className="block text-note text-[var(--sys-destructive)] mt-1">
               لا توجد محفظة بعملة {currency} — أنشئ واحدة أولاً.
             </span>
           )}
@@ -173,7 +175,7 @@ export function CollectDialog({
             dir="ltr"
           />
           {difference !== 0 && (
-            <span className="block text-xs text-[var(--sys-destructive)] mt-1 tabular-nums">
+            <span className="block text-note text-[var(--sys-destructive)] mt-1 tabular-nums">
               فارق {difference} عن المتوقَّع — سيُسجَّل كما هو.
             </span>
           )}
@@ -191,17 +193,18 @@ export function CollectDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          {/* `success`: the kit's green, which this press always wore — «استلمت منه» on the screen behind is green too. */}
+          <Button
             type="submit"
+            variant="success"
             disabled={saving || !walletId}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
           >
             <RiHandCoinLine className="w-4 h-4" />
             {saving ? 'جارٍ التسجيل…' : 'استلمت منه'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
