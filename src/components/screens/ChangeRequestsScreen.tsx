@@ -15,7 +15,10 @@ import { PICKABLE_REJECTION_REASONS, REJECTION_REASON_AR } from '@/lib/confirmat
 import { deriveCoreState } from '@/lib/order-state';
 import { OrderStateChip } from '@/components/ui/StatusChip';
 import { ROLE_LABELS, type UserRole } from '@/types/auth';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
 import { routeLabel } from '@/lib/route-registry';
 import { RiArrowGoBackLine, RiArrowLeftLine, RiCheckboxCircleLine, RiFileEditLine, RiLoader4Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -515,44 +518,35 @@ export function ChangeRequestsScreen() {
   const other: Tab = tab === 'PENDING' ? 'AWAITING_APPLY' : 'PENDING';
 
   return (
-    <div className="max-w-4xl space-y-3">
-      <PageHeader title={routeLabel('/control/change-requests')} />
-
-
-      <div className="flex gap-1 rounded-lg bg-[var(--sys-surface-strong)] p-0.5 w-fit">
-        {(
-          [
-            ['PENDING', TAB_AR.PENDING.label],
-            ['AWAITING_APPLY', TAB_AR.AWAITING_APPLY.label],
-          ] as [Tab, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => {
+    <PageShell
+      title={routeLabel('/control/change-requests')}
+      width="medium"
+      /*
+        The two halves of the queue (R16e, 18/11): two choices of one variable (`tab`), so the kit's pair. The same state,
+        read and set the same way as the strip it replaces, with each half's count on its option; the sentence of what the
+        chosen half holds stays beside it.
+      */
+      toolbar={
+        <>
+          <Segmented
+            aria-label="أيّ الطلبات"
+            options={(['PENDING', 'AWAITING_APPLY'] as Tab[]).map((key) => ({
+              value: key,
+              label: TAB_AR[key].label,
+              count: lists[key].length,
+            }))}
+            value={tab}
+            onChange={(key) => {
               tabChosen.current = true;
-              setTab(key);
+              setTab(key as Tab);
             }}
-            className={`min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-              tab === key ? 'bg-[var(--sys-card)] text-[var(--sys-primary)] shadow-raised' : 'text-[var(--sys-muted-foreground)] hover:text-[var(--sys-foreground)]'
-            }`}
-          >
-            {label}
-            <span
-              className={`tabular-nums rounded-lg px-1.5 text-xs ${
-                lists[key].length > 0 ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)]' : 'bg-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
-              }`}
-            >
-              {lists[key].length}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <p className="text-xs text-[var(--sys-muted-foreground)]">{TAB_AR[tab].means}</p>
-
+          />
+          <p className="text-note text-[var(--sys-muted-foreground)]">{TAB_AR[tab].means}</p>
+        </>
+      }
+    >
       {rows.length === 0 && (
-        <div className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+        <Card>
           <EmptyState
             title={tab === 'PENDING' ? 'لا طلبَ ينتظر المراجعة' : 'لا قرارَ معتمَداً ينتظر التنفيذ'}
             why={
@@ -561,253 +555,267 @@ export function ChangeRequestsScreen() {
                 : 'ما يُعتمد هنا يُطبَّق على الطلب مباشرةً. فراغُ القائمة يعني أنّ كلّ ما اعتُمد طُبِّق.'
             }
           />
-        </div>
+        </Card>
       )}
 
       {/* The other tab holds requests while this one is empty: say so, with the way there. */}
       {rows.length === 0 && lists[other].length > 0 && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={() => {
             tabChosen.current = true;
             setTab(other);
           }}
-          className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-[var(--sys-foreground)] text-xs font-medium"
         >
           افتح «{TAB_AR[other].label}» — فيه {lists[other].length} طلب
-        </button>
+        </Button>
       )}
 
-      {rows.map((r) => {
-        const role = ROLE_LABELS[r.requestedRole as UserRole]?.ar ?? r.requestedRole;
-        const state = deriveCoreState(r.order);
-        return (
-          <article key={r.id} className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-3">
-            <header className="flex flex-wrap items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-[var(--sys-surface)] border border-[var(--sys-border)] flex items-center justify-center">
-                {tab === 'PENDING' ? (
-                  <RiFileEditLine className="w-4 h-4 text-[var(--sys-primary)]" />
-                ) : (
-                  <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
+      {/* The cards keep their own, closer rhythm inside the frame's. */}
+      {rows.length > 0 && (
+        <div className="space-y-3">
+          {rows.map((r) => {
+            const role = ROLE_LABELS[r.requestedRole as UserRole]?.ar ?? r.requestedRole;
+            const state = deriveCoreState(r.order);
+            return (
+              <Card key={r.id} padding="md" className="space-y-3">
+                <header className="flex flex-wrap items-center gap-2">
+                  <span className="w-8 h-8 flex items-center justify-center">
+                    {tab === 'PENDING' ? (
+                      <RiFileEditLine className="w-4 h-4 text-[var(--sys-primary)]" />
+                    ) : (
+                      <RiCheckboxCircleLine className="w-4 h-4 text-[var(--sys-success)]" />
+                    )}
+                  </span>
+                  <OrderRef id={r.order.id} number={r.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
+                  {/* WHICH OF THE THREE. Every row said «طلب تعديل» and a
+                      cancellation read as a field edit — answered like one. */}
+                  <span
+                    className={`text-note px-2 py-0.5 rounded-md border ${
+                      (r.intent ?? 'EDIT') === 'CANCEL'
+                        ? 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'
+                        : (r.intent ?? 'EDIT') === 'POSTPONE'
+                          ? 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30 text-[var(--sys-warning)]'
+                          : 'bg-[var(--sys-surface)] border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
+                    }`}
+                  >
+                    {INTENT_AR[(r.intent ?? 'EDIT') as ChangeIntent]}
+                  </span>
+                  {/* The one chip. Drawn here by hand it was always grey, so a
+                      cancelled order and a delivered one looked the same. */}
+                  <OrderStateChip state={state} />
+                  {tab === 'PENDING' && r.blocking && (
+                    <span className="text-note px-2 py-0.5 rounded-md bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]">
+                      يوقف تقدّم الطلب
+                    </span>
+                  )}
+                  {tab === 'PENDING' && r.overdue && (
+                    <span className="text-note px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
+                      تجاوز مهلة المراجعة
+                    </span>
+                  )}
+                  {/* Beside the state chip on purpose: the sentence is about that
+                      chip having changed, not about the request. */}
+                  {tab === 'PENDING' && r.changedDuringReview && (
+                    <span className="text-note px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
+                      تغيّرت حالة الطلب أثناء المراجعة
+                    </span>
+                  )}
+                  <span className="mr-auto text-note text-[var(--sys-muted-foreground)]">
+                    {r.requestedByName ?? '—'} · {role}
+                  </span>
+                </header>
+
+                <p className="text-sm text-[var(--sys-heading)]">{r.reason}</p>
+
+                {/* A cancellation has no fields and a postponement has a date;
+                    the empty box that used to sit here on both said nothing. */}
+                {(r.intent ?? 'EDIT') === 'CANCEL' && (
+                  <p className="text-sm rounded-lg border border-[var(--sys-border)] px-3 py-2">
+                    <span className="font-semibold text-[var(--sys-muted-foreground)]">سبب الإلغاء: </span>
+                    <span className="font-semibold text-[var(--sys-heading)]">
+                      {REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}
+                    </span>
+                  </p>
                 )}
-              </span>
-              <OrderRef id={r.order.id} number={r.order.orderNumber} className="font-semibold text-[var(--sys-heading)]" />
-              {/* WHICH OF THE THREE. Every row said «طلب تعديل» and a
-                  cancellation read as a field edit — answered like one. */}
-              <span
-                className={`text-xs px-2 py-0.5 rounded-md border ${
-                  (r.intent ?? 'EDIT') === 'CANCEL'
-                    ? 'bg-[var(--sys-destructive-soft)] border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]'
-                    : (r.intent ?? 'EDIT') === 'POSTPONE'
-                      ? 'bg-[var(--sys-warning-soft)] border-[var(--sys-warning)]/30 text-[var(--sys-warning)]'
-                      : 'bg-[var(--sys-surface)] border-[var(--sys-border)] text-[var(--sys-muted-foreground)]'
-                }`}
-              >
-                {INTENT_AR[(r.intent ?? 'EDIT') as ChangeIntent]}
-              </span>
-              {/* The one chip. Drawn here by hand it was always grey, so a
-                  cancelled order and a delivered one looked the same. */}
-              <OrderStateChip state={state} />
-              {tab === 'PENDING' && r.blocking && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)]">
-                  يوقف تقدّم الطلب
-                </span>
-              )}
-              {tab === 'PENDING' && r.overdue && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
-                  تجاوز مهلة المراجعة
-                </span>
-              )}
-              {/* Beside the state chip on purpose: the sentence is about that
-                  chip having changed, not about the request. */}
-              {tab === 'PENDING' && r.changedDuringReview && (
-                <span className="text-xs px-2 py-0.5 rounded-md bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 text-[var(--sys-warning)]">
-                  تغيّرت حالة الطلب أثناء المراجعة
-                </span>
-              )}
-              <span className="mr-auto text-xs text-[var(--sys-muted-foreground)]">
-                {r.requestedByName ?? '—'} · {role}
-              </span>
-            </header>
+                {(r.intent ?? 'EDIT') === 'POSTPONE' && (
+                  <p className="text-sm rounded-lg border border-[var(--sys-border)] px-3 py-2">
+                    <span className="font-semibold text-[var(--sys-muted-foreground)]">يُؤجَّل حتى: </span>
+                    <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">
+                      {String(r.postponeUntil ?? '').slice(0, 10) || '—'}
+                    </span>
+                  </p>
+                )}
 
-            <p className="text-sm text-[var(--sys-heading)]">{r.reason}</p>
+                {/* What changes, in words the person deciding reads: the field's
+                    Arabic name, and the value before and after. */}
+                <ul
+                  className={`rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)] ${
+                    fieldPairs(r).length === 0 ? 'hidden' : ''
+                  }`}
+                >
+                  {fieldPairs(r).map(([field, value]) => (
+                    <li key={field} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                      <span className="w-28 shrink-0 font-semibold text-[var(--sys-muted-foreground)]">{changeFieldLabel(field)}</span>
+                      {value?.from !== undefined && (
+                        <>
+                          <span className="text-[var(--sys-muted)] line-through">{show(value.from)}</span>
+                          <RiArrowLeftLine className="icon-mirror w-4 h-4 text-[var(--sys-primary)] shrink-0" />
+                        </>
+                      )}
+                      <span className="font-semibold text-[var(--sys-heading)]">{show(value?.to)}</span>
+                    </li>
+                  ))}
+                </ul>
 
-            {/* A cancellation has no fields and a postponement has a date;
-                the empty box that used to sit here on both said nothing. */}
-            {(r.intent ?? 'EDIT') === 'CANCEL' && (
-              <p className="text-xs rounded-lg border border-[var(--sys-border)] px-3 py-2">
-                <span className="font-semibold text-[var(--sys-muted-foreground)]">سبب الإلغاء: </span>
-                <span className="font-semibold text-[var(--sys-heading)]">
-                  {REJECTION_REASON_AR[r.cancelReason ?? ''] ?? r.cancelReason ?? '—'}
-                </span>
-              </p>
-            )}
-            {(r.intent ?? 'EDIT') === 'POSTPONE' && (
-              <p className="text-xs rounded-lg border border-[var(--sys-border)] px-3 py-2">
-                <span className="font-semibold text-[var(--sys-muted-foreground)]">يُؤجَّل حتى: </span>
-                <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">
-                  {String(r.postponeUntil ?? '').slice(0, 10) || '—'}
-                </span>
-              </p>
-            )}
+                {/* A request that edits lines: one sentence per line here; the full before ← after is in the review. */}
+                {lineSentences(r).length > 0 && (
+                  <ul className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
+                    {lineSentences(r).map((sentence, i) => (
+                      <li key={i} className="px-3 py-2 text-sm text-[var(--sys-heading)]">
+                        {sentence}
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
-            {/* What changes, in words the person deciding reads: the field's
-                Arabic name, and the value before and after. */}
-            <ul
-              className={`rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)] ${
-                fieldPairs(r).length === 0 ? 'hidden' : ''
-              }`}
-            >
-              {fieldPairs(r).map(([field, value]) => (
-                <li key={field} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
-                  <span className="w-28 shrink-0 font-semibold text-[var(--sys-muted-foreground)]">{changeFieldLabel(field)}</span>
-                  {value?.from !== undefined && (
+                {/* And before it is carried out, the order as it stands now: the gate the button below waits for. */}
+                {tab === 'AWAITING_APPLY' && linesUnreadable(r) && (
+                  <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">
+                    {REVIEW_UNREADABLE_AR}
+                  </p>
+                )}
+
+                {tab === 'AWAITING_APPLY' && linesOf(r) && (
+                  <LinesRequestReview
+                    requestId={r.id}
+                    variant="gate"
+                    auto={checkedCards.has(r.id)}
+                    refreshKey={r.order.version}
+                    onVerdict={(v) =>
+                      setVerdicts((prev) =>
+                        prev[r.id]?.checking === v.checking && prev[r.id]?.shut === v.shut ? prev : { ...prev, [r.id]: v }
+                      )
+                    }
+                  />
+                )}
+
+                {tab === 'AWAITING_APPLY' && r.decisionNote && (
+                  <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-success-soft)] rounded-lg px-3 py-2">
+                    <b className="text-[var(--sys-success)]">القرار:</b> {r.decisionNote}
+                  </p>
+                )}
+
+                <p className="text-note text-[var(--sys-muted-foreground)]">
+                  {r.order.customer.fullName} · <span dir="ltr">{r.order.customer.phone}</span>
+                </p>
+
+                {/* An old cancellation with no reason: the choice is on the card,
+                    not behind a press, and the button waits for it. */}
+                {tab === 'AWAITING_APPLY' && needsReason(r) && (
+                  <label className="block">
+                    <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">
+                      رُفع هذا الطلب بلا سبب إلغاء — اختر السبب قبل التنفيذ
+                    </span>
+                    <select
+                      value={chosen[r.id] ?? ''}
+                      onChange={(e) => setChosen((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                      className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
+                    >
+                      <option value="">اختر سبب الإلغاء</option>
+                      {PICKABLE_REJECTION_REASONS.map((key) => (
+                        <option key={key} value={key}>
+                          {REJECTION_REASON_AR[key] ?? key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--sys-border)]">
+                  {tab === 'PENDING' ? (
+                    /* Nobody decides their own request — the route refuses it,
+                       and a button that always fails teaches people the screen
+                       is lying. What she has on her own row is the withdrawal. */
+                    r.isMine ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            void withdraw(r);
+                          }}
+                          disabled={withdrawing === r.id}
+                        >
+                          {withdrawing === r.id ? (
+                            <RiLoader4Line className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
+                          )}
+                          اسحب طلبي
+                        </Button>
+                        <span className="text-note text-[var(--sys-muted-foreground)]">
+                          طلبُك — ينتظر قرارَ من يستطيع الوصولَ إلى الطلب، ويصلك القرارُ إشعاراً.
+                        </span>
+                      </>
+                    ) : (
+                      <Button type="button" size="sm" onClick={() => setReviewing(r.id)}>
+                        مراجعة واتخاذ القرار
+                      </Button>
+                    )
+                  ) : (
                     <>
-                      <span className="text-[var(--sys-muted)] line-through">{show(value.from)}</span>
-                      <RiArrowLeftLine className="icon-mirror w-4 h-4 text-[var(--sys-primary)] shrink-0" />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          void apply(r);
+                        }}
+                        disabled={
+                          applying === r.id ||
+                          r.carryOut?.kind === 'REFUSED' ||
+                          (needsReason(r) && !chosen[r.id]) ||
+                          gateShut(r) !== null
+                        }
+                        title={(r.carryOut?.kind === 'REFUSED' ? r.carryOut.reason : gateShut(r)) ?? undefined}
+                      >
+                        {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}
+                        {CARRY_LABEL[r.carryOut?.kind] ?? 'نفِّذ القرار'}
+                      </Button>
+                      {/* Where the decide buttons are drawn — never on her own request: nobody decides their own (the door refuses). */}
+                      {!r.isMine && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            void revoke(r);
+                          }}
+                          disabled={revoking === r.id}
+                        >
+                          {revoking === r.id ? (
+                            <RiLoader4Line className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
+                          )}
+                          تراجع عن الموافقة
+                        </Button>
+                      )}
+                      {/* Why «نفِّذ» is shut when the door would refuse it — a trolley still being filled, say (4/11). */}
+                      {r.carryOut?.kind === 'REFUSED' && r.carryOut.reason && (
+                        <span className="text-note text-[var(--sys-muted-foreground)]">{r.carryOut.reason}</span>
+                      )}
                     </>
                   )}
-                  <span className="font-semibold text-[var(--sys-heading)]">{show(value?.to)}</span>
-                </li>
-              ))}
-            </ul>
-
-            {/* A request that edits lines: one sentence per line here; the full before ← after is in the review. */}
-            {lineSentences(r).length > 0 && (
-              <ul className="rounded-lg border border-[var(--sys-border)] divide-y divide-[var(--sys-border)]">
-                {lineSentences(r).map((sentence, i) => (
-                  <li key={i} className="px-3 py-2 text-xs text-[var(--sys-heading)]">
-                    {sentence}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {/* And before it is carried out, the order as it stands now: the gate the button below waits for. */}
-            {tab === 'AWAITING_APPLY' && linesUnreadable(r) && (
-              <p className="text-xs text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-2.5">
-                {REVIEW_UNREADABLE_AR}
-              </p>
-            )}
-
-            {tab === 'AWAITING_APPLY' && linesOf(r) && (
-              <LinesRequestReview
-                requestId={r.id}
-                variant="gate"
-                auto={checkedCards.has(r.id)}
-                refreshKey={r.order.version}
-                onVerdict={(v) =>
-                  setVerdicts((prev) =>
-                    prev[r.id]?.checking === v.checking && prev[r.id]?.shut === v.shut ? prev : { ...prev, [r.id]: v }
-                  )
-                }
-              />
-            )}
-
-            {tab === 'AWAITING_APPLY' && r.decisionNote && (
-              <p className="text-xs text-[var(--sys-foreground)] bg-[var(--sys-success-soft)] rounded-lg px-3 py-2">
-                <b className="text-[var(--sys-success)]">القرار:</b> {r.decisionNote}
-              </p>
-            )}
-
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
-              {r.order.customer.fullName} · <span dir="ltr">{r.order.customer.phone}</span>
-            </p>
-
-            {/* An old cancellation with no reason: the choice is on the card,
-                not behind a press, and the button waits for it. */}
-            {tab === 'AWAITING_APPLY' && needsReason(r) && (
-              <label className="block">
-                <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
-                  رُفع هذا الطلب بلا سبب إلغاء — اختر السبب قبل التنفيذ
-                </span>
-                <select
-                  value={chosen[r.id] ?? ''}
-                  onChange={(e) => setChosen((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                  className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
-                >
-                  <option value="">اختر سبب الإلغاء</option>
-                  {PICKABLE_REJECTION_REASONS.map((key) => (
-                    <option key={key} value={key}>
-                      {REJECTION_REASON_AR[key] ?? key}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            <footer className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--sys-border)]">
-              {tab === 'PENDING' ? (
-                /* Nobody decides their own request — the route refuses it,
-                   and a button that always fails teaches people the screen
-                   is lying. What she has on her own row is the withdrawal. */
-                r.isMine ? (
-                  <>
-                    <button
-                      onClick={() => void withdraw(r)}
-                      disabled={withdrawing === r.id}
-                      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-foreground)] text-xs font-medium transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
-                    >
-                      {withdrawing === r.id ? (
-                        <RiLoader4Line className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
-                      )}
-                      اسحب طلبي
-                    </button>
-                    <span className="text-xs text-[var(--sys-muted-foreground)]">
-                      طلبُك — ينتظر قرارَ من يستطيع الوصولَ إلى الطلب، ويصلك القرارُ إشعاراً.
-                    </span>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => setReviewing(r.id)}
-                    className="min-h-11 md:min-h-0 inline-flex items-center px-4 py-1.5 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-medium"
-                  >
-                    مراجعة واتخاذ القرار
-                  </button>
-                )
-              ) : (
-                <>
-                  <button
-                    onClick={() => void apply(r)}
-                    disabled={
-                      applying === r.id ||
-                      r.carryOut?.kind === 'REFUSED' ||
-                      (needsReason(r) && !chosen[r.id]) ||
-                      gateShut(r) !== null
-                    }
-                    title={(r.carryOut?.kind === 'REFUSED' ? r.carryOut.reason : gateShut(r)) ?? undefined}
-                    className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium disabled:opacity-50"
-                  >
-                    {applying === r.id && <RiLoader4Line className="w-4 h-4 animate-spin" />}
-                    {CARRY_LABEL[r.carryOut?.kind] ?? 'نفِّذ القرار'}
-                  </button>
-                  {/* Where the decide buttons are drawn — never on her own request: nobody decides their own (the door refuses). */}
-                  {!r.isMine && (
-                    <button
-                      onClick={() => void revoke(r)}
-                      disabled={revoking === r.id}
-                      className="min-h-11 md:min-h-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg border border-[var(--sys-border)] text-[var(--sys-foreground)] text-xs font-medium transition-colors hover:border-[var(--sys-destructive-border)] hover:text-[var(--sys-destructive)] disabled:opacity-50"
-                    >
-                      {revoking === r.id ? (
-                        <RiLoader4Line className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <RiArrowGoBackLine className="icon-mirror w-4 h-4" />
-                      )}
-                      تراجع عن الموافقة
-                    </button>
-                  )}
-                  {/* Why «نفِّذ» is shut when the door would refuse it — a trolley still being filled, say (4/11). */}
-                  {r.carryOut?.kind === 'REFUSED' && r.carryOut.reason && (
-                    <span className="text-xs text-[var(--sys-muted-foreground)]">{r.carryOut.reason}</span>
-                  )}
-                </>
-              )}
-            </footer>
-          </article>
-        );
-      })}
+                </footer>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {courierFor && (
         <CourierNotifyDialog
@@ -827,6 +835,6 @@ export function ChangeRequestsScreen() {
           onDecided={() => void load()}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

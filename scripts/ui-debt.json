@@ -300,11 +300,6 @@
       "rawDatePickers": 2,
       "textXs": 23
     },
-    "src/components/screens/ChangeRequestsScreen.tsx": {
-      "rawButtons": 6,
-      "rawSurfaces": 3,
-      "textXs": 23
-    },
     "src/components/screens/CommissionSettingsScreen.tsx": {
       "rawDatePickers": 2
     },
