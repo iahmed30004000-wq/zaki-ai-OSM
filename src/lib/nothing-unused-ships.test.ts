@@ -496,6 +496,9 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/geo/warehouses': 'أبواب المخازن انبنت قبل شاشتها (W0a) — بطاقة «المخازن» بصفحة البلدان والمتاجر (W0b) هي اللي بتستدعيها',
   '/api/geo/warehouses/[id]': 'تسمية وإيقاف وتشغيل مخزن (W0a) — بطاقة «المخازن» (W0b) بتستدعيه',
   '/api/geo/warehouses/[id]/keepers': 'أمناء المخزن (W0a) — منتقي الأمناء ببطاقة «المخازن» (W0b) بيستدعيه',
+  // Built ahead of its screen, 19/11 (warehouse plan, request W1a): the opening placement's two doors. W1b (the placement sheet on the balances screen) calls them and removes these lines.
+  '/api/inventory/placement': 'التوزيع الافتتاحي على المخازن انبنى قبل شاشته (W1a) — ورقة التوزيع بشاشة أرصدة المخزون (W1b) هي اللي بتستدعيه',
+  '/api/inventory/placement/preview': 'معاينة التوزيع بلا كتابة (W1a) — ورقة التوزيع (W1b) بتستدعيها مع كل رقم بينكتب',
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
@@ -682,9 +685,8 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/landing-tracking.ts:pixelActive': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
   // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
-  'src/lib/warehouses.ts:storeIsPlaced': 'خطة المخازن W0a: «هالمتجر موزّع على مخازن؟» — كل باب مخزون بيسألها من W1a/W2a؛ لهلق جوابها «لا» لكل متجر',
+  // 19/11 (W1a): 'src/lib/warehouses.ts:storeIsPlaced' and ':warehousesOfStore' left — the placement door (`/api/inventory/placement`) reads both.
   'src/lib/warehouses.ts:reachesWarehouse': 'خطة المخازن W0a: «هالشخص بيوصل لهالمخزن؟» لمخزن واحد — أول قارئ W2a (الاستلام باسم مخزن)',
-  'src/lib/warehouses.ts:warehousesOfStore': 'خطة المخازن W0a: مخازن بلد المتجر الشغّالة — أول قارئ W1a (التوزيع الافتتاحي)',
 };
 
 /**

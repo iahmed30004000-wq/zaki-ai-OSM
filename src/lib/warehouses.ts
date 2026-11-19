@@ -146,14 +146,16 @@ export async function sessionPeople(
 }
 
 /**
- * Is this store's stock placed in warehouses? FALSE FOR EVERY STORE until the
- * opening placement exists (its own request adds the table and this answer).
+ * Is this store's stock placed in warehouses? Yes once its opening placement
+ * row exists (`warehouse_placements`, one per store, written by
+ * `warehouse-placement.placeStore` in the same transaction that gives its
+ * batches their places) — and never before.
  * Every stock door asks this before it asks for a warehouse; «no» means the
- * door behaves exactly as it always has.
+ * door behaves exactly as it always has. Pass the transaction to ask inside one.
  */
-export async function storeIsPlaced(storeId: string): Promise<boolean> {
-  void storeId;
-  return false;
+export async function storeIsPlaced(storeId: string, client: Pick<typeof db, 'warehousePlacement'> = db): Promise<boolean> {
+  const row = await client.warehousePlacement.findUnique({ where: { storeId }, select: { id: true } });
+  return row !== null;
 }
 
 /** The warehouses that may hold this store's goods: the active ones of its country. */

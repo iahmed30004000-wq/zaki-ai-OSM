@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
   db: {
-    productionBatch: { findFirst: vi.fn(), update: vi.fn() },
+    // 19/11 (W1a): `findMany` added — the correction now asks which rows were split from the run (to give them its cost);
+    // answering «none», as for every run never split, keeps each test below exactly what it was.
+    productionBatch: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(async () => []), updateMany: vi.fn() },
     productionBatchCost: { deleteMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
   },
