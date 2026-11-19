@@ -26,13 +26,51 @@ import { db } from '@/lib/db';
  */
 export const AUTHENTICITY_CODE_MAX = 300;
 
-/** A scanned/typed string, before it may even be compared to a stored code. Same shape the stored codes are kept in. */
+/** The query parameter a printed QR carries its code in: `/verify/<storeId>?code=…`. */
+export const VERIFY_CODE_PARAM = 'code';
+
+/** Letters, digits and dashes: a plain barcode. Kept upper-cased, as every code was before links were allowed. */
+const PLAIN = /^[A-Za-z0-9-]+$/;
+/**
+ * The only characters refused: invisible control characters (a stray tab, a line break, a NUL from a broken
+ * scanner). 19/11 (owner): «يقبل الحروف والأرقام والرموز وكل شيء» — Arabic, symbols, spaces and links are all codes.
+ */
+const CONTROL = /[\u0000-\u001F\u007F-\u009F]/;
+const VERIFY_PATH = /^\/verify\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
+
+/**
+ * The code inside a link to a verify page (`https://…/verify/<storeId>?code=XYZ`), or null when the text is not
+ * such a link or the link carries no code. 19/11 (owner): the QR printed on a piece holds that link, so a phone's own
+ * camera opens the page and the page checks by itself; the page's own scanner and the owner's add form read the same
+ * link, and all three land on the same code.
+ */
+export function codeFromVerifyLink(text: string): string | null {
+  if (!/^https?:\/\//i.test(text)) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (!VERIFY_PATH.test(url.pathname)) return null;
+  return url.searchParams.get(VERIFY_CODE_PARAM);
+}
+
+/**
+ * A scanned/typed string, before it may even be compared to a stored code. Same shape the stored codes are kept in.
+ *
+ * - A link to a verify page with a code → that code (then the rules below).
+ * - A plain code (letters, digits, dashes) → upper-cased, exactly as before.
+ * - Anything else — a link, Arabic, symbols, spaces inside → kept exactly as written (case matters in a link).
+ * - Control characters, under 3 or over AUTHENTICITY_CODE_MAX characters → refused.
+ */
 export function normalizeAuthenticityCode(raw: string): string | null {
-  const text = raw.trim();
+  let text = raw.trim();
+  const inner = codeFromVerifyLink(text);
+  if (inner !== null) text = inner.trim();
   if (text.length < 3 || text.length > AUTHENTICITY_CODE_MAX) return null;
-  // Letters, digits and dashes — a barcode or QR payload, never a URL, a phone number or a JSON blob.
-  if (!/^[A-Za-z0-9-]+$/.test(text)) return null;
-  return text.toUpperCase();
+  if (CONTROL.test(text)) return null;
+  return PLAIN.test(text) ? text.toUpperCase() : text;
 }
 
 /** The company a `/verify/[id]` link belongs to, or null (store missing, paused, or id malformed). */

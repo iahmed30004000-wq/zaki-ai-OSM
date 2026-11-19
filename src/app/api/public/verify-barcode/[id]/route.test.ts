@@ -47,6 +47,15 @@ describe('a code on the list', () => {
     expect(body).toEqual({ genuine: true });
   });
 
+  it('a scanned verify link (the printed QR) is looked up by the code inside it', async () => {
+    db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
+    const res = await scan('https://crm.zakiai.io/verify/168f776f-7144-4422-864d-e63ac8c6ddc8?code=p-00042');
+    expect(await res.json()).toEqual({ genuine: true });
+    expect(db.authenticityCode.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ companyId_code: expect.objectContaining({ code: 'P-00042' }) }) })
+    );
+  });
+
   it('a code of 300 digits — as long as the add form allows — is looked up whole and can read genuine', async () => {
     const long = '7'.repeat(300);
     db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
