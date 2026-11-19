@@ -257,8 +257,10 @@ describe('the wiring', () => {
     // dialog names the act too, and asserting the lookup loosely passed
     // while the button itself had gone back to «طبّق التعديل على الطلب»
     // above every cancellation in the queue.
+    // 18/11 (R16e): the button is the kit's `Button` now, so its closing tag is `</Button>` and no longer `</button>`;
+    // the label inside it is the same lookup, in the same place.
     expect(src).toMatch(
-      /\{applying === r\.id && <RiLoader4Line[^>]*\/>\}\s*\{CARRY_LABEL\[r\.carryOut\?\.kind\][^}]*\}\s*<\/button>/
+      /\{applying === r\.id && <RiLoader4Line[^>]*\/>\}\s*\{CARRY_LABEL\[r\.carryOut\?\.kind\][^}]*\}\s*<\/Button>/
     );
     // And in the question that is asked before it.
     expect(src).toMatch(/title: `\$\{CARRY_LABEL\[r\.carryOut\?\.kind\]/);

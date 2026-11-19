@@ -1167,10 +1167,10 @@
     "iconButtons": 4
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
-    "buttons": 6,
+    "buttons": 5,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 9,
     "links": 0,

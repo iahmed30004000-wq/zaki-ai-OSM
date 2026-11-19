@@ -111,10 +111,12 @@ function serve(lists: { pending?: unknown[]; awaiting?: unknown[] }, previews: R
   });
 }
 
-const tab = (name: RegExp) => screen.getByRole('button', { name });
+// 18/11 (R16e): the tabs were a strip of buttons (role «button»); they are the kit's pair now, one radio per half, the count
+// on each option. The same name, the same press, the same count — read off role «radio».
+const tab = (name: RegExp) => screen.getByRole('radio', { name });
 const ready = async () => {
   render(<ChangeRequestsScreen />);
-  await screen.findByRole('button', { name: /بانتظار القرار/ });
+  await screen.findByRole('radio', { name: /بانتظار القرار/ });
 };
 
 beforeEach(() => {
