@@ -6,6 +6,8 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import type { CandidateSearch, LinkCandidate, LinePhoneSearch, LineSummary } from '@/lib/hand-link';
 import type { Agreement } from '@/lib/line-compare';
 
@@ -51,7 +53,7 @@ const MARK: Record<Agreement, { text: string; tone: string }> = {
 function AgreementMark({ label, value }: { label: string; value: Agreement | undefined }) {
   const mark = MARK[value ?? 'UNKNOWN'];
   return (
-    <span className={`text-xs font-medium ${mark.tone}`}>
+    <span className={`text-note font-medium ${mark.tone}`}>
       {label}: {mark.text}
     </span>
   );
@@ -72,9 +74,11 @@ function CompanyLineCard({ line, currency }: { line: LineSummary; currency: stri
     ['الصافي في الكشف', line.net],
   ];
   return (
-    <section aria-label="ما كتبته الشركة" className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 space-y-1">
-      <h3 className="text-xs font-medium text-[var(--sys-heading)]">ما كتبته الشركة عن هذا السطر</h3>
-      <ul className="space-y-1 text-xs">
+    // The kit's plain card (18/11, R13c2): the company's line sits inside a dialog, so no theme ornament lands on it.
+    <Card plain padding="sm">
+    <section aria-label="ما كتبته الشركة" className="space-y-1">
+      <h3 className="text-note font-medium text-[var(--sys-heading)]">ما كتبته الشركة عن هذا السطر</h3>
+      <ul className="space-y-1 text-note">
         {facts.filter(([, v]) => v).map(([k, v]) => (
           <li key={k}>
             <span className="text-[var(--sys-muted-foreground)]">{k}: </span>
@@ -89,6 +93,7 @@ function CompanyLineCard({ line, currency }: { line: LineSummary; currency: stri
         ))}
       </ul>
     </section>
+    </Card>
   );
 }
 
@@ -117,7 +122,7 @@ function CompareFields({ line, c, currency }: { line: LineSummary | null | undef
     <div role="group" aria-label="الشركة مقابل طلبنا" className="mt-1 rounded-lg border border-[var(--sys-border)] p-2 space-y-1">
       <ul className="space-y-1">
         {rows.map((r) => (
-          <li key={r.k} className="text-xs">
+          <li key={r.k} className="text-note">
             <span className="font-medium text-[var(--sys-muted-foreground)]">{r.k}</span>
             {r.mark && <span className={`font-medium ${MARK[r.mark].tone}`}> — {MARK[r.mark].text}</span>}
             <span className="block">الشركة: {r.company}</span>
@@ -126,7 +131,7 @@ function CompareFields({ line, c, currency }: { line: LineSummary | null | undef
         ))}
       </ul>
       {marks.length > 0 && (
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           يتفقان في {same} من {marks.length} من الحقول اللي بتنقارن (الهاتف والمحافظة والصافي). الاسم والعنوان اقرأهم بنفسك.
         </p>
       )}
@@ -249,14 +254,10 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
 
   return (
     <>
-      <button
-        type="button"
-        onClick={openDialog}
-        className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
-      >
+      <Button type="button" variant="secondary" size="sm" onClick={openDialog}>
         <RiLink className="h-4 w-4" />
         اربطه بطلب
-      </button>
+      </Button>
 
       {open && (
         <Modal isOpen onClose={() => setOpen(false)} title="اربط سطر الكشف بطلب">
@@ -272,25 +273,25 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
             </p>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              {/* The kit's framed button; while the list below came from the phone its edge is the primary one, as it was. */}
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => void searchByPhone()}
                 disabled={searching}
-                className={`h-11 md:h-10 px-4 rounded-lg border text-sm inline-flex items-center gap-2 disabled:opacity-50 ${
-                  source === 'phone' ? 'border-[var(--sys-primary)] bg-[var(--sys-surface)]' : 'border-[var(--sys-border)]'
-                }`}
+                className={source === 'phone' ? 'border-[var(--sys-primary)] bg-[var(--sys-surface)]' : undefined}
               >
                 <RiPhoneLine className="w-4 h-4" />
                 بهاتف السطر — الطلبات قيد الشحن
-              </button>
+              </Button>
               {source === 'phone' && linePhone && (
-                <span className="text-xs text-[var(--sys-muted-foreground)]">
+                <span className="text-note text-[var(--sys-muted-foreground)]">
                   الهاتف بسطر الشركة: <b dir="ltr">{linePhone.shown}</b>
                 </span>
               )}
             </div>
 
-            <p className="text-xs text-[var(--sys-muted-foreground)]">أو بحث حر: اكتب هاتف الزبون أو رقم طلبنا أو رقم الشحنة.</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">أو بحث حر: اكتب هاتف الزبون أو رقم طلبنا أو رقم الشحنة.</p>
 
             <form
               onSubmit={(e) => {
@@ -300,7 +301,7 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
               className="flex gap-2"
             >
               <label className="flex-1">
-                <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">البحث</span>
+                <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">البحث</span>
                 <input
                   type="search"
                   value={query}
@@ -310,26 +311,23 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                   placeholder="هاتف أو رقم طلب"
                 />
               </label>
-              <button
-                type="submit"
-                disabled={searching || query.trim().length === 0}
-                className="h-11 md:h-10 px-4 self-end rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={searching || query.trim().length === 0} className="self-end">
                 {searching ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSearchLine className="w-4 h-4" />}
                 ابحث
-              </button>
+              </Button>
             </form>
 
             {found && (
               <div className="space-y-2">
                 {found.line && <CompanyLineCard line={found.line} currency={currency} />}
                 <p className="text-sm font-medium text-[var(--sys-heading)]">{found.header}</p>
-                {found.hint && <p className="text-xs text-[var(--sys-muted-foreground)]">{found.hint}</p>}
+                {found.hint && <p className="text-note text-[var(--sys-muted-foreground)]">{found.hint}</p>}
                 <ul className="space-y-2">
                   {found.candidates.map((c) => {
                     const blocked = c.blockedBy.length > 0;
                     return (
                       <li key={c.id}>
+                        {/* A row press: picking one order of a list stays a raw button (R19's allowed list). */}
                         <button
                           type="button"
                           disabled={blocked}
@@ -342,15 +340,15 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                         >
                           <span className="flex flex-wrap items-center justify-between gap-2">
                             <span dir="ltr" className="font-medium">{c.orderNumber}</span>
-                            <span className="text-xs text-[var(--sys-muted-foreground)]">
+                            <span className="text-note text-[var(--sys-muted-foreground)]">
                               {c.closed ? 'مغلق' : 'مفتوح'}
                             </span>
                           </span>
-                          <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                          <span className="block text-note text-[var(--sys-muted-foreground)]">
                             {c.customer?.fullName ?? '—'} — <span dir="ltr">{c.customer?.phone ?? '—'}</span>
                           </span>
                           {c.expected !== null && (
-                            <span className="block text-xs">
+                            <span className="block text-note">
                               المتوقَّع <Money value={c.expected} currency={currency} />
                             </span>
                           )}
@@ -362,13 +360,13 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
                             </span>
                           )}
                           {c.otherCourier && (
-                            <span className="flex items-center gap-1 text-xs text-[var(--sys-warning)]">
+                            <span className="flex items-center gap-1 text-note text-[var(--sys-warning)]">
                               <RiAlertLine className="h-4 w-4" />
                               {found.otherCourierWarning}
                             </span>
                           )}
                           {blocked && (
-                            <span className="block text-xs text-[var(--sys-destructive)]">{c.blockedBy.join(' · ')}</span>
+                            <span className="block text-note text-[var(--sys-destructive)]">{c.blockedBy.join(' · ')}</span>
                           )}
                         </button>
                         {/* The two sides of every field, for the order picked — a person tells whether it is the parcel. */}
@@ -384,33 +382,21 @@ export function LinkLineDialog({ statementId, matchId, reference, amount, curren
               <div role="alert" className="space-y-2">
                 <p className="text-sm text-[var(--sys-destructive)]">{error}</p>
                 {stale && (
-                  <button
-                    type="button"
-                    onClick={refresh}
-                    className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm"
-                  >
+                  <Button type="button" variant="secondary" onClick={refresh}>
                     حدّث الصفحة
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
 
             <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm"
-              >
+              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                 إلغاء
-              </button>
-              <button
-                type="button"
-                disabled={!picked || linking}
-                onClick={() => void link()}
-                className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-              >
+              </Button>
+              {/* The screen's own lock (the ref and `linking`): wrapped in `void`, the kit runs nothing of its own. */}
+              <Button type="button" disabled={!picked || linking} onClick={() => void link()}>
                 {picked ? `اربطه بالطلب ${picked.orderNumber}` : 'اختر طلباً'}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>

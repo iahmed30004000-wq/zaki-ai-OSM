@@ -59,13 +59,13 @@ export function CourierReason({ m }: CourierReasonProps) {
     <span className="block">
       {word ? (
         <span className="block font-medium">
-          «{word.phrase}» <span className="text-xs text-[var(--sys-muted-foreground)]">{word.label}</span>
+          «{word.phrase}» <span className="text-note text-[var(--sys-muted-foreground)]">{word.label}</span>
         </span>
       ) : (
-        e?.status && <span className="block text-xs text-[var(--sys-muted-foreground)]">الحالة: {e.status}</span>
+        e?.status && <span className="block text-note text-[var(--sys-muted-foreground)]">الحالة: {e.status}</span>
       )}
       {hasFacts && (
-        <span className="block text-xs text-[var(--sys-muted-foreground)]">
+        <span className="block text-note text-[var(--sys-muted-foreground)]">
           {e?.phone && (
             <span className="block">
               الهاتف: <b dir="ltr">{e.phone.shown}</b>
@@ -85,8 +85,8 @@ export function CourierReason({ m }: CourierReasonProps) {
       )}
       {raw && (
         <details>
-          <summary className="cursor-pointer text-xs text-[var(--sys-muted)]">النص الأصلي</summary>
-          <span className="block text-xs text-[var(--sys-muted)]" dir="auto">
+          <summary className="cursor-pointer text-note text-[var(--sys-muted)]">النص الأصلي</summary>
+          <span className="block text-note text-[var(--sys-muted)]" dir="auto">
             {raw}
           </span>
         </details>

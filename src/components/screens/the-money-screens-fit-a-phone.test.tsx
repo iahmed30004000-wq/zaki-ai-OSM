@@ -527,7 +527,9 @@ describe('«المطابقة»', () => {
       render(<DifferenceActions {...props} />);
       const [first, second] = pair();
       expect(first.className).toContain('border-[var(--sys-success)] text-[var(--sys-success)]');
-      expect(first.className).not.toContain('hover:');
+      // 18/11 (R13c2): the pair is the kit's framed button now, and the kit's frame carries its own hover fill on every button
+      // («not.toContain('hover:')» pinned the hand-written row). What this pins is unchanged: no colour waits for a pointer here.
+      expect(first.className).not.toMatch(/hover:(border|text)-/);
       expect(second.className).toContain('border-[var(--sys-warning)] text-[var(--sys-warning)]');
       for (const r of RESOLUTIONS) expect(document.body.textContent).toContain(RESOLUTION_MEANING[r]);
     });
