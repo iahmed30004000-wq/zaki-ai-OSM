@@ -1148,13 +1148,14 @@
   },
   "src/components/screens/BlacklistScreen.tsx": {
     "buttons": 6,
-    "inputs": 6,
+    "inputs": 5,
     "columns": 5,
-    "cards": 0,
+    "cards": 4,
     "modals": 2,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/CampaignsScreen.tsx": {
     "buttons": 13,
