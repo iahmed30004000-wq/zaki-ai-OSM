@@ -492,6 +492,9 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
   // 18/11 (R9): '/api/analytics/daily' left — «اليوم»'s one chart (`dashboard/DailyChart.tsx`) calls it.
   // 18/11 (R14a1): '/api/orders/confirmation/team/[userId]' left — the drawer under a row of the team table (`performance/TeamMemberDrawer.tsx`) calls it.
+  // Built ahead of its screen, 19/11 (warehouse plan, request W1a): the opening placement's two doors. W1b (the placement sheet on the balances screen) calls them and removes these lines.
+  '/api/inventory/placement': 'التوزيع الافتتاحي على المخازن انبنى قبل شاشته (W1a) — ورقة التوزيع بشاشة أرصدة المخزون (W1b) هي اللي بتستدعيه',
+  '/api/inventory/placement/preview': 'معاينة التوزيع بلا كتابة (W1a) — ورقة التوزيع (W1b) بتستدعيها مع كل رقم بينكتب',
   // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
@@ -679,9 +682,8 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/landing-tracking.ts:pixelActive': 'مكتبة الهبوط لوكيل المتجر — لا تُلمس من خارج فرعه',
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
   // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
-  'src/lib/warehouses.ts:storeIsPlaced': 'خطة المخازن W0a: «هالمتجر موزّع على مخازن؟» — كل باب مخزون بيسألها من W1a/W2a؛ لهلق جوابها «لا» لكل متجر',
+  // 19/11 (W1a): 'src/lib/warehouses.ts:storeIsPlaced' and ':warehousesOfStore' left — the placement door (`/api/inventory/placement`) reads both.
   'src/lib/warehouses.ts:reachesWarehouse': 'خطة المخازن W0a: «هالشخص بيوصل لهالمخزن؟» لمخزن واحد — أول قارئ W2a (الاستلام باسم مخزن)',
-  'src/lib/warehouses.ts:warehousesOfStore': 'خطة المخازن W0a: مخازن بلد المتجر الشغّالة — أول قارئ W1a (التوزيع الافتتاحي)',
 };
 
 /**

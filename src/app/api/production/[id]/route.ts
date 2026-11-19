@@ -9,6 +9,7 @@ import { batchTotal, batchUnitCost } from '@/lib/product-cost';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
+import { descendantsOf } from '@/lib/batch-split';
 
 /**
  * PATCH /api/production/[id] — correct what a run cost.
@@ -81,6 +82,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
     }
 
+    /*
+     * A ROW SPLIT FROM A RUN IS NOT A RUN (the warehouse plan, `batch-split.ts`).
+     *
+     * When units of a batch change place, a twin row holds them with `quantityProduced` 0 and the run's own unit cost. Its
+     * cost is not its own to correct: it is the run's, and «total ÷ produced» on a row that produced nothing is no price at
+     * all. The correction is made on the run, and reaches the twin from there (below).
+     */
+    if (batch.splitFromBatchId) {
+      const ar = 'هاي الدفعة مقسومة من دفعة أصلية (انتقلت قطعها لمخزن). صحّح الكلفة على الدفعة الأصلية، وبتوصل لهون لحالها.';
+      return NextResponse.json({ error: ar, errorAr: ar, code: 'SPLIT_ROW' }, { status: 409 });
+    }
+
     const body = parsed.data;
     const mfg = body.manufacturingCost ?? batch.manufacturingCost;
     const pack = body.packagingCost ?? batch.packagingCost;
@@ -115,6 +128,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
             })),
           });
         }
+      }
+      /*
+       * THE RUN'S UNITS THAT MOVED CARRY THE RUN'S COST. Every row split from this one, at any depth, takes the corrected
+       * unit cost — exactly what the units would have taken had they never moved, so the stock value after a correction
+       * is the same number whether or not the store was placed. A batch never split has no such row: nothing more is written.
+       */
+      const moved = await descendantsOf(tx, companyId, [batch.id]);
+      if (moved.length > 0) {
+        await tx.productionBatch.updateMany({ where: { companyId, id: { in: moved } }, data: { costPerUnit } });
       }
       return tx.productionBatch.update({
         where: { id: batch.id },

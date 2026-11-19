@@ -308,6 +308,18 @@ function assertInTransaction(tx: Tx, what: string) {
   }
 }
 
+/**
+ * THE SAME LOCK, FOR A DOOR THAT MOVES UNITS BETWEEN PLACES (the warehouse plan, `batch-split.ts`).
+ *
+ * A split moves units from one batch row to another of the same product. It does not change what is on hand, but it is a
+ * read-then-write over that product's batches — so it waits for, and is waited for by, the reserver: the very key
+ * `reserveOrderLines` takes (company + product, no store), built by the very function, so the two can never name two locks.
+ */
+export async function lockProductsStock(tx: Tx, companyId: string, productIds: readonly string[]) {
+  assertInTransaction(tx, 'lockProductsStock');
+  await lockStockScopes(tx, productIds.map((productId) => stockScopeKey(companyId, productId)));
+}
+
 export interface ReservationOutcome {
   /** Lines (and add-ons) whose full quantity (including gift units) is now reserved. */
   reserved: number;
