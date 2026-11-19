@@ -24,6 +24,10 @@
  * control screens (8 + 2 = 10). The door's own permissions are still the union
  * of the EIGHT settings cards; the last two are drawn for whoever may open a
  * screen on them, like every card.
+ *
+ * ELEVEN SINCE 19/11 (R15a): «قواعد الموظفين» joined, right before the staff
+ * card — a settings screen on `settings.view`, a key the door already holds,
+ * so the door's union is the same six keys (9 settings + 2 admin = 11).
  */
 
 export interface SettingsCard {
@@ -81,8 +85,16 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
   {
     key: 'system',
     title: 'النظام',
-    why: 'اسم الشركة، والمهام التي يشغّل النظام بها نفسه.',
+    // 19/11 (R15a): was «اسم الشركة، والمهام التي يشغّل النظام بها نفسه.» — «إعدادات النظام» keeps the name and the offer after the order now.
+    why: 'اسم الشركة ومهلة العرض بعد الطلب، والمهام التي يشغّل النظام بها نفسه.',
     paths: ['/settings/system', '/admin/jobs'],
+  },
+  {
+    // 19/11 (R15a): the score and the deductions, moved from «إعدادات النظام» to a page of their own beside the staff.
+    key: 'staff-rules',
+    title: 'قواعد الموظفين',
+    why: 'بأي مقياس بينحكم على شغل الموظفين، وشو بينقترح خصم عليه.',
+    paths: ['/admin/staff-rules'],
   },
   {
     key: 'staff',

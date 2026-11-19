@@ -136,7 +136,9 @@ describe('2 · the two cards, on this page and on no other', () => {
     await waitFor(() => expect(screen.getByDisplayValue('شركة')).toBeTruthy());
     const drawn = marks(container);
     for (const name of Object.keys(CARDS)) expect(drawn, name).not.toContain(name);
-    expect(drawn).toEqual(['PerformanceSettingsCard', 'PenaltyRulesCard', 'PostOrderOfferCard']);
+    // 19/11 (R15a): was ['PerformanceSettingsCard', 'PenaltyRulesCard', 'PostOrderOfferCard'] — the score and the deductions moved, unchanged, to «قواعد الموظفين»
+    // (/admin/staff-rules); `the-staff-rules-page-holds-the-two-cards.test.tsx` pins them there. Only the offer after the order stays beside the name.
+    expect(drawn).toEqual(['PostOrderOfferCard']);
   });
 
   it('NEGATIVE: no other source file in src draws or imports either card', () => {
