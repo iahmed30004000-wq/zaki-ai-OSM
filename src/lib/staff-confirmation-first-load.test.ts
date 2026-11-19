@@ -130,14 +130,15 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * 28 files. Nothing new is in the route: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the chunks.
    */
   /*
-   * 19/11 (R19 — the ceilings come down): 416 → 413.1, MEASURED. The route's JavaScript, gzipped, as this file reads it
-   * (the framework floor in `rootMainFiles` + the chunks of the route's client-reference manifest), from a production build in a
-   * worktree (`NEXT_TURBOPACK_ROOT=<the main checkout> NEXT_DIST_DIR=.next-verify` `next build`, Turbopack, on osm/main 473ab6ac plus
-   * this change; the build stops at the type-check step on a stale shared database client, after it has written its manifests): 413.094 KB,
-   * 28 files. The ceiling is the measurement rounded UP to the next hundredth — 413.10, written 413.1 — and not a round figure.
-   * Never above today's 416; from here it only holds or falls.
+   * 19/11 (R19 — the ceilings come down): 416 → 413.34, MEASURED BY CI. The route's JavaScript, gzipped, as this file reads it
+   * (the framework floor in `rootMainFiles` + the chunks of the route's client-reference manifest). CI's own «Payload budget» step
+   * reads 413.328 KB (run 44471751451, on the head of this change); the ceiling is CI's reading rounded up to the next hundredth
+   * (413.33) and then one hundredth more, 413.34, because 413.33 leaves only 2 bytes — and it is not a round figure. A local production build in a worktree
+   * (`NEXT_TURBOPACK_ROOT=<the main checkout> NEXT_DIST_DIR=.next-verify` `next build`, which stops at the type-check step on a stale
+   * shared database client after it has written its manifests) reads 413.09 KB, 28 files: about 0.24 KB LOWER than CI, so a local
+   * build cannot set this number. Never above today's 416; from here it only holds or falls.
    */
-  const CEILING_KB = 413.1;
+  const CEILING_KB = 413.34;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();

@@ -462,7 +462,8 @@ describe('the payload', () => {
    * `next build`, Turbopack, on osm/main 473ab6ac plus this change; the build compiles and writes its manifests, then stops at the
    * type-check step on a stale shared database client that is not this code, which does not touch the stylesheets): the two `.css`
    * files are 85,462 + 8,731 = 94,193 bytes = 91.985 KB. The cap is the measurement rounded UP to the next hundredth, 91.99 KB =
-   * 94,197.76 bytes — about 4 bytes of room for the CRLF/LF two-byte difference the R2a note describes — and not a round figure.
+   * 94,197.76 bytes — CI's own «Payload budget» step reads 94,195 bytes (run 44471751451), so the room is about 2.8 bytes — and not a
+   * round figure.
    * Never a rise: it only holds or falls from here.
    */
   const CSS_BUDGET_KB = 91.99;
