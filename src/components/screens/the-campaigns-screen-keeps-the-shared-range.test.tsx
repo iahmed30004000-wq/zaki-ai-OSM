@@ -184,7 +184,10 @@ describe('the shape', () => {
     await mount();
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: /حملة جديدة/ })[0]); });
     const close = screen.getByRole('button', { name: 'إغلاق' });
-    expect(close.getAttribute('type')).toBe('button');
+    // 19/11 (R19b): the editor is the kit's `Modal` now, so «إغلاق» is the Modal's own button. It sets no `type`, and that
+    // is safe because the editor holds no form: its save button is in the footer and runs a handler, never a submit. The old
+    // line asserted the type of a hand-made close; the guard that matters is «this button cannot submit anything».
+    expect(close.closest('form'), 'الإغلاق ما لازم يكون جوّا نموذج').toBeNull();
     await act(async () => { fireEvent.click(close); });
     expect(screen.queryByRole('button', { name: 'إغلاق' })).toBeNull();
   });

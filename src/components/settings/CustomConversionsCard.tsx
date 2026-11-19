@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { IconButton } from '@/components/ui/IconButton';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/Confirm';
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiCheckLine, RiDeleteBinLine, RiFocus3Line, RiKey2Line, RiLoader4Line, RiPlugLine } from '@remixicon/react';
 
@@ -291,17 +291,17 @@ export function CustomConversionsCard() {
         <>
           {/* Which pixel. One shop can run more than one. */}
           {pixels.length > 1 && (
-            <select
+            <Select
               value={pixelId}
               onChange={(e) => { setPixelId(e.target.value); setTestCode(null); setDataset(null); }}
-              className={`${INPUT} mb-2`}
+              className="mb-2"
             >
               {pixels.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} — {p.pixelId}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
 
           {/* ── The token. Nothing sends without it. ── */}
@@ -321,11 +321,10 @@ export function CustomConversionsCard() {
                     رمز الاختبار (اختياري)
                   </label>
                   <div className="flex gap-2">
-                    <input
+                    <Input
                       value={testCode}
                       onChange={(e) => setTestCode(e.target.value)}
                       placeholder="TEST12345"
-                      className={INPUT}
                       dir="ltr"
                     />
                     <Button type="button" size="sm" variant="secondary" onClick={() => { void saveTestCode(); }} disabled={busy === 'test'}>
@@ -340,11 +339,10 @@ export function CustomConversionsCard() {
                 <div className="mt-2">
                   <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
                   <div className="flex gap-2">
-                    <input
+                    <Input
                       value={dataset}
                       onChange={(e) => setDataset(e.target.value.replace(/\D/g, ''))}
                       placeholder={pixel?.pixelId}
-                      className={INPUT}
                       dir="ltr"
                       inputMode="numeric"
                     />
@@ -386,11 +384,10 @@ export function CustomConversionsCard() {
                   قبل حفظه — الخلل هنا لا يظهر إلا بعد أيام داخل عامل لا يراقبه أحد.
                 </p>
                 <label className="mb-1 mt-2 block text-note font-semibold text-[var(--sys-foreground)]">Dataset ID (اختياري)</label>
-                <input
+                <Input
                   value={dataset}
                   onChange={(e) => setDataset(e.target.value.replace(/\D/g, ''))}
                   placeholder={`فارغ = ${pixel?.pixelId ?? 'رقم البكسل'}`}
-                  className={INPUT}
                   dir="ltr"
                   inputMode="numeric"
                 />
@@ -501,10 +498,9 @@ export function CustomConversionsCard() {
                 <>
                   <div>
                     <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">الاسم عندك</label>
-                    <input
+                    <Input
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className={INPUT}
                       placeholder="شراء موصَّل"
                     />
                   </div>
@@ -512,10 +508,9 @@ export function CustomConversionsCard() {
                     <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">
                       اسم الحدث في ميتا
                     </label>
-                    <input
+                    <Input
                       value={form.eventName}
                       onChange={(e) => setForm({ ...form, eventName: e.target.value })}
-                      className={INPUT}
                       dir="ltr"
                       placeholder="OrderDelivered"
                     />
@@ -527,15 +522,14 @@ export function CustomConversionsCard() {
                   </div>
                   <div>
                     <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">القيمة المرسَلة</label>
-                    <select
+                    <Select
                       value={form.valueSource}
                       onChange={(e) => setForm({ ...form, valueSource: e.target.value })}
-                      className={INPUT}
                     >
                       {options?.valueSources.map((v) => (
                         <option key={v.value} value={v.value}>{v.label}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="flex gap-2">
@@ -609,5 +603,3 @@ export function CustomConversionsCard() {
   );
 }
 
-const INPUT =
-  'w-full rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2 text-sm text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]';

@@ -5,7 +5,7 @@ import { AiSpendCapCard } from '@/components/screens/ai/AiSpendCapCard';
 import { MessageTemplatesCard } from '@/components/settings/MessageTemplatesCard';
 import React, { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { MAX_PROMPT, missingSlots, type AiJob, type PromptVersion } from '@/lib/ai-prompts';
 import { tierOf } from '@/lib/ai-provider';
 import { RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiCheckLine, RiKey2Line, RiLoader4Line, RiPlugLine } from '@remixicon/react';
@@ -435,7 +435,7 @@ export function AiSettingsScreen() {
           <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-provider">
             المزوّد
           </label>
-          <select
+          <Select
             id="ai-provider"
             disabled={!canManage}
             value={settings.provider}
@@ -443,10 +443,9 @@ export function AiSettingsScreen() {
               const p = providers.find((x) => x.id === e.target.value);
               setSettings({ ...settings, provider: e.target.value, model: p?.defaultModel ?? settings.model });
             }}
-            className={INPUT}
           >
             {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
+          </Select>
           <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
             النموذج يُختار لكلِّ مساعدٍ في تبويب «المساعدون». وما لا يخصّه مساعدٌ يُجاب بـ
             <span className="mx-1 font-semibold text-[var(--sys-foreground)]" dir="ltr">{settings.model}</span>
@@ -556,12 +555,11 @@ export function AiSettingsScreen() {
                       <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-local-url">
                         عنوان الخادم
                       </label>
-                      <input
+                      <Input
                         id="ai-local-url"
                         value={localUrl}
                         onChange={(e) => setLocalUrl(e.target.value)}
                         placeholder="http://localhost:11434"
-                        className={INPUT}
                         dir="ltr"
                         autoComplete="off"
                       />
@@ -585,12 +583,11 @@ export function AiSettingsScreen() {
                         <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-url">
                           عنوان الخادم (https)
                         </label>
-                        <input
+                        <Input
                           id="ai-compat-url"
                           value={compatUrl}
                           onChange={(e) => setCompatUrl(e.target.value)}
                           placeholder="https://…/v1"
-                          className={INPUT}
                           dir="ltr"
                           autoComplete="off"
                         />
@@ -599,11 +596,10 @@ export function AiSettingsScreen() {
                         <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-model">
                           اسم النموذج على خادمك
                         </label>
-                        <input
+                        <Input
                           id="ai-compat-model"
                           value={compatModel}
                           onChange={(e) => setCompatModel(e.target.value)}
-                          className={INPUT}
                           dir="ltr"
                           autoComplete="off"
                         />
@@ -868,5 +864,3 @@ const KEY_SOURCE_AR: Record<string, string> = {
   env: 'متغيّر البيئة',
 };
 
-const INPUT =
-  'w-full rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2 text-sm text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]';

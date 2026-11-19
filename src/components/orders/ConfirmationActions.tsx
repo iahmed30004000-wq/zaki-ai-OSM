@@ -32,17 +32,6 @@ const REASON_OPTIONS = PICKABLE_REJECTION_REASONS.map((key) => ({
   ar: REJECTION_REASON_AR[key] ?? key,
 }));
 
-const RESULTS: Record<string, { ar: string; en: string }> = {
-  ANSWERED: { ar: 'أجاب', en: 'Answered' },
-  NO_ANSWER: { ar: 'لا يرد', en: 'No Answer' },
-  BUSY: { ar: 'مشغول', en: 'Busy' },
-  WRONG_NUMBER: { ar: 'رقم خاطئ', en: 'Wrong Number' },
-  CALLBACK_REQUESTED: { ar: 'طلب الاتصال به', en: 'Callback Requested' },
-  CONFIRMED: { ar: 'مؤكد', en: 'Confirmed' },
-  REJECTED: { ar: 'مرفوض', en: 'Rejected' },
-  OTHER: { ar: 'أخرى', en: 'Other' },
-};
-
 const WORKFLOW_STATE: Record<string, { ar: string; en: string; cls: string }> = {
   NEW: { ar: CONFIRMATION_STATUS_AR.NEW, en: 'New', cls: 'bg-[var(--sys-surface)] text-[var(--sys-muted-foreground)] border-[var(--sys-muted-foreground)]/50' },
   IN_PROGRESS: { ar: CONFIRMATION_STATUS_AR.IN_PROGRESS, en: 'In Progress', cls: 'bg-[var(--sys-surface)] text-[var(--sys-foreground)] border-[var(--sys-border-strong)]' },
@@ -52,13 +41,6 @@ const WORKFLOW_STATE: Record<string, { ar: string; en: string; cls: string }> = 
   CONFIRMED: { ar: CONFIRMATION_STATUS_AR.CONFIRMED, en: 'Confirmed', cls: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/60' },
   REJECTED: { ar: CONFIRMATION_STATUS_AR.REJECTED, en: 'Rejected', cls: 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]' },
   CANCELLED: { ar: CONFIRMATION_STATUS_AR.CANCELLED, en: 'Cancelled', cls: 'bg-[var(--sys-surface-strong)] text-[var(--sys-muted-foreground)] border-[var(--sys-border-strong)]' },
-};
-
-const METHOD_LABELS: Record<string, { ar: string; en: string }> = {
-  PHONE: { ar: 'هاتف', en: 'Phone' },
-  WHATSAPP: { ar: 'واتساب', en: 'WhatsApp' },
-  SMS: { ar: 'رسالة', en: 'SMS' },
-  OTHER: { ar: 'أخرى', en: 'Other' },
 };
 
 /** How often a panel stuck on NO_OPENED asks again — a press may have been made on another device. */

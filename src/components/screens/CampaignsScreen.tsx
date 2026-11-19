@@ -3,13 +3,16 @@
 import { plainNumber } from '@/lib/format';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { IconButton } from '@/components/ui/IconButton';
 import { Card } from '@/components/ui/Card';
 import { StatTile } from '@/components/ui/StatTile';
 import { apiJson } from '@/lib/api-client';
 import { useConfirm } from '@/components/ui/Confirm';
 import { CAMPAIGN_PLATFORMS, CAMPAIGN_STATUSES } from '@/lib/campaigns';
-import { RiAddCircleLine, RiArrowDownCircleLine, RiArrowUpCircleLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiDownloadLine, RiLinksLine, RiLoader4Line, RiMegaphoneLine, RiPencilLine, RiPlugLine, RiRefreshLine } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowDownCircleLine, RiArrowUpCircleLine, RiCheckLine, RiDeleteBinLine, RiDownloadLine, RiLinksLine, RiLoader4Line, RiMegaphoneLine, RiPencilLine, RiPlugLine, RiRefreshLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
@@ -637,21 +640,15 @@ function Cell({ label, value, unit, tone, icon }: { label: string; value: string
   );
 }
 
+/** Nothing yet: the kit's `EmptyState` (R19b, 19/11 — it was a local copy: a dashed box, an icon, two lines and a button). */
 function Empty({ onCreate }: { onCreate?: () => void }) {
   return (
-    <div className="rounded-lg border border-dashed border-[var(--sys-border-strong)] p-8 text-center">
-      <RiMegaphoneLine className="mx-auto h-6 w-6 text-[var(--sys-border-strong)]" />
-      <p className="mt-2 text-sm font-semibold text-[var(--sys-foreground)]">لا حملات بعد</p>
-      <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-        أنشئ حملة، انسخ رابطها، والصقه في إعلانك. كل طلب يأتي من ذلك الرابط يُحسب عليها —
-        وأنت تكتب ما أنفقت، فترى العائد الحقيقي بدل التخمين.
-      </p>
-      {onCreate && (
-      <Button size="sm" className="mt-3" onClick={onCreate}>
-        <RiAddCircleLine className="h-4 w-4" /> حملة جديدة
-      </Button>
-      )}
-    </div>
+    <EmptyState
+      icon={RiMegaphoneLine}
+      title="لا حملات بعد"
+      why="أنشئ حملة، انسخ رابطها، والصقه في إعلانك. كل طلب يأتي من ذلك الرابط يُحسب عليها — وأنت تكتب ما أنفقت، فترى العائد الحقيقي بدل التخمين."
+      action={onCreate ? { label: 'حملة جديدة', onClick: onCreate } : undefined}
+    />
   );
 }
 
@@ -756,39 +753,39 @@ function Editor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--sys-sidebar)]/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-lg bg-[var(--sys-card)] p-4 sm:rounded-lg"
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[var(--sys-heading)]">{campaign ? 'تعديل الحملة' : 'حملة جديدة'}</h2>
-          <IconButton type="button" size="sm" label="إغلاق" onClick={onClose}>
-            <RiCloseLine className="h-4 w-4" />
-          </IconButton>
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={campaign ? 'تعديل الحملة' : 'حملة جديدة'}
+      footer={
+        <div className="flex gap-2">
+          <Button onClick={save} disabled={busy || !form.name.trim()} className="flex-1">
+            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
+            {campaign ? 'احفظ' : 'أنشئ الحملة'}
+          </Button>
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
         </div>
-
+      }
+    >
         <div className="space-y-3">
           <Field label="اسم الحملة">
-            <input
+            <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="مثلاً: عرض رمضان — فيديو 1"
-              className={INPUT}
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="المنصّة">
-              <select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} className={INPUT}>
+              <Select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}>
                 {CAMPAIGN_PLATFORMS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
-              </select>
+              </Select>
             </Field>
             <Field label="الحالة">
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className={INPUT}>
+              <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
                 {CAMPAIGN_STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
 
@@ -797,10 +794,9 @@ function Editor({
               select with one option reading «بلا حساب» is clutter. */}
           {!filedUnderConnected && (accountsHere.length > 0 || form.adAccountId) && (
             <Field label="الحساب الإعلاني" hint="حساباتك اليدوية على هذه المنصة. للربط التلقائي استعمل «اربط» في القائمة.">
-              <select
+              <Select
                 value={form.adAccountId}
                 onChange={(e) => setForm({ ...form, adAccountId: e.target.value })}
-                className={INPUT}
               >
                 <option value="">بلا حساب</option>
                 {accountsHere.map((a) => (
@@ -814,12 +810,12 @@ function Editor({
                     {manualAccounts.find((a) => a.id === form.adAccountId)?.accountName ?? 'حساب على منصة أخرى'}
                   </option>
                 )}
-              </select>
+              </Select>
             </Field>
           )}
 
           <Field label="تذهب إلى" hint="اتركها فارغة لتذهب إلى واجهة المتجر">
-            <select
+            <Select
               value={form.landingPageId}
               onChange={(e) =>
                 // Linking a page CLEARS the chosen product, because the page
@@ -829,11 +825,10 @@ function Editor({
                 // person's time to teach them a rule.
                 setForm({ ...form, landingPageId: e.target.value, productId: e.target.value ? '' : form.productId })
               }
-              className={INPUT}
             >
               <option value="">واجهة المتجر</option>
               {pages.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            </Select>
           </Field>
 
           {/*
@@ -852,44 +847,41 @@ function Editor({
             </Field>
           ) : (
             <Field label="المنتج" hint="للإعلانات التي لا تذهب إلى صفحة هبوط — اتركه فارغاً إن كان الإعلان للمتجر كلّه">
-              <select
+              <Select
                 value={form.productId}
                 onChange={(e) => setForm({ ...form, productId: e.target.value })}
-                className={INPUT}
               >
                 <option value="">غير محدَّد</option>
                 {products.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-              </select>
+              </Select>
             </Field>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="تبدأ">
-              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={INPUT} />
+              <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
             </Field>
             <Field label="تنتهي" hint="اتركها فارغة إن كانت مستمرة">
-              <input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className={INPUT} />
+              <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
             </Field>
           </div>
 
           <Field label={`ما أنفقته (${currency})`} hint="الرقم من مدير إعلاناتك. حدّثه كلما أنفقت أكثر.">
-            <input
+            <Input
               type="number"
               min={0}
               step="0.01"
               value={form.spend}
               onChange={(e) => setForm({ ...form, spend: e.target.value })}
-              className={INPUT}
               dir="ltr"
             />
           </Field>
 
           <Field label="ملاحظات">
-            <textarea
+            <Textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
-              className={INPUT}
               placeholder="الجمهور، الفيديو المستخدم، أي شيء تريد تذكّره"
             />
           </Field>
@@ -904,20 +896,9 @@ function Editor({
           {error && <p className="text-xs font-medium text-[var(--sys-destructive)]">{error}</p>}
         </div>
 
-        <div className="mt-4 flex gap-2">
-          <Button onClick={save} disabled={busy || !form.name.trim()} className="flex-1">
-            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
-            {campaign ? 'احفظ' : 'أنشئ الحملة'}
-          </Button>
-          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
-
-const INPUT =
-  'w-full rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2 text-sm text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]';
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -987,31 +968,34 @@ function LinkDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--sys-sidebar)]/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div
-        dir="rtl"
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-lg bg-[var(--sys-card)] p-4 sm:rounded-lg"
-      >
-        <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[var(--sys-heading)]">اربط «{campaign.name}» بحملة في ميتا</h2>
-          <IconButton type="button" size="sm" label="إغلاق" onClick={onClose}>
-            <RiCloseLine className="h-4 w-4" />
-          </IconButton>
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={`اربط «${campaign.name}» بحملة في ميتا`}
+      subtitle="بعدها يأتي الإنفاق تلقائياً. الربط بالمعرّف لا بالاسم — فتغيير اسم الحملة في ميتا لن يقطعه."
+      footer={
+        <div className="flex gap-2">
+          <Button onClick={() => save(false)} disabled={busy || !chosen} className="flex-1">
+            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
+            اربط
+          </Button>
+          {campaign.spendSource === 'SYNCED' && (
+            <Button variant="secondary" onClick={() => save(true)} disabled={busy}>
+              فكّ الربط
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
         </div>
-        <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-          بعدها يأتي الإنفاق تلقائياً. الربط بالمعرّف لا بالاسم — فتغيير اسم الحملة في ميتا
-          لن يقطعه.
-        </p>
-
+      }
+    >
         {accounts.length > 1 && (
           <div className="mb-3">
             <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]">الحساب الإعلاني</label>
-            <select value={accountId} onChange={(e) => { setAccountId(e.target.value); setChosen(''); }} className={INPUT}>
+            <Select value={accountId} onChange={(e) => { setAccountId(e.target.value); setChosen(''); }}>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.accountName ?? a.accountId}</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -1050,25 +1034,11 @@ function LinkDialog({
           </div>
         )}
 
-        <div className="mt-4 flex gap-2">
-          <Button onClick={() => save(false)} disabled={busy || !chosen} className="flex-1">
-            {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
-            اربط
-          </Button>
-          {campaign.spendSource === 'SYNCED' && (
-            <Button variant="secondary" onClick={() => save(true)} disabled={busy}>
-              فكّ الربط
-            </Button>
-          )}
-          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-        </div>
-
         {campaign.spendSource === 'SYNCED' && (
           <p className="mt-2 text-xs leading-relaxed text-[var(--sys-muted)]">
             فكّ الربط يعيد الإنفاق للإدخال اليدوي، ولا يمسح الرقم المسحوب — هو مصروف حقيقي حدث.
           </p>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

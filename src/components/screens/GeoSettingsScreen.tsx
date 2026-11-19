@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Card } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
@@ -579,8 +580,8 @@ function AddCountry({ onCancel, onDone }: { onCancel: () => void; onDone: () => 
     <Card padding="md">
     <form onSubmit={submit} className="grid gap-3 md:grid-cols-4">
       {error && <p className="md:col-span-4 text-sm text-[var(--sys-destructive)]">{error}</p>}
-      <Input label="الاسم" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-      <Input label="الرمز (حرفان)" value={form.code} onChange={(v) => setForm({ ...form, code: v })} dir="ltr" />
+      <Input label="الاسم" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+      <Input label="الرمز (حرفان)" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} dir="ltr" required />
 
       <CurrencyPicker value={currency} onChange={setCurrency} className="md:col-span-2" />
 
@@ -649,8 +650,8 @@ function AddStore({
           </p>
         </Card>
       </div>
-      <Input label="اسم المتجر" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-      <Input label="المعرّف" value={form.slug} onChange={(v) => setForm({ ...form, slug: v })} dir="ltr" />
+      <Input label="اسم المتجر" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+      <Input label="المعرّف" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} dir="ltr" required />
       {/* New stores are multi-product. Single Product is kept working for
           the shops that already wear it, but it is no longer offered: its
           address shows one landing page, and every new shop is a catalogue. */}
@@ -759,31 +760,11 @@ function BenchSwitch({ store, mayManage, onSaved }: { store: StoreRow; mayManage
   );
 }
 
-function Input({
-  label,
-  value,
-  onChange,
-  dir,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  dir?: 'ltr' | 'rtl';
-}) {
-  return (
-    <label className="block">
-      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        dir={dir}
-        required
-        className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
-      />
-    </label>
-  );
-}
-
+/*
+ * THE THREE TEXT BOXES OF THIS SCREEN ARE THE KIT'S `Input` (R19b, 19/11). Each was a local copy: a label beside a box with the
+ * box's classes written out again, and no `htmlFor` — so pressing the words reached nothing. The kit's field draws the same
+ * box and ties the label to it.
+ */
 function TextField({
   label,
   value,
@@ -796,37 +777,23 @@ function TextField({
   onSave: (v: string) => void;
 }) {
   const [v, setV] = useState(value);
-  return (
-    <label className="block">
-      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
-      <input
-        value={v}
-        dir={dir}
-        onChange={(e) => setV(e.target.value)}
-        onBlur={() => v !== value && onSave(v)}
-        className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
-      />
-    </label>
-  );
+  return <Input label={label} value={v} dir={dir} onChange={(e) => setV(e.target.value)} onBlur={() => v !== value && onSave(v)} />;
 }
 
 function TimeField({ label, value, onSave }: { label: string; value: string; onSave: (v: string) => Promise<boolean> }) {
   return (
-    <label className="block">
-      <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">{label}</span>
-      <input
-        type="time"
-        defaultValue={value}
-        onBlur={async (e) => {
-          const input = e.target;
-          if (input.value === value) return;
-          // Refused (the message is already on screen): the field goes back to what is stored.
-          if (!(await onSave(input.value))) input.value = value;
-        }}
-        dir="ltr"
-        className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-sm focus:outline-none focus:border-[var(--sys-primary)]"
-      />
-    </label>
+    <Input
+      label={label}
+      type="time"
+      defaultValue={value}
+      onBlur={async (e) => {
+        const input = e.target;
+        if (input.value === value) return;
+        // Refused (the message is already on screen): the field goes back to what is stored.
+        if (!(await onSave(input.value))) input.value = value;
+      }}
+      dir="ltr"
+    />
   );
 }
 

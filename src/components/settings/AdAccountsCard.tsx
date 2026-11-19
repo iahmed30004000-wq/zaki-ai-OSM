@@ -417,11 +417,10 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
 
           <div>
             <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">رقم الحساب الإعلاني</label>
-            <input
+            <Input
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               placeholder={ACCOUNT_PLACEHOLDER[active.platform] ?? ''}
-              className={INPUT}
               dir="ltr"
             />
           </div>
@@ -475,11 +474,10 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
               </div>
               <div>
                 <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]">رقم الحساب الإعلاني (اختياري)</label>
-                <input
+                <Input
                   value={manualId}
                   onChange={(e) => setManualId(e.target.value)}
                   placeholder={ACCOUNT_PLACEHOLDER[active.platform] ?? ''}
-                  className={INPUT}
                   dir="ltr"
                 />
                 <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
@@ -553,5 +551,3 @@ const ACCOUNT_PLACEHOLDER: Record<string, string> = {
   SNAPCHAT: '00000000-0000-0000-0000-000000000000',
 };
 
-const INPUT =
-  'w-full rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 py-2 text-sm text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]';

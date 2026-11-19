@@ -5,7 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusChip } from '@/components/ui/StatusChip';
 import { useToast } from '@/components/ui/Toast';
@@ -59,10 +59,6 @@ interface Draft {
 }
 
 const KIND_TITLE: Record<Draft['kind'], string> = { UPSELL: 'الأب سيل', RENAMED: 'أسماء قديمة' };
-
-/** A select drawn like the kit's `Input` (the same classes, so the stylesheet does not grow). */
-const SELECT =
-  'h-11 md:h-10 w-full min-w-0 text-sm bg-[var(--sys-card)] border rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/25 focus:border-[var(--sys-primary)] px-3 border-[var(--sys-border-input)]';
 
 const blank = (kind: Draft['kind']): Draft => ({ id: null, kind, incomingName: '', productId: '', extraUnits: kind === 'UPSELL' ? '2' : '', linePrice: '', offers: [] });
 
@@ -228,14 +224,14 @@ export function TelegramAliasesDialog({ canManage, onClose }: { canManage: boole
         <label htmlFor="alias-product" className="block text-xs font-medium text-[var(--sys-heading)] mb-1.5">
           المنتج
         </label>
-        <select id="alias-product" className={SELECT} value={draft.productId} onChange={(e) => setDraft({ ...draft, productId: e.target.value })}>
+        <Select id="alias-product" value={draft.productId} onChange={(e) => setDraft({ ...draft, productId: e.target.value })}>
           <option value="">اختار المنتج</option>
           {(list?.products ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       {draft.kind === 'UPSELL' ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
