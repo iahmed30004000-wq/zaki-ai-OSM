@@ -186,7 +186,7 @@ describe('operations sit with the work, and configuration sits in settings', () 
     // 18/11 (R6): was «no longer filed with the staff» — the staff and the schedule are one group now, so what is pinned is the CARD:
     // the schedule is on «النظام», not on «الموظفون والصلاحيات».
     const system = SETTINGS_CARDS.find((c) => c.key === 'system')!;
-    expect(system.paths).toEqual(['/settings/system', '/admin/jobs']);
+    expect(system.paths).toEqual(['/settings/system', '/admin/jobs', '/settings/authenticity']);
     expect(SETTINGS_CARDS.find((c) => c.key === 'staff')!.paths).toEqual(['/admin/users', '/admin/permissions']);
     // Its own gate did not move: only the shelf it stands on.
     expect(findRoute('/admin/jobs')!.permissions).toEqual(['settings.view']);
@@ -225,8 +225,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the last tab of «الطلبات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). Not one address moved.
     // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(57);
-    expect(new Set(paths).size).toBe(57);
+    // 19/11: 58 with `/settings/authenticity` «رموز الأصالة» — the owner's list for the public barcode checker, on the system card, on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(58);
+    expect(new Set(paths).size).toBe(58);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

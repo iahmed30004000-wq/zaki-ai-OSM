@@ -127,6 +127,13 @@ const DATED: Dated[] = [
     permissions: ['settings.view'],
     sentence: 'قواعد الموظفين: صفحة جديدة بمفتاح الإعدادات نفسه، تأخذ بطاقتي سكور الموظفين وقواعد الخصم من إعدادات النظام.',
   },
+  {
+    on: '2026-11-19',
+    path: '/settings/authenticity',
+    change: 'added',
+    permissions: ['settings.view'],
+    sentence: 'رموز الأصالة: صفحة جديدة بمفتاح الإعدادات نفسه، قائمة الرموز التي يفحصها زائر عام على /verify/[id]؛ الإضافة والحذف يسألان مفتاحاً أدق (settings.authenticity_codes).',
+  },
 ];
 
 // ───────────────────────── the comparison ─────────────────────────

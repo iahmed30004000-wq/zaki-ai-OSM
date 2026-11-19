@@ -330,6 +330,8 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'settings.messages', requires: 'settings.view', ar: 'تعديل قوالب الرسائل ومعاينتها على طلب حقيقي', en: 'Edit message templates and preview them on a real order' },
       { key: 'settings.delivery_fees', requires: 'settings.view', ar: 'تعديل أجور التوصيل لكل شركة ومحافظة', en: 'Edit delivery fees per courier and region' },
       { key: 'settings.tracking', requires: 'settings.view', ar: 'تعديل بكسلات الإعلانات وتحويلاتها ورمز الربط من الخادم', en: 'Edit ad pixels, their conversions and the server-side token' },
+      // «رموز الأصالة»: adding/removing the codes the public /verify page checks a scan against.
+      { key: 'settings.authenticity_codes', requires: 'settings.view', ar: 'إضافة وحذف رموز الأصالة', en: 'Add and remove authenticity codes' },
     ],
   },
   {

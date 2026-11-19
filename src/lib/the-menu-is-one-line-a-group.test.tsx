@@ -111,9 +111,12 @@ describe('the menu is ten lines', () => {
     // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 19 = 56.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved. One more screen, no more line (it is a card of an existing door):
     // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 20 = 57.
-    expect(ALL_ROUTES).toHaveLength(57);
+    // 19/11: 58 with `/settings/authenticity` «رموز الأصالة» — the owner's list for the public barcode checker, on the system card of
+    // «الإدارة», on `settings.view`. Not one address moved. One more screen, no more line (it is a card of an existing door):
+    // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 21 = 58.
+    expect(ALL_ROUTES).toHaveLength(58);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 9, 5, 2, 20]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 9, 5, 2, 21]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
@@ -574,7 +577,9 @@ describe('the settings front door', () => {
     // schedule + 2 staff + 5 control = 17) + «العمولات» (its line is «المال», its card stays: 18 paths).
     // 19/11 (R15a): 17 → 18 with «قواعد الموظفين» (`/admin/staff-rules`) on its own card: 7 settings + 2 apps + the schedule + the staff rules + 2 staff + 5 control = 18
     // (19 paths with «العمولات»).
-    expect(adminScreens()).toHaveLength(18);
+    // 19/11: 18 → 19 with «رموز الأصالة» (`/settings/authenticity`) on the system card: 7 settings + 2 apps + the schedule + authenticity + the
+    // staff rules + 2 staff + 5 control = 19 (20 paths with «العمولات»).
+    expect(adminScreens()).toHaveLength(19);
     expect([...onCards].sort()).toEqual([...adminScreens(), OUTSIDE].sort());
     expect(NAV.find((g) => g.key === 'finance')!.routes.map((r) => r.path)).toContain(OUTSIDE);
   });

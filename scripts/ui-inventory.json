@@ -1116,6 +1116,16 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/screens/AuthenticityCodesScreen.tsx": {
+    "buttons": 3,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 3,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/BenchScreen.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -3218,6 +3228,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/verify/VerifyBarcodeView.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   }

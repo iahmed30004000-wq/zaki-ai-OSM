@@ -124,7 +124,9 @@ WITH req(action, needs) AS (VALUES
   -- 13/11: «تراجع عن التسليم» on the tracking screen. Granted by no migration — a pair here would be a person the owner ticked it for who lost the tracking key.
   ('ops.undo_delivery','ops.track'),
   -- 13/11: «الشركاء والسحوبات» (the partners' shares, statement and draws). Granted by no migration — a pair here would be a person the owner ticked it for who lost the finance view.
-  ('finance.partners','finance.view')
+  ('finance.partners','finance.view'),
+  -- 19/11: the admin screen for the public barcode checker's codes. Granted by no migration — a pair here would be a person the owner ticked it for who lost the settings view.
+  ('settings.authenticity_codes','settings.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
