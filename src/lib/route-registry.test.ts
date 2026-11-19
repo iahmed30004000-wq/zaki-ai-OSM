@@ -100,8 +100,9 @@ describe('navigation contract', () => {
     //
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the third tab of «المحادثات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). One more screen, no more line (it is a tab of an existing hub). Not one address moved.
-    expect(paths).toHaveLength(55);
-    expect(new Set(paths).size).toBe(55);
+    // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(56);
+    expect(new Set(paths).size).toBe(56);
   });
 
   it('the store section is its own group, and reads as one', () => {

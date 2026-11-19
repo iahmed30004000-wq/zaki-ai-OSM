@@ -1160,7 +1160,7 @@ function RecordDialog({
               <p className="text-note text-[var(--sys-destructive)] mt-1">تعذّر تحميل الشركاء — سكّر النافذة وافتحها من جديد.</p>
             )}
             {statement && partners.length === 0 && (
-              <p className="text-xs text-[var(--sys-warning)] mt-1">ما في شركاء فعّالين — سجّلهم من «إعدادات النظام».</p>
+              <p className="text-xs text-[var(--sys-warning)] mt-1">ما في شركاء فعّالين — سجّلهم من «قواعد المال».</p>
             )}
             {/* «نصيبه من الصافي X · سحب لحد هلق Y · بعد هالسحب: مكسور عليه Z» — and the draw goes through either way. */}
             {statement && partner && (
