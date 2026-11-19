@@ -159,33 +159,56 @@ export function refusalBody(e: StockTransferRefused) {
 
 const qty = z.number({ message: 'الكمية لازم تكون رقم' }).int('الكمية لازم تكون عدد صحيح');
 
-export const sendSchema = z.object({
-  /** Made by the client before the first press: the same id pressed twice is one transfer. */
-  id: z.string().uuid('رقم النقل مش صحيح').optional(),
-  fromWarehouseId: z.string().min(1, 'اختار المخزن اللي بتنقل منه'),
-  toWarehouseId: z.string().min(1, 'اختار المخزن اللي بتنقل عليه'),
-  /** Whose goods arrive. Absent = the same store (INTERNAL). Another store is a kind not built yet. */
-  toStoreId: z.string().min(1).optional(),
-  expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES']).optional(),
-  note: z.string().trim().max(500).optional().nullable(),
-  lines: z
-    .array(z.object({ productId: z.string().min(1), quantity: qty.positive('الكمية لازم تكون أكبر من صفر') }))
-    .min(1, 'زيد منتج واحد على الأقل')
-    .max(200, 'كتير منتجات بنقل واحد. قسّمه.'),
-});
+/*
+ * 20/11 (W3b): every message of these bodies is an Arabic sentence — the screen «نقل البضاعة» prints the door's refusal
+ * as it is. Before, a missing product id, an empty store id, a note or a reason past 500 letters, an unknown kind, or a
+ * body that was not an object at all came back in zod's English («Too small: expected string…», «Invalid input:
+ * expected object…»). The doors also turn any message with no Arabic letter into one Arabic sentence
+ * (`stock-transfer-door.arabicIssue`), so a rule added later without its sentence still answers in Arabic.
+ */
+const BODY_AR = { message: 'البيانات ناقصة أو مش صحيحة. حدّث الصفحة وجرّب كمان مرة.' };
+const productIdField = z.string({ message: 'المنتج مش محدد' }).min(1, 'اختار المنتج');
+const words = (what: string, min: number, minAr: string) =>
+  z.string({ message: minAr }).trim().min(min, minAr).max(500, `${what} أطول من 500 حرف. اختصره.`);
 
-export const receiveSchema = z.object({
-  lines: z
-    .array(z.object({ productId: z.string().min(1), quantity: qty.min(0, 'العدد ما بيكون أقل من صفر') }))
-    .min(1, 'اكتب العدد لكل منتج'),
-});
+export const sendSchema = z.object(
+  {
+    /** Made by the client before the first press: the same id pressed twice is one transfer. */
+    id: z.string({ message: 'رقم النقل مش صحيح' }).uuid('رقم النقل مش صحيح').optional(),
+    fromWarehouseId: z.string({ message: 'اختار المخزن اللي بتنقل منه' }).min(1, 'اختار المخزن اللي بتنقل منه'),
+    toWarehouseId: z.string({ message: 'اختار المخزن اللي بتنقل عليه' }).min(1, 'اختار المخزن اللي بتنقل عليه'),
+    /** Whose goods arrive. Absent = the same store (INTERNAL). Another store is a kind not built yet. */
+    toStoreId: z.string({ message: 'المتجر اللي بتنقل عليه مش صحيح' }).min(1, 'المتجر اللي بتنقل عليه مش صحيح').optional(),
+    expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES'], { message: 'نوع النقل مش معروف. حدّث الصفحة.' }).optional(),
+    note: z.string({ message: 'الملاحظة لازم تكون كلام' }).trim().max(500, 'الملاحظة أطول من 500 حرف. اختصرها.').optional().nullable(),
+    lines: z
+      .array(z.object({ productId: productIdField, quantity: qty.positive('الكمية لازم تكون أكبر من صفر') }, BODY_AR), {
+        message: 'زيد منتج واحد على الأقل',
+      })
+      .min(1, 'زيد منتج واحد على الأقل')
+      .max(200, 'كتير منتجات بنقل واحد. قسّمه.'),
+  },
+  BODY_AR
+);
 
-export const cancelSchema = z.object({ reason: z.string().trim().min(3, 'اكتب سبب الإلغاء').max(500) });
+export const receiveSchema = z.object(
+  {
+    lines: z
+      .array(z.object({ productId: productIdField, quantity: qty.min(0, 'العدد ما بيكون أقل من صفر') }, BODY_AR), { message: 'اكتب العدد لكل منتج' })
+      .min(1, 'اكتب العدد لكل منتج'),
+  },
+  BODY_AR
+);
 
-export const differenceSchema = z.object({
-  type: z.enum(['LOSS', 'DAMAGE'], { message: 'اختار: ضايع أو تالف' }),
-  reason: z.string().trim().min(3, 'اكتب سبب الفرق').max(500),
-});
+export const cancelSchema = z.object({ reason: words('سبب الإلغاء', 3, 'اكتب سبب الإلغاء') }, BODY_AR);
+
+export const differenceSchema = z.object(
+  {
+    type: z.enum(['LOSS', 'DAMAGE'], { message: 'اختار: ضايع أو تالف' }),
+    reason: words('سبب الفرق', 3, 'اكتب سبب الفرق'),
+  },
+  BODY_AR
+);
 
 /* ───────────────────────────── shared reads ───────────────────────────── */
 

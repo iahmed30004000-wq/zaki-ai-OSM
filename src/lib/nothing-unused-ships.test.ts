@@ -494,11 +494,7 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 18/11 (R14a1): '/api/orders/confirmation/team/[userId]' left — the drawer under a row of the team table (`performance/TeamMemberDrawer.tsx`) calls it.
   // 19/11 (W1b): '/api/inventory/placement' and '/api/inventory/placement/preview' left — the placement sheet on the balances screen (`inventory/PlacementSheet.tsx`) calls both.
   // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
-  // 20/11 (W3a): the stock-transfer doors are built ahead of their screen «نقل البضاعة» (W3b), which calls all four. Each line leaves with it.
-  '/api/inventory/transfers': 'W3a (20/11): قائمة النقل وباب الإرسال — شاشة «نقل البضاعة» (W3b) هي اللي بتستدعيه',
-  '/api/inventory/transfers/[id]/receive': 'W3a (20/11): استلام النقل بالعدّ — نافذة الاستلام بشاشة «نقل البضاعة» (W3b)',
-  '/api/inventory/transfers/[id]/cancel': 'W3a (20/11): إلغاء النقل قبل الاستلام — زر الإلغاء بشاشة «نقل البضاعة» (W3b)',
-  '/api/inventory/transfers/[id]/difference': 'W3a (20/11): اعتماد فرق النقل — نافذة الاعتماد بشاشة «نقل البضاعة» (W3b)',
+  // 20/11 (W3b): the four stock-transfer doors of W3a left — the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls the list, the send, the receive, the cancel and the difference.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',

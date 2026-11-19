@@ -456,7 +456,10 @@ describe('a layout saved BEFORE the arrows and the pin left draws the same menu 
       expect(body, JSON.stringify({ base, own })).toEqual(postFor(base, own, bodyToSave));
       expect(drawn(resolveLayout(base, stored(body)))).toEqual(drawn(resolved));
     }
-  });
+    // 20/11 (W3b): was the suite's default 20 s — 25 full renders of the card, and with one more page in the registry
+    // (`/inventory/transfers`, 58 rows to draw) it measured ~10.5 s alone against ~9.4 s on main, and went past 20 s under a
+    // loaded full run. The 25 rows and every assertion are unchanged; only the time it may take.
+  }, 60_000);
 
   it('and the review’s own case: base pins one screen, own pins another — nothing jumps', async () => {
     const group = NAV.find((g) => g.routes.length >= 4)!;

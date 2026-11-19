@@ -205,6 +205,10 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/transfers/[id]/receive/route.ts',
     'src/app/api/inventory/transfers/[id]/cancel/route.ts',
     'src/app/api/inventory/transfers/[id]/difference/route.ts',
+    // 20/11, W3b (the «نقل البضاعة» screen): the screen of the four transfer doors above. It reads no column; it hands
+    // `stock-transfer-kind.readStockTransfer` the end's own field `warehouseId` (`StockTransferEnd`) to say the kind before
+    // the press, which this sweep cannot tell from a column by its name.
+    'src/components/screens/StockTransfersScreen.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

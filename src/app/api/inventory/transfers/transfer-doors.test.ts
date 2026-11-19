@@ -255,7 +255,96 @@ describe('reach and tenancy at the doors', () => {
   });
 });
 
+describe('20/11 (W3b): every bad body is refused in Arabic — the screen prints the door’s sentence as it is', () => {
+  const arabic = /[؀-ۿ]/;
+  const latin = /[A-Za-z]/;
+  const raw = (body: string) => new Request('http://x/api', { method: 'POST', body });
+
+  it('send: a missing product, an empty store, a long note, an unknown kind, a body that is not an object', async () => {
+    await as('u-sender');
+    const bodies: unknown[] = [
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: [{ productId: '', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: [{ quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', toStoreId: '', lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', note: 'م'.repeat(501), lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', expectKind: 'SIDEWAYS', lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: 'p1' },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: ['p1'] },
+      { fromWarehouseId: 7, toWarehouseId: 'wB', lines: [{ productId: 'p1', quantity: 1 }] },
+      null,
+      'نص',
+      [],
+    ];
+    for (const b of bodies) {
+      const r = await list.POST(raw(JSON.stringify(b))).then(json);
+      expect([r.status, r.body.code], JSON.stringify(b)).toEqual([400, 'INVALID']);
+      expect(r.body.errorAr, JSON.stringify(b)).toMatch(arabic);
+      expect(r.body.errorAr, JSON.stringify(b)).not.toMatch(latin);
+    }
+    // Not JSON at all.
+    const broken = await list.POST(raw('{')).then(json);
+    expect([broken.status, broken.body.code]).toEqual([400, 'INVALID']);
+    expect(broken.body.errorAr).not.toMatch(latin);
+    expect(S.m.data.stockTransfer).toEqual([]);
+  });
+
+  it('NEGATIVE: a rule written later without its sentence still answers in Arabic — zod’s English never passes the door', async () => {
+    const { z } = await import('zod');
+    const { arabicIssue, BAD_BODY_AR } = await import('@/lib/stock-transfer-door');
+    const bare = z.object({ a: z.string().min(2) });
+    for (const v of [null, {}, { a: 'x' }, { a: 3 }]) {
+      const r = bare.safeParse(v);
+      expect(r.success).toBe(false);
+      expect(arabicIssue(r.error!)).toBe(BAD_BODY_AR);
+    }
+    // An Arabic sentence of the schema is passed as it is.
+    expect(arabicIssue(z.string().min(3, 'اكتب سبب').safeParse('').error!)).toBe('اكتب سبب');
+  });
+
+  it('receive, cancel, difference: an empty product, a long reason, a wrong type, a body that is not an object', async () => {
+    await as('u-sender');
+    const { body } = await send({ lines: [{ productId: 'p1', quantity: 3 }] });
+    const id = body.transfer.id;
+    const cases: [typeof receiveDoor.POST, unknown][] = [
+      [receiveDoor.POST, { lines: [{ productId: '', quantity: 1 }] }],
+      [receiveDoor.POST, { lines: [{ productId: 'p1', quantity: 'ثلاثة' }] }],
+      [receiveDoor.POST, null],
+      [cancelDoor.POST, { reason: 'م'.repeat(501) }],
+      [cancelDoor.POST, { reason: 4 }],
+      [cancelDoor.POST, 'نص'],
+      [differenceDoor.POST, { type: 'STOLEN', reason: 'سبب' }],
+      [differenceDoor.POST, { type: 'LOSS', reason: 'م'.repeat(501) }],
+      [differenceDoor.POST, []],
+    ];
+    await as('u-owner');
+    for (const [door, b] of cases) {
+      const r = await door(raw(JSON.stringify(b)), ctx(id)).then(json);
+      expect([r.status, r.body.code], JSON.stringify(b)).toEqual([400, 'INVALID']);
+      expect(r.body.errorAr, JSON.stringify(b)).toMatch(arabic);
+      expect(r.body.errorAr, JSON.stringify(b)).not.toMatch(latin);
+    }
+  });
+});
+
 describe('the list: the receiver counts blind', () => {
+  it('20/11 (W3b): NEGATIVE — no field of the receiver’s list carries the sent figure; the warehouses carry their country', async () => {
+    await as('u-sender');
+    await send({ lines: [{ productId: 'p1', quantity: 7 }] });
+    await as('u-receiver');
+    const hers = (await list.GET().then(json)).body;
+    expect(hers.transfers[0].lines).toEqual([{ productId: 'p1', productName: 'منتج ١', quantitySent: null, quantityReceived: null, difference: null }]);
+    expect(Object.values(hers.transfers[0]).filter((v) => v === 7)).toEqual([]);
+    expect(hers.warehouses.map((w: Row) => [w.id, w.countryId])).toEqual([
+      ['wA', 'k1'],
+      ['wB', 'k1'],
+    ]);
+    // Once she has counted, the sent figure and the difference are told — after, never before.
+    await receive(hers.transfers[0].id, [{ productId: 'p1', quantity: 5 }]);
+    const after = (await list.GET().then(json)).body;
+    expect(after.transfers[0].lines[0]).toMatchObject({ quantitySent: 7, quantityReceived: 5, difference: 2 });
+    expect(after.transfers[0]).toMatchObject({ blind: false, statusAr: 'مستلم بفرق' });
+  });
+
   it('while on the road the sent quantity is told only to the sender', async () => {
     await as('u-sender');
     await send({ lines: [{ productId: 'p1', quantity: 7 }] });

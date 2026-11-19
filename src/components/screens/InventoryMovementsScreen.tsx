@@ -41,6 +41,8 @@ const TYPE_AR: Record<string, string> = {
   DAMAGE: 'تالف',
   LOSS: 'ناقص — ما رجع',
   TRANSFER: 'نقل',
+  TRANSFER_OUT: 'نقل — طالع من مخزن',
+  TRANSFER_IN: 'نقل — داخل على مخزن',
 };
 
 export function InventoryMovementsScreen() {
