@@ -367,11 +367,6 @@
     "src/components/screens/ManufacturingScreen.tsx": {
       "textXs": 3
     },
-    "src/components/screens/PenaltiesScreen.tsx": {
-      "rawButtons": 7,
-      "rawSurfaces": 2,
-      "textXs": 17
-    },
     "src/components/screens/PermissionsScreen.tsx": {
       "rawButtons": 1
     },

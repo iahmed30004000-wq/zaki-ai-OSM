@@ -6,7 +6,10 @@ import { userCan } from '@/lib/can';
 import { useApp } from '@/context/AppContext';
 import { Modal } from '@/components/ui/Modal';
 import { RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiLoader4Line, RiUserSharedLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
 import { routeLabel } from '@/lib/route-registry';
 import { useToast } from '@/components/ui/Toast';
 import { Money } from '@/components/ui/Money';
@@ -119,36 +122,30 @@ export function PenaltiesScreen() {
   const unitAr = (key: string) => data?.kinds.find((k) => k.key === key)?.unitAr ?? '';
 
   return (
-    <div className="max-w-4xl space-y-3" dir="rtl">
-      <PageHeader title={routeLabel('/control/penalties')}
-          description="النظام يقترح، وأنت تقرّر. لا خصم يصير مالاً بلا قرار إنسان — ولا يُقترح خصمٌ على وصولٍ مُقدَّر من أول طلب لمسه الموظف، لأنه حدٌّ أعلى لا قياس."
+    <PageShell
+      title={routeLabel('/control/penalties')}
+      width="medium"
+      description="النظام يقترح، وأنت تقرّر. لا خصم يصير مالاً بلا قرار إنسان — ولا يُقترح خصمٌ على وصولٍ مُقدَّر من أول طلب لمسه الموظف، لأنه حدٌّ أعلى لا قياس."
+      toolbar={
+        <Segmented
+          aria-label="حالة الخصم"
+          options={TABS.map((t) => ({ value: t.key, label: t.ar }))}
+          value={tab}
+          onChange={setTab}
+          className="w-full"
         />
-
-      <div className="flex gap-1.5">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`h-11 md:h-8 flex-1 rounded-lg border text-xs font-medium ${
-              tab === t.key ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]' : 'border-[var(--sys-border)] text-[var(--sys-foreground)]'
-            }`}
-          >
-            {t.ar}
-          </button>
-        ))}
-      </div>
-
-      {error && <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>}
+      }
+    >
+      {error && <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-sm text-[var(--sys-destructive)]">{error}</p>}
 
       {!data ? (
         <p className="flex items-center justify-center gap-2 py-10 text-sm text-[var(--sys-muted-foreground)]">
           <RiLoader4Line className="h-4 w-4 animate-spin" /> جارٍ التحميل…
         </p>
       ) : data.penalties.length === 0 ? (
-        <p className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-6 text-center text-sm text-[var(--sys-muted-foreground)]">
+        <Card padding="lg" className="text-center text-sm text-[var(--sys-muted-foreground)]">
           لا خصومات هنا.
-        </p>
+        </Card>
       ) : (
         <ul className="space-y-2">
           {data.penalties.map((row) => {
@@ -156,13 +153,14 @@ export function PenaltiesScreen() {
             // A «فرق تحصيل» is named by what happens to it, not by the general words.
             const st = isShortfall ? { ...STATUS_AR[row.status], ar: SHORTFALL_STATUS_AR[row.status] } : STATUS_AR[row.status];
             return (
-              <li key={row.id} className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-3">
+              <li key={row.id}>
+                <Card plain padding="sm">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-sm font-semibold text-[var(--sys-heading)]">{row.user.name}</span>
-                  <span className={`rounded-lg border px-1.5 py-0.5 text-xs ${st.cls}`}>{st.ar}</span>
+                  <span className={`rounded-lg border px-1.5 py-0.5 text-note ${st.cls}`}>{st.ar}</span>
                 </div>
 
-                <p className="mt-1 text-xs text-[var(--sys-foreground)]">
+                <p className="mt-1 text-sm text-[var(--sys-foreground)]">
                   {kindAr(row.kind)} ·{' '}
                   <span className="tabular-nums" dir="ltr">
                     {row.occurredOn.slice(0, 10)}
@@ -171,7 +169,7 @@ export function PenaltiesScreen() {
 
                 {/* The arithmetic, printed. Nobody should have to trust a
                     number that took money from somebody. */}
-                <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">
+                <p className="mt-1 text-sm text-[var(--sys-muted-foreground)]">
                   <span className="tabular-nums">{row.units}</span> {unitAr(row.kind)} ·{' '}
                   المحتسَب <span className="tabular-nums">{row.chargedUnits}</span> ·{' '}
                   <span className="font-semibold tabular-nums text-[var(--sys-heading)]" dir="ltr">
@@ -181,13 +179,13 @@ export function PenaltiesScreen() {
 
                 {/* «طلب · كشف · التفسير» — what the approval wrote, so nobody opens the statement to learn what this is. */}
                 {isShortfall && row.note && (
-                  <p className="mt-1 rounded-lg bg-[var(--sys-surface)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)]">
+                  <p className="mt-1 rounded-lg bg-[var(--sys-surface)] px-2 py-1 text-note text-[var(--sys-muted-foreground)]">
                     {row.note}
                   </p>
                 )}
 
                 {row.decisionNote && (
-                  <p className="mt-1 rounded-lg bg-[var(--sys-surface)] px-2 py-1 text-xs text-[var(--sys-muted-foreground)]">
+                  <p className="mt-1 rounded-lg bg-[var(--sys-surface)] px-2 py-1 text-note text-[var(--sys-muted-foreground)]">
                     السبب: {row.decisionNote}
                   </p>
                 )}
@@ -196,51 +194,56 @@ export function PenaltiesScreen() {
                   <div className="mt-2 flex flex-wrap gap-2 border-t border-[var(--sys-border)] pt-2">
                     {row.status === 'PROPOSED' && (
                       <>
-                        <button
+                        <Button
                           type="button"
+                          variant="danger"
+                          size="sm"
                           disabled={busy === row.id}
-                          onClick={() => decide(row, 'apply')}
-                          className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] px-2.5 py-1 text-xs font-medium text-[var(--sys-destructive)] disabled:opacity-60"
+                          onClick={() => { void decide(row, 'apply'); }}
                         >
                           <RiCheckLine className="h-4 w-4" /> اعتمد الخصم
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           disabled={busy === row.id}
                           onClick={() => setAsking({ row, action: 'waive' })}
-                          className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2.5 py-1 text-xs text-[var(--sys-foreground)] disabled:opacity-60"
                         >
                           <RiCloseLine className="h-4 w-4" /> ألغِ
-                        </button>
+                        </Button>
                         {isShortfall && (
-                          <button
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             disabled={busy === row.id}
                             onClick={() => setAsking({ row, action: 'retarget' })}
-                            className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2.5 py-1 text-xs text-[var(--sys-foreground)] disabled:opacity-60"
                           >
                             <RiUserSharedLine className="icon-mirror h-4 w-4" /> حوّل لموظف آخر
-                          </button>
+                          </Button>
                         )}
                       </>
                     )}
                     {row.status === 'APPLIED' && !row.payslipId && (
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
+                        size="sm"
                         disabled={busy === row.id}
                         onClick={() => setAsking({ row, action: 'reverse' })}
-                        className="min-h-11 md:min-h-0 inline-flex items-center flex items-center gap-1 rounded-lg border border-[var(--sys-border)] px-2.5 py-1 text-xs text-[var(--sys-foreground)] disabled:opacity-60"
                       >
                         <RiArrowGoBackLine className="icon-mirror h-4 w-4" /> ارتجاع
-                      </button>
+                      </Button>
                     )}
                     {row.status === 'APPLIED' && row.payslipId && (
-                      <span className="text-xs text-[var(--sys-muted)]">
+                      <span className="text-note text-[var(--sys-muted)]">
                         سُوّي مع صرفية — تصحيحه حركة جديدة لا تعديل للماضي.
                       </span>
                     )}
                   </div>
                 )}
+                </Card>
               </li>
             );
           })}
@@ -264,7 +267,7 @@ export function PenaltiesScreen() {
           <div className="space-y-3">
             {asking.action === 'retarget' ? (
               <>
-                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                <p className="text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
                   يُلغى هذا الخصم بسبب «ليس المسؤول»، ويُكتب خصمٌ جديد بنفس المبلغ على الموظف الذي تختاره، وينتظر قرارك.
                 </p>
                 <select
@@ -282,7 +285,7 @@ export function PenaltiesScreen() {
               </>
             ) : (
               <>
-                <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                <p className="text-sm leading-relaxed text-[var(--sys-muted-foreground)]">
                   اكتب السبب. خصمٌ يُلغى بلا سبب مكتوب لا يُفرَّق عن محاباة — والمتضرّر هو من أُلغي
                   الخصم عنه حين يسأل أحدٌ لاحقاً.
                 </p>
@@ -292,38 +295,38 @@ export function PenaltiesScreen() {
                   rows={3}
                   maxLength={500}
                   autoFocus
-                  className="w-full rounded-lg border border-[var(--sys-border-input)] px-2 py-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]"
+                  className="w-full rounded-lg border border-[var(--sys-border-input)] px-2 py-2 text-sm text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]"
                 />
               </>
             )}
             <div className="flex gap-2">
-              <button
+              <Button
                 type="button"
+                variant="primary"
                 disabled={(asking.action === 'retarget' ? !target : !reason.trim()) || busy === asking.row.id}
-                onClick={() =>
-                  asking.action === 'retarget'
+                onClick={() => {
+                  void (asking.action === 'retarget'
                     ? decide(asking.row, 'retarget', undefined, target)
-                    : decide(asking.row, asking.action, reason.trim())
-                }
-                className="min-h-11 md:min-h-0 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+                    : decide(asking.row, asking.action, reason.trim()));
+                }}
               >
                 {busy === asking.row.id ? 'جارٍ…' : 'تأكيد'}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => {
                   setAsking(null);
                   setReason('');
                   setTarget('');
                 }}
-                className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
               >
                 تراجع
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
       )}
-    </div>
+    </PageShell>
   );
 }
