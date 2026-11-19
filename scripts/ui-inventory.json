@@ -1074,10 +1074,10 @@
     "tabs": 0
   },
   "src/components/screens/AiSettingsScreen.tsx": {
-    "buttons": 8,
+    "buttons": 7,
     "inputs": 6,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
     "icons": 11,
     "links": 0,
@@ -1826,7 +1826,7 @@
     "buttons": 1,
     "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -1834,13 +1834,14 @@
   },
   "src/components/screens/ai/AssistantsTable.tsx": {
     "buttons": 0,
-    "inputs": 5,
+    "inputs": 4,
     "columns": 5,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/commission/FairnessPanel.tsx": {
     "buttons": 1,
@@ -2426,14 +2427,16 @@
     "iconButtons": 3
   },
   "src/components/settings/MessageTemplatesCard.tsx": {
-    "buttons": 5,
-    "inputs": 6,
+    "buttons": 4,
+    "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "switches": 1
   },
   "src/components/settings/PartnersCard.tsx": {
     "buttons": 2,

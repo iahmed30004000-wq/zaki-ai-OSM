@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Card } from '@/components/ui/Card';
 import { apiJson } from '@/lib/api-client';
 import { readTypedFigure } from '@/lib/numeric-input';
 import { MAX_CAP_TOKENS } from '@/lib/ai-spend-core';
@@ -68,9 +69,9 @@ export function AiSpendCapCard({ cap, usage, canManage, onSaved }: Props) {
   }
 
   return (
-    <section className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4">
+    <Card padding="md">
       <h2 className="mb-3 text-sm font-bold text-[var(--sys-heading)]">سقف الاستعمال</h2>
-      <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted)]">
+      <p className="mb-3 text-note leading-relaxed text-[var(--sys-muted)]">
         أعلى ما يستعمله المساعد في اليوم وفي الشهر، ويُحسب بالرموز (الرمز الواحد نحو ثلاثة أحرف). الخانة الفارغة تعني بلا
         سقف. إذا بلغ المساعد السقف توقّف وقال السبب. نموذج جهازك الخاص لا يُحسب. اليوم والشهر بتوقيت غرينتش.
       </p>
@@ -96,17 +97,17 @@ export function AiSpendCapCard({ cap, usage, canManage, onSaved }: Props) {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canManage ? (
-          <Button onClick={save} disabled={busy}>
+          <Button type="button" onClick={() => { void save(); }} disabled={busy}>
             {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
             احفظ السقف
           </Button>
         ) : (
-          <span className="text-xs text-[var(--sys-muted)]">لا تملك مفتاح تعديل السقف.</span>
+          <span className="text-note text-[var(--sys-muted)]">لا تملك مفتاح تعديل السقف.</span>
         )}
         {msg && (
-          <span className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>
+          <span className={`text-note font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>
         )}
       </div>
-    </section>
+    </Card>
   );
 }

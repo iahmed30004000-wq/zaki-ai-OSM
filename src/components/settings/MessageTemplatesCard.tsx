@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { IconButton } from '@/components/ui/IconButton';
+import { Card } from '@/components/ui/Card';
+import { Switch } from '@/components/ui/Switch';
 import { apiJson } from '@/lib/api-client';
 import {
   fillTemplate,
@@ -44,7 +47,7 @@ interface Loaded {
 }
 
 const INPUT =
-  'h-10 px-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-xs text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]';
+  'h-10 px-2 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] text-note text-[var(--sys-foreground)] focus:outline-none focus:border-[var(--sys-primary)]';
 
 /** Nothing to fill from — said plainly rather than previewed against a lie. */
 const NO_SAMPLE = 'لا طلبات في هذا المتجر بعد، فلا معاينة بطلب حقيقي.';
@@ -79,10 +82,10 @@ export function MessageTemplatesCard() {
   }, [load]);
 
   if (!canManage) {
-    return <p className="text-xs text-[var(--sys-muted)]">قوالب الرسائل تتعدّل لمن عنده «تعديل قوالب الرسائل».</p>;
+    return <p className="text-note text-[var(--sys-muted)]">قوالب الرسائل تتعدّل لمن عنده «تعديل قوالب الرسائل».</p>;
   }
   if (error && !data) {
-    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>;
+    return <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">{error}</p>;
   }
   if (!data) return null;
 
@@ -145,7 +148,7 @@ export function MessageTemplatesCard() {
 
   return (
     <div className="space-y-2" dir="rtl">
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         تُرسَل من رقم شركتك عبر تطبيقك — بلا بوابة ولا اشتراك ولا كلفة لكل رسالة. مجمّعة حسب الموقف
         الذي تُقال فيه، لا حسب القناة.
       </p>
@@ -155,14 +158,14 @@ export function MessageTemplatesCard() {
         const isOpen = openGroup === s.key;
         const live = mine.filter((t) => t.active).length;
         return (
-          <section key={s.key} className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)]">
+          <Card plain key={s.key}>
             <button
               type="button"
               onClick={() => setOpenGroup(isOpen ? null : s.key)}
               className="flex w-full items-center gap-2 px-3 py-2 text-start"
             >
-              <span className="flex-1 text-xs font-semibold text-[var(--sys-foreground)]">{s.ar}</span>
-              <span className="text-xs tabular-nums text-[var(--sys-muted)]">
+              <span className="flex-1 text-note font-semibold text-[var(--sys-foreground)]">{s.ar}</span>
+              <span className="text-note tabular-nums text-[var(--sys-muted)]">
                 {mine.length === 0 ? 'لا قوالب' : `${live} من ${mine.length} مفعّلة`}
               </span>
               <RiArrowDownSLine className={`h-4 w-4 text-[var(--sys-muted)] transition ${isOpen ? 'rotate-180' : ''}`} />
@@ -214,23 +217,20 @@ export function MessageTemplatesCard() {
                           <option key={l.code} value={l.code}>{l.label}</option>
                         ))}
                       </select>
-                      <label className="flex items-center gap-1 text-xs text-[var(--sys-muted-foreground)]">
-                        <input
-                          type="checkbox"
-                          checked={t.active}
-                          onChange={(e) => patch(t.id, { active: e.target.checked })}
-                          className="h-5 w-5 accent-[var(--sys-primary)]"
-                        />
-                        مفعّل
-                      </label>
-                      <button
+                      {/* 18/11 (R15g): on/off is the kit's switch — an id per template, since every row has one. */}
+                      <Switch
+                        id={`template-active-${t.id}`}
+                        checked={t.active}
+                        onChange={(on) => patch(t.id, { active: on })}
+                        label="مفعّل"
+                      />
+                      <IconButton
                         type="button"
+                        label="احذف القالب"
                         onClick={() => setTemplates(templates.filter((x) => x.id !== t.id))}
-                        aria-label="احذف القالب"
-                        className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-lg p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]"
                       >
                         <RiDeleteBinLine className="h-4 w-4" />
-                      </button>
+                      </IconButton>
                     </div>
 
                     <textarea
@@ -241,53 +241,54 @@ export function MessageTemplatesCard() {
                       onChange={(e) => patch(t.id, { body: e.target.value })}
                       rows={2}
                       maxLength={1000}
-                      className="w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 py-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]"
+                      className="w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 py-2 text-note text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]"
                     />
 
                     {/* Clicked, never typed: a hand-written placeholder with a
                         space in it reaches the customer as a brace. */}
                     <div className="flex flex-wrap gap-1">
                       {data.vars.map((v) => (
-                        <button
+                        <Button
                           key={v.key}
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           title={v.label}
                           onClick={() => insertVar(t.id, v.key)}
-                          className="min-h-11 md:min-h-0 inline-flex items-center rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] px-1.5 py-0.5 text-xs text-[var(--sys-primary)] hover:border-[var(--sys-primary)]"
                         >
                           {v.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
-                    <p className="rounded-lg bg-[var(--sys-surface)] px-2 py-1.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                    <p className="rounded-lg bg-[var(--sys-surface)] px-2 py-1.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                       {data.sample ? fillTemplate(t.body, data.sample) || '—' : NO_SAMPLE}
                     </p>
                   </div>
                 ))}
 
-                <Button variant="outline" size="sm" onClick={() => add(s.key)}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => add(s.key)}>
                   <RiAddCircleLine className="h-4 w-4" />
                   قالب في «{s.ar}»
                 </Button>
               </div>
             )}
-          </section>
+          </Card>
         );
       })}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Button size="sm" onClick={save} disabled={busy}>
+        <Button type="button" size="sm" onClick={() => { void save(); }} disabled={busy}>
           {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiMessage3Line className="h-4 w-4" />}
           احفظ القوالب
         </Button>
         {saved && (
-          <span className="inline-flex items-center gap-1 text-xs text-[var(--sys-success)]">
+          <span className="inline-flex items-center gap-1 text-note text-[var(--sys-success)]">
             <RiCheckLine className="h-4 w-4" /> تم الحفظ
           </span>
         )}
         {data.sample && (
-          <span className="text-xs text-[var(--sys-muted)]">
+          <span className="text-note text-[var(--sys-muted)]">
             المعاينة بالطلب{' '}
             <span dir="ltr" className="tabular-nums">{data.sample.orderNumber}</span>
           </span>
@@ -295,7 +296,7 @@ export function MessageTemplatesCard() {
       </div>
 
       {error && (
-        <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">{error}</p>
+        <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">{error}</p>
       )}
     </div>
   );
