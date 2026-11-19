@@ -1,20 +1,23 @@
-import { CONFIRMATION_RULE } from './confirmation-rule';
-
 /**
  * ═══════════════════════════════════════════════════════════════════════
  * «إثبات المكالمات» — THE CLIENT-SAFE HALF (Confirmation Center v2, step A).
  *
- * Numbers and words only, and ONE import — the rule set's numbers (`confirmation-rule.ts`, itself import-free; request C2, 18/11): the screens import this file and nothing else of the rule, so the bundle of `/confirmation/mine` (a few hundred
- * bytes below its ceiling) grows by the strings and not by the rule. The rule itself — which «اتصال» press counts, since when — is `call-proof.ts`, and the
- * server decides; a screen only ticks a number the server gave it (`secondsLeft`).
+ * Numbers and words only, and NO IMPORTS: the screens import this file and nothing else of the rule, so the bundle of `/confirmation/mine` (at its ceiling) grows by the
+ * strings and not by the rule. The rule itself — which «اتصال» press counts, since when — is `call-proof.ts`, and the server decides; a screen only ticks a number the
+ * server gave it (`secondsLeft`).
+ *
+ * REQUEST Q3b (19/11): THE SECONDS ARE THE RULE IN FORCE'S, AND THEY REACH THE DESK FROM THE SERVER. The doors read the owner's rule (`readConfirmationRule`) and hand its
+ * `proofSeconds` to `call-proof.ts`; `/api/confirmation/mine` answers them (`proofSeconds`) and the desk waits that long. The figure below is the DEFAULT only — what a
+ * caller that was handed no rule, or a desk answer without the field, falls back to. It is typed here and not imported from `confirmation-rule.ts` so the desk's bundle
+ * stops carrying the whole rule set for one number; `call-proof-words.test.ts` pins it equal to `CONFIRMATION_RULE.proofSeconds`.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-/** The proof's seconds, from the one rule set (request C2). */
-const PROOF_MS = CONFIRMATION_RULE.proofSeconds * 1000;
+/** The DEFAULT proof's milliseconds — `CONFIRMATION_RULE.proofSeconds` × 1000 (pinned by a test); the rule in force's come from the server. */
+const PROOF_MS = 30_000;
 
 /**
- * How long after the «اتصال» press a «didn't answer» may be recorded, per result. One constant per result so the owner can lower «مشغول» or «مسكّر» later
+ * How long after the «اتصال» press a «didn't answer» may be recorded, per result, by the DEFAULT rule. One constant per result so the owner can lower «مشغول» or «مسكّر» later
  * (a busy tone is known in seconds) without anyone digging through the code; in step A all three are the spec's thirty seconds.
  */
 export const MIN_CALL_MS = { NO_ANSWER: PROOF_MS, BUSY: PROOF_MS, UNREACHABLE: PROOF_MS } as const;

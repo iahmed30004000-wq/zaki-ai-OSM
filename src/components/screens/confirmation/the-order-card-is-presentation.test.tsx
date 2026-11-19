@@ -335,7 +335,9 @@ describe('OrderCard is presentation: no server, no session, no permission — th
       'onDialog: (kind, o) => setDialog({ kind, order: o }),',
       'sheetOn || proofOn',
       "if (method !== 'PHONE') return;",
-      'if (proofOn) holdFor(o.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS);',
+      // UPDATED 2026-11-19 (request Q3b): was `holdFor(o.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS)` — the wait is now the rule in force's seconds as the server said
+      // them (`waitMs`, the default without them), still decided by the screen and handed to the card.
+      'if (proofOn) holdFor(o.id, waitMs);',
       'if (sheetOn) startCall(o);',
       'lacksRegion(order) &&',
       'locked={needsContact(order)}',

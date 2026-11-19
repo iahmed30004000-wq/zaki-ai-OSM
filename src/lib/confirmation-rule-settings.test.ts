@@ -314,8 +314,14 @@ describe('the cached reader', () => {
   });
 });
 
-describe('inert: nothing but its own door reads the stored rule in this request', () => {
-  it('no file under src imports confirmation-rule-settings except the door (and tests)', () => {
+/*
+ * UPDATED 2026-11-19 (request Q3b — «the engine reads the rule it is given»): this guard was «INERT: no file under src imports this module except the door» — the blocker
+ * of Q3a. Q3b is the request that makes the engine read it, so the list is now EXACTLY the door and the engine's readers named by the row (its doors, its job, its
+ * libraries) — a new importer still turns it red, and so does any screen: the desk's bundle is at its ceiling and gets the rule's numbers from the server. The scan also
+ * sees `import('…')` and `require('…')` now (the Q3a review: the old pattern saw only `from '…'`).
+ */
+describe('who reads the stored rule: the door and the engine — never a screen', () => {
+  it('the files under src that import confirmation-rule-settings are exactly the door and the engine (tests aside)', () => {
     const root = join(__dirname, '..');
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -327,8 +333,23 @@ describe('inert: nothing but its own door reads the stored rule in this request'
     };
     walk(root);
     const importers = files
-      .filter((f) => /from\s+['"][^'"]*confirmation-rule-settings['"]/.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(root, f).replace(/\\/g, '/'));
-    expect(importers).toEqual(['app/api/settings/confirmation-rule/route.ts']);
+      .filter((f) => /(from\s+|import\s*\(\s*|require\s*\(\s*)['"][^'"]*confirmation-rule-settings['"]/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(root, f).replace(/\\/g, '/'))
+      .sort();
+    expect(importers).toEqual([
+      'app/api/confirmation/mine/route.ts',
+      'app/api/confirmation/queue/route.ts',
+      'app/api/orders/[id]/confirmation/route.ts',
+      'app/api/orders/[id]/contact-attempts/route.ts',
+      'app/api/settings/confirmation-rule/route.ts',
+      'lib/confirmation-queue.ts',
+      'lib/confirmation-rule-summary.ts',
+      'lib/jobs/definitions/release-stale-claims.ts',
+      'lib/no-answer-cadence.ts',
+      'lib/no-answer-watch.ts',
+      'lib/order-timeline.ts',
+    ]);
+    // …and no screen at all: a component or a client file that read it would put the reader (and the database client behind it) into a bundle.
+    expect(importers.filter((f) => f.startsWith('components/') || /^'use client'/m.test(readFileSync(join(root, f), 'utf8')))).toEqual([]);
   });
 });

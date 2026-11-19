@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONTACT_FIRST_MESSAGE } from '@/lib/confirmation-queue';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 
@@ -74,6 +74,7 @@ vi.mock('@/lib/call-proof-switch', () => ({
 }));
 
 import { POST } from '@/app/api/orders/[id]/confirmation/route';
+import { CONFIRMATION_RULE_DEFAULT, documentAfterSave } from '@/lib/confirmation-rule-settings';
 
 const T0 = new Date('2026-11-15T10:00:00.000Z').getTime();
 const ME = { id: 'actor-1', name: 'منفّذ', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' };
@@ -294,6 +295,31 @@ describe('OFF — the door is today’s', () => {
   });
 
   it('a date with the reason «لا يرد» is saved with no press', async () => {
+    expect((await post({ action: 'schedule_follow_up', nextFollowUpAt: tomorrow(), followUpReason: 'NO_ANSWER', expectedVersion: 1 })).status).toBe(200);
+  });
+});
+
+/**
+ * Request Q3b (review 19/11, blocker 2): the date saved with the reason «لا يرد» asks the proof with the RULE IN FORCE's seconds. The company stores «proof 45» (its own
+ * company id: the reader caches per company, and the clock here is faked).
+ */
+describe('an edited rule stored for the company — the ATTEMPT question waits 45 seconds', () => {
+  beforeEach(() => {
+    const doc = documentAfterSave(null, { rule: { ...CONFIRMATION_RULE_DEFAULT, proofSeconds: 45 }, effectiveAt: new Date(0), byUserId: 'u9' }, 0);
+    db.company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: doc }) })) };
+    requireContext.mockResolvedValue({ ...ctx, companyId: 'c-q3b-attempt45' });
+  });
+  afterEach(() => {
+    delete db.company;
+  });
+
+  it('a press 31 s old is CALL_TOO_SOON with 14 s left (the default would save it); 45 s saves the date', async () => {
+    line('OPENED', 31_000);
+    const soon = await post({ action: 'schedule_follow_up', nextFollowUpAt: tomorrow(), followUpReason: 'NO_ANSWER', expectedVersion: 1 });
+    expect(soon.status).toBe(409);
+    expect(await soon.json()).toMatchObject({ code: 'CALL_TOO_SOON', waitSeconds: 14 });
+    rows.length = 0;
+    line('OPENED', 45_000);
     expect((await post({ action: 'schedule_follow_up', nextFollowUpAt: tomorrow(), followUpReason: 'NO_ANSWER', expectedVersion: 1 })).status).toBe(200);
   });
 });

@@ -20,7 +20,9 @@ import { countedRounds, roundsOn, workClock, type AttemptFact, type WorkClock } 
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { nextAttemptWords, noAnswerHint } from '@/lib/attempt-words';
-import { CADENCE_LIMIT, type CadenceFact, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
+import { type CadenceFact, cadenceCalOf, cadenceCardWords, cadenceDesk, cadenceLimit, cadenceVerdict, closedCardWords } from '@/lib/no-answer-cadence';
+import { readConfirmationRule } from '@/lib/confirmation-rule-settings';
+import { CONFIRMATION_RULE } from '@/lib/confirmation-rule';
 import { callProofOn } from '@/lib/call-proof-switch';
 import { callProofState } from '@/lib/call-proof';
 import {
@@ -398,10 +400,17 @@ export async function GET(request: Request) {
     // draws neither when it is absent. Everything else on the desk — the cards, their words, the tabs — is what it was.
     //
     // «جدول المحاولات» (step B) — the same switch as the proof, read for the DESK whoever's it is (a colleague's desk shows the same limit and the same numbers); null = off, and then every
-    // line below is today's. With it on the returns mode comes with it, so the banner stays quiet, exactly as with the legacy mode. The plan's calendar is `cadenceCalOf(country)` — the door's own
+    // line below is today's. With it on the returns mode comes with it, so the banner stays quiet, exactly as with the legacy mode. The plan's calendar is `cadenceCalOf` (country and rule) — the door's own
     // builder (the country's timezone, rest days AND work hours), so the desk replays the stored lines with the very rule the door wrote their dues under.
     const cadenceAt = await cadenceSince(db, companyId);
-    const cadenceCal = cadenceAt ? cadenceCalOf(cadenceAt, country) : null;
+    /*
+     * REQUEST Q3b (19/11): THE RULE IN FORCE, read ONCE for the desk (cached thirty seconds) and only with the plan on — off, nothing new is read and the answer is main's.
+     * Its steps, days and clocks go into the plan's calendar (the desk replays the lines under the rule the door judges the next press by), its attempts into every
+     * counter, and its proof seconds to the screen (`proofSeconds` below): the desk's bundle carries no rule — it waits what the server says.
+     */
+    const rule = cadenceAt ? await readConfirmationRule(db, companyId, now.getTime()) : null;
+    const cadenceCal = cadenceAt && rule ? cadenceCalOf(cadenceAt, country, rule) : null;
+    const planLimit = cadenceLimit(rule ?? undefined);
     const returnsMode = !!cadenceAt || (rounds && (await returnsModeOn(db, companyId, roundsSw)));
     // «واتساب بعد لا يرد» from the company's number for this country (`after-no-answer.ts`) — only on her own desk, the one with the sheet,
     // and only for whoever holds `whatsapp.send`: the send door asks it, and a button that answers 403 is not offered.
@@ -529,22 +538,22 @@ export async function GET(request: Request) {
       return {
         ...row,
         ...helperLink(o),
-        ...(proofAttempts ? { callProof: callProofState({ attempts: proofAttempts.get(o.id) ?? [], employeeId: user.id, claimedAt: o.claimedAt, now }) } : {}),
+        ...(proofAttempts ? { callProof: callProofState({ attempts: proofAttempts.get(o.id) ?? [], employeeId: user.id, claimedAt: o.claimedAt, now, proofSeconds: rule?.proofSeconds }) } : {}),
         // «الشغل أول»: a call is owed on it right now, why — and, for one that is waiting, when it falls due.
         dueNow: verdict.due,
         dueReason: verdict.reason,
         dueAt: verdict.dueAt ? verdict.dueAt.toISOString() : null,
         // …and the line the card prints about it, on the store's clock (null when it has nothing to say).
         dueWords:
-          (desks && verdict.reason !== 'PROMISE' ? cadenceCardWords(desks.get(o.id)!, now, country.timezone) : null) ??
+          (desks && verdict.reason !== 'PROMISE' ? cadenceCardWords(desks.get(o.id)!, now, country.timezone, planLimit) : null) ??
           dueLabel(verdict, { rounds: row.noAnswerCount, limit: NO_ANSWER_LIMIT, now, timeZone: country.timezone }),
         // Under the plan: «a press made now would close it» is a fact of the server's clock, so the call sheet warns only when it is true.
         ...(desks ? { closesOnNext: desks.get(o.id)!.closesOnNext } : {}),
         // …and the one counter's words for the button and the tag («محاولة N من 5», the attempt the next press will be) — written here so the desk's bundle carries no counting.
-        ...(desks ? { attemptWords: nextAttemptWords(desks.get(o.id)!.counted, CADENCE_LIMIT) } : {}),
+        ...(desks ? { attemptWords: nextAttemptWords(desks.get(o.id)!.counted, planLimit) } : {}),
         // …and the hint beside «لا يرد», only where it is true for the rule in force (finding #11): absent = the card says nothing.
         ...((h) => (h ? { noAnswerHint: h } : {}))(
-          noAnswerHint({ planned: !!desks, rounds: !!rounds && !desks, closesOnNext: desks?.get(o.id)!.closesOnNext, count: row.noAnswerCount, limit: desks ? CADENCE_LIMIT : NO_ANSWER_LIMIT })
+          noAnswerHint({ planned: !!desks, rounds: !!rounds && !desks, closesOnNext: desks?.get(o.id)!.closesOnNext, count: row.noAnswerCount, limit: desks ? planLimit : NO_ANSWER_LIMIT })
         ),
       };
     });
@@ -566,13 +575,16 @@ export async function GET(request: Request) {
       ...(fromCompany ? { whatsappRoute: 'COMPANY' as const } : {}),
       /** Postponed to a later day — off her desk, not gone. */
       waitingLater,
-      noAnswerLimit: desks ? CADENCE_LIMIT : NO_ANSWER_LIMIT,
+      noAnswerLimit: desks ? planLimit : NO_ANSWER_LIMIT,
       // «نظام الجولات» is on: the counter is «جولة n من 3». Absent when it is off — and never beside the plan, which speaks «محاولة n من 5».
       ...(rounds && !desks ? { rounds: true } : {}),
       // «جدول المحاولات» is on: the limit above is 5 and the cards carry the server's words. Absent when it is off.
       ...(desks ? { cadenceOn: true } : {}),
       // «إثبات المكالمات» is on: every held card carries `callProof`, and its «لا يرد» / «مشغول» / «مسكّر» obey it. Absent when it is off.
       ...(proofAttempts ? { callProofOn: true } : {}),
+      // …and how long her «لا يرد» waits after «اتصال»: the rule in force's seconds (request Q3b) — said only when they are not the default, which the desk already
+      // carries (`MIN_CALL_MS`); so with the default rule this answer is main's, key for key. The desk waits this figure; without it, its own default.
+      ...(proofAttempts && rule && rule.proofSeconds !== CONFIRMATION_RULE.proofSeconds ? { proofSeconds: rule.proofSeconds } : {}),
       // The server's own clock, so a wrong clock on her machine cannot make
       // an order look answered or overdue.
       serverNow: new Date().toISOString(),
@@ -606,7 +618,7 @@ export async function GET(request: Request) {
       closedToday: closedToday.map((o) => {
         const row = decorate(o);
         // RV2391 — under the plan only: a count below the limit means another mode closed it today, and the card must not print a number it cannot stand behind. Off, the rows are today's, key for key.
-        const words = desks ? closedCardWords(row.noAnswerCount, CADENCE_LIMIT) : null;
+        const words = desks ? closedCardWords(row.noAnswerCount, planLimit) : null;
         return words ? { ...row, closedWords: words } : row;
       }),
       /** «أكّدتها» — a day, a search, a page, and the size of what is behind them. */

@@ -36,9 +36,13 @@ export type PairedLineVerdict = { ok: true } | { ok: false; code: 'NOT_LOGGED' |
 
 const at = (a: AttemptFact) => new Date(a.createdAt);
 
-/** The minimum age of the press for a result, or null when the result is not a guarded one. */
-function minCallMs(result: string): number | null {
-  return isNoAnswer(result) ? (MIN_CALL_MS as Record<string, number>)[result] ?? null : null;
+/**
+ * The minimum age of the press for a result, or null when the result is not a guarded one. `proofSeconds` is the rule in force's (request Q3b: the door read it once
+ * through `readConfirmationRule` and hands it in) and applies to every guarded result; absent = the default per result (`MIN_CALL_MS`).
+ */
+function minCallMs(result: string, proofSeconds?: number): number | null {
+  if (!isNoAnswer(result)) return null;
+  return proofSeconds === undefined ? (MIN_CALL_MS as Record<string, number>)[result] ?? null : proofSeconds * 1000;
 }
 
 /** The press that is still «the attempt»: hers, no older than her claim, and not followed by any outcome line. */
@@ -65,8 +69,10 @@ export function callProofVerdict(input: {
   claimedAt: Date | null;
   result: string;
   now: Date;
+  /** The rule in force's seconds (request Q3b); absent = the default thirty. */
+  proofSeconds?: number;
 }): CallProofVerdict {
-  const need = minCallMs(input.result);
+  const need = minCallMs(input.result, input.proofSeconds);
   if (need === null) return { ok: true, guarded: false, openedAt: null, elapsedSeconds: null };
   const press = latestUnresolvedPress(input.attempts, input.employeeId, input.claimedAt);
   if (!press) return { ok: false, code: 'NO_OPENED' };
@@ -113,7 +119,7 @@ export function pairedLineVerdict(input: {
  * What the SCREENS are told about the viewer's «لا يرد» on one order — computed here, on the server, with the same function the door asks, so a screen never
  * decides the rule: it only ticks `unlocksAtMs` against the server clock.
  */
-export function callProofState(input: { attempts: readonly AttemptFact[]; employeeId: string; claimedAt: Date | null; now: Date }): CallProofState {
+export function callProofState(input: { attempts: readonly AttemptFact[]; employeeId: string; claimedAt: Date | null; now: Date; proofSeconds?: number }): CallProofState {
   const v = callProofVerdict({ ...input, result: 'NO_ANSWER' });
   if (v.ok) return { state: 'READY', unlocksAtMs: null };
   return v.code === 'NO_OPENED' ? { state: 'NO_OPENED', unlocksAtMs: null } : { state: 'WAIT', unlocksAtMs: v.unlocksAtMs };

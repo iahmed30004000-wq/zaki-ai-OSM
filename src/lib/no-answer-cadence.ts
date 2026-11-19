@@ -2,6 +2,7 @@ import { zonedParts, zonedTimeToInstant } from './business-calendar';
 import { NO_ANSWER_RESULTS } from './confirmation-workflow';
 import { attemptWords, nextAttemptWords } from './attempt-words';
 import { CONFIRMATION_RULE } from './confirmation-rule';
+import type { RuleStep } from './confirmation-rule-settings';
 import { parseHhMm } from './employee-shift';
 import type { AttemptFact } from './no-answer-rounds';
 import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueVerdict } from './work-first';
@@ -68,7 +69,35 @@ import { DUE_PROMISE, promiseArrived, verdictFromCount, type DueOrder, type DueV
  * computed for a line that stored none (or a fact that does not carry the field). So every press written before C2 replays to the very state it had.
  */
 
-/** Five counted attempts — the cadence's limit (`NO_ANSWER_LIMIT` in `confirmation-workflow.ts` stays 3: that is the switch-off rule). */
+/*
+ * ── REQUEST Q3b (19/11): THE PLAN READS THE RULE IT IS GIVEN ──
+ *
+ * The numbers below are now the DEFAULT rule's. The rule in force — the owner's stored edit, read ONCE per door or job through `readConfirmationRule`
+ * (`confirmation-rule-settings.ts`) — travels in the calendar (`CadenceCal.rule`, put there by `cadenceCalOf`), and every step reads it from there:
+ *   · attempts = steps + 1 (`cadenceLimit`), the close needs `minDays`;
+ *   · the due after the k-th counted press is the k-th STEP: `after` = that many minutes (elapsed) brought inside work time — the old #2 / #3 rule; an `anchor` step
+ *     keeps the algorithm its anchor always had: `morning` = the morning clock on the first working day at least `floorHours` after (with the first-day guard) — the
+ *     old #4; `evening` = the first evening clock strictly after, but never before `floorHours`, moved to the next working day's evening when outside work time — the
+ *     old #5. The morning / evening clocks are the rule's, clamped into the window as before.
+ * A calendar without a rule (a hand-built one, a test) answers by the default — so the default steps reproduce the old five attempts cell for cell
+ * (`the-rule-engine-equals-main.test.ts` against a frozen golden of `osm/main`).
+ * Stored dues are never rewritten: the fold keeps the due a line STORED, so a rule changed while an order is mid-cycle judges only the NEXT press.
+ */
+
+/** What the plan reads of the rule — the steps, the days, the two clocks (the fields of `ConfirmationRuleNumbers` it needs; a whole rule fits). */
+export interface CadenceRule {
+  steps: readonly RuleStep[];
+  minDays: number;
+  morning: string;
+  evening: string;
+}
+
+/** The counted attempts that complete a rule's plan: its steps and the first press. */
+export function cadenceLimit(rule: CadenceRule = CADENCE_RULE_DEFAULT): number {
+  return rule.steps.length + 1;
+}
+
+/** Five counted attempts — the DEFAULT cadence's limit (`NO_ANSWER_LIMIT` in `confirmation-workflow.ts` stays 3: that is the switch-off rule). The rule in force: `cadenceLimit`. */
 export const CADENCE_LIMIT = CONFIRMATION_RULE.attempts;
 /** The fifth attempt closes the order only across this many different local days. */
 export const CADENCE_MIN_DAYS = CONFIRMATION_RULE.minDays;
@@ -82,6 +111,22 @@ export const CADENCE_FLOORS_MS = {
   beforeFourth: CONFIRMATION_RULE.floorsHours.beforeFourth * 3_600_000,
   beforeFifth: CONFIRMATION_RULE.floorsHours.beforeFifth * 3_600_000,
 } as const;
+/**
+ * Today's rule as the plan reads it — from the default figures above (themselves the one rule set's), so it can never drift from `CONFIRMATION_RULE_DEFAULT` (a test pins
+ * the equality). The old #2 · #3 · #4 · #5 are its four steps.
+ */
+export const CADENCE_RULE_DEFAULT: CadenceRule = Object.freeze({
+  steps: Object.freeze([
+    Object.freeze({ kind: 'after', minutes: CADENCE_GAPS_MS.afterFirst / 60_000 }),
+    Object.freeze({ kind: 'after', minutes: CADENCE_GAPS_MS.afterSecond / 60_000 }),
+    Object.freeze({ kind: 'anchor', anchor: 'morning', floorHours: CADENCE_FLOORS_MS.beforeFourth / 3_600_000 }),
+    Object.freeze({ kind: 'anchor', anchor: 'evening', floorHours: CADENCE_FLOORS_MS.beforeFifth / 3_600_000 }),
+  ]) as readonly RuleStep[],
+  minDays: CADENCE_MIN_DAYS,
+  morning: CONFIRMATION_RULE.morning,
+  evening: CONFIRMATION_RULE.evening,
+});
+
 /** The start of work when the Country's `workHoursStart` is missing or unreadable (the planner's 10:00; Syria's live row becomes 10:00-22:00). #4 is due at the start. */
 export const CADENCE_WORKDAY_START = '10:00';
 /** The end of work (exclusive) when the Country's `workHoursEnd` is missing or unreadable: «no work after 22:00» (planner, ruling 12 of 15/11). */
@@ -102,7 +147,12 @@ export interface CadenceCal {
   /** Country `workHoursStart` / `workHoursEnd` («HH:mm», local) — read through `cadenceWorkWindow`, which falls back to 10:00 / 22:00. Absent → the fallbacks. */
   workHoursStart?: string | null;
   workHoursEnd?: string | null;
+  /** The rule in force (request Q3b) — absent = the default rule (`CADENCE_RULE_DEFAULT`). The doors put it here through `cadenceCalOf`. */
+  rule?: CadenceRule;
 }
+
+/** The rule a calendar carries, or the default. */
+const ruleOf = (cal: CadenceCal): CadenceRule => cal.rule ?? CADENCE_RULE_DEFAULT;
 
 /**
  * THE WORK WINDOW of a local day — the ONE place the Country's two hours are read. Each value goes through the existing `parseHhMm` (`employee-shift.ts`); one that is missing or
@@ -145,8 +195,8 @@ function warnBadHours(start: unknown, end: unknown): void {
  * #5's EVENING ANCHOR for a work window (ruling 16): `min(18:00, end − 1 hour)`, raised to the start when that would fall before it — a window shorter than an hour (end − 1 h before the start) or one
  * that starts after 18:00 — so the anchor is ALWAYS inside [start, end). «HH:mm», from a window that already went through `cadenceWorkWindow`.
  */
-export function cadenceEveningAnchor(window: { start: string; end: string }): string {
-  return anchorInside(CADENCE_EVENING_FROM, window);
+export function cadenceEveningAnchor(window: { start: string; end: string }, evening: string = CADENCE_EVENING_FROM): string {
+  return anchorInside(evening, window);
 }
 
 /**
@@ -154,8 +204,8 @@ export function cadenceEveningAnchor(window: { start: string; end: string }): st
  * formula with the morning's clock. A start after 11:00 → the start; a day that ends before 12:00 → an hour before its end; a window shorter than an hour → the start.
  * Never after the evening anchor (its clock is earlier and the formula is the same). «HH:mm», from a window that already went through `cadenceWorkWindow`.
  */
-export function cadenceMorningAnchor(window: { start: string; end: string }): string {
-  return anchorInside(CADENCE_MORNING_AT, window);
+export function cadenceMorningAnchor(window: { start: string; end: string }, morning: string = CADENCE_MORNING_AT): string {
+  return anchorInside(morning, window);
 }
 
 /** `max(start, min(clock, end − 1 hour))` as «HH:mm» — the one formula both anchors use, so each is ALWAYS inside [start, end). */
@@ -171,7 +221,12 @@ function anchorInside(clock: string, window: { start: string; end: string }): st
  */
 export function cadenceCalOf(
   since: Date,
-  country: { timezone: string; weekendDays?: readonly number[] | null; workHoursStart?: string | null; workHoursEnd?: string | null }
+  country: { timezone: string; weekendDays?: readonly number[] | null; workHoursStart?: string | null; workHoursEnd?: string | null },
+  /**
+   * The rule in force, read once by the caller through `readConfirmationRule` (request Q3b). Every door and job passes it — `the-rule-engine-reads-the-rule.test.ts`
+   * fails a non-test call with two arguments; absent (a test's hand-built calendar) = the default rule, and the calendar is main's key for key.
+   */
+  rule?: CadenceRule
 ): CadenceCal {
   return {
     since,
@@ -179,6 +234,7 @@ export function cadenceCalOf(
     restDays: country.weekendDays ?? undefined,
     workHoursStart: country.workHoursStart ?? undefined,
     workHoursEnd: country.workHoursEnd ?? undefined,
+    ...(rule ? { rule } : {}),
   };
 }
 
@@ -247,28 +303,69 @@ function insideWorkTime(at: Date, window: { start: string; end: string }, rest: 
 function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
   const counted = times.length;
   const at = times[counted - 1];
+  const rule = ruleOf(cal);
+  // The step after the k-th counted press is the rule's k-th (request Q3b); the default's four are the old #2 · #3 · #4 · #5.
+  const step = rule.steps[counted - 1];
   const rest = restSet(cal.restDays);
   const window = cadenceWorkWindow(cal.workHoursStart, cal.workHoursEnd);
   const start = clockOf(window.start);
-  if (counted <= 2) {
-    // #2 and #3: the elapsed gap from the last counted press, brought INSIDE work time — a due already inside it is exactly press + gap, otherwise the first coming start of work.
-    const raw = new Date(at.getTime() + (counted === 1 ? CADENCE_GAPS_MS.afterFirst : CADENCE_GAPS_MS.afterSecond));
+  if (step.kind === 'after') {
+    // An «after» step (the old #2 and #3): the elapsed gap from the last counted press, brought INSIDE work time — a due already inside it is exactly press + gap, otherwise the first coming start of work.
+    const raw = new Date(at.getTime() + step.minutes * 60_000);
     return insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, start, rest, false, cal.timeZone);
   }
-  if (counted === 3) {
-    // The MORNING ANCHOR (request C2: 11:00 clamped into the window; it was the start of work) on the first working day at least 8 hours (elapsed) after #3 — `>=`: exactly 8 hours counts.
-    const morning = clockOf(cadenceMorningAnchor(window));
-    const due = firstClockOnWorkday(new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFourth), morning, rest, false, cal.timeZone);
+  let due: Date;
+  let clock: { hour: number; minute: number };
+  if (step.anchor === 'morning') {
+    // The MORNING ANCHOR (request C2: 11:00 clamped into the window; it was the start of work) on the first working day at least `floorHours` (elapsed; 8 by default) after the press — `>=`: exactly the floor counts.
+    clock = clockOf(cadenceMorningAnchor(window, rule.morning));
+    const first = firstClockOnWorkday(new Date(at.getTime() + step.floorHours * 3_600_000), clock, rest, false, cal.timeZone);
     // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (defence in depth now: see the header — #2 and #3 inside work time already put #4 a day on).
-    return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, morning, rest, true, cal.timeZone) : due;
+    due = dayKey(first, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(first, clock, rest, true, cal.timeZone) : first;
+  } else {
+    // The EVENING ANCHOR (the old #5): the first evening anchor local STRICTLY after the press on a working day, but never less than `floorHours` (elapsed; 3 by default) after it — and if that lands outside work time
+    // (the floor can carry it past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
+    clock = clockOf(cadenceEveningAnchor(window, rule.evening));
+    const evening = firstClockOnWorkday(at, clock, rest, true, cal.timeZone);
+    const floor = new Date(at.getTime() + step.floorHours * 3_600_000);
+    const raw = evening.getTime() >= floor.getTime() ? evening : floor;
+    due = insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, clock, rest, true, cal.timeZone);
   }
-  // counted 4: the first evening anchor local STRICTLY after #4 on a working day, but never less than 3 hours (elapsed) after it — and if that lands outside work time (the 3 h floor can carry it
-  // past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
-  const anchor = clockOf(cadenceEveningAnchor(window));
-  const evening = firstClockOnWorkday(at, anchor, rest, true, cal.timeZone);
-  const floor = new Date(at.getTime() + CADENCE_FLOORS_MS.beforeFifth);
-  const due = evening.getTime() >= floor.getTime() ? evening : floor;
-  return insideWorkTime(due, window, rest, cal.timeZone) ? due : firstClockOnWorkday(due, anchor, rest, true, cal.timeZone);
+  return mustBeANewDay(times, rule, counted, cal.timeZone) ? onALaterDay(due, at, clock, rest, cal.timeZone) : due;
+}
+
+/**
+ * THE DAYS GUARANTEE OF AN EDITED RULE (request Q3b, review 19/11). The save door accepts `minDays` up to «anchor steps + 1», on the promise that the anchors can carry the
+ * attempts onto that many local days. This keeps the promise: when every anchor step still to come (this one included) is needed for a NEW local day — the days already
+ * counted plus those anchors are no more than `minDays` — this anchor's due is moved to its clock on the first working day AFTER the press's day (so any press at or after it is
+ * on a day none of the counted presses is on). Then, pressing at every due, the last counted press always meets `minDays` and closes the order exactly at the limit.
+ *
+ * NOT FOR THE DEFAULT STEPS (the old five over two days): their own guard — #4 never on #1's local day, above — already gives every history the door can write its two days,
+ * and they keep main's dues byte for byte, even for a hand-built state that no door wrote.
+ */
+function mustBeANewDay(times: readonly Date[], rule: CadenceRule, counted: number, timeZone: string): boolean {
+  if (isDefaultPlan(rule)) return false;
+  const days = new Set(times.map((d) => dayKey(d, timeZone))).size;
+  const anchorsLeft = rule.steps.slice(counted - 1).filter((s) => s.kind === 'anchor').length;
+  return days < rule.minDays && days + anchorsLeft <= rule.minDays;
+}
+
+/** The anchor's clock on the first working day after `at`'s local day, when `due` is still on that day (bounded, as `firstClockOnWorkday` is). */
+function onALaterDay(due: Date, at: Date, clock: { hour: number; minute: number }, rest: ReadonlySet<number>, timeZone: string): Date {
+  let d = due;
+  for (let i = 0; i < 3 && dayKey(d, timeZone) === dayKey(at, timeZone); i++) d = firstClockOnWorkday(d, clock, rest, true, timeZone);
+  return d;
+}
+
+/** Are these the default STEPS and DAYS (whatever the two clocks) — the plan whose own first-day guard already holds the days? */
+function isDefaultPlan(rule: CadenceRule): boolean {
+  const d = CADENCE_RULE_DEFAULT;
+  return (
+    rule === d ||
+    (rule.minDays === d.minDays &&
+      rule.steps.length === d.steps.length &&
+      rule.steps.every((s, i) => JSON.stringify(s) === JSON.stringify(d.steps[i])))
+  );
 }
 
 /**
@@ -279,12 +376,13 @@ function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
  */
 export function cadenceStep(state: CadenceState, at: Date, cal: CadenceCal): { next: CadenceState; counted: boolean } {
   const t = at.getTime();
+  const limit = cadenceLimit(ruleOf(cal));
   if (Number.isNaN(t) || !(t > cal.since.getTime())) return { next: state, counted: false };
-  if (state.counted.length >= CADENCE_LIMIT) return { next: state, counted: false };
+  if (state.counted.length >= limit) return { next: state, counted: false };
   if (state.counted.length > 0 && state.dueAt !== null && t < state.dueAt.getTime()) return { next: state, counted: false };
   const times = [...state.counted, at];
   const days = new Set(times.map((d) => dayKey(d, cal.timeZone))).size;
-  const dueAt = times.length >= CADENCE_LIMIT ? null : dueAfter(times, cal);
+  const dueAt = times.length >= limit ? null : dueAfter(times, cal);
   return { next: { counted: times, days, dueAt }, counted: true };
 }
 
@@ -339,8 +437,9 @@ export function cadenceLineNumbers<F extends CadenceFact>(facts: readonly F[], c
  * Is the plan complete — five counted attempts across at least two local days? Under the plan the second clause cannot fail (the fourth is never due on the first's local day: the
  * guard in `dueAfter`, which only a 25-hour DST day ever needs), so it is a guard, not a gate. Asked of the state AFTER a press, counted or not: a sixth no-answer after a refused close asks again.
  */
-export function cadenceCloses(state: CadenceState): boolean {
-  return state.counted.length >= CADENCE_LIMIT && state.days >= CADENCE_MIN_DAYS;
+export function cadenceCloses(state: CadenceState, rule: CadenceRule = CADENCE_RULE_DEFAULT): boolean {
+  // Request Q3b: the rule's attempts and days. An order whose counted presses already reach a LOWERED limit is complete: its next press — at the desk, never a job — closes it.
+  return state.counted.length >= cadenceLimit(rule) && state.days >= rule.minDays;
 }
 
 /**
@@ -356,7 +455,27 @@ export function cadencePress(
   const before = cadenceState(stored, cal);
   if (!(NO_ANSWER_RESULTS as readonly string[]).includes(press.result)) return { counted: false, dueAt: null, next: before, closes: false };
   const { next, counted } = cadenceStep(before, press.at, cal);
-  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next) };
+  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next, ruleOf(cal)) || completesTheDays(before, stored, press.at, cal) };
+}
+
+/**
+ * THE WAY OUT OF A RULE CHANGED MID-CYCLE (request Q3b, review 19/11): an order whose counted presses already reach an EDITED rule's limit on fewer local days than it asks
+ * (its dues were stored under the old rule, so the days guarantee could not place them) is not left with no press that can ever close it: the «لا يرد» presses past the limit
+ * (after the last counted one, not early) count toward the MISSING DAYS, and the press that brings the local days of the counted presses and those to `minDays` closes it — so
+ * a day with a press on it, each working day, always gets there (three days asked, one counted: two more days of presses). Never for the default steps and days — there the
+ * door's history always has its two days (main, unchanged) — and only at a press, never by a job.
+ */
+function completesTheDays(state: CadenceState, lines: readonly CadenceFact[], at: Date, cal: CadenceCal): boolean {
+  const rule = ruleOf(cal);
+  if (isDefaultPlan(rule) || state.counted.length < cadenceLimit(rule) || state.days >= rule.minDays) return false;
+  const floor = Math.max(cal.since.getTime(), state.counted[state.counted.length - 1].getTime(), state.dueAt ? state.dueAt.getTime() - 1 : -Infinity);
+  const t = at.getTime();
+  if (Number.isNaN(t) || !(t > floor)) return false;
+  const past = lines
+    .filter((f) => (NO_ANSWER_RESULTS as readonly string[]).includes(f.result))
+    .map((f) => new Date(f.createdAt))
+    .filter((d) => d.getTime() > floor && d.getTime() <= t);
+  return new Set([...state.counted, ...past, at].map((d) => dayKey(d, cal.timeZone))).size >= rule.minDays;
 }
 
 const WEEKDAY_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
@@ -378,20 +497,32 @@ export function cadenceWhen(dueAt: Date, now: Date, timeZone: string): string {
  * WHAT THE PRESS TOLD HER — the sentence the desk prints after a no-answer line (`cadence.words` in the POST answer). `attempt` is the COUNTED number after the press and `dueAt` the
  * state's due after it (also for an early press, which does not move it). The closing press is spoken by the desk's own «أُغلق الطلب … تلقائياً» sentence first; `closed` is for other callers.
  */
-export function cadencePressWords(a: { counted: boolean; closed: boolean; released: boolean; attempt: number; dueAt: Date | null; now: Date; timeZone: string }): string {
+export function cadencePressWords(a: {
+  counted: boolean;
+  closed: boolean;
+  released: boolean;
+  attempt: number;
+  dueAt: Date | null;
+  now: Date;
+  timeZone: string;
+  /** The rule's attempts (`cadenceLimit`, request Q3b) — absent = the default five. */
+  limit?: number;
+}): string {
   const next = a.attempt + 1;
-  if (a.closed) return `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — أُغلق الطلب تلقائياً وراح على قائمة «ملغاة سابقاً».`;
+  const limit = a.limit ?? CADENCE_LIMIT;
+  if (a.closed) return `انحسبت ${attemptWords(a.attempt, limit, true)} — أُغلق الطلب تلقائياً وراح على قائمة «ملغاة سابقاً».`;
   if (a.counted) {
     if (a.dueAt) {
       const when = cadenceWhen(a.dueAt, a.now, a.timeZone);
       return a.released
-        ? `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — رجع الطلب للطابور، والمحاولة الجاية ${when}.`
-        : `انحسبت ${attemptWords(a.attempt, CADENCE_LIMIT, true)} — المحاولة الجاية ${when}.`;
+        ? `انحسبت ${attemptWords(a.attempt, limit, true)} — رجع الطلب للطابور، والمحاولة الجاية ${when}.`
+        : `انحسبت ${attemptWords(a.attempt, limit, true)} — المحاولة الجاية ${when}.`;
     }
-    return `انحسبت ${attemptWords(CADENCE_LIMIT, CADENCE_LIMIT, true)} — الطلب لسا مفتوح، والضغطة الجاية بتجرّب تسكّره من جديد.`;
+    return `انحسبت ${attemptWords(limit, limit, true)} — الطلب لسا مفتوح، والضغطة الجاية بتجرّب تسكّره من جديد.`;
   }
-  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. ${attemptWords(next, CADENCE_LIMIT, true)} بتنحسب ${cadenceWhen(a.dueAt, a.now, a.timeZone)}.`;
-  return a.attempt >= CADENCE_LIMIT ? 'اكتملت المحاولات الخمس — الضغطة انسجّلت بس ما انحسبت.' : 'انسجّلت الضغطة بس ما انحسبت محاولة.';
+  if (a.dueAt) return `سجّلنا الضغطة بس ما انحسبت محاولة — لسا بدري. ${attemptWords(next, limit, true)} بتنحسب ${cadenceWhen(a.dueAt, a.now, a.timeZone)}.`;
+  if (a.attempt < limit) return 'انسجّلت الضغطة بس ما انحسبت محاولة.';
+  return limit === 5 ? 'اكتملت المحاولات الخمس — الضغطة انسجّلت بس ما انحسبت.' : `اكتملت المحاولات الـ${limit} — الضغطة انسجّلت بس ما انحسبت.`;
 }
 
 // ───────────────────────────── the desk («طلباتي») ─────────────────────────────
@@ -414,7 +545,7 @@ export function cadenceDesk(
     dueAt: s.dueAt,
     due: ahead && s.dueAt!.getTime() <= now.getTime(),
     waiting: ahead && s.dueAt!.getTime() > now.getTime(),
-    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next),
+    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next, ruleOf(cal)) || completesTheDays(s, facts, now, cal),
   };
 }
 
@@ -446,10 +577,16 @@ export function cadenceVerdict(
  * THE LINE A HELD CARD PRINTS, written here so the screen decides nothing: «لا يرد راجع — محاولة 3 من 5» when the due arrived, «محاولة 2 من 5 — جاهز الساعة 17:30» while it waits.
  * Null for an order with no counted attempt (a NEW order keeps «جديد — سحبتيه هلّق») and for a complete plan: the caller falls back to `dueLabel`, which has nothing to say for those.
  */
-export function cadenceCardWords(desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>, now: Date, timeZone: string): string | null {
-  if (desk.counted < 1 || desk.counted >= CADENCE_LIMIT) return null;
-  if (desk.due) return `لا يرد راجع — ${nextAttemptWords(desk.counted, CADENCE_LIMIT)}`;
-  if (desk.waiting && desk.dueAt) return `${nextAttemptWords(desk.counted, CADENCE_LIMIT)} — جاهز ${cadenceWhen(desk.dueAt, now, timeZone)}`;
+export function cadenceCardWords(
+  desk: Pick<ReturnType<typeof cadenceDesk>, 'counted' | 'due' | 'waiting' | 'dueAt'>,
+  now: Date,
+  timeZone: string,
+  /** The rule's attempts (`cadenceLimit`, request Q3b) — absent = the default five. */
+  limit: number = CADENCE_LIMIT
+): string | null {
+  if (desk.counted < 1 || desk.counted >= limit) return null;
+  if (desk.due) return `لا يرد راجع — ${nextAttemptWords(desk.counted, limit)}`;
+  if (desk.waiting && desk.dueAt) return `${nextAttemptWords(desk.counted, limit)} — جاهز ${cadenceWhen(desk.dueAt, now, timeZone)}`;
   return null;
 }
 

@@ -79,11 +79,17 @@ describe('the rule set — ONE object, and every older constant is read from it'
     expect(MIN_CALL_MS.NO_ANSWER).toBe(CONFIRMATION_RULE.proofSeconds * 1000);
   });
 
-  it('the rule set imports nothing (the desk\'s bundle reads it through `call-proof-words.ts`) and no figure of it is typed again in the files that re-export it', () => {
+  /*
+   * UPDATED 2026-11-19 (request Q3b): the second half was «call-proof-words.ts never types 30_000 — it reads the rule set». The desk now gets the rule in force's seconds
+   * from the server's answer, and `call-proof-words.ts` keeps the DEFAULT only as the fallback — typed there, with no import, so the desk's bundle (at its ceiling) stops
+   * carrying the whole rule set for one number. The equality the old line protected is the line above it: `MIN_CALL_MS.NO_ANSWER === CONFIRMATION_RULE.proofSeconds × 1000`.
+   */
+  it('the rule set imports nothing, the desk\'s words import nothing (their 30 s is the default, pinned above), and no figure of it is typed again in queue-priority.ts', () => {
     const rule = readFileSync(join(process.cwd(), 'src/lib/confirmation-rule.ts'), 'utf8');
     expect(rule).not.toMatch(/^\s*import /m);
     const words = readFileSync(join(process.cwd(), 'src/lib/call-proof-words.ts'), 'utf8');
-    expect(words).not.toContain('30_000');
+    expect(words).not.toMatch(/^\s*import /m);
+    expect(words.match(/30_000/g)).toHaveLength(1);
     const pq = readFileSync(join(process.cwd(), 'src/lib/queue-priority.ts'), 'utf8');
     expect(pq).not.toMatch(/handLimit: 3|idleBusinessMinutes: 20|POSTPONE_MAX_TIMES = 2|freshMinutes: 15/);
   });

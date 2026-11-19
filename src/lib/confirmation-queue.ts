@@ -35,7 +35,8 @@ import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
-import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { QUEUE_PRIORITY, freshSince, isAged, queueModeAt, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { confirmationRuleOnce, type RuleNow } from './confirmation-rule-settings';
 
 import { RETURNS_MODE } from './returns-mode';
 // The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
@@ -842,8 +843,9 @@ export async function releaseStaleClaims(
   /**
    * «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go.
    * `returns` is the same for «الطلب يرجع للطابور فوراً»: the mode when the caller already read it (`null` = off), left out = read here.
+   * `rule` is the rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, it is read here when a figure is needed.
    */
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow } = {}
 ) {
   const stale = await tx.order.findMany({
     where: {
@@ -921,14 +923,16 @@ export async function releaseNoAnswerRounds(
   scope: QueueScope,
   cal: BusinessCalendar,
   now = new Date(),
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
+  // Request Q3b: ONE reading of the rule for the whole pass — the mode's idle cut and the notice's figure come from the same rule.
+  const rule = opts.rule ?? confirmationRuleOnce(tx, scope.companyId, now.getTime());
   if (!roundsOn(rounds)) {
     // The cadence (step B) brings the returns mode with it, so ITS idle release runs without «نظام الجولات» — but only when the CALLER handed the cadence mode in (the pull does,
     // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
-    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit) : 0;
+    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit, rule) : 0;
   }
   /*
    * REQUEST C2 (18/11): THE ROUNDS' RELEASES STOP WHILE THE PLAN IS ON. «نظام الجولات» stored on beside «إثبات المكالمات وجدول المحاولات» used to keep its three
@@ -936,13 +940,13 @@ export async function releaseNoAnswerRounds(
    * plan holds. With the plan on only the plan's own idle release runs (20 working minutes), under the same bound. The mode the caller handed in says it (`cadence`); a
    * caller that handed none has it read here. The plan off: the lines below, as ever.
    */
-  const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds }) : null;
-  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit);
+  const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule }) : null;
+  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit, rule);
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
-  const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
+  const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
   // more than `limit` in all — 200 in the job’s one short transaction, 25 inside a pull — whichever of the two rules an old order meets.
-  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released))) : released;
+  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released), rule)) : released;
 }
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
@@ -966,12 +970,13 @@ export async function returnsModeOn(client: Tx, companyId: string, rounds?: Roun
 export async function readReturnsMode(
   client: Tx,
   companyId: string,
-  args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch }
+  /** `rule`: the rule in force as the caller asks it (request Q3b) — left out, read here (cached) when the figure comes from it. */
+  args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch; rule?: RuleNow }
 ): Promise<ReturnsMode | null> {
   // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
   const since = await cadenceSince(client, companyId);
   if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), (await limitsOf(client, companyId, args.now.getTime(), !!since)).idleBusinessMinutes, since);
+  return returnsMode(args.now, workClock(args.calendar()), (await limitsOf(client, companyId, args.now.getTime(), !!since, args.rule)).idleBusinessMinutes, since);
 }
 
 /**
@@ -979,16 +984,27 @@ export async function readReturnsMode(
  * `QUEUE_PRIORITY_LIMITS`' 3 and 20. ONE function every reader asks, so no screen can say a figure the release does not use. The switch is a cached read and OFF on any
  * failure, so a failed read is today's numbers.
  */
-export async function returnsLimits(client: Tx, companyId: string, nowMs: number = Date.now()): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+export async function returnsLimits(
+  client: Tx,
+  companyId: string,
+  nowMs: number = Date.now(),
+  /** The rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, read here (cached) when the figures come from it. */
+  rule?: RuleNow
+): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
   // REQUEST C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on, the hand and the idle release are the one rule set's — 3 and 20 — WHATEVER «أولوية الطابور» says.
   // The plan is asked first (a cached read); off, or unreadable, this is the line it always was.
-  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)));
+  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)), rule);
 }
 
-/** `returnsLimits` for a caller that already read the plan (`readReturnsMode` reads it ONCE per mode, so the flag, the floor and the figure cannot drift apart). */
-async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
-  if (planOn) return QUEUE_PRIORITY_LIMITS;
-  return (await queuePrioritySwitch(client, companyId, nowMs)).enabled ? QUEUE_PRIORITY_LIMITS : RETURNS_MODE;
+/**
+ * `returnsLimits` for a caller that already read the plan (`readReturnsMode` reads it ONCE per mode, so the flag, the floor and the figure cannot drift apart).
+ * REQUEST Q3b (19/11): where the figures were `QUEUE_PRIORITY_LIMITS` (the default rule's 3 and 20) they are now the RULE IN FORCE's hand and idle minutes — read only
+ * then, so with both switches off nothing new is read and the answer is `RETURNS_MODE`, as ever.
+ */
+async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean, rule?: RuleNow): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+  if (!planOn && !(await queuePrioritySwitch(client, companyId, nowMs)).enabled) return RETURNS_MODE;
+  const r = await (rule ?? confirmationRuleOnce(client, companyId, nowMs))();
+  return { handLimit: r.hand, idleBusinessMinutes: r.idleMinutes };
 }
 
 /**
@@ -1136,7 +1152,7 @@ export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idl
  * customer's other orders held for her go back with it, as the rounds release lets them go: nobody is working this customer, so
  * whoever takes the order next takes him whole.
  */
-export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT): Promise<number> {
+export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT, rule?: RuleNow): Promise<number> {
   if (limit <= 0) return 0;
   const rows = await tx.order.findMany({
     where: idleHeldWhere(scope, returns),
@@ -1175,7 +1191,7 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
   }
   if (told.length) {
     // The notice says the limit the release USED: asked of `returnsLimits`, the one function every reader asks (30, or 20 with «أولوية الطابور»). `ReturnsMode` itself carries no figure: its shape is pinned key for key.
-    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime())).idleBusinessMinutes;
+    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime(), rule)).idleBusinessMinutes;
     await tx.notification.createMany({
       data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes })),
     });
@@ -1721,18 +1737,32 @@ export async function pickRetryWithDue(
 export interface PriorityPlan {
   mode: QueueMode;
   backlogTurn: boolean;
+  /** «Fresh» is younger than this many minutes — the rule in force's (request Q3b), read with the plan before the transaction. Absent = the default 15. */
+  freshMinutes?: number;
 }
 
 /** Read the plan before the pull's transaction (cached reads). Any failure is «no plan»: the old pull. */
-export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: string, cal: BusinessCalendar, now: Date): Promise<PriorityPlan | null> {
+export async function priorityPlanFor(
+  client: Tx,
+  scope: QueueScope,
+  userId: string,
+  cal: BusinessCalendar,
+  now: Date,
+  /** The rule in force as the caller asks it (request Q3b) — left out, read here (cached). Asked only with the key on. */
+  rule?: RuleNow
+): Promise<PriorityPlan | null> {
   try {
     if (!(await queuePrioritySwitch(client, scope.companyId, now.getTime())).enabled) return null;
+    // Request Q3b: the fresh minutes of the rule in force, read here — BEFORE the pull's transaction — and carried in the plan, so the pick adds no statement. Carried only
+    // when they differ from the default: with the default rule the plan is main's object, key for key (absent = the default 15 in `freshSince`).
+    const read = (await (rule ?? confirmationRuleOnce(client, scope.companyId, now.getTime()))()).freshMinutes;
+    const fresh = read === QUEUE_PRIORITY.freshMinutes ? {} : { freshMinutes: read };
     const local = zonedParts(now, cal.timezone);
     // The owner's hours for the two modes (step D2); the study's where none are saved.
     const mode = queueModeAt(local.hour * 60 + local.minute, modesInMinutes(await readQueueModes(client, scope.companyId, now.getTime())));
-    if (mode !== 'NORMAL') return { mode, backlogTurn: false };
+    if (mode !== 'NORMAL') return { mode, backlogTurn: false, ...fresh };
     const [reading, recent] = await Promise.all([readBacklogShare(client, scope, now, OPEN_CONFIRMATION), recentPullLanes(client, userId)]);
-    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent) };
+    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent), ...fresh };
   } catch {
     return null;
   }
@@ -1774,7 +1804,7 @@ async function pickByPriority(
     memo.promise = promised;
     if (promised) return promised;
   }
-  const fresh = await oldestNew({ createdAt: { gt: freshSince(now) } });
+  const fresh = await oldestNew({ createdAt: { gt: freshSince(now, plan.freshMinutes) } });
   if (fresh) return fresh;
 
   const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
@@ -1920,15 +1950,19 @@ export async function pullNextOrder(
 ): Promise<PullResult> {
   // «نظام الجولات»: read before the transaction (a cached read), so the pull never waits on a second connection for it.
   const rounds = await roundsSwitch(db, scope.companyId);
+  // Request Q3b: the rule in force, asked ONCE for the whole pull and only by what needs a figure of it (a cached read BEFORE the transaction; with both switches off it is
+  // never asked). Every number below — the idle cut, the hand, the fresh minutes, the notice's figure — is this one rule's.
+  const rule = confirmationRuleOnce(db, scope.companyId, now.getTime());
   // «الطلب يرجع للطابور فوراً»: read the same way (a cached read, and not even asked while the rounds are off). `null` = off, and then
   // everything below is today's, line for line.
-  const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds });
+  const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds, rule });
   // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
-  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
+  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime(), rule)).handLimit : undefined;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
-  const priority = await priorityPlanFor(db, scope, user.id, cal, now);
+  const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule);
+  // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
-    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns });
+    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule });
 
     const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = hand === undefined ? pullRefusal(counts) : pullRefusal(counts, undefined, hand);

@@ -60,6 +60,7 @@ vi.mock('@/lib/no-answer-returns-switch', () => ({ returnsSwitch: async () => rs
 vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => proof.on }));
 
 import { GET, POST } from '@/app/api/orders/[id]/contact-attempts/route';
+import { CONFIRMATION_RULE_DEFAULT, documentAfterSave } from '@/lib/confirmation-rule-settings';
 
 const T0 = new Date('2026-11-15T10:00:00.000Z').getTime();
 const params = { params: Promise.resolve({ id: 'o1' }) };
@@ -315,5 +316,41 @@ describe('OFF — the door is today’s', () => {
     const body = await (await GET(new Request('http://localhost/x'), params)).json();
     expect(body).not.toHaveProperty('callProof');
     expect(Object.keys(body).sort()).toEqual(['attempts', 'summary']);
+  });
+});
+
+/**
+ * Request Q3b (review 19/11, blocker 2): THE SECONDS ARE THE RULE IN FORCE'S, at both halves of the door. The company stores «proof 45» (its own company id: the reader
+ * caches per company and the clock here is faked); a press 40 s old is still too young for the guard AND for the order window, and opens at 45 s.
+ */
+describe('an edited rule stored for the company — proof 45 seconds', () => {
+  beforeEach(() => {
+    const doc = documentAfterSave(null, { rule: { ...CONFIRMATION_RULE_DEFAULT, proofSeconds: 45 }, effectiveAt: new Date(0), byUserId: 'u9' }, 0);
+    db.company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: doc }) })) };
+    requireContext.mockResolvedValue({
+      user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' },
+      companyId: 'c-q3b-proof45',
+      storeId: 's1',
+      country: { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' },
+    });
+  });
+  afterEach(() => {
+    delete db.company;
+  });
+
+  it('POST: 40 s is CALL_TOO_SOON with 5 s to wait (the default would accept it); 45 s is recorded', async () => {
+    seed('OPENED', 40_000);
+    const res = await press('NO_ANSWER');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'CALL_TOO_SOON', waitSeconds: 5, unlocksAt: new Date(T0 + 5_000).toISOString() });
+    expect(written()).toBe(0);
+    advance(5_000);
+    expect((await press('NO_ANSWER')).status).toBe(200);
+  });
+
+  it('GET: the order window is told WAIT until 45 s after the press', async () => {
+    seed('OPENED', 40_000);
+    const body = await (await GET(new Request('http://localhost/x'), params)).json();
+    expect(body.callProof).toEqual({ on: true, serverNow: T0, state: 'WAIT', unlocksAtMs: T0 + 5_000 });
   });
 });
