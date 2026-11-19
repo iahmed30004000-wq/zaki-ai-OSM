@@ -492,10 +492,7 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // Built ahead of its screen, 18/11 (plan 17/11): the two read doors R9 and R14a will call. They leave this list the day the screen calls them — the guard below says so.
   // 18/11 (R9): '/api/analytics/daily' left — «اليوم»'s one chart (`dashboard/DailyChart.tsx`) calls it.
   // 18/11 (R14a1): '/api/orders/confirmation/team/[userId]' left — the drawer under a row of the team table (`performance/TeamMemberDrawer.tsx`) calls it.
-  // Built ahead of its screen, 19/11 (warehouse plan, request W0a): the warehouses' three doors. W0b («المخازن» on the geo screen) calls them and removes these lines.
-  '/api/geo/warehouses': 'أبواب المخازن انبنت قبل شاشتها (W0a) — بطاقة «المخازن» بصفحة البلدان والمتاجر (W0b) هي اللي بتستدعيها',
-  '/api/geo/warehouses/[id]': 'تسمية وإيقاف وتشغيل مخزن (W0a) — بطاقة «المخازن» (W0b) بتستدعيه',
-  '/api/geo/warehouses/[id]/keepers': 'أمناء المخزن (W0a) — منتقي الأمناء ببطاقة «المخازن» (W0b) بيستدعيه',
+  // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
