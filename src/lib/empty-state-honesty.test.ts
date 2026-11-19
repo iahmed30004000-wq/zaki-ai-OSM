@@ -74,7 +74,8 @@ describe('«طلباتي»', () => {
   });
 
   it('gives «أكّدتها» its own words — and says WHICH day it looked in', () => {
-    const body = src();
+    // 18/11: moved from ConfirmationMineScreen.tsx to confirmation/DoneList.tsx in R8c — same assertion.
+    const body = repoFile('src/components/screens/confirmation/DoneList.tsx');
     expect(body).toContain('confirmed.q ? (');
     expect(body).toContain('لا طلبَ مؤكَّداً في هذا اليوم يطابق هذا البحث');
     /*
