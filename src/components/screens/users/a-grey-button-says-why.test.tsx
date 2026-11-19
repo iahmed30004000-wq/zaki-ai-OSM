@@ -36,7 +36,11 @@ describe('the reason stands beside the button', () => {
     const src = stripComments(repoFile(SRC));
 
     // The conditions, read out of the attribute itself.
-    const attr = /disabled=\{([^}]*)\}/.exec(src.slice(src.indexOf('onClick={pay}') - 600));
+    // 19/11 (R16b2): the anchor was `onClick={pay}`; «اصرف» is the kit's Button now and its press is
+    // `onClick={() => { void pay(); }}` (the screen keeps its own busy flag), so the anchor is `void pay()`.
+    // The `disabled` attribute it reads is the same line, unchanged.
+    expect(src.indexOf('void pay()'), 'ما لقيت ضغطة «اصرف»').toBeGreaterThan(600);
+    const attr = /disabled=\{([^}]*)\}/.exec(src.slice(src.indexOf('void pay()') - 600));
     expect(attr, 'ما لقيت شرط التعطيل').not.toBeNull();
     const conditions = attr![1]
       .split('||')

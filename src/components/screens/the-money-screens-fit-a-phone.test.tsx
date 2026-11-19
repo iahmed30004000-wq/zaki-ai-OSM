@@ -996,8 +996,10 @@ describe('الراتب', () => {
   it('«اصرف» and «تراجع» are 44px under a finger; the wallet box takes the line and the fields are 44px too', async () => {
     const dialog = await open();
     await within(dialog).findByText('الراتب');
+    // 19/11 (R16b2): was «min-h-11 md:min-h-0» on two raw buttons; they are the kit's Button (size md) now,
+    // which is 44px on a phone by its own height — «h-11 md:h-10». Still 44px under a finger.
     for (const name of ['اصرف', 'تراجع']) {
-      expect(within(dialog).getByRole('button', { name }).className).toContain('min-h-11 md:min-h-0');
+      expect(within(dialog).getByRole('button', { name }).className).toContain('h-11 md:h-10');
     }
     const select = within(dialog).getByRole('combobox');
     expect(select.className).toContain('w-full');
