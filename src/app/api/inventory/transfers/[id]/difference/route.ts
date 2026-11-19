@@ -1,5 +1,6 @@
 import { approveDifference, differenceSchema } from '@/lib/stock-transfers';
 import { transferAction } from '@/lib/stock-transfer-door';
+import { requirePermission } from '@/lib/authorization';
 
 /**
  * POST /api/inventory/transfers/:id/difference (inventory.difference_approve) — { type: 'LOSS' | 'DAMAGE', reason }
@@ -10,7 +11,7 @@ import { transferAction } from '@/lib/stock-transfer-door';
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return transferAction(req, params, {
-    key: 'inventory.difference_approve',
+    gate: () => requirePermission('inventory.difference_approve'),
     schema: differenceSchema,
     audit: 'STOCK_TRANSFER_DIFFERENCE_APPROVED',
     run: (tx, p) =>

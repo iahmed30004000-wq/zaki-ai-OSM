@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import type { z } from 'zod';
 import { db } from './db';
 import { requireContext } from './geo-context';
-import { requirePermission } from './authorization';
 import { apiErrorResponse } from './api-error';
 import { logAudit } from './audit';
 import { reachesWarehouse } from './warehouses';
@@ -42,7 +41,8 @@ export async function transferAction<S extends z.ZodTypeAny>(
   req: Request,
   params: Promise<{ id: string }>,
   spec: {
-    key: string;
+    /** The door's own key, asked as a literal call in the route (the permissions-screen guard reads it there). */
+    gate: () => Promise<unknown>;
     schema: S;
     audit: string;
     run: (
@@ -54,7 +54,7 @@ export async function transferAction<S extends z.ZodTypeAny>(
   try {
     const { id } = await params;
     const { user, companyId, storeId } = await requireContext();
-    await requirePermission(spec.key);
+    await spec.gate();
 
     const parsed = spec.schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return refuse(400, 'INVALID', parsed.error.issues[0]?.message ?? 'البيانات ناقصة');

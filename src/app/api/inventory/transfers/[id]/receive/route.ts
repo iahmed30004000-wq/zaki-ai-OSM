@@ -1,5 +1,6 @@
 import { receiveSchema, receiveTransfer } from '@/lib/stock-transfers';
 import { transferAction } from '@/lib/stock-transfer-door';
+import { requirePermission } from '@/lib/authorization';
 
 /**
  * POST /api/inventory/transfers/:id/receive (inventory.transfer_receive) — { lines: [{ productId, quantity }] }
@@ -10,7 +11,7 @@ import { transferAction } from '@/lib/stock-transfer-door';
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return transferAction(req, params, {
-    key: 'inventory.transfer_receive',
+    gate: () => requirePermission('inventory.transfer_receive'),
     schema: receiveSchema,
     audit: 'STOCK_TRANSFER_RECEIVED',
     run: (tx, p) =>

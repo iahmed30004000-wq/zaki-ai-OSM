@@ -1,5 +1,6 @@
 import { cancelSchema, cancelTransfer } from '@/lib/stock-transfers';
 import { transferAction } from '@/lib/stock-transfer-door';
+import { requirePermission } from '@/lib/authorization';
 
 /**
  * POST /api/inventory/transfers/:id/cancel (inventory.transfer) — { reason }
@@ -9,7 +10,7 @@ import { transferAction } from '@/lib/stock-transfer-door';
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   return transferAction(req, params, {
-    key: 'inventory.transfer',
+    gate: () => requirePermission('inventory.transfer'),
     schema: cancelSchema,
     audit: 'STOCK_TRANSFER_CANCELLED',
     run: (tx, p) =>
