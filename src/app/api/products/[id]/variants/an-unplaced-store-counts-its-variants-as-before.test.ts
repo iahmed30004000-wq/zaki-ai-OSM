@@ -156,7 +156,7 @@ function seedStore(r: () => number) {
     product: [{ id: 'p-1', companyId: 'c-1', storeId: 's-1', categoryId: null, name: 'قميص', basePrice: 10, variantOptions: withOptions ? JSON.stringify(OPTIONS) : null }],
     productVariant: variants,
     warehouse: [{ id: 'w-1', companyId: 'c-1', countryId: 'k-1', isActive: true }],
-    warehousePlacement: placedElsewhere ? [{ id: 'pl-9', storeId: 's-9' }] : [],
+    warehousePlacement: placedElsewhere ? [{ id: 'placing-9', storeId: 's-9' }] : [],
     order: [{ id: 'o-1', companyId: 'c-1', storeId: r() < 0.9 ? 's-1' : null, sourceWarehouseId: r() < 0.3 ? 'w-1' : null }],
     orderItemVariant: variants
       .filter(() => r() < 0.5)

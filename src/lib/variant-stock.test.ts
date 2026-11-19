@@ -113,7 +113,7 @@ const W3 = 'w-3';
 
 function placedStore(variants: { id: string; onHand: number }[], pieces: Row[] = [], sourceWarehouseId: string | null = null) {
   return memoryDb({
-    warehousePlacement: [{ id: 'pl-1', storeId: 's-1' }],
+    warehousePlacement: [{ id: 'placing-1', storeId: 's-1' }],
     order: [{ id: 'o-1', companyId: 'c-1', storeId: 's-1', sourceWarehouseId }],
     productVariant: variants.map((v) => ({ id: v.id, companyId: 'c-1', productId: 'p-1', onHand: v.onHand })),
     orderItemVariant: pieces.map((x, i) => ({ id: `oiv-${i}`, orderId: 'o-1', productId: 'p-1', createdAt: new Date(i), ...x })),

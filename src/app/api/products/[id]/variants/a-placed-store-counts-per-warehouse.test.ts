@@ -123,7 +123,7 @@ beforeEach(() => {
       { id: 'w-abroad', companyId: 'c-1', countryId: 'k-2', isActive: true },
       { id: 'w-other', companyId: 'c-2', countryId: 'k-1', isActive: true },
     ],
-    warehousePlacement: [{ id: 'pl-1', storeId: 's-1' }],
+    warehousePlacement: [{ id: 'placing-1', storeId: 's-1' }],
     productVariantStock: [],
     variantStockMovement: [],
   };
