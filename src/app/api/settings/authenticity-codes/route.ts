@@ -6,7 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
-import { normalizeAuthenticityCode } from '@/lib/authenticity';
+import { AUTHENTICITY_CODE_MAX, normalizeAuthenticityCode } from '@/lib/authenticity';
 
 /**
  * GET/POST/DELETE /api/settings/authenticity-codes — the owner's own list, read on `settings.view`; adding and deleting on `settings.edit` (the system card's own edit key).
@@ -38,7 +38,12 @@ export async function GET() {
 }
 
 const schema = z.object({
-  code: z.string().trim().min(3).max(64),
+  // The owner reads these, so they are Arabic — the bare zod sentence («Too big: expected string to have <=64 characters») is what showed.
+  code: z
+    .string()
+    .trim()
+    .min(3, 'الرمز قصير — 3 أحرف على الأقل')
+    .max(AUTHENTICITY_CODE_MAX, `الرمز طويل — ${AUTHENTICITY_CODE_MAX} حرفاً على الأكثر`),
   note: z.string().trim().max(500).nullable().optional(),
   productId: z.string().trim().max(100).nullable().optional(),
 });
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
     }
     const code = normalizeAuthenticityCode(parsed.data.code);
     if (!code) {
-      return NextResponse.json({ error: 'الرمز غير صالح — حروف وأرقام وشرطات فقط، من 3 إلى 64 حرفاً' }, { status: 400 });
+      return NextResponse.json({ error: `الرمز غير صالح — حروف وأرقام وشرطات فقط، من 3 إلى ${AUTHENTICITY_CODE_MAX} حرفاً` }, { status: 400 });
     }
 
     const existing = await db.authenticityCode.findUnique({ where: { companyId_code: { companyId, code } } });

@@ -18,10 +18,18 @@ import { db } from '@/lib/db';
  * already decided, purely for the owner's own visibility.
  */
 
+/**
+ * The longest code, in characters. 19/11 (owner): was 64 — the owner's codes run to about 300 characters, and the
+ * add form refused them («Too big: expected string to have <=64 characters»). The public check and the add form read
+ * this one number, so a code that can be added can always be checked. The column is TEXT; the public body cap
+ * (2,000 bytes) holds a code this long with room to spare.
+ */
+export const AUTHENTICITY_CODE_MAX = 300;
+
 /** A scanned/typed string, before it may even be compared to a stored code. Same shape the stored codes are kept in. */
 export function normalizeAuthenticityCode(raw: string): string | null {
   const text = raw.trim();
-  if (text.length < 3 || text.length > 64) return null;
+  if (text.length < 3 || text.length > AUTHENTICITY_CODE_MAX) return null;
   // Letters, digits and dashes — a barcode or QR payload, never a URL, a phone number or a JSON blob.
   if (!/^[A-Za-z0-9-]+$/.test(text)) return null;
   return text.toUpperCase();
