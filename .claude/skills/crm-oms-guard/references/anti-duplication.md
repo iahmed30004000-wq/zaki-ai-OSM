@@ -111,6 +111,9 @@ units still live only in batches. Extend `src/lib/warehouses.ts`; never add a se
 (19/11, W1a) A store becomes «placed» once: `WarehousePlacement` (one row per store) + `src/lib/warehouse-placement.ts`
 (`storeIsPlaced` reads the row). Units change place inside one store ONLY through `src/lib/batch-split.ts`
 (`splitBatch`: a twin row, `quantityProduced` 0, the parent's cost and dates) — never draw-down + receive.
+(20/11, W3a) A transfer between two warehouses of ONE store: `StockTransfer` + `StockTransferLine` and
+`src/lib/stock-transfers.ts` (send = split into twins on the road, receive by count, a shortfall approved by a third person,
+cancel before receipt; kind read by `stock-transfer-kind.ts`). Between stores / countries is NOT built (refused by the door).
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

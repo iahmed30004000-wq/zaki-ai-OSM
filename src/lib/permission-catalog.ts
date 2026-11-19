@@ -150,6 +150,15 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     items: [
       { key: 'inventory.view', opens: ['أرصدة المخزون', 'حركات المخزون'], ar: 'عرض المخزون', en: 'View inventory' },
       { key: 'inventory.adjust', requires: 'inventory.view', ar: 'تعديل المخزون', en: 'Adjust inventory' },
+      /*
+       * 20/11 (warehouse plan W3a): the three hands of a transfer between two warehouses of one store — who sends, who
+       * receives by count, and who approves a shortfall. Three boxes, because the two-hands rule is a rule about PEOPLE
+       * (the sender never receives, neither of them approves the difference) and the owner gives each hand to whom he
+       * chooses. Granted by no migration: nobody holds them until the owner ticks them; his full access holds them.
+       */
+      { key: 'inventory.transfer', requires: 'inventory.view', ar: 'نقل بضاعة بين المخازن (إرسال وإلغاء قبل الاستلام)', en: 'Send stock between warehouses (and cancel before receipt)' },
+      { key: 'inventory.transfer_receive', requires: 'inventory.view', ar: 'استلام نقل بضاعة بالعدّ', en: 'Receive a stock transfer by count' },
+      { key: 'inventory.difference_approve', requires: 'inventory.view', ar: 'اعتماد فرق نقل البضاعة (ضايع أو تالف)', en: 'Approve a stock transfer shortfall (lost or damaged)' },
     ],
   },
   {
