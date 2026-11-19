@@ -174,6 +174,8 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
+  // The two keys are written out here, not read from `EXEMPTS_FROM_HOLD` (desk-readiness.ts): this file reaches the desk's bundle,
+  // which sits at its ceiling. `desk-readiness.test.ts` pins that this line names exactly the keys of that list.
   return holds('confirmation.work') && !holds('orders.unlock') && !holds('orders.assign');
 }
 

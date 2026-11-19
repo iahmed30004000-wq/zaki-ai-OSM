@@ -81,6 +81,14 @@ export function can(user: SessionUser, permission: string): boolean {
   return g.grants[permission] !== undefined || g.grants[LEGACY_ALIAS[permission] ?? permission] !== undefined;
 }
 
+/**
+ * Does this person hold every key by the engine's own flag (`computeEffectiveGrants` → `fullAccess`)? For a screen that must
+ * SAY «the owner» rather than list every key — never a door's bypass: doors ask `can()`, which already answers yes.
+ */
+export function hasFullAccess(user: SessionUser): boolean {
+  return user.status === 'ACTIVE' && grantsOf(user)?.fullAccess === true;
+}
+
 // `LEGACY_ALIAS` lives in permission-aliases.ts, shared with the browser's `userCan`.
 
 // ─────────────────────────────────────────────────────

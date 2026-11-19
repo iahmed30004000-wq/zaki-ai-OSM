@@ -353,7 +353,13 @@ stored with the transfer, never recalculated. A transfer is reversed whole: both
 
 **/admin/staff-rules** — «قواعد الموظفين» (19/11): the two staff cards of `/settings/system` — «سكور الموظفين» and «قواعد الخصم» —
 moved there unchanged, beside الموظفين in الإدارة. Opens on `settings.view`; editing asks `team.settings` / `penalties.rules`.
-`/settings/system` keeps the company name and «العرض بعد الطلب» only.
+`/settings/system` keeps the company name and «العرض بعد الطلب», and since 19/11 the «رموز الأصالة» card.
+
+**«رموز الأصالة»** (19/11, a card of `/settings/system`, not a page: a registry line rides in every staff screen's first
+load) — the owner's own list of codes, added one at a time, that the public `/verify/[id]` page (id = the store's id) checks a scanned
+barcode/QR against; the public endpoint answers only `{genuine}`, never the list. Reads on `settings.view`; adding or
+deleting a code asks `settings.edit`. `AuthenticityCode` is per-company (`companyId` + `@@unique([companyId, code])`),
+and a code is never marked "used": the same code reads «أصلي» every time.
 
 **/finance/closing** — Per wallet: book balance, manually entered actual balance, computed difference,
 mandatory explanation when non-zero. The user who records movements cannot approve the closing.

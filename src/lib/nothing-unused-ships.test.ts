@@ -496,7 +496,9 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/geo/warehouses': 'أبواب المخازن انبنت قبل شاشتها (W0a) — بطاقة «المخازن» بصفحة البلدان والمتاجر (W0b) هي اللي بتستدعيها',
   '/api/geo/warehouses/[id]': 'تسمية وإيقاف وتشغيل مخزن (W0a) — بطاقة «المخازن» (W0b) بتستدعيه',
   '/api/geo/warehouses/[id]/keepers': 'أمناء المخزن (W0a) — منتقي الأمناء ببطاقة «المخازن» (W0b) بيستدعيه',
-  '/api/orders/[id]/finance':'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
+  // 19/11 (Q1a): built ahead of its screen — the «مين مربوطة» section of the rules page (Q1b) calls it, and removes this line.
+  '/api/confirmation/rules/people': 'بابُ قراءةِ «مين مربوطة بالقواعد» بُني قبل شاشته — قسمُ صفحة القواعد بالطلب التالي هو اللي بيستدعيه',
+  '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
   '/api/orders/follow-ups': 'مسكَّر (410) — طوابيرُ المتابعةِ صارت بشاشات التأكيد، والبابُ كان بلا صلاحية ويقرّر بأسماء الأدوار',

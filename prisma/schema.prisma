@@ -76,6 +76,7 @@ model Company {
   abandonedCarts        AbandonedCart[]
   abandonedCartEvents   AbandonedCartActivity[]
   landingChatThreads    LandingChatThread[]
+  authenticityCodes     AuthenticityCode[]
 
   @@map("companies")
 }
@@ -378,6 +379,7 @@ model User {
   customerBlockReleases         CustomerBlock[]         @relation("CustomerBlockReleasedBy")
   reviewsAdded                  ProductReview[]         @relation("ReviewAuthor")
   reviewsHidden                 ProductReview[]         @relation("ReviewHider")
+  authenticityCodesAdded        AuthenticityCode[]      @relation("AuthenticityCodeCreator")
   abandonedCartsAssigned        AbandonedCart[]         @relation("AbandonedCartAssignee")
   abandonedCartEvents           AbandonedCartActivity[]
 
@@ -4534,4 +4536,32 @@ model LandingChatMessage {
   @@index([companyId, seq])
   @@index([threadId, seq])
   @@map("landing_chat_messages")
+}
+
+// ─── PRODUCT AUTHENTICITY CODES (additive) ───
+// The owner types or pastes a code once, by hand, into `/settings/authenticity`; from then on anybody who scans it on
+// the public /verify/[store] page is told «أصلي». Lookup is idempotent — the same code reads «أصلي» every time it is
+// scanned, forever; nothing here ever flips to "used" or expires a code. `scanCount`/`lastScanAt` are for the owner's
+// own screen only (how often, and when last) — the verdict never reads them. `code` is unique PER COMPANY, never
+// shown back to the public caller: the public API answers only `{ genuine: boolean }` (see verify-barcode/route.ts).
+model AuthenticityCode {
+  id          String    @id @default(uuid())
+  companyId   String
+  code        String
+  // The owner's own notes — which batch, which product this code was printed for. Read by nobody but the owner;
+  // never returned by the public endpoint, and deliberately NOT a real foreign key to Product: a stray or wrong
+  // productId here must never be able to block adding or reading a code.
+  note        String?
+  productId   String?
+  scanCount   Int       @default(0)
+  lastScanAt  DateTime? @map("last_scan_at")
+  createdAt   DateTime  @default(now())
+  createdById String?   @map("created_by_id")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("AuthenticityCodeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("authenticity_codes")
 }
