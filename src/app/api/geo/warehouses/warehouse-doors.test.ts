@@ -479,6 +479,38 @@ describe('keepers — only people who reach the country, only by geo.manage', ()
     expect(body.keepers).toEqual([{ id: 'u-keeper', name: 'أمينة', reachesCountry: false }]);
   });
 
+  // 19/11 (W0b): the GET answer gained `candidates` — the picker's list. Additive: `keepers` above is unchanged.
+  describe('candidates — the picker’s list: active people of THIS company who reach the country, by the PUT’s own rule', () => {
+    const candidates = async (w: string) =>
+      ((await (await keepers.GET(new Request('http://x'), p(w))).json()).candidates as { id: string }[]).map((c) => c.id).sort();
+
+    it('Syria: the owner, the geo.manage holders (role, legacy, personal ALLOW) and the people assigned Syria — no store-confined Jordanian, no stranger', async () => {
+      await as('u-admin');
+      expect(await candidates('w-sy1')).toEqual(
+        ['u-admin', 'u-finance', 'u-keeper', 'u-keeper2', 'u-legacy-admin', 'u-owner', 'u-plus', 'u-viewer'].sort()
+      );
+    });
+
+    it('Jordan: the store-confined Jordanian joins, the Syrians leave', async () => {
+      await as('u-admin');
+      expect(await candidates('w-jo1')).toEqual(['u-admin', 'u-legacy-admin', 'u-owner', 'u-plus', 'u-store-jo'].sort());
+    });
+
+    it('NEGATIVE: a suspended account and one who lost the country are not offered', async () => {
+      S.data.user.find((u) => u.id === 'u-keeper2')!.status = 'SUSPENDED';
+      S.data.userCountryAccess = S.data.userCountryAccess.filter((r) => r.userId !== 'u-viewer');
+      await as('u-admin');
+      const ids = await candidates('w-sy1');
+      expect(ids).not.toContain('u-keeper2');
+      expect(ids).not.toContain('u-viewer');
+    });
+
+    it('NEGATIVE: a personal DENY of geo.manage on an admin role takes away «every country» — no Syria row, not offered', async () => {
+      await as('u-admin');
+      expect(await candidates('w-sy1')).not.toContain('u-denied');
+    });
+  });
+
   it.each(['u-viewer', 'u-keeper', 'u-legacy-wh', 'u-denied'])('NEGATIVE: %s cannot read or set keepers — 403', async (who) => {
     await as(who);
     expect((await keepers.GET(new Request('http://x'), p('w-sy1'))).status).toBe(403);

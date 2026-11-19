@@ -252,6 +252,18 @@
     "links": 1,
     "tabs": 0
   },
+  "src/components/geo/WarehousesCard.tsx": {
+    "buttons": 5,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 2,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0,
+    "checkboxes": 1,
+    "switches": 1
+  },
   "src/components/growth/AskAi.tsx": {
     "buttons": 2,
     "inputs": 1,
