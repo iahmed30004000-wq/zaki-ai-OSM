@@ -30,7 +30,11 @@ const OTHER = 's2';
 
 function matches(row: Row, where: Row): boolean {
   for (const [key, want] of Object.entries(where)) {
-    if (want && typeof want === 'object' && 'gt' in want) {
+    if (want === null) {
+      // 19/11 (W2a): every draw asks `inTransitTransferId: null` (never units on the road); a column a fixture row does not
+      // carry is NULL to the database, so it matches, as Prisma would answer.
+      if (row[key] != null) return false;
+    } else if (want && typeof want === 'object' && 'gt' in want) {
       if (!((row[key] ?? 0) > want.gt)) return false;
     } else if (row[key] !== want) return false;
   }

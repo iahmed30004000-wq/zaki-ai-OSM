@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { FamilyCost, familyRootOf } from './batch-family';
 import type { db as prismaDb } from './db';
+import { intakePlace, type WarehouseRef } from './warehouse-intake';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -40,6 +41,13 @@ export interface ReceiveInput {
   batchNumber?: string | null;
   note?: string | null;
   createdById: string;
+  /**
+   * WHERE THE UNITS LAND (the warehouse plan, W2a). Read only for a store that is placed in warehouses, where it is
+   * required and checked (`warehouse-intake.intakePlace`); for any other store it is not read and nothing changes.
+   */
+  warehouseId?: string | null;
+  /** Does the caller reach that warehouse? The door passes `warehouses.reachesWarehouse` for its session. */
+  mayUse?: (warehouse: WarehouseRef) => Promise<boolean>;
 }
 
 export async function nextBatchNumber(tx: Tx, companyId: string): Promise<string> {
@@ -57,10 +65,20 @@ export async function receiveStock(tx: Tx, input: ReceiveInput) {
   }
   const unitCost = Math.max(0, input.unitCost ?? 0);
 
+  // Null for a store that is not placed: the two rows below are then exactly the ones written before warehouses existed.
+  const place = await intakePlace(tx, {
+    companyId: input.companyId,
+    storeId: input.storeId,
+    productId: input.productId,
+    warehouseId: input.warehouseId,
+    mayUse: input.mayUse,
+  });
+
   const batch = await tx.productionBatch.create({
     data: {
       companyId: input.companyId,
       storeId: input.storeId ?? null,
+      ...(place ? { warehouseId: place } : {}),
       productId: input.productId,
       batchNumber: input.batchNumber?.trim() || (await nextBatchNumber(tx, input.companyId)),
       quantityProduced: input.quantity,
@@ -81,6 +99,7 @@ export async function receiveStock(tx: Tx, input: ReceiveInput) {
     data: {
       companyId: input.companyId,
       storeId: input.storeId ?? null,
+      ...(place ? { warehouseId: place } : {}),
       productId: input.productId,
       batchId: batch.id,
       type: 'PRODUCTION',
@@ -139,6 +158,14 @@ export async function drawDownStock(
         productId: input.productId,
         quantityRemaining: { gt: 0 },
         ...(input.storeId ? { storeId: input.storeId } : {}),
+        /*
+         * NEVER UNITS ON THE ROAD (the warehouse plan, W2a). A row with `inTransitTransferId` holds units travelling
+         * between two warehouses (`batch-split.ts`): they are on no shelf, nobody can hand them to a courier, and the
+         * transfer's receipt or cancel is the only door that may give them back a place. Every draw — the six delivery
+         * doors, the refused-return losses, the lost-parcel write-off, the recount's shortfall — comes through here.
+         * A store that was never placed has no such row, so for it this condition removes nothing.
+         */
+        inTransitTransferId: null,
       },
       orderBy: [{ productionDate: 'asc' }, { createdAt: 'asc' }],
       // `costPerUnit` because the money that LEFT is only knowable here.

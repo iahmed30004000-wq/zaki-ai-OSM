@@ -50,7 +50,12 @@ const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
     productionBatchCost: { deleteMany: vi.fn(), createMany: vi.fn() },
     product: { findFirst: vi.fn() },
     inventoryMovement: { create: vi.fn() },
-    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
+    // 19/11 (W2a): the run and its ledger line are ONE transaction now, which takes the product's stock lock (`$executeRaw`) —
+    // inside a transaction, so the client handed to it is one without `$transaction`.
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(new Proxy(db, { has: (o, p) => p !== '$transaction' && p in o }))),
+    $executeRaw: vi.fn(async () => 1),
+    // 19/11 (W2a): a receipt asks «is this store placed in warehouses?» (`warehouse-intake.storeIsPlaced`) — never, here.
+    warehousePlacement: { findUnique: vi.fn(async () => null) },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),

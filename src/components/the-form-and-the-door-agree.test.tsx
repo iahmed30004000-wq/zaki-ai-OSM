@@ -40,6 +40,10 @@ const { db, requireContext, requirePermission, assertOrderAccess, authorize, can
     productionBatch: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn(), aggregate: vi.fn() },
     inventoryMovement: { create: vi.fn() },
     $transaction: vi.fn(),
+    // 19/11 (W2a): the production run is ONE transaction now — it takes the product's stock lock and asks «is this store
+    // placed in warehouses?» (never, here) through the transaction it is handed.
+    $executeRaw: async () => 1,
+    warehousePlacement: { findUnique: async () => null },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -141,7 +145,7 @@ beforeEach(() => {
   db.inventoryMovement.create.mockResolvedValue({});
   db.order.updateMany.mockResolvedValue({ count: 1 });
   db.order.findUnique.mockResolvedValue({ ...ORDER });
-  db.$transaction.mockImplementation(async (fn: any) => fn({ order: db.order }));
+  db.$transaction.mockImplementation(async (fn: any) => fn({ order: db.order, productionBatch: db.productionBatch, inventoryMovement: db.inventoryMovement, warehousePlacement: db.warehousePlacement, $executeRaw: db.$executeRaw }));
 
   vi.stubGlobal(
     'fetch',
@@ -383,7 +387,7 @@ describe('POST /api/orders/[id]/shipping — the tracking form’s own body, at 
     });
     db.order.updateMany.mockResolvedValue({ count: 1 });
     db.order.findUnique.mockResolvedValue({ ...ORDER });
-    db.$transaction.mockImplementation(async (fn: any) => fn({ order: db.order }));
+    db.$transaction.mockImplementation(async (fn: any) => fn({ order: db.order, productionBatch: db.productionBatch, inventoryMovement: db.inventoryMovement, warehousePlacement: db.warehousePlacement, $executeRaw: db.$executeRaw }));
     const old = await atShippingDoor({ ...body, deliveryFee: 0 });
     expect(old.status).toBe(200);
     expect(savedOrder().deliveryFee).toBe(0);

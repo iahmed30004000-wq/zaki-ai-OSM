@@ -32,6 +32,9 @@ function fakeTx(opts: { existing?: unknown; moved?: number; productIds?: string[
   const updated: Record<string, unknown>[] = [];
   return {
     tx: {
+      // 19/11 (W2a): the count takes its lines' stock locks, then asks «is this store placed in warehouses?» — never, here.
+      $executeRaw: vi.fn(async () => 1),
+      warehousePlacement: { findUnique: vi.fn(async () => null) },
       stockOpeningCount: {
         findUnique: vi.fn(async () => opts.existing ?? null),
         create: vi.fn(async (a: { data: Record<string, unknown> }) => {

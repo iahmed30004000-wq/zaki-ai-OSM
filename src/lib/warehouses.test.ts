@@ -174,6 +174,11 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/lib/batch-family.ts',
     'src/lib/receiving.ts',
     'src/lib/product-cost.ts',
+    // 19/11, W2a (receiving and production name a warehouse): the intake rule, the two doors that put units in, the
+    // opening count that refuses a placed store, and the stop door's lock against a receipt.
+    'src/lib/warehouse-intake.ts',
+    'src/app/api/inventory/route.ts',
+    'src/app/api/production/route.ts',
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',

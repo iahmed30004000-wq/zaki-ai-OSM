@@ -681,7 +681,7 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
   // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
   // 19/11 (W1a): 'src/lib/warehouses.ts:storeIsPlaced' and ':warehousesOfStore' left — the placement door (`/api/inventory/placement`) reads both.
-  'src/lib/warehouses.ts:reachesWarehouse': 'خطة المخازن W0a: «هالشخص بيوصل لهالمخزن؟» لمخزن واحد — أول قارئ W2a (الاستلام باسم مخزن)',
+  // 19/11 (W2a): 'src/lib/warehouses.ts:reachesWarehouse' left — the receiving and production doors ask it for the warehouse a placed store's units land in.
 };
 
 /**

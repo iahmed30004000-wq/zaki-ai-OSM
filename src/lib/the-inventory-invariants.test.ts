@@ -424,6 +424,10 @@ function matchesWhere(row: Row, where: Row): boolean {
   for (const [key, want] of Object.entries(where)) {
     if (want && typeof want === 'object' && Array.isArray(want.in)) {
       if (!want.in.includes(row[key])) return false;
+    } else if (want === null) {
+      // 19/11 (W2a): every draw asks `inTransitTransferId: null` (never units on the road). A column a fixture row does
+      // not carry is NULL to the database, so it matches, as Prisma would answer.
+      if (row[key] != null) return false;
     } else if (want && typeof want === 'object' && 'gt' in want) {
       if (!((row[key] ?? 0) > want.gt)) return false;
     } else if (row[key] !== want) {
@@ -960,7 +964,9 @@ describe('the ledger balance comes from the shelf, not from the row being writte
     expect(mine[0].source).toBe('FROM_SHARED');
     // The value, so a revert prints what actually reached the column.
     expect(mine[0].expression).not.toBe('qty');
-    expect(mine[0].expression).toMatch(/^await onHandTotal\(db, companyId, productId\)/);
+    // 19/11 (W2a): was `onHandTotal(db, …)`; the run and its ledger line are ONE transaction now, so the balance is read
+    // through it (`tx`) — the same shared helper, with the run just written still in the sum.
+    expect(mine[0].expression).toMatch(/^await onHandTotal\(tx, companyId, productId\)/);
   });
 
   /**

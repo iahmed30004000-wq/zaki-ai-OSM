@@ -18,6 +18,8 @@ const { db, requireContext, requirePermission, logAudit, receiveStock, drawDownS
     productionBatch: { findFirst: vi.fn() },
     inventoryMovement: { create: vi.fn() },
     $transaction: vi.fn(),
+    // 19/11 (W2a): a receipt asks «is this store placed in warehouses?» (`warehouse-intake.storeIsPlaced`) — never, here.
+    warehousePlacement: { findUnique: vi.fn(async () => null) },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),

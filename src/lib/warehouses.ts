@@ -15,6 +15,8 @@ import type { SessionUser } from '@/types/auth';
  * `storeIsPlaced` answers «no» for every store until the opening placement
  * exists, and a store that is not placed works exactly as before. The doors
  * that use this file are the warehouses' own (`/api/geo/warehouses/**`).
+ * 19/11 (W2a): the receiving and production doors ask `reachesWarehouse` for
+ * the warehouse a placed store's units land in (`warehouse-intake.ts`).
  *
  * WHO REACHES A WAREHOUSE — one rule, with the facts loaded by the caller:
  *   1. its country must be reachable by the same rule as the geo screens
@@ -146,17 +148,13 @@ export async function sessionPeople(
 }
 
 /**
- * Is this store's stock placed in warehouses? Yes once its opening placement
- * row exists (`warehouse_placements`, one per store, written by
- * `warehouse-placement.placeStore` in the same transaction that gives its
- * batches their places) — and never before.
- * Every stock door asks this before it asks for a warehouse; «no» means the
- * door behaves exactly as it always has. Pass the transaction to ask inside one.
+ * Is this store's stock placed in warehouses? — `warehouse-intake.storeIsPlaced`, re-exported.
+ *
+ * 19/11 (W2a): it moved next to the intake rule, because `receiving.ts` asks it inside every receipt and this module
+ * imports the session machinery (`geo-context`, `authorization`) that the stock libraries must not load. One function,
+ * one home; the name here stays for the doors that already import it from this file.
  */
-export async function storeIsPlaced(storeId: string, client: Pick<typeof db, 'warehousePlacement'> = db): Promise<boolean> {
-  const row = await client.warehousePlacement.findUnique({ where: { storeId }, select: { id: true } });
-  return row !== null;
-}
+export { storeIsPlaced } from './warehouse-intake';
 
 /** The warehouses that may hold this store's goods: the active ones of its country. */
 export async function warehousesOfStore(companyId: string, storeId: string) {
