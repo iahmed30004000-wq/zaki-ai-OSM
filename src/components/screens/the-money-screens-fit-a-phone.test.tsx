@@ -527,7 +527,9 @@ describe('«المطابقة»', () => {
       render(<DifferenceActions {...props} />);
       const [first, second] = pair();
       expect(first.className).toContain('border-[var(--sys-success)] text-[var(--sys-success)]');
-      expect(first.className).not.toContain('hover:');
+      // 18/11 (R13c2): the pair is the kit's framed button now, and the kit's frame carries its own hover fill on every button
+      // («not.toContain('hover:')» pinned the hand-written row). What this pins is unchanged: no colour waits for a pointer here.
+      expect(first.className).not.toMatch(/hover:(border|text)-/);
       expect(second.className).toContain('border-[var(--sys-warning)] text-[var(--sys-warning)]');
       for (const r of RESOLUTIONS) expect(document.body.textContent).toContain(RESOLUTION_MEANING[r]);
     });
@@ -996,8 +998,10 @@ describe('الراتب', () => {
   it('«اصرف» and «تراجع» are 44px under a finger; the wallet box takes the line and the fields are 44px too', async () => {
     const dialog = await open();
     await within(dialog).findByText('الراتب');
+    // 19/11 (R16b2): was «min-h-11 md:min-h-0» on two raw buttons; they are the kit's Button (size md) now,
+    // which is 44px on a phone by its own height — «h-11 md:h-10». Still 44px under a finger.
     for (const name of ['اصرف', 'تراجع']) {
-      expect(within(dialog).getByRole('button', { name }).className).toContain('min-h-11 md:min-h-0');
+      expect(within(dialog).getByRole('button', { name }).className).toContain('h-11 md:h-10');
     }
     const select = within(dialog).getByRole('combobox');
     expect(select.className).toContain('w-full');

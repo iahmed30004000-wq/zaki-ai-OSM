@@ -6,6 +6,7 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
 import type { SwapSearch, SwapCandidate } from '@/lib/parcel-swap';
 
 /**
@@ -80,14 +81,10 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
-      >
+      <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <RiArrowLeftRightLine className="icon-mirror h-4 w-4" />
         كان من طرد طلب آخر
-      </button>
+      </Button>
 
       {open && (
         <Modal isOpen onClose={() => setOpen(false)} title="كان من طرد طلب آخر">
@@ -110,7 +107,7 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
               className="flex gap-2"
             >
               <label className="flex-1">
-                <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">من أخذ البضاعة</span>
+                <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">من أخذ البضاعة</span>
                 <input
                   type="search"
                   value={query}
@@ -120,14 +117,10 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
                   placeholder="هاتف أو رقم طلب"
                 />
               </label>
-              <button
-                type="submit"
-                disabled={searching || query.trim().length === 0}
-                className="h-11 md:h-10 px-4 self-end rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={searching || query.trim().length === 0} className="self-end">
                 {searching ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiSearchLine className="w-4 h-4" />}
                 ابحث
-              </button>
+              </Button>
             </form>
 
             {found && (
@@ -137,14 +130,15 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
                   {found.box.products.length > 0 ? `: ${found.box.products.join('، ')}` : ''}
                 </p>
                 {found.box.blockedBy.length > 0 && (
-                  <p className="text-xs text-[var(--sys-destructive)]">{found.box.blockedBy.join(' · ')}</p>
+                  <p className="text-note text-[var(--sys-destructive)]">{found.box.blockedBy.join(' · ')}</p>
                 )}
-                {found.hint && <p className="text-xs text-[var(--sys-muted-foreground)]">{found.hint}</p>}
+                {found.hint && <p className="text-note text-[var(--sys-muted-foreground)]">{found.hint}</p>}
                 <ul className="space-y-2">
                   {found.candidates.map((c) => {
                     const blocked = c.blockedBy.length > 0 || found.box.blockedBy.length > 0;
                     return (
                       <li key={c.id}>
+                        {/* A row press: picking one order of a list stays a raw button (R19's allowed list). */}
                         <button
                           type="button"
                           disabled={blocked}
@@ -156,16 +150,16 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
                           }`}
                         >
                           <span dir="ltr" className="block font-medium">{c.orderNumber}</span>
-                          <span className="block text-xs text-[var(--sys-muted-foreground)]">
+                          <span className="block text-note text-[var(--sys-muted-foreground)]">
                             {c.customer?.fullName ?? '—'} — <span dir="ltr">{c.customer?.phone ?? '—'}</span>
                           </span>
                           {c.expected !== null && (
-                            <span className="block text-xs">
+                            <span className="block text-note">
                               المتوقَّع <Money value={c.expected} currency={currency} />
                             </span>
                           )}
                           {c.blockedBy.length > 0 && (
-                            <span className="block text-xs text-[var(--sys-destructive)]">{c.blockedBy.join(' · ')}</span>
+                            <span className="block text-note text-[var(--sys-destructive)]">{c.blockedBy.join(' · ')}</span>
                           )}
                         </button>
                       </li>
@@ -178,7 +172,7 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
             {picked && (
               <div className="space-y-3">
                 <label className="block">
-                  <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">كم قطعة أخذ من الصندوق</span>
+                  <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">كم قطعة أخذ من الصندوق</span>
                   <input
                     type="number"
                     inputMode="numeric"
@@ -190,12 +184,12 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
                   />
                 </label>
                 {!countOk && (
-                  <p className="text-xs text-[var(--sys-destructive)]">
+                  <p className="text-note text-[var(--sys-destructive)]">
                     {boxPieces === 1 ? 'الصندوق قطعة واحدة فقط' : `من 1 إلى ${boxPieces} — هذا ما في الصندوق`}
                   </p>
                 )}
                 <label className="block">
-                  <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">هل رجع صندوق الزبون نفسه؟</span>
+                  <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">هل رجع صندوق الزبون نفسه؟</span>
                   <select
                     value={boxBack}
                     onChange={(e) => setBoxBack(e.target.value === 'no' ? 'no' : 'yes')}
@@ -205,7 +199,7 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
                     <option value="no">لا، لم يرجع بعد</option>
                   </select>
                 </label>
-                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                <p className="text-note text-[var(--sys-muted-foreground)]">
                   سيصير ثمن الكشف بيعةً للزبون في طلب جديد مسلَّم، ويُغلق طلب الصندوق، ويصير طلب الزبون مرتجعاً. لا مال يتحرّك قبل اعتماد الكشف.
                 </p>
               </div>
@@ -214,21 +208,13 @@ export function SwapDialog({ statementId, matchId, reference, amount, currency, 
             {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
             <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm"
-              >
+              <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                 إلغاء
-              </button>
-              <button
-                type="button"
-                disabled={!picked || !countOk || saving}
-                onClick={() => void save()}
-                className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-              >
+              </Button>
+              {/* The screen's own flag (`saving`): wrapped in `void`, the kit runs nothing of its own. */}
+              <Button type="button" disabled={!picked || !countOk || saving} onClick={() => void save()}>
                 {picked ? `سجّل التبديل مع الطلب ${picked.orderNumber}` : 'اختر الطلب'}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>

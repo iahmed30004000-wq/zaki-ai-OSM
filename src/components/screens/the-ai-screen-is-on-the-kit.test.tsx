@@ -47,6 +47,7 @@ import { routeLabel } from '@/lib/route-registry';
 
 /** A key the server must never send — if it ever does, the screen still must not draw it. */
 const LEAK = 'sk-leaked-0000-9f3a';
+const LEAK2 = 'sk-api-key-leaked-7c1d';
 
 const PROVIDERS = [
   { id: 'ANTHROPIC', label: 'المزوّد الأول', defaultModel: 'm1', models: ['m1', 'm2'], keyHelp: 'من لوحة المزوّد' },
@@ -65,7 +66,10 @@ const JOBS = [
 ];
 const SYSTEM = {
   provider: 'ANTHROPIC', model: 'm1',
-  providerKeys: { ANTHROPIC: { configured: true, savedAt: '2026-11-10T08:00:00.000Z', key: LEAK } },
+  providerKeys: {
+    // 19/11 (review of #390): `apiKey` is the field name a vendor key would carry if the server ever leaked it.
+    ANTHROPIC: { configured: true, savedAt: '2026-11-10T08:00:00.000Z', key: LEAK, apiKey: LEAK2 },
+  },
   localBaseUrl: 'http://localhost:11434',
   compat: { baseUrl: 'https://models.example.com/v1', host: 'models.example.com', model: 'my-model' },
   savedAt: '2026-11-10T08:00:00.000Z', savedBy: 'المالك', encryptionAvailable: true,
@@ -76,6 +80,7 @@ const MESSAGES = {
   languages: [{ code: 'ar', label: 'العربية' }],
   sample: { orderNumber: 'X-1', customerName: 'زبون' },
 };
+let routes: Record<string, unknown> = {};
 let defaultRoute: Record<string, unknown> = { provider: 'ANTHROPIC', model: 'm1', keyFrom: 'system', baseUrl: null };
 
 const res = (ok: boolean, body: unknown) => ({ ok, json: async () => body });
@@ -84,9 +89,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   who.permissions = ['settings.view', 'settings.manage', 'settings.messages'];
   defaultRoute = { provider: 'ANTHROPIC', model: 'm1', keyFrom: 'system', baseUrl: null };
+  routes = {};
   fetchMock.mockImplementation(async (url: string, init?: { method?: string }) => {
     if (url === '/api/settings/ai' && !init?.method) {
-      return res(true, { settings: SETTINGS, usage: { dayTokens: 10, monthTokens: 200 }, providers: PROVIDERS, jobs: JOBS, routes: {}, defaultRoute });
+      return res(true, { settings: SETTINGS, usage: { dayTokens: 10, monthTokens: 200 }, providers: PROVIDERS, jobs: JOBS, routes, defaultRoute });
     }
     if (url === '/api/settings/ai/system') {
       if (init?.method === 'PUT') return res(true, { system: SYSTEM });
@@ -161,6 +167,9 @@ describe('the keys (decision 5): nothing of a key comes back', () => {
     expect(boxes.every((b) => b.value === '' && b.type === 'password' && b.getAttribute('autocomplete') === 'off')).toBe(true);
     expect(container.innerHTML).not.toContain(LEAK);
     expect(container.innerHTML).not.toContain('9f3a');
+    expect(container.innerHTML).not.toContain(LEAK2);
+    expect(container.innerHTML).not.toContain('7c1d');
+    expect(keyBoxes(container).some((b) => b.value.includes('leaked'))).toBe(false);
   });
 
   it('a pasted key is sent once, alone, and the box is empty again after the save', async () => {
@@ -269,6 +278,27 @@ describe('the same presses, the same bodies', () => {
     await screen.findByText('تم الحفظ');
     const put = apiJson.mock.calls.find(([u, init]) => u === '/api/settings/messages' && init?.method === 'PUT');
     expect(JSON.parse(put![1].body).templates).toEqual([]);
+  });
+});
+
+describe('what leaves the company is said beside the control', () => {
+  const WARN = /هالمساعد بيقرا بيانات زبون — الاسم والملاحظات ما بيطلعوا لمزوّد خارجي/;
+
+  it('an assistant that reads a customer, routed to an outside vendor, carries the warning and the way to a full answer', async () => {
+    routes = { confirmation: { provider: 'ANTHROPIC', model: 'm1', keyFrom: 'system', baseUrl: null } };
+    await draw();
+    fireEvent.click(section('المساعدون'));
+    await screen.findByText('ما يقرؤه مركز الذكاء');
+    expect(screen.getAllByText(WARN).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('لنتيجة كاملة: نموذج على خادمك').length).toBeGreaterThan(0);
+  });
+
+  it('NEGATIVE: the same assistant on the owner\'s own server carries no warning', async () => {
+    routes = { confirmation: { provider: 'LOCAL', model: 'l1', keyFrom: 'none', baseUrl: 'http://localhost:11434' } };
+    await draw();
+    fireEvent.click(section('المساعدون'));
+    await screen.findByText('ما يقرؤه مركز الذكاء');
+    expect(screen.queryAllByText(WARN)).toEqual([]);
   });
 });
 

@@ -21,6 +21,8 @@ import { Pager } from '@/components/ui/Pager';
 import { Rows } from '@/components/ui/Rows';
 import { BulkBar } from '@/components/shell/BulkBar';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { FULL_SIGHT, NO_SIGHT, statesOffered, type TrackingSight } from '@/lib/parcel-tracking/sight';
@@ -173,11 +175,6 @@ const NEXT_AR: Record<Step, string> = {
   DELIVER: 'تسجيل التسليم أو الرجوع',
   COLLECT: 'استلام المبلغ',
 };
-
-const GREEN =
-  'h-11 md:h-8 px-3 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
-const RED =
-  'h-11 md:h-8 px-3 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50';
 
 interface Failure {
   ref: string;
@@ -379,19 +376,19 @@ export function ManualMatching() {
    */
   const rules = (
     <>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         1 — اختر الجهة، أو ابحث برقم الطلب أو الباركود أو اسم العميل.
       </p>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         2 — ما سلّمه وما رجع: علّمه واضغط «تم تسليمها» أو «رجعت». يُسجَّل ما حدث فقط، ولا يدخل مالٌ المحفظة.
       </p>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         3 — المال: علّم المسلَّم واضغط «استلمت منه»، واكتب المبلغ الذي استلمته فعلاً. أيّ فرق عن المتوقَّع يُسجَّل كما هو.
       </p>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         بعد الاستلام يُغلق الطلب مالياً. والراجع يُغلق بعد عدّ بضاعته في «المرتجعات».
       </p>
-      <p className="text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف، أو كشف واحد تعتمده: «مطابق يدوي»
         لإضافة الطلبات إلى مسوّدة، ثم «تجميع» في «التحصيل والكشوف».
       </p>
@@ -400,11 +397,12 @@ export function ManualMatching() {
 
   return (
     <div className="space-y-3">
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 space-y-2">
+      {/* The kit's card (18/11, R13c2): the instructions are a page-level block of the manual half. */}
+      <Card padding="md" className="space-y-2">
         <p className="text-sm font-medium text-[var(--sys-heading)]">مطابقة يدوية — لشركة أو مندوب لا يرسل كشفاً ولا ملفاً</p>
         {phone ? (
           <>
-            <p className="text-xs leading-relaxed text-[var(--sys-foreground)]">
+            <p className="text-note leading-relaxed text-[var(--sys-foreground)]">
               1 اختر الجهة · 2 سجّل التسليم أو الرجوع · 3 استلم المال
             </p>
             <AdvancedGroup label="كيف تعمل؟" holds="الخطوات بالتفصيل">
@@ -414,7 +412,7 @@ export function ManualMatching() {
         ) : (
           rules
         )}
-      </div>
+      </Card>
 
       <ListToolbar
         search={term}
@@ -440,7 +438,7 @@ export function ManualMatching() {
         <div className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3 space-y-1">
           <p className="font-medium">تعذّر تسجيل {failed.length} طلب:</p>
           {failed.map((f) => (
-            <p key={f.ref} className="text-xs">
+            <p key={f.ref} className="text-note">
               <span dir="ltr">{f.ref}</span> — {f.why}
             </p>
           ))}
@@ -448,58 +446,61 @@ export function ManualMatching() {
       )}
 
       {(atDoor.length > 0 || owed.length > 0 || owedNoPermission) && (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-3 flex flex-wrap items-center gap-3">
+        // The kit's plain card (18/11, R13c2): a bar of controls above the list, so no theme ornament lands on it.
+        <Card plain padding="sm" className="flex flex-wrap items-center gap-3">
           {/* On a desk this strip is what it always was: the count, the way out and the buttons, in a row above the
               list. On a phone it keeps only what is asked BEFORE anything is ticked; the rest is in the bar below. */}
-          <span className="text-xs text-[var(--sys-muted-foreground)]">
+          <span className="text-note text-[var(--sys-muted-foreground)]">
             {chosen.length === 0 || phone ? 'علّم الطلبات التي تريد تسجيلها.' : `مختار ${chosen.length} طلب`}
           </span>
           {chosen.length === 0 && atDoor.length > 0 && (
-            <button onClick={() => pick(atDoor)} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+            <Button type="button" variant="quiet" size="sm" onClick={() => pick(atDoor)}>
               اختر كل ما بانتظار التسليم ({atDoor.length}){here}
-            </button>
+            </Button>
           )}
           {chosen.length === 0 && owed.length > 0 && (
-            <button onClick={() => pick(owed)} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-primary)] hover:underline">
+            <Button type="button" variant="quiet" size="sm" onClick={() => pick(owed)}>
               اختر كل ما بانتظار التحصيل ({owed.length}){here}
-            </button>
+            </Button>
           )}
           {owedNoPermission && (
-            <span className="text-xs text-[var(--sys-muted-foreground)]">
+            <span className="text-note text-[var(--sys-muted-foreground)]">
               استلام المبلغ يحتاج صلاحية الصندوق، فلا مربع على الطلبات المسلَّمة.
             </span>
           )}
           {!phone && chosen.length > 0 && (
-            <button onClick={() => setSelected({})} className="text-xs text-[var(--sys-muted-foreground)] hover:underline">
+            <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
               إلغاء الاختيار
-            </button>
+            </Button>
           )}
-          {!phone && problem && <span className="text-xs text-[var(--sys-destructive)]">{problem}</span>}
+          {!phone && problem && <span className="text-note text-[var(--sys-destructive)]">{problem}</span>}
           {/* A problem only ever belongs to a mixed choice (no step) or to money (one courier, one currency). */}
+          {/* The kit's buttons keep the screen's own busy flag: each handler is wrapped in `void`, so the kit runs nothing of its own
+              and the press is the one it was (the question first, then one request per order, the same `disabled` rule). */}
           {!phone && step === 'DELIVER' && extra?.mayDeliver !== false && (
             <span className="flex items-center gap-2 mr-auto">
-              <button onClick={() => void settle('NONE')} disabled={working} className={RED}>
+              <Button type="button" variant="danger" size="sm" onClick={() => void settle('NONE')} disabled={working}>
                 <RiCloseLine className="w-4 h-4" aria-hidden /> رجعت ({chosen.length})
-              </button>
-              <button onClick={() => void settle('ALL')} disabled={working} className={GREEN}>
+              </Button>
+              <Button type="button" size="sm" onClick={() => void settle('ALL')} disabled={working}>
                 {working ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
                 تم تسليمها ({chosen.length})
-              </button>
+              </Button>
             </span>
           )}
           {!phone && !problem && step === 'COLLECT' && (
             <span className="flex items-center gap-2 mr-auto">
               {mayGather && (
-                <button onClick={() => setGatheringFor(choiceKey)} className={GREEN}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setGatheringFor(choiceKey)}>
                   <RiFileList3Line className="w-4 h-4" aria-hidden /> مطابق يدوي ({chosen.length})
-                </button>
+                </Button>
               )}
-              <button onClick={() => setCollectingFor(choiceKey)} className={GREEN}>
+              <Button type="button" size="sm" onClick={() => setCollectingFor(choiceKey)}>
                 <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
-              </button>
+              </Button>
             </span>
           )}
-        </div>
+        </Card>
       )}
 
       {/*
@@ -511,33 +512,33 @@ export function ManualMatching() {
         strip above is where it always was. Same buttons, same doors, same names.
       */}
       <BulkBar show={phone && chosen.length > 0}>
-        <span className="me-auto text-xs font-semibold text-[var(--sys-primary)]">مختار {chosen.length} طلب</span>
-        <button onClick={() => setSelected({})} className="min-h-11 md:min-h-0 text-xs text-[var(--sys-muted-foreground)] hover:underline">
+        <span className="me-auto text-note font-semibold text-[var(--sys-primary)]">مختار {chosen.length} طلب</span>
+        <Button type="button" variant="quiet" size="sm" onClick={() => setSelected({})}>
           إلغاء الاختيار
-        </button>
-        {problem && <span className="w-full text-xs text-[var(--sys-destructive)]">{problem}</span>}
+        </Button>
+        {problem && <span className="w-full text-note text-[var(--sys-destructive)]">{problem}</span>}
         {/* A problem only ever belongs to a mixed choice (no step) or to money (one courier, one currency). */}
         {step === 'DELIVER' && (
           <span className="flex grow items-center justify-end gap-2">
-            <button onClick={() => void settle('NONE')} disabled={working} className={`${RED} flex-1 justify-center`}>
+            <Button type="button" variant="danger" size="sm" onClick={() => void settle('NONE')} disabled={working} className="flex-1">
               <RiCloseLine className="w-4 h-4" aria-hidden /> رجعت ({chosen.length})
-            </button>
-            <button onClick={() => void settle('ALL')} disabled={working} className={`${GREEN} flex-1 justify-center`}>
+            </Button>
+            <Button type="button" size="sm" onClick={() => void settle('ALL')} disabled={working} className="flex-1">
               {working ? <RiLoader4Line className="w-4 h-4 animate-spin" /> : <RiCheckLine className="w-4 h-4" aria-hidden />}
               تم تسليمها ({chosen.length})
-            </button>
+            </Button>
           </span>
         )}
         {!problem && step === 'COLLECT' && (
           <span className="flex grow items-center justify-end gap-2">
             {mayGather && (
-              <button onClick={() => setGatheringFor(choiceKey)} className={`${GREEN} flex-1 justify-center`}>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setGatheringFor(choiceKey)} className="flex-1">
                 <RiFileList3Line className="w-4 h-4" aria-hidden /> مطابق يدوي ({chosen.length})
-              </button>
+              </Button>
             )}
-            <button onClick={() => setCollectingFor(choiceKey)} className={`${GREEN} flex-1 justify-center`}>
+            <Button type="button" size="sm" onClick={() => setCollectingFor(choiceKey)} className="flex-1">
               <RiHandCoinLine className="w-4 h-4" aria-hidden /> استلمت منه ({chosen.length})
-            </button>
+            </Button>
           </span>
         )}
       </BulkBar>
@@ -573,7 +574,7 @@ export function ManualMatching() {
                 <>
                   <OrderRef id={o.id} number={o.merchantRef ?? o.orderNumber} className="font-medium text-[var(--sys-heading)]" />
                   {o.alert && (
-                    <span className="block text-xs text-[var(--sys-destructive)]">
+                    <span className="block text-note text-[var(--sys-destructive)]">
                       {ALERT_AR[o.alert.kind]}
                     </span>
                   )}
@@ -595,7 +596,7 @@ export function ManualMatching() {
                 return s ? (
                   NEXT_AR[s]
                 ) : (
-                  <span className="text-xs text-[var(--sys-muted)]">من شاشة متابعة الشحن</span>
+                  <span className="text-note text-[var(--sys-muted)]">من شاشة متابعة الشحن</span>
                 );
               },
             },

@@ -19,6 +19,7 @@ import {
 import { EXPLANATION_SENTENCE, explanationOf } from '@/lib/decision-words';
 import { STATEMENT_CLOSED_SENTENCE } from '@/lib/settlement-gates';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { Button } from '@/components/ui/Button';
 
 /**
  * WHAT TO DO ABOUT A DIFFERENCE, WHERE THE DIFFERENCE IS.
@@ -144,7 +145,7 @@ export function DifferenceActions({
     const known = (RESOLUTIONS as readonly string[]).includes(resolution);
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--sys-success)]">
+        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2.5 py-1 text-note font-semibold text-[var(--sys-success)]">
           <RiCheckLine className="h-4 w-4" />
           {isExchange({ resolution, resolutionKind })
             ? EXCHANGE_AR
@@ -155,19 +156,15 @@ export function DifferenceActions({
                 : resolution}
         </span>
         {resolution === 'OURS_STANDS' && claim ? (
-          <span className="text-xs font-medium text-[var(--sys-warning)]">
+          <span className="text-note font-medium text-[var(--sys-warning)]">
             مطالبة على الشركة {claim} {currency ?? ''}
           </span>
         ) : null}
-        {resolutionNote && <span className="text-xs text-[var(--sys-muted-foreground)]">{resolutionNote}</span>}
+        {resolutionNote && <span className="text-note text-[var(--sys-muted-foreground)]">{resolutionNote}</span>}
         {!locked && (
-          <button
-            type="button"
-            onClick={() => setAgain(true)}
-            className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={() => setAgain(true)}>
             غيّر البتّ
-          </button>
+          </Button>
         )}
         {orderId && (
           <OrderNotesPeek
@@ -183,7 +180,7 @@ export function DifferenceActions({
 
   // A closed statement takes no answer: the row says why, in the sentence every door of it gives.
   if (locked) {
-    return <span className="text-xs text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</span>;
+    return <span className="text-note text-[var(--sys-muted-foreground)]">{STATEMENT_CLOSED_SENTENCE}</span>;
   }
 
   // What the server's matrix says, once, per saying: the sentence that explains a greyed-out button is the one
@@ -201,54 +198,65 @@ export function DifferenceActions({
         aria-label="تفسير القرار"
         className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)] min-w-[220px]"
       />
+      {/*
+        The kit's framed small button (18/11, R13c2), and the colour that says which figure kept as it was: on a phone each of
+        the pair wears its colour at rest, on a desk the muted word and the colour under the pointer. Every handler is wrapped
+        in `void`, so the kit runs nothing of its own and the screen's `busy` greys every answer while one runs, as before.
+      */}
       {!parkOnly && RESOLUTIONS.map((r) => (
-        <button
+        <Button
           key={r}
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={busy !== null || !verdict(r).allowed}
           title={RESOLUTION_MEANING[r]}
           onClick={() => void resolve(r)}
-          className={`min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+          className={
             r === 'ACCEPTED_COURIER'
               ? phone
                 ? 'border-[var(--sys-success)] text-[var(--sys-success)]'
-                : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]'
+                : 'text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]'
               : phone
                 ? 'border-[var(--sys-warning)] text-[var(--sys-warning)]'
-                : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]'
-          }`}
+                : 'text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]'
+          }
         >
           {busy === r ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiShieldCheckLine className="h-4 w-4" />}
           {RESOLUTION_AR[r]}
-        </button>
+        </Button>
       ))}
       {/* «طلب تبديل»: their figure with a reason. It is greyed by THEIR figure's verdict — the same cell, so the same sentence below. */}
       {!parkOnly && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={busy !== null || !verdict('ACCEPTED_COURIER').allowed}
           title={EXCHANGE_MEANING}
           onClick={() => void resolve('ACCEPTED_COURIER', true)}
-          className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]"
+          className="text-[var(--sys-muted-foreground)] hover:border-[var(--sys-success)] hover:text-[var(--sys-success)]"
         >
           {busy === EXCHANGE_KIND ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
           {EXCHANGE_AR}
-        </button>
+        </Button>
       )}
       {/* Where neither figure can be settled yet, this is the answer that is always there. */}
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         disabled={busy !== null}
         title="قيد المراجعة — لا يُسوّى شيء ولا يُطالَب بشيء؛ تسجيل أنك رأيت السطر وأجّلته"
         onClick={() => void resolve(PARKED)}
-        className="min-h-11 md:min-h-0 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
+        className="text-[var(--sys-muted-foreground)] hover:border-[var(--sys-warning)] hover:text-[var(--sys-warning)]"
       >
         {busy === PARKED ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
         {PARKED_AR}
-      </button>
-      {refusal && !parkOnly && <span className="text-xs text-[var(--sys-muted-foreground)]">{refusal}</span>}
+      </Button>
+      {refusal && !parkOnly && <span className="text-note text-[var(--sys-muted-foreground)]">{refusal}</span>}
       {phone && !parkOnly && (
-        <span className="block w-full space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+        <span className="block w-full space-y-1 text-note text-[var(--sys-muted-foreground)]">
           {RESOLUTIONS.map((r) => (
             <span key={r} className="block">
               <b className="font-semibold">{RESOLUTION_AR[r]}:</b> {RESOLUTION_MEANING[r]}
@@ -267,7 +275,7 @@ export function DifferenceActions({
           emptyText="لا تعليق داخليّ على هذا الطلب — فلا خصمَ مكتوبٌ يفسّر الفرق."
         />
       )}
-      {error && <span className="text-xs text-[var(--sys-destructive)]">{error}</span>}
+      {error && <span className="text-note text-[var(--sys-destructive)]">{error}</span>}
     </span>
   );
 }
