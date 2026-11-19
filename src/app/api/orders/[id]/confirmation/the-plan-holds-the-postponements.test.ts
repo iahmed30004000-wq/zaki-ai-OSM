@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -54,6 +54,7 @@ vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => false, call
 vi.mock('@/lib/queue-priority-switch', () => ({ queuePrioritySwitch: async () => ((priority.asked += 1), { enabled: priority.enabled, enabledAt: null }) }));
 
 import { POST } from '@/app/api/orders/[id]/confirmation/route';
+import { CONFIRMATION_RULE_DEFAULT, documentAfterSave } from '@/lib/confirmation-rule-settings';
 
 const ME = { id: 'actor-1', name: 'منفّذ', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' };
 const ctx = { user: ME, companyId: 'c1', storeId: 'store-a', countryId: 'jo', country: { id: 'jo', code: 'JO', timezone: 'Asia/Amman', allowNegativeStock: false, workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5] } };
@@ -228,5 +229,44 @@ describe('«سجل الرفض» — the confirmation door', () => {
     const failed = await postpone('NO_ANSWER');
     expect(failed.status).toBe(ok.status);
     expect(await failed.json()).toEqual(await ok.json());
+  });
+});
+
+/**
+ * Request Q3b (19/11): the cap is the RULE IN FORCE's, read through the real reader from the company's stored document (`confirmationRule`). Each test moves the clock an
+ * hour on (only `Date` is faked), so the reader's thirty-second cache never answers one test with another's document.
+ */
+describe('the cap is the rule in force — an edited document acts at the door', () => {
+  const docWith = (postponeMax: number) => documentAfterSave(null, { rule: { ...CONFIRMATION_RULE_DEFAULT, postponeMax }, effectiveAt: new Date(0), byUserId: 'u1' }, 0);
+  let hour = 10;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + (hour += 1) * 3_600_000 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete db.company;
+  });
+
+  it('postponeMax 3: the third date passes, the fourth is refused with the figure and «مرة كمان»', async () => {
+    db.company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: docWith(3) }) })) };
+    db.order.findFirst.mockResolvedValue({ postponeCount: 2 });
+    expect((await postpone('CUSTOMER_REQUESTED_CALLBACK')).status).toBe(200);
+    db.order.findFirst.mockResolvedValue({ postponeCount: 3 });
+    const res = await postpone('CUSTOMER_REQUESTED_CALLBACK');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'هالطلب انأجّل 3 مرات — ما بينأجّل مرة كمان. اتصل فيه وخذ قرار: تأكيد أو رفض.', code: 'POSTPONE_LIMIT' });
+  });
+
+  it('postponeMax 1: the second date is refused', async () => {
+    db.company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: docWith(1) }) })) };
+    db.order.findFirst.mockResolvedValue({ postponeCount: 1 });
+    expect((await postpone('CUSTOMER_REQUESTED_CALLBACK')).status).toBe(409);
+  });
+
+  it('nothing stored: main\'s cap of two and main\'s sentence, letter for letter', async () => {
+    db.company = { findUnique: vi.fn(async () => ({ settings: '{}' })) };
+    db.order.findFirst.mockResolvedValue({ postponeCount: 2 });
+    const res = await postpone('CUSTOMER_REQUESTED_CALLBACK');
+    expect(await res.json()).toEqual({ error: 'هالطلب انأجّل 2 مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.', code: 'POSTPONE_LIMIT' });
   });
 });

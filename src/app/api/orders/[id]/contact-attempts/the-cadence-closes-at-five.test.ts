@@ -70,6 +70,7 @@ vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => proof.on, c
 
 import { POST } from '@/app/api/orders/[id]/contact-attempts/route';
 import { cadenceCalOf, cadenceState } from '@/lib/no-answer-cadence';
+import { CONFIRMATION_RULE_DEFAULT, documentAfterSave, type ConfirmationRuleNumbers } from '@/lib/confirmation-rule-settings';
 
 const T0= new Date('2026-11-15T10:00:00.000Z'); // 13:00 in Amman (UTC+3)
 const MIN = 60_000;
@@ -570,5 +571,70 @@ describe('OFF — the door is today’s, key for key', () => {
     const res = await send({ result: 'NO_ANSWER' });
     expect(res.status).toBe(200);
     expect(db.orderContactAttempt.findMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Request Q3b (review 19/11, blocker 2): THE DOOR PLANS BY THE RULE IN FORCE. Each test stores an edited rule on its own company (the reader caches per company for thirty
+ * seconds, and the clock here is faked) and presses every due the door answers: the limit, the close, the answer's «of», the words and the floors are the edited rule's.
+ */
+describe('an edited rule stored for the company — the door plans by it', () => {
+  const useRule = (companyId: string, over: Partial<ConfirmationRuleNumbers>) => {
+    const doc = documentAfterSave(null, { rule: { ...CONFIRMATION_RULE_DEFAULT, ...over }, effectiveAt: new Date(0), byUserId: 'u9' }, 0);
+    db.company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: doc }) })) };
+    requireContext.mockResolvedValue({
+      user: { id: 'u1', name: 'Agent', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' },
+      companyId,
+      storeId: 's1',
+      country: { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' },
+    });
+  };
+  afterEach(() => {
+    delete db.company;
+  });
+
+  /** Press at T0, then at every due the door answers, `n` times; the bodies. */
+  async function pressEveryDue(n: number) {
+    const bodies: any[] = [];
+    let at = T0;
+    for (let i = 0; i < n; i++) {
+      const { body } = await pressAt(at);
+      bodies.push(body);
+      if (!body.cadence?.dueAt) break;
+      at = new Date(body.cadence.dueAt);
+    }
+    return bodies;
+  }
+
+  it('FOUR attempts: «of 4» on every answer, and the fourth counted press closes the order', async () => {
+    useRule('c-q3b-four', { steps: CONFIRMATION_RULE_DEFAULT.steps.slice(0, 3) });
+    const bodies = await pressEveryDue(4);
+    expect(bodies.map((b) => [b.noAnswerLimit, b.cadence.of, b.cadence.attempt])).toEqual([[4, 4, 1], [4, 4, 2], [4, 4, 3], [4, 4, 4]]);
+    expect(bodies.map((b) => b.autoClosed)).toEqual([false, false, false, true]);
+    expect(bodies[3].cadence.words).toContain('المحاولة 4 من 4');
+    expect(endOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('SIX attempts: the fifth counted press closes nothing, the sixth does', async () => {
+    useRule('c-q3b-six', { steps: [...CONFIRMATION_RULE_DEFAULT.steps, { kind: 'after', minutes: 60 }] });
+    const bodies = await pressEveryDue(6);
+    expect(bodies.map((b) => b.cadence.of)).toEqual([6, 6, 6, 6, 6, 6]);
+    expect(bodies.map((b) => b.autoClosed)).toEqual([false, false, false, false, false, true]);
+    expect(endOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('OTHER FLOORS: morning not before 24 h, evening not before 6 h — #4 and #5 move to Tuesday 11:00 and Wednesday 16:00 (the default: Monday 11:00, Tuesday 16:00)', async () => {
+    useRule('c-q3b-floors', {
+      steps: [
+        { kind: 'after', minutes: 30 },
+        { kind: 'after', minutes: 120 },
+        { kind: 'anchor', anchor: 'morning', floorHours: 24 },
+        { kind: 'anchor', anchor: 'evening', floorHours: 6 },
+      ],
+    });
+    const bodies = await pressEveryDue(5);
+    expect(bodies[2].cadence.dueAt).toBe('2026-11-17T08:00:00.000Z'); // Tuesday 11:00 Amman
+    expect(bodies[3].cadence.dueAt).toBe('2026-11-18T13:00:00.000Z'); // Wednesday 16:00 Amman
+    expect(bodies[4].autoClosed).toBe(true);
   });
 });

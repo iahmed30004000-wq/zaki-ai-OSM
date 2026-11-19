@@ -22,6 +22,7 @@ import {
 import { heldFor } from '@/lib/order-reservation';
 import { offModeRule, planWords, returnsModeRule } from '@/lib/pull-plan-words';
 import type { ReturnsMode } from '@/lib/no-answer-returns';
+import { confirmationRuleOnce } from '@/lib/confirmation-rule-settings';
 
 /**
  * GET /api/confirmation/queue
@@ -48,6 +49,8 @@ export async function GET() {
 
     const mayPull = can(user, 'confirmation.pull');
     const now = new Date();
+    // Request Q3b: the rule in force, asked at most ONCE for this read (cached) and only where a figure of it is needed — the idle cut and the hand are the same rule's.
+    const rule = confirmationRuleOnce(db, companyId, now.getTime());
     /*
      * «الطلب يرجع للطابور فوراً»: where it is on, every number below is the mode's — a returned order counts from its ready-time, a dated one
      * from its date, and the limit is the mode's (5, or 3 with the queue-priority key on) — the very predicates the pull picks from, so a number shown is what the pull can hand out.
@@ -61,9 +64,10 @@ export async function GET() {
         weekendDays: country.weekendDays,
         timezone: country.timezone,
       }),
+      rule,
     });
     // Step D2: the limits are 5 and 30 — or 3 and 20 with the queue-priority key on (`returnsLimits`); asked only where the mode is on.
-    const limits = returns ? await returnsLimits(db, companyId) : null;
+    const limits = returns ? await returnsLimits(db, companyId, now.getTime(), rule) : null;
     const hand = limits ? limits.handLimit : undefined;
     // «جدول المحاولات» on (ruling 24, key only): the counter is said in the plan's four. Off, and the older mode, are the three they always were.
     const planned = returns?.cadence ? (returns as ReturnsMode & { cadence: { since: Date } }) : null;

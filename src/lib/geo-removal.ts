@@ -85,6 +85,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'stockOpeningCount', label: 'جرد افتتاح المخزون', how: 'blocks' },
   // The opening placement of the warehouse plan (W1a): a store whose stock was divided between warehouses has a history.
   { model: 'warehousePlacement', label: 'توزيع المخزون على المخازن', how: 'blocks' },
+  // Transfers between the store's warehouses (W3a): a document of goods that moved — never deleted, so the store stays.
+  { model: 'stockTransfer', label: 'نقل البضاعة بين المخازن', how: 'blocks' },
   { model: 'productionBatch', label: 'تشغيلات الإنتاج', how: 'blocks' },
   { model: 'shippingBatch', label: 'دفعات الشحن', how: 'blocks' },
   { model: 'courierStatement', label: 'كشوف شركات الشحن', how: 'blocks' },

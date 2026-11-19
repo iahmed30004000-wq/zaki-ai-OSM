@@ -124,10 +124,24 @@ describe('the warehouses a store may place its goods in', () => {
 });
 
 describe('why a warehouse may not stop', () => {
-  const client = (n: number) => {
+  // 20/11 (W3a): the client answers the open-transfer question too (old: only `productionBatch.count`); 0 open = today.
+  const client = (n: number, open = 0) => {
     const count = vi.fn().mockResolvedValue(n);
-    return { client: { productionBatch: { count } } as never, count };
+    const transfers = vi.fn().mockResolvedValue(open);
+    return { client: { productionBatch: { count }, stockTransfer: { count: transfers } } as never, count, transfers };
   };
+
+  it('NEGATIVE (W3a): an open transfer from or to it is a blocker — units on the road have no warehouse', async () => {
+    const { client: c, transfers } = client(0, 2);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'OPEN_TRANSFER', count: 2, ar: expect.stringContaining('نقل مفتوح') }]);
+    expect(transfers).toHaveBeenCalledWith({
+      where: {
+        companyId: 'c1',
+        OR: [{ fromWarehouseId: 'w1' }, { toWarehouseId: 'w1' }],
+        AND: [{ OR: [{ status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }] }],
+      },
+    });
+  });
 
   it('asks for batches of THIS company and THIS warehouse with any units, positive or owed', async () => {
     const { client: c, count } = client(0);
@@ -190,6 +204,15 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/components/screens/InventoryBalancesScreen.tsx',
     'src/lib/batch-grade.ts',
     'src/lib/stock-places.ts',
+    // 20/11, W3a (the transfer inside one store): the transfer lib and its door helper, the four doors (send + list,
+    // receive, cancel, difference), and the kind file that holds the stop door's «open transfer» question.
+    'src/lib/stock-transfers.ts',
+    'src/lib/stock-transfer-door.ts',
+    'src/lib/stock-transfer-kind.ts',
+    'src/app/api/inventory/transfers/route.ts',
+    'src/app/api/inventory/transfers/[id]/receive/route.ts',
+    'src/app/api/inventory/transfers/[id]/cancel/route.ts',
+    'src/app/api/inventory/transfers/[id]/difference/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

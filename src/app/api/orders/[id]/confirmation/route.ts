@@ -23,8 +23,7 @@ import { callProofOn } from '@/lib/call-proof-switch';
 import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard';
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { CADENCE_LIMIT } from '@/lib/no-answer-cadence';
-import { POSTPONE_MAX_TIMES } from '@/lib/queue-priority';
+import { confirmationRuleOnce, ruleAttempts, type ConfirmationRuleNumbers } from '@/lib/confirmation-rule-settings';
 import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
 import { logDeskRefusal } from '@/lib/desk-refusals';
 import {
@@ -35,7 +34,16 @@ import {
  * With «جدول المحاولات» on, the two no-answer close codes (`NO_ANSWER_CLOSE_REASONS`) are reasons only the system writes (the contact door closes at the fifth COUNTED attempt over two days, in its own transaction):
  * nobody can meet that rule by hand. Arabic in both keys, through an identifier — this door is a fixed door of `arabic-refusals.test.ts`.
  */
-const NO_ANSWER_BY_HAND_AR = `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${CADENCE_LIMIT} محاولات «لا يرد» محسوبة على يومين. اختر سبباً تانياً من القائمة.`;
+function noAnswerByHandAr(rule: ConfirmationRuleNumbers): string {
+  // Request Q3b: the rule in force's attempts and days. The default (5 over two days) is main's sentence, letter for letter.
+  const days = rule.minDays === 1 ? 'ولو بيوم واحد' : rule.minDays === 2 ? 'على يومين' : `على ${rule.minDays} أيام`;
+  return `هالسبب النظام وحدو بيكتبو — بيسكّر الطلب لحالو بعد ${ruleAttempts(rule)} محاولات «لا يرد» محسوبة ${days}. اختر سبباً تانياً من القائمة.`;
+}
+
+/** The postponement cap's refusal — the rule in force's figure (request Q3b); with the default (2) it is main's sentence, letter for letter. */
+function postponeLimitAr(max: number): string {
+  return `هالطلب انأجّل ${max} مرات — ما بينأجّل مرة ${max === 2 ? 'تالتة' : 'كمان'}. اتصل فيه وخذ قرار: تأكيد أو رفض.`;
+}
 
 /**
  * Request C2: a date whose reason is «لا يرد» is refused while the plan is on, with this sentence and code. The postpone dialog does not offer the reason while the plan
@@ -83,6 +91,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const { user, companyId, storeId, country } = await requireContext();
+    // Request Q3b: the rule in force, asked at most ONCE for this press and only where a figure of it is needed (the plan's sentence, the postpone cap, the proof).
+    const ruleNow = confirmationRuleOnce(db, companyId);
 
     // Confirmation status authority (scope evaluated against the loaded order).
     // The work door: the order she holds is decided without «عرض الطلبات».
@@ -255,6 +265,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // The switch is asked ONLY for this action and these two reasons: nothing else on this door reads it. Off, or unreadable: the old code is accepted exactly as it always was.
         if ((NO_ANSWER_CLOSE_REASONS as readonly string[]).includes(rejectionReason)) {
           if (await cadenceSince(db, companyId)) {
+            const NO_ANSWER_BY_HAND_AR = noAnswerByHandAr(await ruleNow());
             return NextResponse.json({ error: NO_ANSWER_BY_HAND_AR, errorAr: NO_ANSWER_BY_HAND_AR, code: 'SYSTEM_ONLY_REASON' }, { status: 409 });
           }
           // «خمس محاولات» belongs to the plan and did not exist before it: with the plan off a hand that sends it gets the answer any unknown value always got.
@@ -331,9 +342,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           // Request C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on the cap holds WHATEVER «أولوية الطابور» says (the plan is asked first; off, the line is main's).
           if ((await cadenceSince(db, companyId)) || (await queuePrioritySwitch(db, companyId)).enabled) {
             const seen = await db.order.findFirst({ where: { id, companyId }, select: { postponeCount: true } });
-            if ((seen?.postponeCount ?? 0) >= POSTPONE_MAX_TIMES) {
+            const { postponeMax } = await ruleNow();
+            if ((seen?.postponeCount ?? 0) >= postponeMax) {
               await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'POSTPONE_LIMIT', door: 'confirmation' });
-              return NextResponse.json({ error: `هالطلب انأجّل ${POSTPONE_MAX_TIMES} مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.`, code: 'POSTPONE_LIMIT' }, { status: 409 });
+              return NextResponse.json({ error: postponeLimitAr(postponeMax), code: 'POSTPONE_LIMIT' }, { status: 409 });
             }
           }
           updateData.postponedUntil = d;
@@ -492,6 +504,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const noteOverride =
         !!target && !isValidTransition(from, target) && from !== target && can(user, 'orders.unlock') && !!note && note.trim().length >= 5;
       const proofOn = (statusGuarded || reasonGuarded) && !noteOverride ? await callProofOn(db, companyId) : false;
+      // The rule's proof seconds, read BEFORE the transaction (only the ATTEMPT question measures them; the STATUS one asks for her line, not the seconds).
+      const proofSeconds = proofOn && !statusGuarded ? (await ruleNow()).proofSeconds : undefined;
       await db.$transaction(async (tx) => {
         if (proofOn) {
           await assertCallProven(tx, {
@@ -501,6 +515,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             claimedAt: order.claimedAt ?? null,
             result: statusGuarded ? result! : 'NO_ANSWER',
             door: statusGuarded ? 'STATUS' : 'ATTEMPT',
+            proofSeconds,
           });
         }
         /*

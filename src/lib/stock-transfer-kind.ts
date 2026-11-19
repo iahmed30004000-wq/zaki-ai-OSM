@@ -1,0 +1,91 @@
+/**
+ * WHAT KIND OF STOCK TRANSFER THIS IS — read from the two ends, not chosen (the mirror of `transfer-kind.ts`).
+ *
+ * A wallet transfer is one act whose kind the system reads from the two wallets and says before the press. Goods are
+ * the same: one act — units leave this warehouse and arrive in that one — and three kinds, decided by the ends:
+ *
+ *   INTERNAL           the two warehouses hold the goods of ONE store (one set of books): the batch is split, no cost
+ *                      moves, «دخل» and «خرج» stay still (`batch-split.ts`);
+ *   BETWEEN_STORES     two stores of one country: two products, two books — a draw-down here and a receipt there;
+ *   BETWEEN_COUNTRIES  two countries: the same, plus a currency and a border.
+ *
+ * Only INTERNAL is built (W3a). The other two are read so the screen can say what was asked, and refused by the door
+ * with «لسا مش مبني» — they wait for their own request and for the owner's word on crossing a border (the system's
+ * contract still says «Cross-border transfer is refused by rule»; this file does not change it).
+ *
+ * The answer is stored on the transfer when it is sent: deriving it again later would let a warehouse that changed
+ * hands rewrite what a past transfer meant.
+ *
+ * Pure: no database, no session, no money.
+ */
+
+export type StockTransferKind = 'INTERNAL' | 'BETWEEN_STORES' | 'BETWEEN_COUNTRIES';
+
+export interface StockTransferEnd {
+  warehouseId: string;
+  warehouseName?: string | null;
+  /** Whose goods leave or arrive — the store the units belong to at that end. */
+  storeId: string;
+  storeName?: string | null;
+  /** The warehouse's country. */
+  countryId: string;
+  countryName?: string | null;
+}
+
+export interface StockTransferReading {
+  kind: StockTransferKind;
+  /** The short name, as the screen says it. */
+  label: string;
+  /** The one sentence that says what is about to happen, BEFORE the press. */
+  detail: string;
+  /** Built in this release? Only INTERNAL. */
+  built: boolean;
+}
+
+const LABELS: Record<StockTransferKind, string> = {
+  INTERNAL: 'نقل داخل المتجر',
+  BETWEEN_STORES: 'بين متجرين',
+  BETWEEN_COUNTRIES: 'بين بلدين',
+};
+
+export const STOCK_TRANSFER_KIND_LABEL = LABELS;
+
+/** The kinds this release builds. */
+export const BUILT_KINDS: readonly StockTransferKind[] = ['INTERNAL'];
+
+/** The sentence a door answers for a kind that is not built yet. */
+export const NOT_BUILT_AR = 'هالنوع من النقل لسا مش مبني. هلّق بس النقل بين مخزنين لنفس المتجر.';
+
+export function stockTransferKind(from: StockTransferEnd, to: StockTransferEnd): StockTransferKind {
+  if (from.countryId !== to.countryId) return 'BETWEEN_COUNTRIES';
+  if (from.storeId !== to.storeId) return 'BETWEEN_STORES';
+  return 'INTERNAL';
+}
+
+export function readStockTransfer(from: StockTransferEnd, to: StockTransferEnd): StockTransferReading {
+  const kind = stockTransferKind(from, to);
+  const place = (e: StockTransferEnd) => e.warehouseName ?? 'مخزن';
+  const store = (e: StockTransferEnd) => e.storeName ?? 'المتجر';
+  const country = (e: StockTransferEnd) => e.countryName ?? 'بلد';
+  const detail =
+    kind === 'INTERNAL'
+      ? `داخل ${store(from)} — من ${place(from)} إلى ${place(to)}. نفس البضاعة ونفس الكلفة، بس المكان بيتغيّر.`
+      : kind === 'BETWEEN_STORES'
+        ? `من ${store(from)} إلى ${store(to)} — دفترين مختلفين.`
+        : `من ${country(from)} إلى ${country(to)} — بلدين مختلفين.`;
+  return { kind, label: LABELS[kind], detail, built: BUILT_KINDS.includes(kind) };
+}
+
+/**
+ * Is a transfer still OPEN — units on the road, or a shortfall waiting for its approval? The stop door's question
+ * (`warehouses.warehouseStopBlockers`): an open transfer from or to a warehouse keeps it running.
+ */
+export const OPEN_TRANSFER_WHERE = {
+  OR: [{ status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }],
+};
+
+/** Reasons a pair of ends cannot be a transfer at all (Arabic), or null. */
+export function stockTransferRefusal(from: StockTransferEnd, to: StockTransferEnd): string | null {
+  if (from.warehouseId === to.warehouseId) return 'المخزن اللي بتنقل منه هو نفسه اللي بتنقل عليه. اختار مخزن تاني.';
+  return null;
+}

@@ -55,6 +55,8 @@ vi.mock('@/lib/db', () => {
     store: t('store'),
     user: t('user'),
     productionBatch: t('productionBatch'),
+    // 20/11 (W3a): the stop door also counts OPEN transfers from or to the warehouse; none exist here (today's answer: 0).
+    stockTransfer: t('stockTransfer'),
     userCountryAccess: t('userCountryAccess'),
     userStoreAccess: {
       findMany: async ({ where }: Row) =>
