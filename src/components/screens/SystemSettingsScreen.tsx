@@ -4,9 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { PerformanceSettingsCard } from '@/components/settings/PerformanceSettingsCard';
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
-import { PenaltyRulesCard } from '@/components/settings/PenaltyRulesCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -20,8 +18,11 @@ import { PageHeader } from '@/components/ui/PageHeader';
  * Save button replaced the whole settings document with three of those
  * fields, wiping the AI key and the message templates as it went.
  *
- * What is left is the company's name — its only editor — and the message
- * templates, which are written for every store the company runs.
+ * What is left is the company's name — its only editor — and «العرض بعد الطلب»,
+ * the window a customer may still add inside, which is a judgement about this
+ * company rather than about one product (19/11, R15a: the score and the
+ * deductions moved to «قواعد الموظفين»; the message templates were never
+ * drawn here — they live on «الذكاء الاصطناعي والنصوص»).
  */
 export function SystemSettingsScreen() {
   const [name, setName] = useState('');
@@ -71,7 +72,7 @@ export function SystemSettingsScreen() {
   return (
     <div className="max-w-3xl space-y-4" dir="rtl">
       <PageHeader title="إعدادات النظام"
-          description="ما يخصّ الشركة كلها. العملة والبلد في «البلدان والمتاجر والمحافظ»، والذكاء الاصطناعي في شاشته."
+          description="اسم الشركة، ومهلة «العرض بعد الطلب». سكور الموظفين وقواعد الخصم صاروا بـ«قواعد الموظفين»."
         />
 
       <Card>
@@ -124,16 +125,6 @@ export function SystemSettingsScreen() {
         </CardContent>
       </Card>
 
-      {/* How people are measured belongs with what the company is, not on a
-          reports screen: these are the bars the business judges by, and
-          they are a decision rather than a reading. */}
-      <PerformanceSettingsCard />
-
-      {/* Beside the score on purpose. One measures and the other charges,
-          and an owner setting a deduction should be looking at the bars
-          they judge by on the same screen. */}
-      <PenaltyRulesCard />
-
       {/* «زيد علبة كمان؟» — the window the customer may still add inside.
           It is here rather than on the product because it is a judgement
           about this company, not about one bundle: the OFFER itself is set
@@ -149,6 +140,10 @@ export function SystemSettingsScreen() {
       {/*
         THE TWO MONEY CARDS ARE NOT HERE ANY MORE (19/11, request R13i): «تسوية السطور النظيفة عند الاعتماد» and «الشركاء والنسب» moved, unchanged, to «قواعد المال»
         (`/finance/rules`), the last tab of «المال», on the same `settings.view`. What stays on this screen is the company's name, the score, the deductions and the offer after the order.
+      */}
+      {/*
+        THE TWO STAFF CARDS ARE NOT HERE ANY MORE (19/11, request R15a): «سكور الموظفين» and «قواعد الخصم» moved, unchanged and side by side, to «قواعد الموظفين»
+        (`/admin/staff-rules`), beside «الموظفين» in «الإدارة», on the same `settings.view`. What stays on this screen is the company's name and the offer after the order.
       */}
     </div>
   );

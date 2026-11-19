@@ -174,8 +174,9 @@ describe('operations sit with the work, and configuration sits in settings', () 
     // 18/11 (R6): was ['/settings', '/apps/store', '/apps/installed', '/admin/jobs'] (the settings group) — «الإدارة»'s staff and
     // «الرقابة»'s five joined, and the profile (off the menu).
     const arrived = pathsOf('admin').filter((p) => !p.startsWith('/settings/'));
+    // 19/11 (R15a): `/admin/staff-rules` «قواعد الموظفين» joined, right before «الموظفين» — the score and the deductions, moved from «إعدادات النظام».
     expect(arrived).toEqual([
-      '/settings', '/apps/store', '/apps/installed', '/admin/jobs', '/admin/users', '/admin/permissions',
+      '/settings', '/apps/store', '/apps/installed', '/admin/jobs', '/admin/staff-rules', '/admin/users', '/admin/permissions',
       '/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/blacklist',
       '/admin/profile',
     ]);
@@ -223,8 +224,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     // 18/11 (C1): 54 with `/confirmation/rules` «قواعد مركز التأكيد» — the eight confirmation-rule cards moved there from «إعدادات النظام», the last tab of the confirmation hub, on `settings.view`. Not one address moved.
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the last tab of «الطلبات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). Not one address moved.
     // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(56);
-    expect(new Set(paths).size).toBe(56);
+    // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(57);
+    expect(new Set(paths).size).toBe(57);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);
