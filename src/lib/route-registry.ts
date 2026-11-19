@@ -252,6 +252,9 @@ export const NAV: NavGroup[] = [
       // Commission is money owed to the staff, so it is a tab of «المال» (18/11). Its address stays under
       // /settings — the one screen under /settings that is not in «الإدارة».
       r('/settings/commission', 'العمولات', 'Percent', ['commission.view']),
+      // «قواعد المال» (19/11, R13i): the two money cards of «إعدادات النظام» (the clean-line settlement, the partners), moved here unchanged. On `settings.view`, the key of
+      // the page they came from — nobody gains or loses them; each card still asks its own key.
+      r('/finance/rules', 'قواعد المال', 'ShieldCheck', ['settings.view']),
     ],
   },
   {

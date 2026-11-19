@@ -113,6 +113,13 @@ const DATED: Dated[] = [
     permissions: ['whatsapp.view'],
     sentence: 'رسائل اللاندينج: تبويب ثالث بالمحادثات جنب واتساب وتلجرام، فيه محادثات مساعدة صفحات الهبوط والفريق بيرد منها — بمفتاح صندوق واتساب نفسه، فنفس الناس بيشوفوها وما في دور بيتغيّر.',
   },
+  {
+    on: '2026-11-19',
+    path: '/finance/rules',
+    change: 'added',
+    permissions: ['settings.view'],
+    sentence: 'قواعد المال: صفحة جديدة بمفتاح الإعدادات نفسه، تأخذ بطاقتي تسوية السطور والشركاء من إعدادات النظام.',
+  },
 ];
 
 // ───────────────────────── the comparison ─────────────────────────
@@ -218,7 +225,7 @@ describe('the pin fails, and says what to do, when a door is opened or closed', 
   });
 
   it('a page ADDED and a page REMOVED', () => {
-    expect(drift([...real, { path: '/finance/rules', permissions: ['settings.view'] }], pins())).toEqual([expect.stringContaining('/finance/rules')]);
+    expect(drift([...real, { path: '/finance/hypothetical', permissions: ['settings.view'] }], pins())).toEqual([expect.stringContaining('/finance/hypothetical')]);
     expect(drift(real.filter((r) => r.path !== '/assistant'), pins())).toEqual([expect.stringContaining('/assistant')]);
   });
 
@@ -228,16 +235,17 @@ describe('the pin fails, and says what to do, when a door is opened or closed', 
   });
 
   it('a dated sentence makes the same change legitimate — the ONE edit that adds a page', () => {
-    const added = [...real, { path: '/finance/rules', permissions: ['settings.view'] }];
+    const added = [...real, { path: '/finance/hypothetical', permissions: ['settings.view'] }];
     expect(drift(added, pins())).toHaveLength(1);
     // 18/11 (C1): the hypothetical page is /finance/rules now — /confirmation/rules is a real dated page.
+    // 19/11 (R13i): and /finance/hypothetical now — /finance/rules «قواعد المال» is a real dated page too, so the made-up one is a path no page will ever take.
     const dated: Dated[] = [
       ...DATED,
-      { on: '2026-12-01', path: '/finance/rules', change: 'added', permissions: ['settings.view'], sentence: 'صفحة تجريبية بمفتاح الإعدادات فقط، لهذا الاختبار.' },
+      { on: '2026-12-01', path: '/finance/hypothetical', change: 'added', permissions: ['settings.view'], sentence: 'صفحة تجريبية بمفتاح الإعدادات فقط، لهذا الاختبار.' },
     ];
     expect(drift(added, expectedPairs(ORIGINAL, dated))).toEqual([]);
     // …and it legitimises that change ONLY: the same page with another key set is still a drift.
-    expect(drift([...real, { path: '/finance/rules', permissions: ['users.view'] }], expectedPairs(ORIGINAL, dated))).toHaveLength(1);
+    expect(drift([...real, { path: '/finance/hypothetical', permissions: ['users.view'] }], expectedPairs(ORIGINAL, dated))).toHaveLength(1);
   });
 
   it('a dated sentence needs its date, a real reason, and a change that fits the page', () => {

@@ -384,7 +384,10 @@ describe('a layout saved BEFORE the arrows and the pin left draws the same menu 
    * — against the server's own functions, unchanged: what the person sees before «احفظ» (`resolveLayout` of the stored
    * rows) must be what they see after it (`resolveLayout` of the base and the posted row, through `cleanLayout`).
    */
-  const rng = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  // 19/11 (R13i): was `(seed * 1103515245 + 12345) & 0x7fffffff` — a product past 2^53 loses its low bits in a double, so the generator fell into a short cycle
+  // and the sample hung on luck: with one more page in the registry (`/finance/rules`) the family below counted 276 (most seeds: ~183) and failed its own
+  // floor of 300. `Math.imul` is the same generator in 32-bit integers, as it was meant; the floor and the 3000 rows are unchanged.
+  const rng = (seed: number) => () => ((seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff) / 0x7fffffff);
   const randomRow = (r: () => number, pins: boolean): NavLayout => {
     const pick = (n: number) => ALL.filter(() => r() < n / ALL.length);
     const order = [...ALL].sort(() => r() - 0.5);

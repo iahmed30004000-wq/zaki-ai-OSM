@@ -233,14 +233,14 @@ export function PartnersSection() {
           {statement.state === 'NO_PARTNERS' ? (
             <EmptyState
               title="ما في شركاء محفوظين"
-              why="سجّل الشركاء ونسبهم من «إعدادات النظام» — بعدها بيتوزّع الصافي عليهم وبتنحسب سحوباتهم."
-              action={{ label: 'افتح إعدادات النظام', href: '/settings/system' }}
+              why="سجّل الشركاء ونسبهم من «قواعد المال» — بعدها بيتوزّع الصافي عليهم وبتنحسب سحوباتهم."
+              action={{ label: 'افتح قواعد المال', href: '/finance/rules' }}
             />
           ) : (
             <>
               {statement.state === 'SHARES_NOT_100' && (
                 <p className="border-b border-[var(--sys-border)] px-5 py-3 text-xs text-[var(--sys-destructive)]">
-                  مجموع نسب الشركاء الفعّالين {statement.sharesTotal} مش 100 — ما انقسم شي. عدّلها من «إعدادات النظام».
+                  مجموع نسب الشركاء الفعّالين {statement.sharesTotal} مش 100 — ما انقسم شي. عدّلها من «قواعد المال».
                 </p>
               )}
               <Rows rows={statement.lines} keyOf={(l) => l.id} columns={columns} />

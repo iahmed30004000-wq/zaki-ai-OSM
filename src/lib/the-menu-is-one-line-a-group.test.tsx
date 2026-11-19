@@ -107,9 +107,11 @@ describe('the menu is ten lines', () => {
     // And the 54 screens: 1 + 5 + 5 + 5 + 4 + 8 + 5 + 2 + 19 = 54.
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج», the last tab of «الطلبات» (contract oms-lp.v1 §11):
     // 1 + 6 + 5 + 5 + 4 + 8 + 5 + 2 + 19 = 55. One more screen, no more line (it is a tab of an existing hub).
-    expect(ALL_ROUTES).toHaveLength(55);
+    // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved. One more screen, no more line (it is a tab of an existing hub):
+    // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 19 = 56.
+    expect(ALL_ROUTES).toHaveLength(56);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 8, 5, 2, 19]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 9, 5, 2, 19]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });

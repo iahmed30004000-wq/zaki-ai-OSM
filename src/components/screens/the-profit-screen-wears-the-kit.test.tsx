@@ -239,14 +239,15 @@ describe('«الشركاء» — on the kit, with its keys', () => {
     expect(api.mock.calls.map((c) => c[0])).not.toContain('/api/finance/partners/statement');
   });
 
-  it('the way to the partners\' settings is where it was (R13i moves it, not this slice)', async () => {
+  it('the way to the partners\' settings leads to «قواعد المال» (R13i moved it)', async () => {
     await drawSection();
     // Only the empty state carries it.
     cleanup();
     api.mockImplementation(async (url: string) => (url === '/api/finance/partners/statement' ? { ...STATEMENT, state: 'NO_PARTNERS', lines: [] } : {}));
     render(<PartnersSection />);
     await screen.findByText('ما في شركاء محفوظين');
-    expect(screen.getByText('افتح إعدادات النظام').closest('a')!.getAttribute('href')).toBe('/settings/system');
+    // 19/11 (R13i): was «افتح إعدادات النظام» → /settings/system; the partners card moved to «قواعد المال», so the link names it and goes there.
+    expect(screen.getByText('افتح قواعد المال').closest('a')!.getAttribute('href')).toBe('/finance/rules');
   });
 });
 
