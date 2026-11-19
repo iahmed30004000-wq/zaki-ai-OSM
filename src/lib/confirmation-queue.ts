@@ -172,8 +172,15 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
-  return holds('confirmation.work') && !holds('orders.unlock') && !holds('orders.assign');
+  return holds('confirmation.work') && !EXEMPTS_FROM_HOLD.some((key) => holds(key));
 }
+
+/**
+ * The keys that free their holder from «اسحبي الطلب أول» — `mustHoldToWork` reads them from here, and so does whatever SHOWS who
+ * is free of it (`desk-readiness.ts`, the rules page, the permissions screen's warning), so the rule and its picture cannot part.
+ * `confirmation.supervise` is NOT one of them (see above): adding it would excuse every live agent.
+ */
+export const EXEMPTS_FROM_HOLD = ['orders.unlock', 'orders.assign'] as const;
 
 /** Said by the door and by the screen, in the same words. */
 export const NOT_HELD_MESSAGE = 'اسحب الطلب أولاً — لا يمكن العمل على طلب ليس بين يديك';
