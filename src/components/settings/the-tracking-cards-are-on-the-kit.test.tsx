@@ -269,6 +269,30 @@ describe('the ad accounts', () => {
     expect(screen.getByText(/act_1234567890 · ••••9f3a/)).toBeTruthy();
   });
 
+  it('and pressing the platform already chosen empties the typed secret too, as the old tabs did', async () => {
+    wrap(<AdAccountsCard storeName="المتجر" />);
+    await screen.findByText('حساب ميتا');
+    const secret = () => document.querySelector('input[type="password"]') as HTMLInputElement;
+    fireEvent.change(secret(), { target: { value: 'secret-typed-here' } });
+    await press(screen.getByRole('radio', { name: 'ميتا' }));
+    expect(screen.getByRole('radio', { name: 'ميتا' }).getAttribute('aria-checked')).toBe('true');
+    expect(secret().value).toBe('');
+  });
+
+  it('and «اربط الحساب» stays locked with no token, and after linking the token box is empty', async () => {
+    wrap(<AdAccountsCard storeName="المتجر" />);
+    await screen.findByText('حساب ميتا');
+    const connect = () => screen.getByRole('button', { name: /اربط الحساب/ }) as HTMLButtonElement;
+    fireEvent.change(screen.getByPlaceholderText('act_1234567890'), { target: { value: 'act_777777' } });
+    expect(connect().disabled).toBe(true);
+    await press(connect());
+    expect(calls.some((c) => c.url === '/api/settings/ad-accounts' && c.init?.method)).toBe(false);
+    fireEvent.change(document.querySelector('input[type="password"]')!, { target: { value: 'tok' } });
+    expect(connect().disabled).toBe(false);
+    await press(connect());
+    expect((document.querySelector('input[type="password"]') as HTMLInputElement).value).toBe('');
+  });
+
   it('and the manual way asks for no secret at all', async () => {
     wrap(<AdAccountsCard storeName="المتجر" />);
     await screen.findByText('حساب ميتا');

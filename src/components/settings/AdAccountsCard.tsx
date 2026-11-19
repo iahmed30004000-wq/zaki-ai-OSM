@@ -331,14 +331,23 @@ export function AdAccountsCard({ storeName }: { storeName?: string }) {
               should see that TikTok is possible without opening anything. */}
           {platforms.length > 1 && (
             // 18/11 (R15e): the kit's `Segmented`, over the same variable — the chosen one is `active.platform`, and a press calls `pick`.
-            <Segmented
-              size="sm"
-              aria-label="المنصّة"
-              className="w-full"
-              options={platforms.map((p) => ({ value: p.platform, label: p.short }))}
-              value={active.platform}
-              onChange={pick}
-            />
+            // `Segmented` stays silent when the chosen platform is pressed again; the hand-drawn tabs called `pick` then too, which
+            // empties what was typed — so that press is caught here and does the same.
+            <div
+              onClickCapture={(e) => {
+                const choice = (e.target as HTMLElement).closest('[role="radio"]');
+                if (choice?.getAttribute('aria-checked') === 'true') pick(active.platform);
+              }}
+            >
+              <Segmented
+                size="sm"
+                aria-label="المنصّة"
+                className="w-full"
+                options={platforms.map((p) => ({ value: p.platform, label: p.short }))}
+                value={active.platform}
+                onChange={pick}
+              />
+            </div>
           )}
 
           {/*
