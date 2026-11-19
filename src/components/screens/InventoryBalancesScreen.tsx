@@ -15,6 +15,7 @@ import { RiArrowUpDownLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { OpeningStockCountBanner } from '@/components/inventory/OpeningStockCount';
 import { ReceiveDialog } from '@/components/inventory/ReceiveDialog';
+import { PlacementBanner } from '@/components/inventory/PlacementSheet';
 import { userCan } from '@/lib/can';
 import {
   IDLE_WINDOW_DAYS,
@@ -315,6 +316,10 @@ export function InventoryBalancesScreen() {
             counted. It is not a warning that repeats — the server refuses the
             count after the first movement and this disappears with it. */}
         <OpeningStockCountBanner onCounted={loadData} />
+
+        {/* Once per store, when it has warehouses and is not yet placed (warehouse plan W1b): the keepers' counts
+            divide the book between them. A store with no warehouse draws nothing — today's screen. */}
+        <PlacementBanner onPlaced={loadData} />
 
         {received && (
           <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">

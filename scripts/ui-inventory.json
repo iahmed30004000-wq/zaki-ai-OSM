@@ -315,6 +315,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/inventory/PlacementSheet.tsx": {
+    "buttons": 4,
+    "inputs": 5,
+    "columns": 0,
+    "cards": 3,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/inventory/ReceiveDialog.tsx": {
     "buttons": 2,
     "inputs": 4,
