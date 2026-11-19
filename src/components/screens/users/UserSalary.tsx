@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiCashLine, RiLoader4Line, RiWallet3Line } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -53,14 +55,14 @@ interface WalletRow {
 }
 
 const FIELD =
-  'h-11 md:h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
+  'h-11 md:h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-2 text-sm text-[var(--sys-foreground)] outline-none focus:border-[var(--sys-primary)]';
 
 function Line({ label, value, strong, warn }: { label: string; value: string; strong?: boolean; warn?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className={`text-xs ${warn ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted-foreground)]'}`}>{label}</span>
+      <span className={`text-note ${warn ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted-foreground)]'}`}>{label}</span>
       <span
-        className={`tabular-nums ${strong ? 'text-sm font-bold text-[var(--sys-heading)]' : 'text-xs text-[var(--sys-foreground)]'}`}
+        className={`tabular-nums ${strong ? 'text-sm font-bold text-[var(--sys-heading)]' : 'text-sm text-[var(--sys-foreground)]'}`}
         dir="ltr"
       >
         {value}
@@ -214,13 +216,13 @@ export function UserSalary({
 
   return (
     <div className="col-span-full rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-      <p className="mb-1.5 flex items-center gap-1 text-xs text-[var(--sys-muted)]">
+      <p className="mb-1.5 flex items-center gap-1 text-note text-[var(--sys-muted)]">
         <RiCashLine className="h-4 w-4" /> الراتب
       </p>
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="block">
-          <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">المبلغ</span>
+          <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">المبلغ</span>
           <input
             type="number"
             min={0}
@@ -233,7 +235,7 @@ export function UserSalary({
           />
         </label>
         <label className="block">
-          <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">العملة</span>
+          <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">العملة</span>
           <input
             value={currency}
             disabled={!canEdit}
@@ -246,33 +248,33 @@ export function UserSalary({
         </label>
 
         {canEdit && (
-          <button
+          <Button
             type="button"
-            onClick={save}
+            variant="primary"
+            onClick={() => { void save(); }}
             disabled={busy || !changed}
-            className="h-11 md:h-10 rounded-lg bg-[var(--sys-primary)] px-3 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
           >
             {busy ? 'جارٍ…' : 'احفظ'}
-          </button>
+          </Button>
         )}
 
         {canPay && initial.salaryAmount !== null && (
-          <button
+          <Button
             type="button"
-            onClick={openPay}
-            className="flex h-11 md:h-10 items-center gap-1 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 text-xs text-[var(--sys-foreground)]"
+            variant="secondary"
+            onClick={() => { void openPay(); }}
           >
             <RiWallet3Line className="h-4 w-4" /> اصرف الراتب
-          </button>
+          </Button>
         )}
       </div>
 
       {!amount && (
-        <p className="mt-1 text-xs text-[var(--sys-muted)]">
+        <p className="mt-1 text-note text-[var(--sys-muted)]">
           لا راتب مسجّل. الخصومات المعتمدة تبقى مستحقة ولا تُطرح من شيء حتى يُسجَّل راتب.
         </p>
       )}
-      {msg && <p className={`mt-1 text-xs ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>}
+      {msg && <p className={`mt-1 text-sm ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</p>}
 
       {paying && (
         <Modal isOpen onClose={() => setPaying(false)} title="صرف الراتب" maxWidth="md">
@@ -285,7 +287,7 @@ export function UserSalary({
 
           {data && (
             <div className="space-y-3" dir="rtl">
-              <p className="text-xs text-[var(--sys-muted-foreground)]">
+              <p className="text-note text-[var(--sys-muted-foreground)]">
                 الفترة{' '}
                 <span dir="ltr" className="tabular-nums">
                   {data.period.start.slice(0, 10)} ← {data.period.end.slice(0, 10)}
@@ -293,12 +295,12 @@ export function UserSalary({
               </p>
 
               {data.period.paid && (
-                <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2 text-xs text-[var(--sys-destructive)]">
+                <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2 text-sm text-[var(--sys-destructive)]">
                   صُرف راتب هذه الفترة من قبل. شهرٌ يُصرف مرتين هو شهرٌ يُصرف مرتين.
                 </p>
               )}
 
-              <div className="divide-y divide-[var(--sys-border)] rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3">
+              <Card plain className="divide-y divide-[var(--sys-border)] px-3">
                 <Line label="الراتب" value={`${data.preview.salary} ${data.preview.currencyCode}`} />
                 <Line label="خصومات مطروحة" value={`− ${data.preview.penaltyTotal}`} />
                 {/* A «فرق تحصيل» nobody decided: it comes out of this payment unless it is waived first. */}
@@ -332,12 +334,12 @@ export function UserSalary({
                     warn
                   />
                 ))}
-              </div>
+              </Card>
 
               {convOptions.length > 0 && (
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="block">
-                    <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">حوّل خصومات عملة</span>
+                    <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">حوّل خصومات عملة</span>
                     <select
                       value={convCode}
                       onChange={(e) => {
@@ -354,7 +356,7 @@ export function UserSalary({
                     </select>
                   </label>
                   <label className="block">
-                    <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">
                       {data.preview.currencyCode} لكل 1 {convCode || '؟'}
                     </span>
                     <input
@@ -370,19 +372,19 @@ export function UserSalary({
                       dir="ltr"
                     />
                   </label>
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     disabled={!convCode || !(Number(convRate) > 0)}
-                    onClick={applyConversion}
-                    className="h-11 md:h-10 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] px-3 text-xs text-[var(--sys-foreground)] disabled:opacity-50"
+                    onClick={() => { void applyConversion(); }}
                   >
                     طبّق السعر
-                  </button>
+                  </Button>
                 </div>
               )}
 
               {data.commission.length > 0 && (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">
+                <p className="text-sm text-[var(--sys-muted-foreground)]">
                   وله عمولة مستحقة لم تُصرف:{' '}
                   {data.commission.map((c) => (
                     <span key={c.currencyCode} className="ms-1 tabular-nums text-[var(--sys-heading)]" dir="ltr">
@@ -395,7 +397,7 @@ export function UserSalary({
 
               <div className="flex flex-wrap items-end gap-2">
                 <label className={phone ? 'block w-full' : 'block'}>
-                  <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">من محفظة</span>
+                  <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">من محفظة</span>
                   <select value={walletId} onChange={(e) => setWalletId(e.target.value)} className={`${FIELD} ${phone ? 'w-full' : 'w-40'}`}>
                     <option value="">اختر…</option>
                     {wallets.map((w) => (
@@ -407,7 +409,7 @@ export function UserSalary({
                 </label>
                 {!sameCurrency && (
                   <label className="block">
-                    <span className="mb-0.5 block text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="mb-0.5 block text-note text-[var(--sys-muted-foreground)]">
                       سعر الصرف ({wallet?.currencyCode ?? '؟'} لكل {data.preview.currencyCode})
                     </span>
                     <input
@@ -424,7 +426,7 @@ export function UserSalary({
               </div>
 
               {leaves !== null && wallet && (
-                <p className="rounded-lg bg-[var(--sys-surface)] px-2 py-1.5 text-xs text-[var(--sys-foreground)]">
+                <p className="rounded-lg bg-[var(--sys-surface)] px-2 py-1.5 text-sm text-[var(--sys-foreground)]">
                   يخرج من المحفظة{' '}
                   <Money
                     value={leaves}
@@ -452,25 +454,25 @@ export function UserSalary({
                 four complaints about one press is not an answer.
               */}
               {offReason && (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">{offReason}</p>
+                <p className="text-note text-[var(--sys-muted-foreground)]">{offReason}</p>
               )}
 
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="primary"
                   disabled={busy || !walletId || !(effectiveRate > 0) || !!data.period.paid || data.preview.net <= 0}
-                  onClick={pay}
-                  className="min-h-11 md:min-h-0 rounded-lg bg-[var(--sys-primary)] px-4 py-2 text-xs font-medium text-[var(--sys-primary-foreground)] disabled:opacity-50"
+                  onClick={() => { void pay(); }}
                 >
                   {busy ? 'جارٍ…' : 'اصرف'}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="secondary"
                   onClick={() => setPaying(false)}
-                  className="min-h-11 md:min-h-0 rounded-lg border border-[var(--sys-border)] px-4 py-2 text-xs text-[var(--sys-muted-foreground)]"
                 >
                   تراجع
-                </button>
+                </Button>
               </div>
             </div>
           )}

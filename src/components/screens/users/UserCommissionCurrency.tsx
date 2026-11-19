@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { CurrencyPicker, currencyChoiceReady, type CurrencyChoice } from '@/components/ui/CurrencyPicker';
 import { minorUnitFor } from '@/lib/currencies';
 import { RiCopperCoinLine } from '@remixicon/react';
+import { Button } from '@/components/ui/Button';
 
 /**
  * WHAT THIS PERSON'S COMMISSION IS COUNTED IN.
@@ -65,7 +66,7 @@ export function UserCommissionCurrency({
 
   return (
     <div className="rounded-lg bg-[var(--sys-surface)] px-3 py-2.5">
-      <p className="flex items-center gap-1 text-xs text-[var(--sys-muted)]">
+      <p className="flex items-center gap-1 text-note text-[var(--sys-muted)]">
         <RiCopperCoinLine className="h-4 w-4" /> عملة العمولة
       </p>
 
@@ -75,31 +76,33 @@ export function UserCommissionCurrency({
             <CurrencyPicker value={choice} onChange={setChoice} />
           </div>
           <div className="mt-1.5 flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={() => void save()}
               disabled={!changed || !valid || busy}
-              className="h-11 md:h-8 rounded-md bg-[var(--sys-primary)] px-3 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-40"
             >
               حفظ
-            </button>
+            </Button>
             {code !== '' && (
-              <button
+              <Button
                 type="button"
+                variant="quiet"
+                size="sm"
                 onClick={() => { setChoice({ code: '', minorUnit: null }); }}
-                className="text-xs text-[var(--sys-muted-foreground)] hover:text-[var(--sys-destructive)]"
               >
                 استخدم عملة المتجر
-              </button>
+              </Button>
             )}
-            {msg && <span className={`text-xs ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
+            {msg && <span className={`text-sm ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>}
           </div>
         </>
       ) : (
-        <p className="mt-1 text-xs font-bold text-[var(--sys-heading)]">{saved || 'عملة المتجر'}</p>
+        <p className="mt-1 text-sm font-bold text-[var(--sys-heading)]">{saved || 'عملة المتجر'}</p>
       )}
 
-      <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+      <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
         تُحتسب عمولته بهذه العملة ويُقال له رقمه بها. المحفظة التي يخرج منها المال تُختار وقت الصرف — قد
         تكون بعملة أخرى، ويُكتب سعر الصرف حينها.
       </p>
