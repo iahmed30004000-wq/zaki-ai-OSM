@@ -19,14 +19,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ code?: string | string[] }>;
 }
 
 export async function generateMetadata() {
   return { title: 'تحقق من أصالة المنتج' };
 }
 
-export default async function VerifyBarcodePage({ params }: Props) {
+export default async function VerifyBarcodePage({ params, searchParams }: Props) {
   const { id } = await params;
   if (!UUID.test(id)) notFound();
-  return <VerifyBarcodeView storeId={id} />;
+  // 19/11 (owner): a printed QR holds `/verify/<id>?code=…`. A phone's camera opens it, and the page checks that code
+  // by itself — the visitor never presses a button. The view sends it as typed; the API cleans it like any scan.
+  const { code } = await searchParams;
+  const initialCode = typeof code === 'string' && code.trim() ? code.slice(0, 1000) : undefined;
+  return <VerifyBarcodeView storeId={id} initialCode={initialCode} />;
 }
