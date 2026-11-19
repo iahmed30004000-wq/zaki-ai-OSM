@@ -238,9 +238,10 @@ describe('asking about many stores at once', () => {
     await storeBlockers(many.db, Array.from({ length: 40 }, (_, i) => store(`s${i}`)), asker);
     expect(many.asked.length).toBe(one.asked.length);
     // Thirty-one stoppers (the expenses joined the wallets and payslips; the Telegram names list, 10/11; the team leader's end-of-day reports, step H2; the pages system's leads, step E1; the daily ad spend, media-buyer doors PR-A), and the pages.
-    // 19/11 (W1a): 32 → 33 — the opening placement of the warehouse plan (`warehouse_placements`) is a stopper too: a
+    // 19/11 (request Q2a): 32 → 33 — the confirmation desk's refusal log (`desk_refusals`) has a storeId and no foreign key, so it is a stopper too.
+    // 19/11 (W1a): 33 → 34 — the opening placement of the warehouse plan (`warehouse_placements`) is a stopper too: a
     // store whose stock was divided between warehouses has a history.
-    expect(one.asked.length).toBe(33);
+    expect(one.asked.length).toBe(34);
   });
 
   it('and no stores asks nothing at all', async () => {
