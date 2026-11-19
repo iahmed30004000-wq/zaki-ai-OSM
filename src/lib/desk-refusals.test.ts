@@ -230,7 +230,7 @@ describe('the prune', () => {
   });
 
   it('the job stops at the first short pass, and never makes more than its passes', async () => {
-    const dbm = (await import('./db')).db as Record<string, unknown>;
+    const dbm = (await import('./db')).db as unknown as Record<string, unknown>;
     const answers = [PRUNE_DESK_REFUSALS_BATCH, PRUNE_DESK_REFUSALS_BATCH, 7];
     dbm.$executeRaw = vi.fn(async () => answers.shift() ?? 0);
     const r = await pruneDeskRefusals.run({ now: T0 } as never);
@@ -244,7 +244,7 @@ describe('the prune', () => {
   });
 
   it('an empty table: one statement, nothing removed', async () => {
-    const dbm = (await import('./db')).db as Record<string, unknown>;
+    const dbm = (await import('./db')).db as unknown as Record<string, unknown>;
     dbm.$executeRaw = vi.fn(async () => 0);
     const r = await pruneDeskRefusals.run({ now: T0 } as never);
     expect(r.processed).toBe(0);

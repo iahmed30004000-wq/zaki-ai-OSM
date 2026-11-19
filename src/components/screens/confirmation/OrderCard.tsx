@@ -11,7 +11,7 @@ import {
   RiSparkling2Line,
   RiTimerLine,
 } from '@remixicon/react';
-import { REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue';
+import { REGION_REQUIRED_MESSAGE } from '@/lib/confirmation-queue-messages';
 import { humanMinutes, useElapsedMinutes } from '@/components/ui/Elapsed';
 import { CustomerHistoryButton } from '@/components/orders/CustomerHistory';
 import { OrderStateBadge } from '@/components/orders/OrderStateBadge';
