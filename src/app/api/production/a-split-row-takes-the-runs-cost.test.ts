@@ -98,6 +98,17 @@ describe('a split row and its run', () => {
     expect(rows.filter((r) => r.splitFromBatchId).map((r) => r.totalProductionCost)).toEqual([0, 0]);
   });
 
+  it('a cost of four decimals reaches every twin EXACTLY — the run’s own number, not a rounded copy', async () => {
+    rows = [
+      run('b1', { quantityProduced: 300, quantityRemaining: 100, quantityMovedOut: 50 }),
+      run('t1', { quantityProduced: 0, quantitySold: 0, quantityRemaining: 50, splitFromBatchId: 'b1' }),
+    ];
+    // 1000 ÷ 300 = 3.3333 (batchUnitCost keeps four places); a twin at 3.33 would lose 0.0033 × 50 of stock value.
+    expect((await patch('b1', { rawMaterialCost: 1000 })).status).toBe(200);
+    expect(rows.map((r) => r.costPerUnit)).toEqual([3.3333, 3.3333]);
+    expect(rows[1].costPerUnit).toBe(rows[0].costPerUnit);
+  });
+
   it('NEGATIVE: correcting a twin is refused in Arabic, and nothing is written', async () => {
     rows = [run('b1'), run('t1', { quantityProduced: 0, splitFromBatchId: 'b1' })];
     const res = await patch('t1', { rawMaterialCost: 350 });

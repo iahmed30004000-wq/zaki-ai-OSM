@@ -182,6 +182,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   // new (15/11, السلات المهجورة): «له طلب» — the orders of the customers whose phones are on the carts shown (`customerId: { in }`), to mark a cart whose visitor already ordered. A read of named persons, not a store figure.
+  // 19/11 (W1a review): the twins of products a money reader already holds, to cost each run once — ids, never a figure.
+  'lib/batch-family.ts': { reason: 'مقيَّد بـ productId: { in } لمنتجاتٍ قرأها القارئ أصلاً — يعرف الصفوف المقسومة لا رقماً', sites: 1 },
   // 19/11 (W1a): the split's walk to the rows split from a run, by batch ids it was handed — never a figure.
   'lib/batch-split.ts': { reason: 'مقيَّد بـ splitFromBatchId: { in } — الصفوف المقسومة من دفعاتٍ مُسمّاة (لتصحيح كلفتها)', sites: 1 },
   'lib/abandoned-carts.ts': { reason: 'مقيَّد بـ customerId: { in } — طلباتُ أصحابِ أرقامِ السلات المعروضة («له طلب»)', sites: 1 },

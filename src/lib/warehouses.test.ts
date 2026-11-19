@@ -169,6 +169,11 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/placement/preview/route.ts',
     'src/app/api/production/[id]/route.ts',
     'src/lib/geo-removal.ts',
+    // 19/11, W1a review: the money readers cost a run and the rows split from it as one layer (`batch-family.ts`), and the
+    // draw-down writes a row only while it still holds what was read.
+    'src/lib/batch-family.ts',
+    'src/lib/receiving.ts',
+    'src/lib/product-cost.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
