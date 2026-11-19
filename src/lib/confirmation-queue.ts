@@ -172,15 +172,10 @@ export function keepsOwnEntry(holds: (permission: string) => boolean): boolean {
  * ═══════════════════════════════════════════════════════════════════════
  */
 export function mustHoldToWork(holds: (permission: string) => boolean): boolean {
-  return holds('confirmation.work') && !EXEMPTS_FROM_HOLD.some((key) => holds(key));
+  // The two keys are written out here, not read from `EXEMPTS_FROM_HOLD` (desk-readiness.ts): this file reaches the desk's bundle,
+  // which sits at its ceiling. `desk-readiness.test.ts` pins that this line names exactly the keys of that list.
+  return holds('confirmation.work') && !holds('orders.unlock') && !holds('orders.assign');
 }
-
-/**
- * The keys that free their holder from «اسحبي الطلب أول» — `mustHoldToWork` reads them from here, and so does whatever SHOWS who
- * is free of it (`desk-readiness.ts`, the rules page, the permissions screen's warning), so the rule and its picture cannot part.
- * `confirmation.supervise` is NOT one of them (see above): adding it would excuse every live agent.
- */
-export const EXEMPTS_FROM_HOLD = ['orders.unlock', 'orders.assign'] as const;
 
 /** Said by the door and by the screen, in the same words. */
 export const NOT_HELD_MESSAGE = 'اسحب الطلب أولاً — لا يمكن العمل على طلب ليس بين يديك';

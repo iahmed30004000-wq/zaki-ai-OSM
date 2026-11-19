@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { SessionUser } from '@/types/auth';
 import { attachGrants, can, hasFullAccess } from './authorization';
 import { computeEffectiveGrants } from './permissions-core';
-import { EXEMPTS_FROM_HOLD, mustHoldToWork } from './confirmation-queue';
+import { mustHoldToWork } from './confirmation-queue';
 import { ALL_CATALOG_KEYS } from './permission-catalog';
-import { DESK_KEYS, DESK_TOOLS, deskReadiness, labelledReadiness, type DeskToolId } from './desk-readiness';
+import { DESK_KEYS, DESK_TOOLS, EXEMPTS_FROM_HOLD, deskReadiness, labelledReadiness, type DeskToolId } from './desk-readiness';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -168,7 +168,16 @@ describe('boundToHold IS mustHoldToWork, for every subset of the keys it reads',
       expect(deskReadiness(holds).boundToHold, [...held].join(',')).toBe(mustHoldToWork(holds));
       // Spelled out independently of the function: work, and neither of the two exempting keys.
       expect(mustHoldToWork(holds)).toBe(held.has('confirmation.work') && !held.has('orders.unlock') && !held.has('orders.assign'));
+      // And the list the screens read says the same thing as the rule: bound = works and holds none of EXEMPTS_FROM_HOLD.
+      expect(mustHoldToWork(holds)).toBe(held.has('confirmation.work') && !EXEMPTS_FROM_HOLD.some((k) => held.has(k)));
     }
+  });
+
+  it('the rule’s own line names exactly the keys of EXEMPTS_FROM_HOLD (it writes them out to keep the desk bundle at its ceiling)', () => {
+    const source = readFileSync(join(__dirname, 'confirmation-queue.ts'), 'utf8');
+    const body = source.slice(source.indexOf('export function mustHoldToWork'), source.indexOf('export const NOT_HELD_MESSAGE'));
+    const excused = [...body.matchAll(/!holds\('([a-z_]+\.[a-z_]+)'\)/g)].map((m) => m[1]).sort();
+    expect(excused).toEqual([...EXEMPTS_FROM_HOLD].sort());
   });
 });
 

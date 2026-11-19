@@ -1,5 +1,14 @@
-import { EXEMPTS_FROM_HOLD, mayBeHandedAnOrder, mustHoldToWork } from './confirmation-queue';
+import { mayBeHandedAnOrder, mustHoldToWork } from './confirmation-queue';
 import { catalogItem } from './permission-catalog';
+
+/**
+ * The keys that free their holder from «اسحبي الطلب أول». They live HERE, in a file the desk never imports, and not beside
+ * `mustHoldToWork` in confirmation-queue.ts: that file reaches the desk's bundle, which sits at its ceiling, so the rule keeps
+ * the two keys written out — and `desk-readiness.test.ts` pins that its source names exactly these keys, and that the rule agrees
+ * with this list on every combination. Whatever SHOWS who is free of the rule (the rules page, the permissions screen's warning)
+ * reads this list. `confirmation.supervise` is NOT one of them: adding it would excuse every live agent.
+ */
+export const EXEMPTS_FROM_HOLD = ['orders.unlock', 'orders.assign'] as const;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
