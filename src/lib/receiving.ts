@@ -132,15 +132,14 @@ export async function drawDownStock(
 ): Promise<{ taken: number; short: number; cost: number }> {
   if (input.quantity <= 0) return { taken: 0, short: 0, cost: 0 };
 
-  const where = {
-    companyId: input.companyId,
-    productId: input.productId,
-    quantityRemaining: { gt: 0 },
-    ...(input.storeId ? { storeId: input.storeId } : {}),
-  };
   const read = () =>
     tx.productionBatch.findMany({
-      where,
+      where: {
+        companyId: input.companyId,
+        productId: input.productId,
+        quantityRemaining: { gt: 0 },
+        ...(input.storeId ? { storeId: input.storeId } : {}),
+      },
       orderBy: [{ productionDate: 'asc' }, { createdAt: 'asc' }],
       // `costPerUnit` because the money that LEFT is only knowable here.
       // `product-cost.ts` describes this figure — «the CONSUMED cost… taken
@@ -166,7 +165,7 @@ export async function drawDownStock(
    * changed place) are added up first and costed once — the same double a
    * run that never moved gives (`batch-family.ts`).
    */
-  const cost = new FamilyCost();
+  const costs = new FamilyCost();
   for (let attempt = 0; ; attempt++) {
     const familyOf = await familyRootOf(tx, input.companyId, [input.productId], batches);
     let changed = false;
@@ -196,7 +195,7 @@ export async function drawDownStock(
         }
         throw e;
       }
-      cost.add(familyOf(batch), take, batch.costPerUnit ?? 0);
+      costs.add(familyOf(batch), take, batch.costPerUnit ?? 0);
       left -= take;
     }
     if (!changed || left <= 0) break;
@@ -224,5 +223,6 @@ export async function drawDownStock(
    * and the same ruling applies: a DERIVED figure is rounded once, by
    * whoever knows the currency — never on the way there.
    */
-  return { taken: input.quantity - left, short: left, cost: cost.total() };
+  const cost = costs.total();
+  return { taken: input.quantity - left, short: left, cost };
 }
