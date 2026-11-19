@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { RiArchiveDrawerLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
 import { useIsPhone } from '@/hooks/useIsPhone';
@@ -165,7 +167,7 @@ export function DeliverDialog({
                     <div className="min-w-0">
                       {/* In 271px the name is what is being checked; an ellipsis hid the size or the variant. A desk keeps one line. */}
                       <p className={phone ? 'text-sm text-[var(--sys-heading)]' : 'text-sm text-[var(--sys-heading)] truncate'}>{l.productName}</p>
-                      <p className="text-xs text-[var(--sys-muted)] tabular-nums">
+                      <p className="text-note text-[var(--sys-muted)] tabular-nums">
                         شُحن {shipped}
                         {l.freeQuantity > 0 && ` (منها ${l.freeQuantity} هدية)`}
                       </p>
@@ -176,7 +178,11 @@ export function DeliverDialog({
                           to the text's own height and stood a few pixels
                           shorter than the box beside it. Two controls in one
                           row at two heights is «غير متناسبة مع التصميم» in
-                          its plainest form. */}
+                          its plainest form.
+                          19/11 (R11d2): left raw on purpose — a per-line
+                          toggle whose colour IS its state (soft red once
+                          refused); the kit has no such look, and the line
+                          that sets the quantity is not touched. */}
                       <button
                         type="button"
                         onClick={() => setTaken((t) => ({ ...t, [l.id]: 0 }))}
@@ -211,7 +217,7 @@ export function DeliverDialog({
               })}
             </div>
 
-            <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1 tabular-nums">
+            <Card plain padding="sm" className="text-note space-y-1 tabular-nums">
               <p className="flex justify-between text-[var(--sys-foreground)]">
                 <span>قيمة ما استُلم</span>
                 <span>{figure(money?.goods)}</span>
@@ -234,23 +240,23 @@ export function DeliverDialog({
                 <span>المتوقَّع تحصيله</span>
                 <span>{figure(money?.collected)}</span>
               </p>
-              <p className="text-xs text-[var(--sys-muted)]">
+              <p className="text-note text-[var(--sys-muted)]">
                 {pricing
                   ? 'جارٍ حساب المتوقَّع على الخادم…'
                   : 'المبلغ الفعليّ يُسجَّل من كشف شركة الشحن عند المطابقة — لا من هنا.'}
               </p>
 
               {!allTaken && anyTaken && (
-                <p className="text-xs text-[var(--sys-warning)] pt-1">
+                <p className="text-note text-[var(--sys-warning)] pt-1">
                   الأجرة تُحتسب كاملة رغم رفض بعض البنود — المندوب قطع الطريق فعلاً.
                 </p>
               )}
               {!anyTaken && (
-                <p className="text-xs text-[var(--sys-destructive)] pt-1">
+                <p className="text-note text-[var(--sys-destructive)] pt-1">
                   لم يُستلم شيء — سيُسجَّل الطلب مرتجعاً بلا أجرة.
                 </p>
               )}
-            </div>
+            </Card>
 
             {/*
               A PARTIAL DELIVERY IS THE FIRST OF TWO COMPLETIONS.
@@ -265,7 +271,7 @@ export function DeliverDialog({
               it noise people learn to skip.
             */}
             {!allTaken && anyTaken ? (
-              <ul className="text-xs bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 space-y-1">
+              <ul className="text-note bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 space-y-1">
                 <li className="font-medium text-[var(--sys-heading)]">
                   هذا الطلب يُتَمَّم مرتين — لا يُغلق إلا بإتمامهما:
                 </li>
@@ -273,7 +279,7 @@ export function DeliverDialog({
                 <li className="text-[var(--sys-foreground)]">• استلام القطع المرفوضة وعدّها في شاشة المرتجعات</li>
               </ul>
             ) : (
-              <p className="text-xs text-[var(--sys-muted)]">
+              <p className="text-note text-[var(--sys-muted)]">
                 البنود المرفوضة لا تعود للمخزون من هنا — تُستلم وتُفحص في شاشة المرتجعات.
               </p>
             )}
@@ -287,7 +293,7 @@ export function DeliverDialog({
               the label says that rather than «optional».
             */}
             <label className="block">
-              <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">
                 ملاحظة داخلية على الطلب
               </span>
               <Input
@@ -295,7 +301,7 @@ export function DeliverDialog({
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="مثال: رفض القطعة الثانية — اللون غير المطلوب"
               />
-              <span className="block text-xs text-[var(--sys-muted)] mt-1">
+              <span className="block text-note text-[var(--sys-muted)] mt-1">
                 تُضاف باسمك إلى ملاحظات الطلب، ويقرؤها التأكيد والمرتجعات.
               </span>
             </label>
@@ -305,17 +311,18 @@ export function DeliverDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          {/* `success`: the kit's green, which this press always wore (the four looks have no green yet — see `Button`). */}
+          <Button
             type="submit"
+            variant="success"
             disabled={saving || !lines}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
           >
             <RiArchiveDrawerLine className="w-4 h-4" />
             {saving ? 'جارٍ التسجيل…' : !anyTaken ? 'تسجيل كمرتجع' : allTaken ? 'تسليم كامل' : 'تسليم جزئي'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Money } from '@/components/ui/Money';
 import { arDate } from '@/lib/format';
 import { PICKED_NOTHING_AR, type PickedMeasure } from '@/lib/legacy-closeout-words';
@@ -131,7 +133,7 @@ export function ClosePickedDialog({
       }
     >
       <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
-        <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+        <Card plain padding="sm" className="text-note space-y-1">
           <p className="text-[var(--sys-foreground)]">بتحوّل الطلبات المحدّدة لـ«مسوّى» (تم تحصيلها) — أي طلب، عليه باركود أو لأ.</p>
           <p className="text-[var(--sys-muted)]">
             ما بينزل ولا قرش بأي محفظة، وعمولتها ما بتصير قابلة للدفع. حالة الشحن بتضل «مسلَّم».
@@ -139,11 +141,11 @@ export function ClosePickedDialog({
           <p className="text-[var(--sys-muted)]">
             بتطلع من «بانتظار التحصيل» ومن حساب «عند شركات الشحن»، وما بتنفتح من الشاشة بعد القفل.
           </p>
-        </div>
+        </Card>
 
         {loadError && <p className="text-sm text-[var(--sys-destructive)]">{loadError}</p>}
         {!measure && !loadError && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]" aria-live="polite">
+          <p className="text-note text-[var(--sys-muted-foreground)]" aria-live="polite">
             عم أعدّ…
           </p>
         )}
@@ -156,8 +158,8 @@ export function ClosePickedDialog({
               <>
                 <div>
                   <p className="text-2xl font-bold text-[var(--sys-heading)] tabular-nums leading-none">{count}</p>
-                  <p className="mt-1 text-xs text-[var(--sys-muted-foreground)]">طلب رح ينقفل كمحصَّل</p>
-                  <p className="mt-1 text-xs text-[var(--sys-muted)]">
+                  <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">طلب رح ينقفل كمحصَّل</p>
+                  <p className="mt-1 text-note text-[var(--sys-muted)]">
                     من {arDate(measure.closeable.oldestAt)} لـ {arDate(measure.closeable.newestAt)}
                     {measure.closeable.value.length > 0 && (
                       <>
@@ -178,13 +180,13 @@ export function ClosePickedDialog({
 
                 <div className="border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
                   {shown.map((c) => (
-                    <div key={c.name} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <div key={c.name} className="flex items-center justify-between px-3 py-1.5 text-note">
                       <span className="text-[var(--sys-foreground)]">{c.name}</span>
                       <span className="tabular-nums text-[var(--sys-muted-foreground)]">{c.count}</span>
                     </div>
                   ))}
                   {rest > 0 && (
-                    <div className="flex items-center justify-between px-3 py-1.5 text-xs">
+                    <div className="flex items-center justify-between px-3 py-1.5 text-note">
                       <span className="text-[var(--sys-muted-foreground)]">شركات تانية</span>
                       <span className="tabular-nums text-[var(--sys-muted-foreground)]">{rest}</span>
                     </div>
@@ -192,13 +194,13 @@ export function ClosePickedDialog({
                 </div>
 
                 {measure.closeable.withBarcode > 0 && (
-                  <p className="text-xs text-[var(--sys-muted-foreground)]">
+                  <p className="text-note text-[var(--sys-muted-foreground)]">
                     <b className="tabular-nums text-[var(--sys-foreground)]">{measure.closeable.withBarcode}</b> منها عليها باركود — لو ذكرها كشف بعدين بيطلع «حُصّل يدوياً».
                   </p>
                 )}
 
                 {recent > 0 && (
-                  <p role="alert" className="text-xs text-[var(--sys-destructive)]">
+                  <p role="alert" className="text-note text-[var(--sys-destructive)]">
                     خد بالك: <b className="tabular-nums">{recent}</b> منها وصلت من أقل من {measure.recentDays} يوم — ممكن لسا مصاريها عند المندوب، ولو انقفلت ما بتقدر تسجّل استلامها بعدين.
                   </p>
                 )}
@@ -206,7 +208,7 @@ export function ClosePickedDialog({
             )}
 
             {left.length > 0 && (
-              <div className="text-xs bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3 space-y-1">
+              <Card plain padding="sm" className="text-note space-y-1">
                 <p className="font-medium text-[var(--sys-heading)]">اللي ما رح ينقفل:</p>
                 {left.slice(0, LEFT_SHOWN).map((l, i) => (
                   <p key={`${l.orderNumber ?? 'x'}:${i}`} className="text-[var(--sys-muted-foreground)]">
@@ -218,23 +220,21 @@ export function ClosePickedDialog({
                     و <b className="tabular-nums text-[var(--sys-foreground)]">{leftMore}</b> كمان.
                   </p>
                 )}
-              </div>
+              </Card>
             )}
 
             {count > 0 && (
-              <label className="flex min-h-11 items-start gap-2 text-sm text-[var(--sys-heading)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg p-2 md:min-h-0">
-                <input
-                  type="checkbox"
-                  checked={acknowledged}
-                  onChange={(e) => setAckKey(e.target.checked ? key : null)}
-                  className="h-5 w-5 mt-1 shrink-0 accent-[var(--sys-primary)]"
-                />
-                <span>
+              <Checkbox
+                id="close-picked-ack"
+                className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2"
+                checked={acknowledged}
+                onChange={(checked) => setAckKey(checked ? key : null)}
+                label={<>
                   {recent > 0
                     ? `أقرّ: القفل بلا حركة مصاري وما بيرجع من الشاشة، وإنو ${recent} منها حديثة وبقفلها بحكمي.`
                     : 'أقرّ: القفل بلا حركة مصاري، وما بيرجع من الشاشة.'}
-                </span>
-              </label>
+                </>}
+              />
             )}
           </div>
         )}
