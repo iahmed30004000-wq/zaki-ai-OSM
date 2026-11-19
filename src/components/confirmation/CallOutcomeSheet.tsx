@@ -25,6 +25,7 @@ import {
   type HelperReading,
   type OutgoingState,
 } from '@/lib/call-outcome';
+import { Button } from '@/components/ui/Button';
 import { sendContactLine } from '@/lib/contact-line';
 import { CALL_PROOF_WORDS, CLIENT_MARGIN_MS, MIN_CALL_MS, secondsLeft } from '@/lib/call-proof-words';
 
@@ -54,7 +55,12 @@ const WORDS: Record<CallOutcome, string> = {
 /** A thumb is wider than a mouse: every button on the sheet is at least this tall. */
 const THUMB = { minHeight: 48 };
 
-/** The sheet's buttons — the card's own look (`Action`), in the size a thumb needs. */
+/*
+ * The sheet's buttons — the kit's `Button`, in the size a thumb needs (R19b, 19/11: this was a local copy of the card's look).
+ * The press stays the screen's: the handler returns nothing to the kit (`{ onClick(); }`), so a promise handed back by the
+ * screen cannot start a second busy flag beside the screen's own. The tones are the card's `Action`: the confirmation
+ * `primary`, a press that closes or cancels `danger`, the rest `secondary`. `type="button"`: never a form's submit.
+ */
 function SheetButton({
   children,
   onClick,
@@ -69,23 +75,20 @@ function SheetButton({
   title?: string;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      onClick={onClick}
+      variant={tone ?? 'secondary'}
+      onClick={() => {
+        onClick();
+      }}
       disabled={disabled}
       title={title}
       aria-disabled={disabled || undefined}
       style={THUMB}
-      className={`w-full justify-center inline-flex items-center gap-1.5 px-3 rounded-lg text-sm font-medium border disabled:opacity-50 ${
-        tone === 'primary'
-          ? 'bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] border-[var(--sys-primary)]'
-          : tone === 'danger'
-            ? 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]'
-            : 'bg-[var(--sys-card)] text-[var(--sys-foreground)] border-[var(--sys-border)]'
-      }`}
+      className="w-full"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 

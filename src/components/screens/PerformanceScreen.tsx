@@ -834,14 +834,6 @@ export function PerformanceScreen() {
   );
 }
 
-function Metric({ label, value, tone }: { label: string; value: number | string; tone?: string }) {
-  return (
-    <span className="text-[var(--sys-muted-foreground)]">
-      {label}: <span className={`tabular-nums font-semibold ${tone ?? 'text-[var(--sys-heading)]'}`}>{value}</span>
-    </span>
-  );
-}
-
 /**
  * One headline. The five of them used to be red emoji boxes with English
  * capitals — the only place in the system that looked like that.

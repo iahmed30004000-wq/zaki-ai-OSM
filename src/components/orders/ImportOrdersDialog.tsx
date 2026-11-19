@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
+import { StatusChip } from '@/components/ui/StatusChip';
 import { apiFetch, apiJson } from '@/lib/api-client';
 import { RiAlertLine, RiCheckLine, RiCloseLine, RiDownload2Line, RiLoader4Line, RiUploadCloud2Line } from '@remixicon/react';
 
@@ -352,12 +353,7 @@ export function ImportOrdersDialog({ onClose, onDone }: { onClose: () => void; o
   );
 }
 
+/** A count of the file's rows: the kit's `StatusChip`, the same tones (R19b, 19/11 — it was a local copy of its colours). */
 function Pill({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: React.ReactNode }) {
-  const cls =
-    tone === 'ok'
-      ? 'bg-[var(--sys-success-soft)] text-[var(--sys-success)] border-[var(--sys-success)]/30'
-      : tone === 'warn'
-        ? 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] border-[var(--sys-warning)]/30'
-        : 'bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] border-[var(--sys-destructive-border)]';
-  return <span className={`rounded-md border px-2 py-0.5 ${cls}`}>{children}</span>;
+  return <StatusChip tone={tone === 'ok' ? 'good' : tone}>{children}</StatusChip>;
 }

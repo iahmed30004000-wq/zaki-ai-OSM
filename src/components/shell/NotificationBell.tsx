@@ -67,8 +67,6 @@ const TONE: Record<NotificationType, string> = {
   LANDING_CHAT: 'bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]',
 };
 
-const POLL_MS = 60_000;
-
 export function NotificationBell() {
   const router = useRouter();
   /**

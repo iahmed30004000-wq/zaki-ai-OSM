@@ -1148,15 +1148,15 @@
     "checkboxes": 1
   },
   "src/components/screens/CampaignsScreen.tsx": {
-    "buttons": 13,
+    "buttons": 12,
     "inputs": 11,
     "columns": 7,
     "cards": 1,
-    "modals": 0,
-    "icons": 21,
+    "modals": 2,
+    "icons": 17,
     "links": 0,
     "tabs": 0,
-    "iconButtons": 4
+    "iconButtons": 2
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
     "buttons": 5,
@@ -1306,7 +1306,7 @@
   },
   "src/components/screens/GeoSettingsScreen.tsx": {
     "buttons": 13,
-    "inputs": 8,
+    "inputs": 7,
     "columns": 0,
     "cards": 6,
     "modals": 0,
