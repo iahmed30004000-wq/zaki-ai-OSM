@@ -1291,13 +1291,14 @@
   },
   "src/components/screens/DiscountAlertsScreen.tsx": {
     "buttons": 0,
-    "inputs": 2,
+    "inputs": 1,
     "columns": 11,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 2,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/FinanceProfitScreen.tsx": {
     "buttons": 6,
