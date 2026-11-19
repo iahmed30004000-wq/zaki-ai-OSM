@@ -87,7 +87,7 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
     title: 'النظام',
     // 19/11 (R15a): was «اسم الشركة، والمهام التي يشغّل النظام بها نفسه.» — «إعدادات النظام» keeps the name and the offer after the order now.
     why: 'اسم الشركة ومهلة العرض بعد الطلب، والمهام التي يشغّل النظام بها نفسه.',
-    paths: ['/settings/system', '/admin/jobs', '/settings/authenticity'],
+    paths: ['/settings/system', '/admin/jobs'],
   },
   {
     // 19/11 (R15a): the score and the deductions, moved from «إعدادات النظام» to a page of their own beside the staff.

@@ -408,10 +408,6 @@ export const NAV: NavGroup[] = [
       r('/apps/installed', 'التطبيقات المثبتة', 'Blocks', ['apps.view']),
       r('/settings/system', 'إعدادات النظام', 'Settings', ['settings.view']),
       r('/admin/jobs', 'المهام المجدولة', 'Timer', ['settings.view']),
-      // «رموز الأصالة» (19/11): the owner's own list of codes the public /verify page checks a scan against.
-      // On `settings.view`, like every card here — adding and deleting ask the card's own `settings.edit`, so a
-      // holder of this door alone sees the list read-only. No new key: a catalog line rides in every screen's first load.
-      r('/settings/authenticity', 'رموز الأصالة', 'ShieldCheck', ['settings.view']),
       // «قواعد الموظفين» (19/11, R15a): «سكور الموظفين» and «قواعد الخصم» from «إعدادات النظام», moved unchanged, beside the staff. On `settings.view`, the key of the
       // page they came from — nobody gains or loses them; each card still asks its own key to edit.
       r('/admin/staff-rules', 'قواعد الموظفين', 'Award', ['settings.view']),

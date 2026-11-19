@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
-import { PageShell } from '@/components/ui/PageShell';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
@@ -10,19 +9,20 @@ import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
 import { useCan } from '@/hooks/useCan';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
-import { routeLabel } from '@/lib/route-registry';
 import { RiAddCircleLine, RiDeleteBinLine, RiFileCopyLine, RiLoader4Line } from '@remixicon/react';
 
 /**
  * «رموز الأصالة» — THE OWNER'S OWN LIST, READ BY A PUBLIC SCAN AND BY NOBODY ELSE.
  *
- * One add at a time, as asked: no bulk import. A code typed here is the only
- * thing that makes `/verify/[storeId]` say «أصلي» for it — nothing is
- * genuine by default, and nothing here ever marks a code "used": the same
- * code reads «أصلي» the first time it is scanned and the thousandth.
+ * A card of «إعدادات النظام», not a page of its own (19/11): a new page is a new line of the registry, and the registry
+ * rides in the first load of every staff screen, whose ceilings only hold or fall (R19). A card costs that load nothing.
  *
- * `note`/`productId` are this screen's own words for itself; the public
- * endpoint never reads or returns them (`src/lib/authenticity.ts`).
+ * One add at a time, as asked: no bulk import. A code typed here is the only thing that makes `/verify/[storeId]` say
+ * «أصلي» for it — nothing is genuine by default, and nothing here ever marks a code "used": the same code reads «أصلي»
+ * the first time it is scanned and the thousandth. `note` is this card's own words for itself; the public endpoint
+ * never reads or returns it (`src/lib/authenticity.ts`).
+ *
+ * The list reads on `settings.view` (the screen's own door); adding and removing ask the screen's `settings.edit`.
  */
 
 interface Code {
@@ -39,10 +39,9 @@ interface StoreRow {
   name: string;
 }
 
-export function AuthenticityCodesScreen() {
+export function AuthenticityCodesCard() {
   const toast = useToast();
   const confirm = useConfirm();
-  // The list is read by `settings.view` (the page's own door); adding and removing ask the finer key.
   const canManage = useCan('settings.edit');
   const [codes, setCodes] = useState<Code[] | null>(null);
   const [stores, setStores] = useState<StoreRow[]>([]);
@@ -55,6 +54,7 @@ export function AuthenticityCodesScreen() {
       const d = await apiJson<{ codes: Code[]; stores: StoreRow[] }>('/api/settings/authenticity-codes');
       setCodes(d.codes ?? []);
       setStores(d.stores ?? []);
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
@@ -112,71 +112,57 @@ export function AuthenticityCodesScreen() {
     }
   };
 
-  if (!codes) {
-    return error ? (
-      <PageShell title={routeLabel('/settings/authenticity')} width="narrow">
-        <p className="text-sm text-[var(--sys-destructive)]">{error}</p>
-      </PageShell>
-    ) : null;
-  }
-
   return (
-    <PageShell
-      title={routeLabel('/settings/authenticity')}
-      description="الرموز التي تظهر «أصلي» عند فحصها من صفحة التحقق العامة."
-      width="narrow"
-    >
-      <div className="space-y-4" dir="rtl">
-        {stores.length > 0 && (
-          <Card>
-            <CardHeader title="رابط الفحص العام" subtitle="شاركه مع أي شخص — لا يحتاج تسجيل دخول" />
-            <CardContent className="space-y-2">
-              {stores.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] p-2.5 text-note">
-                  <span className="font-medium text-[var(--sys-foreground)]">{s.name}</span>
-                  <Button variant="quiet" size="sm" onClick={() => copyLink(s.id)}>
-                    <RiFileCopyLine className="h-4 w-4" /> نسخ الرابط
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+    <Card>
+      <CardHeader title="رموز الأصالة" subtitle="الرموز التي تظهر «أصلي» عند فحصها من صفحة التحقق العامة." />
+      <CardContent className="space-y-4">
+        {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
-        <Card>
-          <CardHeader title="رمز جديد" subtitle="رمز واحد في كل مرة — بدون استيراد جماعي" />
-          <CardContent className="space-y-2">
-            {canManage ? (
-              <div className="flex flex-wrap gap-2">
-                <input
-                  value={draft.code}
-                  onChange={(e) => setDraft({ ...draft, code: e.target.value })}
-                  placeholder="الرمز (باركود أو QR)"
-                  dir="ltr"
-                  style={{ minWidth: 160 }}
-                  className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
-                />
-                <input
-                  value={draft.note}
-                  onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-                  placeholder="ملاحظة (اختياري، لك فقط)"
-                  style={{ minWidth: 160 }}
-                  className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
-                />
-                <Button onClick={() => void add()} disabled={busy || !draft.code.trim()}>
-                  {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
-                  إضافة
+        {stores.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-note text-[var(--sys-muted-foreground)]">رابط الفحص العام — شاركه مع أي شخص، لا يحتاج تسجيل دخول.</p>
+            {stores.map((s) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] p-2.5 text-note">
+                <span className="font-medium text-[var(--sys-foreground)]">{s.name}</span>
+                <Button variant="quiet" size="sm" onClick={() => copyLink(s.id)}>
+                  <RiFileCopyLine className="h-4 w-4" /> نسخ الرابط
                 </Button>
               </div>
-            ) : (
-              <p className="text-note text-[var(--sys-muted-foreground)]">قراءة فقط — لا تملك صلاحية الإضافة أو الحذف.</p>
-            )}
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        )}
 
-        <Card>
-          <CardHeader title={`الرموز (${codes.length})`} />
-          <CardContent className="space-y-2">
+        {canManage ? (
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={draft.code}
+              onChange={(e) => setDraft({ ...draft, code: e.target.value })}
+              placeholder="رمز جديد (باركود أو QR)"
+              aria-label="رمز جديد"
+              dir="ltr"
+              style={{ minWidth: 160 }}
+              className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
+            />
+            <input
+              value={draft.note}
+              onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+              placeholder="ملاحظة (اختياري، لك فقط)"
+              aria-label="ملاحظة"
+              style={{ minWidth: 160 }}
+              className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
+            />
+            <Button onClick={() => void add()} disabled={busy || !draft.code.trim()}>
+              {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
+              إضافة
+            </Button>
+          </div>
+        ) : (
+          <p className="text-note text-[var(--sys-muted-foreground)]">قراءة فقط — لا تملك صلاحية الإضافة أو الحذف.</p>
+        )}
+
+        {codes && (
+          <div className="space-y-2">
+            <p className="text-note font-semibold text-[var(--sys-foreground)]">الرموز ({codes.length})</p>
             {codes.length === 0 && (
               <p className="rounded-lg border border-[var(--sys-border)] p-3 text-note text-[var(--sys-muted-foreground)]">
                 لا رموز بعد — كل فحص عام يُظهر «غير أصلي» إلى أن تضيف رموزاً هنا.
@@ -198,9 +184,9 @@ export function AuthenticityCodesScreen() {
                 )}
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </div>
-    </PageShell>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

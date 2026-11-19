@@ -118,7 +118,6 @@ export const GUIDED_PATHS: readonly string[] = [
   '/apps/installed',
   '/settings/system',
   '/admin/jobs',
-  '/settings/authenticity',
   // الإدارة
   '/admin/staff-rules',
   '/admin/users',
