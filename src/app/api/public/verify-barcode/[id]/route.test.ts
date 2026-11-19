@@ -47,6 +47,17 @@ describe('a code on the list', () => {
     expect(body).toEqual({ genuine: true });
   });
 
+  it('a code of 300 digits — as long as the add form allows — is looked up whole and can read genuine', async () => {
+    const long = '7'.repeat(300);
+    db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
+    const res = await scan(long);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ genuine: true });
+    expect(db.authenticityCode.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ companyId_code: expect.objectContaining({ code: long }) }) })
+    );
+  });
+
   it('bumps the scan count, but the verdict does not wait on it, and a write failure cannot flip the answer', async () => {
     db.authenticityCode.findUnique.mockResolvedValue({ id: 'acode1' });
     db.authenticityCode.update.mockRejectedValue(new Error('db down'));
@@ -77,7 +88,7 @@ describe('a code not on the list', () => {
 
   it('a garbage/empty/oversized code is simply not genuine — never a 400, never a crash', async () => {
     db.authenticityCode.findUnique.mockResolvedValue(null);
-    for (const bad of ['', '  ', 'a'.repeat(100), 'has a space', 'ثيثث', '<script>']) {
+    for (const bad of ['', '  ', 'a'.repeat(301), 'has a space', 'ثيثث', '<script>']) {
       const res = await scan(bad);
       expect(res.status, bad).toBe(bad.trim() ? 200 : 400);
     }

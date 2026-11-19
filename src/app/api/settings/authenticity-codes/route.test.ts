@@ -85,6 +85,27 @@ describe('adding a code', () => {
     }
     expect(db.authenticityCode.create).not.toHaveBeenCalled();
   });
+
+  // 19/11 (owner): codes run to ~300 characters; the old 64 refused them with zod's English sentence.
+  it('a code of 300 digits is stored whole', async () => {
+    const long = '7'.repeat(300);
+    db.authenticityCode.create.mockResolvedValue({ id: 'acode1', code: long });
+    const res = await post({ code: long });
+    expect(res.status).toBe(201);
+    expect(db.authenticityCode.create).toHaveBeenCalledWith({
+      data: { companyId: 'co-1', code: long, note: null, productId: null, createdById: 'u1' },
+    });
+  });
+
+  it('one character more is refused in Arabic, naming the limit — never the bare zod sentence', async () => {
+    const res = await post({ code: '7'.repeat(301) });
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error).toMatch(/300/);
+    expect(error).toMatch(/طويل/);
+    expect(error).not.toMatch(/Too big/);
+    expect(db.authenticityCode.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('deleting a code', () => {
