@@ -9,14 +9,15 @@ import type { SessionUser } from '@/types/auth';
  * is her own `orderVisibilityWhere`, never a wider one. And the claim-by-number door is untouched: it still answers her `USE_THE_PULL`.
  */
 
-const { requireContext, current, search, take } = vi.hoisted(() => ({
+const { requireContext, current, search, take, rawDb } = vi.hoisted(() => ({
+  rawDb: { $executeRaw: vi.fn() },
   requireContext: vi.fn(),
   current: { user: null as unknown as SessionUser },
   search: vi.fn(),
   take: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({ db: {} }));
+vi.mock('@/lib/db', () => ({ db: rawDb }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/customer-on-the-line', async (orig) => ({
   ...(await orig<typeof import('@/lib/customer-on-the-line')>()),
@@ -171,5 +172,54 @@ describe('the claim-by-number door is as it was', () => {
       'utf8'
     );
     expect(src).toMatch(/if \(mustHoldToWork\(\(permission\) => can\(user, permission\)\)\) \{[\s\S]{0,200}USE_THE_PULL_CODE/);
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): each «on the line» refusal leaves ONE row naming the order, through the real `logDeskRefusal`, after
+ * the take decided; a take that worked, «already yours» and an unknown order leave none; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — «الزبون على الخط»', () => {
+  const rows = () => rawDb.$executeRaw.mock.calls.map((c: unknown[]) => ({ storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
+  beforeEach(() => {
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
+    rawDb.$executeRaw.mockResolvedValue(1);
+  });
+
+  it.each(['HELD_BY_COLLEAGUE', 'RESERVED_FOR_COLLEAGUE', 'CLOSED', 'NEVER_CALLED', 'REACHED_SINCE_RELEASE', 'TAKEN_MEANWHILE', 'CAP_TOTAL'])(
+    '%s: one row naming the order',
+    async (code) => {
+      await as(AGENT);
+      take.mockResolvedValue({ ok: false, code, message: 'م' });
+      expect((await press('o7')).status).toBe(409);
+      expect(rows()).toEqual([{ storeId: 's1', orderId: 'o7', code, door: 'callback-take' }]);
+    }
+  );
+
+  it('NEGATIVE: a take that worked writes no row', async () => {
+    await as(AGENT);
+    expect((await press()).status).toBe(201);
+    expect(rawDb.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: an unknown order, and a refusal by the keys, write no row', async () => {
+    await as(AGENT);
+    take.mockResolvedValue({ ok: false, code: 'NOT_FOUND', message: 'م' });
+    expect((await press()).status).toBe(404);
+    await as(AGENT.filter((k) => k !== 'confirmation.work'));
+    expect((await press()).status).toBe(403);
+    expect(rawDb.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    await as(AGENT);
+    take.mockResolvedValue({ ok: false, code: 'HELD_BY_COLLEAGUE', message: 'الطلب مع هند', heldBy: 'هند' });
+    const ok = await press();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
+    rawDb.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await press();
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

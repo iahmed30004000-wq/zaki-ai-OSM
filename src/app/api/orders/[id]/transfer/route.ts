@@ -10,6 +10,7 @@ import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND, ORDER_STALE } from '@/lib/order-refusals';
 import { resolveAudience } from '@/lib/notification-audience';
 import { mayBeHandedAnOrder } from '@/lib/confirmation-queue';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 
 /**
  * POST /api/orders/[id]/transfer
@@ -130,6 +131,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Somebody who assigns hands the order to anybody who can WORK it, whatever her role — not only to the holder's role.
       const mayWork = (await whoMayWorkTheOrder(companyId, storeId ?? null)).some((u) => u.id === target.id);
       if (!mayWork) {
+        await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'CANNOT_WORK_IT', door: 'transfer' });
         return NextResponse.json(
           {
             error: `${target.name} ما بيشتغل على الطلبات — ما بيتحوّل الطلب لإلو`,
@@ -140,6 +142,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         );
       }
     } else if (holder && !sameRank(holder, target)) {
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'DIFFERENT_RANK', door: 'transfer' });
       return NextResponse.json(
         {
           error: `لا يمكن تحويل الطلب إلى رتبة مختلفة — ${target.name} ليس بنفس دور ${holder.name}`,

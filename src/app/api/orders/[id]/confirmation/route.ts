@@ -26,6 +26,7 @@ import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { CADENCE_LIMIT } from '@/lib/no-answer-cadence';
 import { POSTPONE_MAX_TIMES } from '@/lib/queue-priority';
 import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 import {
   TwinConfirmedRefusal, guardConfirmAgainstTwins, recordTwinAcknowledged, twinConfirmedBody, type ConfirmedTwin,
 } from '@/lib/confirmed-twin';
@@ -105,6 +106,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      */
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
       if (await isTheSecondHalfOfHerReturn(req, { companyId, orderId: id, userId: user.id })) return NextResponse.json(SECOND_HALF_ANSWER);
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'NOT_HELD', door: 'confirmation' });
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
@@ -170,6 +172,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ) {
       // With «إثبات المكالمات» on, «أو اكبس لا يرد» is no longer a way out of this refusal — the copy says «اتصال» (the constant keeps its text for OFF).
       const contactFirstWords = (await callProofOn(db, companyId)) ? CALL_PROOF_WORDS.contactFirstV2 : CONTACT_FIRST_MESSAGE;
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'CONTACT_FIRST', door: 'confirmation' });
       return NextResponse.json(
         {
           error: contactFirstWords,
@@ -308,6 +311,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
        * written: she records «لا يرد» and the plan brings the order back at its due. The plan off (or unreadable): asked of nothing, as on main.
        */
       if (nextFollowUpAt && followUpReason === 'NO_ANSWER' && (await cadenceSince(db, companyId))) {
+        await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: NO_ANSWER_POSTPONE_CODE, door: 'confirmation' });
         return NextResponse.json(
           { error: NO_ANSWER_POSTPONE_AR, errorAr: NO_ANSWER_POSTPONE_AR, code: NO_ANSWER_POSTPONE_CODE },
           { status: 409 }
@@ -328,6 +332,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           if ((await cadenceSince(db, companyId)) || (await queuePrioritySwitch(db, companyId)).enabled) {
             const seen = await db.order.findFirst({ where: { id, companyId }, select: { postponeCount: true } });
             if ((seen?.postponeCount ?? 0) >= POSTPONE_MAX_TIMES) {
+              await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: 'POSTPONE_LIMIT', door: 'confirmation' });
               return NextResponse.json({ error: `هالطلب انأجّل ${POSTPONE_MAX_TIMES} مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.`, code: 'POSTPONE_LIMIT' }, { status: 409 });
             }
           }

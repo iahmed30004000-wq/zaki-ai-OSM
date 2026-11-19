@@ -17,6 +17,7 @@ import {
 } from '@/lib/confirmation-queue';
 import { reservedForOthersWhere, reservedMessage } from '@/lib/order-reservation';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 
 /**
  * POST /api/orders/[id]/claim        → claim + digital signature (NOT for an agent of the queue: she pulls — `USE_THE_PULL`, below)
@@ -114,7 +115,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      */
     if (mustHoldToWork((permission) => can(user, permission))) {
       const said = claimByNumberMessage((permission) => can(user, permission));
-      return NextResponse.json({ error: said, errorAr: said, code: USE_THE_PULL_CODE }, { status: 403 });
+      const refused = NextResponse.json({ error: said, errorAr: said, code: USE_THE_PULL_CODE }, { status: 403 });
+      // «سجل الرفض» — the only write this refusal makes, and it never changes the answer (`desk-refusals.ts`).
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: USE_THE_PULL_CODE, door: 'claim' });
+      return refused;
     }
 
     // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold
@@ -203,6 +207,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         !!(await db.order.findFirst({ where: { id, ...heldForHerWhere({ companyId, storeId }, user.id, new Date()) }, select: { id: true } }));
       const refusal = pullRefusal(counts, takesHeldForHer, hand);
       if (refusal) {
+        await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: id, code: refusal.code, door: 'claim' });
         return NextResponse.json(
           {
             error: refusal.message,

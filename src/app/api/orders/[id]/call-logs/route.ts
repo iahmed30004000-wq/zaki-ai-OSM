@@ -7,6 +7,7 @@ import { apiError } from '@/lib/api-error';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 
 /**
  * POST /api/orders/[id]/call-logs — record a call. A result that would move
@@ -81,6 +82,7 @@ export async function POST(
     // أكّدت» the confirmation door next door refuses. Whoever can take or hand out any order (`orders.unlock`, `orders.assign`) is not
     // bound, as at the other doors; `confirmation.supervise` excuses nobody. Asked before the body is read and before any row.
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: order.id, code: 'NOT_HELD', door: 'call-logs' });
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
