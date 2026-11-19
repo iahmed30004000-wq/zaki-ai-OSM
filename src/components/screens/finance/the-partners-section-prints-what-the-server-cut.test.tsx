@@ -171,7 +171,8 @@ describe('when the shares cannot be cut', () => {
     answer = statementOf({ state: 'NO_PARTNERS', sharesTotal: 0, lines: [], totals: { entitlement: null, draws: 0, broken: null } });
     render(<PartnersSection />);
     expect(await screen.findByText('ما في شركاء محفوظين')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'افتح إعدادات النظام' }).getAttribute('href')).toBe('/settings/system');
+    // 19/11 (R13i): was «افتح إعدادات النظام» → /settings/system; the partners card moved to «قواعد المال», so the link names it and goes there.
+    expect(screen.getByRole('link', { name: 'افتح قواعد المال' }).getAttribute('href')).toBe('/finance/rules');
   });
 
   it('shares that do not total 100: it says so in red, splits nothing, and prints a dash — never a zero that makes everyone broken', async () => {

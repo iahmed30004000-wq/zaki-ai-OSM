@@ -252,6 +252,9 @@ export const NAV: NavGroup[] = [
       // Commission is money owed to the staff, so it is a tab of «المال» (18/11). Its address stays under
       // /settings — the one screen under /settings that is not in «الإدارة».
       r('/settings/commission', 'العمولات', 'Percent', ['commission.view']),
+      // «قواعد المال» (19/11, R13i): the two money cards of «إعدادات النظام» (the clean-line settlement, the partners), moved here unchanged. On `settings.view`, the key of
+      // the page they came from — nobody gains or loses them; each card still asks its own key.
+      r('/finance/rules', 'قواعد المال', 'ShieldCheck', ['settings.view']),
     ],
   },
   {
@@ -405,6 +408,9 @@ export const NAV: NavGroup[] = [
       r('/apps/installed', 'التطبيقات المثبتة', 'Blocks', ['apps.view']),
       r('/settings/system', 'إعدادات النظام', 'Settings', ['settings.view']),
       r('/admin/jobs', 'المهام المجدولة', 'Timer', ['settings.view']),
+      // «قواعد الموظفين» (19/11, R15a): «سكور الموظفين» and «قواعد الخصم» from «إعدادات النظام», moved unchanged, beside the staff. On `settings.view`, the key of the
+      // page they came from — nobody gains or loses them; each card still asks its own key to edit.
+      r('/admin/staff-rules', 'قواعد الموظفين', 'Award', ['settings.view']),
       r('/admin/users', 'الموظفين', 'UserCog', ['users.view']),
       r('/admin/permissions', 'الصلاحيات', 'ShieldCheck', ['roles.view']),
       // The control screens — what was asked to change, what was given off, what was taken from a salary,

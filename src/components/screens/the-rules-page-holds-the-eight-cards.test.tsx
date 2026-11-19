@@ -142,8 +142,12 @@ describe('3 · «إعدادات النظام» keeps its own cards and none of t
     for (const name of [...Object.keys(CARDS), ...Object.keys(GONE)]) expect(system, name).not.toContain(name);
   });
 
-  it('and still draws the company\'s own: the name, the score, the deductions, the offer after the order, the clean-line settlement and the partners', () => {
-    for (const keep of ['PerformanceSettingsCard', 'PenaltyRulesCard', 'PostOrderOfferCard', 'PerLineSettlementCard', 'PartnersCard']) {
+  // 19/11 (R13i): was «… the offer after the order, the clean-line settlement and the partners», with the two money cards in the list. They moved, unchanged, to
+  // «قواعد المال» (/finance/rules); `the-money-rules-page-holds-the-two-cards.test.tsx` pins them there and not here.
+  // 19/11 (R15a): was «the name, the score, the deductions, the offer after the order», with the two staff cards in the list. They moved, unchanged, to
+  // «قواعد الموظفين» (/admin/staff-rules); `the-staff-rules-page-holds-the-two-cards.test.tsx` pins them there and not here.
+  it('and still draws the company\'s own: the name and the offer after the order', () => {
+    for (const keep of ['PostOrderOfferCard']) {
       expect(system, keep).toContain(`<${keep} />`);
     }
     expect(system).toContain('اسم الشركة');

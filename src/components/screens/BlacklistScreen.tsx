@@ -3,7 +3,10 @@
 import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAddCircleLine, RiArrowGoBackLine, RiLoader4Line, RiSearchLine } from '@remixicon/react';
 import { Rows } from '@/components/ui/Rows';
@@ -69,47 +72,52 @@ export function BlacklistScreen() {
   const releasedHidden = !showReleased && (blocks ?? []).some((b) => !b.active);
 
   return (
-    <div className="max-w-5xl space-y-3">
-      <PageHeader title={routeLabel('/control/blacklist')} />
-
-      <p className="text-xs text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
-        الحظر على <b>رقم الهاتف</b> وعلى مستوى الشركة كلها — لأن الرقم هو الهوية، والشخص نفسه هو الشخص
-        نفسه في كل متجر. الطلبات القائمة لا تتأثر؛ الحظر يمنع الطلب <b>القادم</b>. وفكّ الحظر يبقي السجل.
-      </p>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void load();
-        }}
-        className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end"
-      >
-        <label className="flex-1 min-w-[220px]">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">بحث</span>
-          <div className="relative">
-            <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute right-3 top-3" />
-            <input
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              placeholder="رقم الهاتف، الاسم أو السبب"
-              className="w-full h-11 md:h-10 pr-9 pl-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
-            />
-          </div>
-        </label>
-        <label className="flex items-center gap-2 h-10 text-sm text-[var(--sys-foreground)]">
-          <input type="checkbox" checked={showReleased} onChange={(e) => setShowReleased(e.target.checked)} />
-          أظهر المفكوكين
-        </label>
-        {mayManage && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-sm font-medium inline-flex items-center gap-1.5"
-          >
+    <PageShell title={routeLabel('/control/blacklist')}
+      width="wide"
+      actions={
+        mayManage && (
+          <Button type="button" onClick={() => setAdding(true)}>
             <RiAddCircleLine className="w-4 h-4" /> حظر رقم
-          </button>
-        )}
-      </form>
+          </Button>
+        )
+      }
+      filters={
+        <Card padding="md">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load();
+            }}
+            className="flex flex-wrap gap-3 items-end"
+          >
+            <label className="flex-1 min-w-[220px]">
+              <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">بحث</span>
+              <div className="relative">
+                <RiSearchLine className="w-4 h-4 text-[var(--sys-muted)] absolute right-3 top-3" />
+                <input
+                  value={term}
+                  onChange={(e) => setTerm(e.target.value)}
+                  placeholder="رقم الهاتف، الاسم أو السبب"
+                  className="w-full h-11 md:h-10 pr-9 pl-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
+                />
+              </div>
+            </label>
+            <Checkbox
+              id="blacklist-show-released"
+              checked={showReleased}
+              onChange={(on) => setShowReleased(on)}
+              label="أظهر المفكوكين"
+            />
+          </form>
+        </Card>
+      }
+    >
+      <Card plain padding="sm">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
+          الحظر على <b>رقم الهاتف</b> وعلى مستوى الشركة كلها — لأن الرقم هو الهوية، والشخص نفسه هو الشخص
+          نفسه في كل متجر. الطلبات القائمة لا تتأثر؛ الحظر يمنع الطلب <b>القادم</b>. وفكّ الحظر يبقي السجل.
+        </p>
+      </Card>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
       {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
@@ -134,8 +142,8 @@ export function BlacklistScreen() {
           <RiLoader4Line className="w-4 h-4 animate-spin" /> جارٍ التحميل…
         </div>
       ) : (
-        <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg overflow-hidden">
-                    <Rows
+        <Card plain className="overflow-hidden">
+          <Rows
             rows={rows}
             keyOf={(b) => b.id}
             columns={[
@@ -153,7 +161,7 @@ export function BlacklistScreen() {
                 render: (b) => (
                   <>{b.reason}
                     {!b.active && b.releaseReason && (
-                      <span className="block text-xs text-[var(--sys-success)] mt-0.5">
+                      <span className="block text-note text-[var(--sys-success)] mt-0.5">
                         فُك: {b.releaseReason} — {b.releasedByName ?? '—'}
                       </span>
                     )}</>
@@ -161,7 +169,7 @@ export function BlacklistScreen() {
               { key: 'c4', label: "حظره",
                 render: (b) => (
                   <>{b.blockedByName ?? '—'}
-                    <span className="block text-xs text-[var(--sys-muted)]">
+                    <span className="block text-note text-[var(--sys-muted)]">
                       {arDate(b.createdAt)}
                     </span></>
                 ) },
@@ -189,20 +197,17 @@ export function BlacklistScreen() {
             }
             actions={(b) => (
               <>{b.active && !mayManage ? (
-                      <span className="text-xs text-[var(--sys-muted)]">محظور</span>
+                      <span className="text-note text-[var(--sys-muted)]">محظور</span>
                     ) : b.active ? (
-                      <button
-                        onClick={() => setReleasing(b)}
-                        className="text-xs text-[var(--sys-success)] hover:underline inline-flex items-center gap-1"
-                      >
+                      <Button type="button" variant="quiet" size="sm" onClick={() => setReleasing(b)}>
                         <RiArrowGoBackLine className="icon-mirror w-4 h-4" /> فك الحظر
-                      </button>
+                      </Button>
                     ) : (
-                      <span className="text-xs text-[var(--sys-muted)]">مفكوك</span>
+                      <span className="text-note text-[var(--sys-muted)]">مفكوك</span>
                     )}</>
             )}
           />
-        </div>
+        </Card>
       )}
 
       {adding && (
@@ -227,7 +232,7 @@ export function BlacklistScreen() {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
 
@@ -260,7 +265,7 @@ function BlockDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (m: s
         className="space-y-3"
       >
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">رقم الهاتف</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">رقم الهاتف</span>
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -270,13 +275,13 @@ function BlockDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (m: s
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
+          <span className="block text-note text-[var(--sys-muted)] mt-1">
             يُطابَق بصيغته المجرّدة، فلا يهم كيف كُتب.
           </span>
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">الاسم (اختياري)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الاسم (اختياري)</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -285,7 +290,7 @@ function BlockDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (m: s
         </label>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">السبب (إلزامي)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">السبب (إلزامي)</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -300,16 +305,12 @@ function BlockDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (m: s
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" variant="danger" disabled={saving}>
             {saving ? 'جارٍ الحظر…' : 'حظر'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
@@ -350,15 +351,17 @@ function ReleaseDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-sm text-[var(--sys-foreground)] bg-[var(--sys-surface)] border border-[var(--sys-border)] rounded-lg p-3">
-          سبب الحظر الأصلي: <b>{block.reason}</b>
-          <span className="block text-xs text-[var(--sys-muted)] mt-1">
-            يبقى السجل بعد فك الحظر — لا يُحذف شيء.
-          </span>
-        </p>
+        <Card plain padding="sm">
+          <p className="text-sm text-[var(--sys-foreground)]">
+            سبب الحظر الأصلي: <b>{block.reason}</b>
+            <span className="block text-note text-[var(--sys-muted)] mt-1">
+              يبقى السجل بعد فك الحظر — لا يُحذف شيء.
+            </span>
+          </p>
+        </Card>
 
         <label className="block">
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">سبب فك الحظر (إلزامي)</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">سبب فك الحظر (إلزامي)</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -373,16 +376,12 @@ function ReleaseDialog({
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-success)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" variant="primary" disabled={saving}>
             فك الحظر
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

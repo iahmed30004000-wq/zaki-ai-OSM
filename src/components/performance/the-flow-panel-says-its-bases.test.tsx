@@ -339,27 +339,29 @@ describe('the tone is on the card and in a word', () => {
   });
 });
 
-describe('the window choice — three real buttons', () => {
+// UPDATED 2026-11-18 (request R14a2): it said «three real buttons» with `aria-pressed` in a `group`; the window is now the kit's `Segmented` —
+// one choice of three, so three `radio` buttons with `aria-checked` in a `radiogroup` named «مدة القراءة». Every behaviour below is unchanged.
+describe('the window choice — three real buttons, one choice (the kit Segmented)', () => {
   it('opens on a day, asks for the flow and only the flow, and the pressed one is the one on screen', async () => {
     render(<HeldFlowPanel />);
     await screen.findByText('سلاسة الشغل');
     expect(flowCalls()).toEqual(['/api/orders/confirmation/no-answer?part=flow&window=24h']);
     expect(calls).toHaveLength(1);
-    const pressed = (name: string) => (screen.getByRole('button', { name }) as HTMLButtonElement).getAttribute('aria-pressed');
+    const pressed = (name: string) => (screen.getByRole('radio', { name }) as HTMLButtonElement).getAttribute('aria-checked');
     expect(pressed('آخر 24 ساعة')).toBe('true');
     expect(pressed('آخر 6 ساعات')).toBe('false');
     expect(pressed('آخر 7 أيام')).toBe('false');
-    expect(screen.getAllByRole('button')).toHaveLength(3);
-    for (const b of screen.getAllByRole('button')) expect(b.tagName).toBe('BUTTON');
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    for (const b of screen.getAllByRole('radio')) expect(b.tagName).toBe('BUTTON');
     // The three are one choice, named, so a screen reader hears «مدة القراءة» and then which one is on.
-    const group = screen.getByRole('group', { name: 'مدة القراءة' });
-    expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['آخر 6 ساعات', 'آخر 24 ساعة', 'آخر 7 أيام']);
+    const group = screen.getByRole('radiogroup', { name: 'مدة القراءة' });
+    expect(within(group).getAllByRole('radio').map((b) => b.textContent)).toEqual(['آخر 6 ساعات', 'آخر 24 ساعة', 'آخر 7 أيام']);
   });
 
   it('is a phone-sized target: every button is 44 px tall on a phone and back to its size on a desk', async () => {
     render(<HeldFlowPanel />);
     await screen.findByText('سلاسة الشغل');
-    for (const b of screen.getAllByRole('button')) {
+    for (const b of screen.getAllByRole('radio')) {
       expect(b.className).toContain('min-h-11');
       expect(b.className).toContain('md:min-h-0');
       expect(b.getAttribute('type')).toBe('button');
@@ -380,16 +382,16 @@ describe('the window choice — three real buttons', () => {
     });
     render(<HeldFlowPanel />);
     await screen.findByText('سلاسة الشغل');
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 7 أيام' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 7 أيام' }));
     await waitFor(() => expect(within(tile('انسحب')).getByText('2000')).toBeTruthy());
     expect(flowCalls()).toEqual([
       '/api/orders/confirmation/no-answer?part=flow&window=24h',
       '/api/orders/confirmation/no-answer?part=flow&window=7d',
     ]);
     expect(calls).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'آخر 7 أيام' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getByRole('button', { name: 'آخر 24 ساعة' }).getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 6 ساعات' }));
+    expect(screen.getByRole('radio', { name: 'آخر 7 أيام' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'آخر 24 ساعة' }).getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 6 ساعات' }));
     await waitFor(() => expect(flowCalls()).toHaveLength(3));
     expect(flowCalls()[2]).toContain('window=6h');
   });
@@ -399,7 +401,7 @@ describe('the window choice — three real buttons', () => {
     render(<HeldFlowPanel />);
     await screen.findByText('سلاسة الشغل');
     serve.flow = () => new Promise((resolve) => (release = resolve));
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 6 ساعات' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 6 ساعات' }));
     await waitFor(() => expect(panel().getAttribute('aria-busy')).toBe('true'));
     expect(screen.queryByText('سلاسة الشغل')).toBeNull();
     release({ status: 200, body: { flow: flowOf() } });
@@ -415,8 +417,8 @@ describe('the window choice — three real buttons', () => {
         : new Promise((resolve) => late.push((v) => resolve({ status: v.status, body: { flow: flowOf({ created: w === '7d' ? 7777 : 6666 }) } })));
     render(<HeldFlowPanel />);
     await screen.findByText('سلاسة الشغل');
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 7 أيام' }));
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 6 ساعات' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 7 أيام' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 6 ساعات' }));
     await waitFor(() => expect(late).toHaveLength(2));
     // The 6-hour answer first, then the 7-day one limping in behind it.
     late[1]({ status: 200, body: {} });
@@ -435,7 +437,7 @@ describe('when the panel cannot be read', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('أداء الفريق للمشرف وحده.');
     expect(screen.queryByText('سلاسة الشغل')).toBeNull();
     expect(screen.queryByText('دخل النظام')).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
     expect(panel().getAttribute('aria-busy')).toBe('false');
   });
 
@@ -462,7 +464,7 @@ describe('when the panel cannot be read', () => {
     serve.flow = (w) => (w === '24h' ? { status: 500, body: {} } : { status: 200, body: { flow: flowOf() } });
     render(<HeldFlowPanel />);
     await screen.findByRole('alert');
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 6 ساعات' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 6 ساعات' }));
     await screen.findByText('سلاسة الشغل');
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -489,7 +491,7 @@ describe('on the tab — the board never waits for it, never fails with it, and 
       u.includes('part=flow') ? 'flow' : u.includes('part=board') ? 'board' : u.includes('part=measure') ? 'measure' : u.includes('part=weekly') ? 'weekly' : 'report';
     expect(calls.map(kinds).sort()).toEqual(['board', 'flow', 'measure', 'report', 'weekly']);
     calls.length = 0;
-    fireEvent.click(screen.getByRole('button', { name: 'آخر 7 أيام' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'آخر 7 أيام' }));
     await waitFor(() => expect(flowCalls()).toHaveLength(1));
     await new Promise((r) => setTimeout(r, 20));
     expect(calls.map(kinds)).toEqual(['flow']);
@@ -592,28 +594,26 @@ describe('NO NEW CSS — every class the panel uses is one the product already s
     expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
   });
 
-  it('the panel’s tiles wear the very classes of the board’s own four tiles beside them', () => {
+  // UPDATED 2026-11-18 (request R14a2): this pinned the hand-made tile classes («bg-[var(--sys-card)] border … p-4 rounded-lg») in BOTH files;
+  // both now draw the kit's `StatTile`, so the pin is that they draw the same kit tile and neither draws the old hand-made surface.
+  it('the panel’s tiles and the board’s own four tiles are the same kit tile', () => {
     const board = readFileSync(join(root, 'components/performance/NoAnswerWatch.tsx'), 'utf8');
     const panelSrc = readFileSync(join(root, 'components/performance/HeldFlowPanel.tsx'), 'utf8');
-    const tileClass = 'bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg';
-    const labelClass = 'text-xs font-bold text-[var(--sys-muted-foreground)]';
-    const valueClass = 'text-lg font-black tabular-nums text-[var(--sys-heading)] mt-1.5';
-    for (const c of [tileClass, labelClass, valueClass]) {
-      expect(board, c).toContain(`className="${c}"`);
-      expect(panelSrc, c).toContain(`className="${c}"`);
+    const handMade = ['bg-[var(--sys-card)]', 'border', 'border-[var(--sys-border)]', 'p-4', 'rounded-lg'].join(' ');
+    for (const src of [board, panelSrc]) {
+      expect(src).toContain("import { StatTile } from '@/components/ui/StatTile';");
+      expect(src).toContain('<StatTile');
+      expect(src).not.toContain(handMade);
     }
   });
 
-  it('the choice buttons wear the very classes of the delay dialog’s choices', () => {
-    const dialog = readFileSync(join(root, 'components/ops/DelayShipmentDialog.tsx'), 'utf8');
+  // UPDATED 2026-11-18 (request R14a2): this pinned the delay dialog's hand-made choice classes in the panel; the panel's choice is now
+  // the kit's `Segmented` (the same 44 px on a phone), so the pin is that, and that no hand-made `aria-pressed` toggle is left.
+  it('the window choice is the kit’s Segmented, not hand-made toggles', () => {
     const panelSrc = readFileSync(join(root, 'components/performance/HeldFlowPanel.tsx'), 'utf8');
-    for (const c of [
-      'min-h-11 md:min-h-0 rounded-lg border px-3 py-1 text-xs font-semibold transition-colors',
-      "'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]'",
-      "'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]'",
-    ]) {
-      expect(dialog, c).toContain(c);
-      expect(panelSrc, c).toContain(c);
-    }
+    expect(panelSrc).toContain("import { Segmented } from '@/components/ui/Segmented';");
+    expect(panelSrc).toContain('aria-label="مدة القراءة"');
+    expect(panelSrc).not.toContain('aria-pressed');
+    expect(panelSrc).not.toMatch(/<button[\s>]/);
   });
 });

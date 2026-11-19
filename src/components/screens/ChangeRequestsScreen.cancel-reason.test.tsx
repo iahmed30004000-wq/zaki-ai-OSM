@@ -74,7 +74,9 @@ const PICK = 'اختر سبب الإلغاء';
 
 async function openApplyTab() {
   render(<ChangeRequestsScreen />);
-  fireEvent.click(await screen.findByRole('button', { name: /بانتظار التطبيق/ }));
+  // 18/11 (R16e): the two halves were a strip of buttons and are the kit's pair now, whose options are radios — the old
+  // line found role «button»; the same press, on the same half, finds role «radio».
+  fireEvent.click(await screen.findByRole('radio', { name: /بانتظار التطبيق/ }));
 }
 
 beforeEach(() => {

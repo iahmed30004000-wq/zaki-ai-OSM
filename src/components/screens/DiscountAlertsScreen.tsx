@@ -4,7 +4,9 @@ import React, { useCallback, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Rows } from '@/components/ui/Rows';
 import { OrderRef } from '@/components/orders/OrderRef';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { routeLabel } from '@/lib/route-registry';
 import { RiAlertLine, RiDiscountPercentLine, RiLoader4Line } from '@remixicon/react';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -76,12 +78,10 @@ export function DiscountAlertsScreen() {
   const rows = (data?.orders ?? []).filter((r) => (onlyNotable ? r.notable : true));
 
   return (
-    <div className="max-w-6xl space-y-3">
-      <PageHeader title={routeLabel('/control/discount-alerts')} />
-
-      <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4 flex flex-wrap gap-3 items-end">
+    <PageShell title={routeLabel('/control/discount-alerts')} width="wide">
+      <Card padding="md" className="flex flex-wrap gap-3 items-end">
         <label>
-          <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">المدة</span>
+          <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">المدة</span>
           <select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
@@ -93,17 +93,24 @@ export function DiscountAlertsScreen() {
           </select>
         </label>
         {data && (
-          <label className="flex items-center gap-2 h-10 text-sm text-[var(--sys-foreground)]">
-            <input type="checkbox" checked={onlyNotable} onChange={(e) => setOnlyNotable(e.target.checked)} />
-            الخصومات الكبيرة فقط (فوق {data.notableThreshold}%)
-            {data.totals.notable > 0 && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] tabular-nums">
-                {data.totals.notable}
-              </span>
-            )}
-          </label>
+          <Checkbox
+            // An explicit id (R2b): without it the box falls back to a name, and a label must point at THIS box only.
+            id="discount-alerts-only-notable"
+            checked={onlyNotable}
+            onChange={(checked) => setOnlyNotable(checked)}
+            label={
+              <>
+                الخصومات الكبيرة فقط (فوق {data.notableThreshold}%)
+                {data.totals.notable > 0 && (
+                  <span className="ms-2 text-note px-2 py-0.5 rounded-full bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] tabular-nums">
+                    {data.totals.notable}
+                  </span>
+                )}
+              </>
+            }
+          />
         )}
-      </div>
+      </Card>
 
       {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
 
@@ -119,7 +126,7 @@ export function DiscountAlertsScreen() {
         />
       ) : (
         <>
-          <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-lg p-4">
+          <Card padding="md">
             <p className="text-sm text-[var(--sys-foreground)] tabular-nums">
               <b>{data.totals.orders}</b> طلباً بخصم، بإجمالي{' '}
               <b className="text-[var(--sys-destructive)]"><Money value={data.totals.discount} currency={data.currency} /></b>
@@ -129,7 +136,7 @@ export function DiscountAlertsScreen() {
                 </span>
               )}
             </p>
-          </div>
+          </Card>
 
           <section className="mb-3">
             <h2 className="mb-2 px-1 text-sm font-medium text-[var(--sys-heading)]">حسب الموظف</h2>
@@ -215,7 +222,7 @@ export function DiscountAlertsScreen() {
                   // between the agent's name and the number that matters.
                   hideOnPhone: true,
                   render: (r) => (
-                    <span className="whitespace-nowrap text-xs text-[var(--sys-muted-foreground)]">
+                    <span className="whitespace-nowrap text-note text-[var(--sys-muted-foreground)]">
                       {arDate(r.createdAt)}
                     </span>
                   ),
@@ -225,6 +232,6 @@ export function DiscountAlertsScreen() {
           </section>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

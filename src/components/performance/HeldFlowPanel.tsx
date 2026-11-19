@@ -2,7 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { HealthChip } from '@/components/ui/HealthChip';
+import { Segmented } from '@/components/ui/Segmented';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { StatTile } from '@/components/ui/StatTile';
 import { apiFetch, saidBy } from '@/lib/api-client';
 import type { HealthTone } from '@/lib/health';
 import {
@@ -63,15 +65,13 @@ function signed(n: number) {
   return <span dir="ltr">{n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0'}</span>;
 }
 
+/** One figure and its base: the kit's `StatTile` (a `Card plain`), the same tile the board's four use beside it. */
 function Tile({ label, value, detail }: { label: string; value: React.ReactNode; detail?: string }) {
-  return (
-    <div className="bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg">
-      <span className="text-xs font-bold text-[var(--sys-muted-foreground)]">{label}</span>
-      <p className="text-lg font-black tabular-nums text-[var(--sys-heading)] mt-1.5">{value}</p>
-      {detail && <p className="text-xs text-[var(--sys-muted-foreground)] mt-1">{detail}</p>}
-    </div>
-  );
+  return <StatTile label={label} value={value} caption={detail} />;
 }
+
+/** The three windows as one choice of three: the kit's `Segmented`, in the order the lib keeps them. */
+const SPANS = FLOW_WINDOW_KEYS.map((key) => ({ value: key, label: FLOW_WINDOWS[key].label }));
 
 export function HeldFlowPanel() {
   const [span, setSpan] = useState<FlowWindowKey>(DEFAULT_FLOW_WINDOW);
@@ -103,34 +103,21 @@ export function HeldFlowPanel() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-[var(--sys-heading)]">حركة الطلبات</h3>
-          <p className="text-xs text-[var(--sys-muted-foreground)] mt-0.5">
+          <p className="text-note text-[var(--sys-muted-foreground)] mt-0.5">
             شو دخل أيدي الموظفات وشو طلع منها، وقديش بتضل الطلبات عندهن — للمتجر كله، أرقام بلا أسماء زبائن
           </p>
         </div>
-        <div role="group" aria-label="مدة القراءة" className="flex flex-wrap gap-1.5">
-          {FLOW_WINDOW_KEYS.map((key) => {
-            const on = key === span;
-            return (
-              <button
-                key={key}
-                type="button"
-                aria-pressed={on}
-                onClick={() => setSpan(key)}
-                className={`min-h-11 md:min-h-0 rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${
-                  on
-                    ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]'
-                    : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-primary)] hover:text-[var(--sys-primary)]'
-                }`}
-              >
-                {FLOW_WINDOWS[key].label}
-              </button>
-            );
-          })}
-        </div>
+        <Segmented
+          size="sm"
+          aria-label="مدة القراءة"
+          options={SPANS}
+          value={span}
+          onChange={(v) => setSpan(FLOW_WINDOW_KEYS.find((k) => k === v) ?? DEFAULT_FLOW_WINDOW)}
+        />
       </div>
 
       {said && (
-        <p role="alert" className="mt-3 text-xs text-[var(--sys-warning)]">
+        <p role="alert" className="mt-3 text-note text-[var(--sys-warning)]">
           {said}
         </p>
       )}
@@ -181,7 +168,7 @@ function FlowBody({ flow }: { flow: HeldFlow }) {
       </div>
 
       {(truncated.ledger || truncated.decisions) && (
-        <p className="text-xs text-[var(--sys-warning)]">قراءة السجل وصلت حدها — الأرقام حد أدنى. اختر مدة أقصر.</p>
+        <p className="text-note text-[var(--sys-warning)]">قراءة السجل وصلت حدها — الأرقام حد أدنى. اختر مدة أقصر.</p>
       )}
 
       <div className="space-y-2">
@@ -197,14 +184,14 @@ function FlowBody({ flow }: { flow: HeldFlow }) {
           <Tile label="الصافي" value={signed(flow.net)} detail={`دخل الأيدي ${entered.total} − طلع ${exits.total} = ${netWords}`} />
         </div>
         {others > 0 && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">«بغير السحب» = طلب كتبته الموظفة بنفسها أو أخدته على الخط. دخل بالصافي، وما دخل بـ«انسحب».</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">«بغير السحب» = طلب كتبته الموظفة بنفسها أو أخدته على الخط. دخل بالصافي، وما دخل بـ«انسحب».</p>
         )}
       </div>
 
       <div className="space-y-2">
         <p className="text-sm font-semibold text-[var(--sys-heading)]">
           من قديش محجوزة — المحجوز هلّق {held.total}
-          {held.oldestMs !== null && <span className="text-xs font-normal text-[var(--sys-muted-foreground)]"> · أقدمها من {ageWords(held.oldestMs)}</span>}
+          {held.oldestMs !== null && <span className="text-note font-normal text-[var(--sys-muted-foreground)]"> · أقدمها من {ageWords(held.oldestMs)}</span>}
         </p>
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           {buckets.map(([label, n]) => (
@@ -212,9 +199,9 @@ function FlowBody({ flow }: { flow: HeldFlow }) {
           ))}
         </div>
         {held.unknownAge > 0 && (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">وفي {held.unknownAge} طلب ما انسجّل وقت استلامه — ما دخل بأي خانة.</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">وفي {held.unknownAge} طلب ما انسجّل وقت استلامه — ما دخل بأي خانة.</p>
         )}
-        {truncated.held && <p className="text-xs text-[var(--sys-warning)]">قائمة المحجوز أطول من حد القراءة — الأرقام حد أدنى.</p>}
+        {truncated.held && <p className="text-note text-[var(--sys-warning)]">قائمة المحجوز أطول من حد القراءة — الأرقام حد أدنى.</p>}
       </div>
 
       <div className="space-y-2">
@@ -242,16 +229,16 @@ function FlowBody({ flow }: { flow: HeldFlow }) {
             detail={bounced.of > 0 ? `من ${bounced.of} طلب انسحب` : 'ما انسحب طلب بهالمدة'}
           />
         </div>
-        {truncated.attempts && <p className="text-xs text-[var(--sys-warning)]">قراءة محاولات الاتصال وصلت حدها — اختر مدة أقصر.</p>}
+        {truncated.attempts && <p className="text-note text-[var(--sys-warning)]">قراءة محاولات الاتصال وصلت حدها — اختر مدة أقصر.</p>}
       </div>
 
       <div className="space-y-1">
         {notes.map((n) => (
-          <p key={n} className="text-xs text-[var(--sys-muted-foreground)]">
+          <p key={n} className="text-note text-[var(--sys-muted-foreground)]">
             {n}
           </p>
         ))}
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
+        <p className="text-note text-[var(--sys-muted-foreground)]">
           الأرقام من سجل الاستلام وقرارات التأكيد لهالمتجر. أعمار المحجوز بالساعات الفعلية، وسرعة الاتصال بدقائق الدوام. إرجاع إشكال الإدخال وإرجاع
           المؤجَّل بدري وإيقاف الشحنة ما بينكتبوا بالسجل، فما دخلوا بـ«طلع من الأيدي».
         </p>

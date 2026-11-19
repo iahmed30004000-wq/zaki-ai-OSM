@@ -39,6 +39,8 @@ afterEach(() => cleanup());
 /** [file, the address it is titled by, how many headers it draws, the page file that draws it there (null: a tab, drawn embedded)] */
 const TABLE: [string, string, number, string | null][] = [
   ['src/app/(system)/(shell)/settings/tracking/page.tsx', '/settings/tracking', 1, 'src/app/(system)/(shell)/settings/tracking/page.tsx'],
+  // 18/11 (R15g): «الذكاء الاصطناعي والنصوص» typed its own title into PageHeader; on the frame it reads it from the registry, so it joins the table.
+  ['src/components/screens/AiSettingsScreen.tsx', '/settings/ai', 1, 'src/app/(system)/(shell)/settings/ai/page.tsx'],
   // 19/11 (R15h): «متجر التطبيقات» typed its own title; on the frame it reads it from the registry like the rest, so it joins the table.
   ['src/components/screens/AppStoreScreen.tsx', '/apps/store', 1, 'src/app/(system)/(shell)/apps/store/page.tsx'],
   ['src/components/screens/BenchScreen.tsx', '/growth/bench', 1, 'src/app/(system)/(shell)/growth/bench/page.tsx'],
@@ -55,6 +57,8 @@ const TABLE: [string, string, number, string | null][] = [
   ['src/components/screens/ConfirmationQueueScreen.tsx', '/confirmation/queue', 1, 'src/app/(system)/(shell)/confirmation/queue/page.tsx'],
   ['src/components/screens/CouriersScreen.tsx', '/settings/couriers', 1, 'src/app/(system)/(shell)/settings/couriers/page.tsx'],
   ['src/components/screens/DiscountAlertsScreen.tsx', '/control/discount-alerts', 1, 'src/app/(system)/(shell)/control/discount-alerts/page.tsx'],
+  // 18/11 (R15i): «التطبيقات المثبتة» typed its own title; on the frame it reads it from the registry, so it joins the table.
+  ['src/components/screens/InstalledAppsScreen.tsx', '/apps/installed', 1, 'src/app/(system)/(shell)/apps/installed/page.tsx'],
   ['src/components/screens/IntelligenceScreen.tsx', '/growth/intelligence', 1, 'src/app/(system)/(shell)/growth/intelligence/page.tsx'],
   ['src/components/screens/InventoryMovementsScreen.tsx', '/inventory/movements', 1, 'src/app/(system)/(shell)/inventory/movements/page.tsx'],
   ['src/components/screens/JobsScreen.tsx', '/admin/jobs', 1, 'src/app/(system)/(shell)/admin/jobs/page.tsx'],

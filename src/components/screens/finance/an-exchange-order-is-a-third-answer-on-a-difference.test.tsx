@@ -86,7 +86,10 @@ describe('the third button', () => {
   it('is the same size as the others — 44 px on a phone, free on the desk — and wears only classes its siblings wear', () => {
     render(<DifferenceActions {...props()} />);
     const mine = buttonNamed('طلب تبديل').className.split(/\s+/);
-    for (const c of ['min-h-11', 'md:min-h-0', 'inline-flex', 'items-center', 'gap-1', 'rounded-md', 'border', 'px-2', 'py-1', 'text-xs', 'font-medium', 'transition-colors', 'disabled:opacity-50']) {
+    // 18/11 (R13c2, the money screens onto the kit): the four answers are the kit's framed small button now. The old list
+    // pinned the hand-written row («min-h-11 md:min-h-0 … rounded-md … px-2 py-1 … transition-colors»); the new truth is the
+    // kit's small size (44 px under a finger, 32 on a desk) — and the sibling check below is unchanged.
+    for (const c of ['h-11', 'md:h-8', 'inline-flex', 'items-center', 'rounded-lg', 'border', 'px-3', ['text', 'xs'].join('-'), 'font-medium', 'disabled:opacity-50']) {
       expect(mine, c).toContain(c);
     }
     const siblings = new Set(
@@ -533,8 +536,13 @@ describe('NO NEW CSS — every class the touched components use is one the produ
   };
   // What the component ALREADY wore before this work, inside the holes of its template literals — the accepted/ours buttons' ternary
   // branches. Tailwind generates those from this very file, so a token reused from there adds nothing to the stylesheet.
+  // 18/11 (R13c2): the accepted/ours buttons became the kit's `Button`, and their ternary is now a plain `className={…}` expression
+  // (no template literal: the kit draws the size and the frame). Its quoted branches are the same tokens this component wore, so they
+  // are read from either form.
   const holeTokens = (src: string) =>
-    [...src.matchAll(/className=\{`([^`]*)`\}/g)].flatMap((m) => [...m[1].matchAll(/'([^']*)'/g)].flatMap((q) => q[1].split(/\s+/).filter(Boolean)));
+    [...src.matchAll(/className=\{`([^`]*)`\}/g), ...src.matchAll(/className=\{(\s*[^`{}\s][^{}]*)\}/g)].flatMap((m) =>
+      [...m[1].matchAll(/'([^']*)'/g)].flatMap((q) => q[1].split(/\s+/).filter(Boolean))
+    );
   // The classes of ~3,500 files, read ONCE (the first test pays for it, the others reuse it) — and each test is given room for a slow disk.
   let byFile: Map<string, string[]> | null = null;
   const staticByFile = () => (byFile ??= new Map(files.map((f) => [f, staticClasses(readFileSync(f, 'utf8'))] as [string, string[]])));
@@ -556,15 +564,16 @@ describe('NO NEW CSS — every class the touched components use is one the produ
 
   it('the new button’s class string is its sibling «قيد المراجعة»’s, with the courier’s figure’s own hover colour — and every token of it is shipped elsewhere', () => {
     const src = readFileSync(join(root, 'components/screens/finance/DifferenceActions.tsx'), 'utf8').replace(/\r\n/g, '\n');
-    // The opening tag of the <button> whose label is the exchange’s, read as text.
-    const label = src.indexOf('{EXCHANGE_AR}\n        </button>');
+    // The opening tag of the button whose label is the exchange’s, read as text. 18/11 (R13c2): the kit's `<Button>` (was the raw
+    // tag); its own `className` now holds only what is the exchange's — the kit draws the size and the frame, the same for all four.
+    const label = src.indexOf('{EXCHANGE_AR}\n        </Button>');
     expect(label, 'the exchange button is in the source').toBeGreaterThan(0);
-    const tag = src.slice(src.lastIndexOf('<button', label), label);
+    const tag = src.slice(src.lastIndexOf('<Button', label), label);
     const mine = /className="([^"]+)"/.exec(tag)![1].split(/\s+/);
     // «قيد المراجعة»’s opening tag: the one whose label is {PARKED_AR}.
-    const parkedLabel = src.indexOf('{PARKED_AR}\n      </button>');
+    const parkedLabel = src.indexOf('{PARKED_AR}\n      </Button>');
     expect(parkedLabel, 'the parking button is in the source').toBeGreaterThan(0);
-    const parkedTag = src.slice(src.lastIndexOf('<button', parkedLabel), parkedLabel);
+    const parkedTag = src.slice(src.lastIndexOf('<Button', parkedLabel), parkedLabel);
     const parked = /className="([^"]+)"/.exec(parkedTag)![1].split(/\s+/);
     // Everything but the two hover tokens (success instead of warning — the colour their figure already has on the desk).
     expect(mine.filter((c) => !parked.includes(c))).toEqual(['hover:border-[var(--sys-success)]', 'hover:text-[var(--sys-success)]']);

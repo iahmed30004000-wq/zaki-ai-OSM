@@ -513,26 +513,117 @@ describe('the room inside a surface', () => {
     expect(offenders, `حشوٌ خارج السلّم:\n${offenders.slice(0, 15).join('\n')}`).toEqual([]);
   });
 
+  /*
+   * 18/11 — THE KIT'S CARD IS COUNTED WHERE IT IS USED (as the corners above).
+   *
+   * Before: the sample was only panels whose surface was written by hand
+   * (corner + edge + card fill in one class string). Screens moving onto the
+   * kit's Card stop writing that string — the kit writes it — and the last
+   * hand-written one (the penalties screen) moved in #385, so the sample was
+   * empty and «the sample is not empty» went red although no panel changed
+   * its room. After: a use of the kit's Card that is centred and muted is the
+   * same panel, and its room is read from its `padding` step (or a padding
+   * written in its own class, which wins). Nothing is excused; the check is
+   * the same one, and the pins below keep the counting honest.
+   */
   it('and every "nothing here" panel says it with the same room around it', () => {
     // The property, not the number: whatever the value is, there is one of
     // it. A screen whose empty state is roomier than the next screen's
     // reads as two different products.
-    const found = new Map<string, string[]>();
-    for (const { rel, src } of systemFiles()) {
-      for (const m of code(src).matchAll(CLASS)) {
-        const cls = m[1];
-        if (!isSurface(cls) || !cls.includes('text-center')) continue;
-        if (!cls.includes('--sys-muted-foreground')) continue;
-        // A whole page that is only a message is a different thing, and it
-        // centres itself to say so.
-        if (cls.includes('mx-auto')) continue;
-        const pad = [...cls.matchAll(PAD)][0]?.[1];
-        if (!pad) continue;
-        found.set(pad, [...(found.get(pad) ?? []), rel]);
-      }
-    }
-    expect(found.size, 'أكثر من حشوٍ لحالة «لا شيء هنا»').toBeGreaterThan(0);
-    const spread = [...found.entries()].map(([pad, files]) => `p-${pad}: ${files.length}`);
+    const found = emptyPanels(systemFiles());
+    // A sample this small means the counting lost the panels again, and
+    // «one room» would then be true of nothing.
+    const total = [...found.values()].reduce((s, f) => s + f.length, 0);
+    expect(total, 'العيّنة فاضية أو شبه فاضية: الحارس ما عاد يلاقي لوحات «لا شيء هنا»').toBeGreaterThanOrEqual(3);
+    const spread = [...found.entries()].map(([pad, files]) => `p-${pad}: ${files.join(' ')}`);
     expect([...found.keys()], `أحجام مختلفة لنفس الحالة — ${spread.join(', ')}`).toHaveLength(1);
   });
+
+  it('counts a kit Card at its call site, and its room from its padding step', () => {
+    const imp = "import { Card } from '@/components/ui/Card';\n";
+    const muted = 'text-center text-sm text-[var(--sys-muted-foreground)]';
+    const f = emptyPanels([
+      { rel: '/a.tsx', src: `${imp}const a = <Card padding="lg" className="${muted}">x</Card>;` },
+      { rel: '/b.tsx', src: `${imp}const b = <Card\n  plain\n  padding="lg"\n  className="${muted}"\n>x</Card>;` },
+      { rel: '/c.tsx', src: `const c = <p className="rounded-lg border bg-[var(--sys-card)] p-6 ${muted}">x</p>;` },
+    ]);
+    expect([...f.entries()]).toEqual([['6', ['/a.tsx', '/b.tsx', '/c.tsx']]]);
+  });
+
+  it('and a panel with a different room — by hand or through the kit — is a second size', () => {
+    const imp = "import { Card } from '@/components/ui/Card';\n";
+    const muted = 'text-center text-sm text-[var(--sys-muted-foreground)]';
+    const base = { rel: '/a.tsx', src: `${imp}const a = <Card padding="lg" className="${muted}">x</Card>;` };
+    const cases = [
+      `const c = <p className="rounded-lg border bg-[var(--sys-card)] p-8 ${muted}">x</p>;`,
+      `${imp}const c = <Card padding="md" className="${muted}">x</Card>;`,
+      `${imp}const c = <Card padding="lg" className="p-8 ${muted}">x</Card>;`,
+      // No padding at all is a room too: none.
+      `${imp}const c = <Card className="${muted}">x</Card>;`,
+    ];
+    for (const src of cases) {
+      const f = emptyPanels([base, { rel: '/c.tsx', src }]);
+      expect(f.size, src).toBe(2);
+    }
+  });
+
+  it('and does not count what is not a nothing-here panel, or not the kit', () => {
+    const imp = "import { Card } from '@/components/ui/Card';\n";
+    const f = emptyPanels([
+      // Not muted: a centred card that says something.
+      { rel: '/a.tsx', src: `${imp}const a = <Card padding="md" className="text-center">x</Card>;` },
+      // A whole page that is only a message centres itself.
+      { rel: '/b.tsx', src: `${imp}const b = <Card padding="md" className="mx-auto text-center text-[var(--sys-muted-foreground)]">x</Card>;` },
+      // A local component that shares the name only.
+      { rel: '/c.tsx', src: 'function Card() { return null }\nconst c = <Card padding="md" className="text-center text-[var(--sys-muted-foreground)]" />;' },
+    ]);
+    expect(f.size).toBe(0);
+  });
+
+  it('and the padding steps it reads are still the kit Card\'s own', () => {
+    // If the Card's steps move, the reading above would be a lie.
+    const src = readFileSync(join(process.cwd(), 'src/components/ui/Card.tsx'), 'utf8');
+    const steps = /const CARD_PADDING = \{([^}]*)\}/.exec(src)?.[1] ?? '';
+    for (const [step, pad] of Object.entries(CARD_PAD)) {
+      expect(steps, `خطوة الحشو ${step} بالـCard تغيّرت`).toContain(pad ? `${step}: 'p-${pad}'` : `${step}: ''`);
+    }
+  });
 });
+
+/** The kit Card's `padding` steps, as the room they give. */
+const CARD_PAD: Record<string, string> = { none: '', sm: '3', md: '4', lg: '6' };
+
+/**
+ * Every "nothing here" panel and its room: a centred, muted surface, written
+ * by hand or drawn by the kit's Card. A page-sized message (centred with
+ * auto margins) is a different thing and is left out. A panel with no
+ * padding at all is recorded as room `0`, not skipped.
+ */
+function emptyPanels(files: { rel: string; src: string }[]): Map<string, string[]> {
+  const CLASS = /class[nN]ame=\{?[`"']([^`"']*)[`"']/g;
+  const PAD = /(?<![\w-])p-(\d+(?:\.\d+)?)(?![\w-])/;
+  const found = new Map<string, string[]>();
+  const add = (pad: string, rel: string) => found.set(pad, [...(found.get(pad) ?? []), rel]);
+  const isEmptyMessage = (s: string) =>
+    s.includes('text-center') && s.includes('--sys-muted-foreground') && !s.includes('mx-auto');
+  for (const { rel, src } of files) {
+    const c = code(src);
+    for (const m of c.matchAll(CLASS)) {
+      const cls = m[1];
+      const surface =
+        cls.includes('rounded-lg') && cls.includes('border') &&
+        (cls.includes('--sys-card') || cls.includes('--sys-surface'));
+      if (!surface || !isEmptyMessage(cls)) continue;
+      add(PAD.exec(cls)?.[1] ?? '0', rel);
+    }
+    if (KIT_FILES.has(rel)) continue;
+    if (!/import\s*\{[^}]*\bCard\b[^}]*\}\s*from\s*'(?:@\/components\/ui|\.)\/Card'/.test(c)) continue;
+    for (const m of c.matchAll(/<Card(?![\w.])/g)) {
+      const tag = openingTag(c, m.index ?? 0);
+      if (!isEmptyMessage(tag)) continue;
+      const step = /\bpadding=["']([a-z]+)["']/.exec(tag)?.[1] ?? 'none';
+      add(PAD.exec(tag)?.[1] ?? (CARD_PAD[step] || '0'), rel);
+    }
+  }
+  return found;
+}

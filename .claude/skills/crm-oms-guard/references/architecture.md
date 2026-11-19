@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **55 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **57 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -136,6 +136,7 @@ agent's own postponed orders are a tab of طلباتي.
    التحويلات               /finance/transfers
    الأرباح                 /finance/profit
    العمولات                /settings/commission   (its address stays under /settings — the one screen there not in الإدارة)
+   قواعد المال              /finance/rules         (the clean-line settlement and the partners cards, moved from إعدادات النظام on 19/11; settings.view)
 ```
 
 **7. التقارير** (`growth`) — tabs
@@ -170,6 +171,7 @@ nothing they may open is not drawn. `/settings` is also where an ad platform's O
 التطبيقات المثبتة          /apps/installed
 إعدادات النظام            /settings/system
 المهام المجدولة            /admin/jobs         (on the system card; gate settings.view)
+قواعد الموظفين             /admin/staff-rules  (the score and the deductions cards, moved from إعدادات النظام on 19/11; settings.view)
 الموظفين                  /admin/users
 الصلاحيات                 /admin/permissions
 طلبات التعديل             /control/change-requests
@@ -228,6 +230,7 @@ asks the same keys again.
 | `/finance/matching` | settlement.review |
 | `/finance/closing` · `/finance/wallets` · `/finance/transfers` | finance.cashbox_view |
 | `/finance/profit` | finance.view |
+| `/finance/rules` | settings.view |
 | `/control/change-requests` · `/control/discount-alerts` · `/control/penalties` · `/control/audit` · `/control/blacklist` | control.change_requests · control.discount_alerts · penalties.view · audit.view · control.blacklist |
 | `/growth/performance` | reports.view |
 | `/growth/campaigns` | campaigns.view |
@@ -239,7 +242,7 @@ asks the same keys again.
 | `/store/landing-pages` | landing_pages.view |
 | `/settings` | geo.view · settings.view · commission.view · whatsapp.manage · telegram.connect · apps.view |
 | `/settings/geo` | geo.view |
-| `/settings/couriers` · `/settings/channels` · `/settings/tracking` · `/settings/ai` · `/settings/system` · `/admin/jobs` | settings.view |
+| `/settings/couriers` · `/settings/channels` · `/settings/tracking` · `/settings/ai` · `/settings/system` · `/admin/jobs` · `/admin/staff-rules` | settings.view |
 | `/settings/commission` | commission.view |
 | `/settings/links` | whatsapp.manage · telegram.connect |
 | `/apps/store` · `/apps/installed` | apps.view |
@@ -344,6 +347,13 @@ currency. Every movement requires wallet, direction, amount, party, category and
 
 **/finance/transfers** — Wallet to wallet, same or different country, manual exchange rate entered by the user,
 stored with the transfer, never recalculated. A transfer is reversed whole: both legs.
+
+**/finance/rules** — «قواعد المال» (19/11): the two money cards of `/settings/system` — «تسوية السطور النظيفة عند الاعتماد» and
+«الشركاء والنسب» — moved there unchanged, the last tab of المال. Opens on `settings.view`; each card asks its own key.
+
+**/admin/staff-rules** — «قواعد الموظفين» (19/11): the two staff cards of `/settings/system` — «سكور الموظفين» and «قواعد الخصم» —
+moved there unchanged, beside الموظفين in الإدارة. Opens on `settings.view`; editing asks `team.settings` / `penalties.rules`.
+`/settings/system` keeps the company name and «العرض بعد الطلب» only.
 
 **/finance/closing** — Per wallet: book balance, manually entered actual balance, computed difference,
 mandatory explanation when non-zero. The user who records movements cannot approve the closing.

@@ -83,13 +83,14 @@
   },
   "src/components/apps/SystemTokensPanel.tsx": {
     "buttons": 5,
-    "inputs": 3,
+    "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 7,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/attendance/ShiftChip.tsx": {
     "buttons": 2,
@@ -827,20 +828,10 @@
     "tabs": 0
   },
   "src/components/performance/EodReportForm.tsx": {
-    "buttons": 2,
+    "buttons": 1,
     "inputs": 3,
     "columns": 0,
     "cards": 1,
-    "modals": 0,
-    "icons": 0,
-    "links": 0,
-    "tabs": 0
-  },
-  "src/components/performance/HeldFlowPanel.tsx": {
-    "buttons": 1,
-    "inputs": 0,
-    "columns": 0,
-    "cards": 0,
     "modals": 0,
     "icons": 0,
     "links": 0,
@@ -850,7 +841,7 @@
     "buttons": 0,
     "inputs": 0,
     "columns": 4,
-    "cards": 0,
+    "cards": 4,
     "modals": 0,
     "icons": 7,
     "links": 1,
@@ -1083,10 +1074,10 @@
     "tabs": 0
   },
   "src/components/screens/AiSettingsScreen.tsx": {
-    "buttons": 8,
+    "buttons": 7,
     "inputs": 6,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
     "icons": 11,
     "links": 0,
@@ -1147,13 +1138,14 @@
   },
   "src/components/screens/BlacklistScreen.tsx": {
     "buttons": 6,
-    "inputs": 6,
+    "inputs": 5,
     "columns": 5,
-    "cards": 0,
+    "cards": 4,
     "modals": 2,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/CampaignsScreen.tsx": {
     "buttons": 13,
@@ -1167,10 +1159,10 @@
     "iconButtons": 4
   },
   "src/components/screens/ChangeRequestsScreen.tsx": {
-    "buttons": 6,
+    "buttons": 5,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 9,
     "links": 0,
@@ -1220,14 +1212,14 @@
     "tabs": 0
   },
   "src/components/screens/ConfirmationMineScreen.tsx": {
-    "buttons": 9,
-    "inputs": 4,
-    "columns": 6,
-    "cards": 0,
+    "buttons": 3,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
     "modals": 0,
-    "icons": 16,
-    "links": 1,
-    "tabs": 2
+    "icons": 12,
+    "links": 0,
+    "tabs": 0
   },
   "src/components/screens/ConfirmationPostponedScreen.tsx": {
     "buttons": 1,
@@ -1293,13 +1285,14 @@
   },
   "src/components/screens/DiscountAlertsScreen.tsx": {
     "buttons": 0,
-    "inputs": 2,
+    "inputs": 1,
     "columns": 11,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 2,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/FinanceProfitScreen.tsx": {
     "buttons": 6,
@@ -1325,10 +1318,10 @@
     "switches": 2
   },
   "src/components/screens/InstalledAppsScreen.tsx": {
-    "buttons": 2,
+    "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
     "icons": 6,
     "links": 2,
@@ -1459,10 +1452,10 @@
     "checkboxes": 2
   },
   "src/components/screens/PenaltiesScreen.tsx": {
-    "buttons": 7,
+    "buttons": 6,
     "inputs": 2,
     "columns": 3,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 5,
     "links": 0,
@@ -1833,7 +1826,7 @@
     "buttons": 1,
     "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 2,
     "links": 0,
@@ -1841,13 +1834,14 @@
   },
   "src/components/screens/ai/AssistantsTable.tsx": {
     "buttons": 0,
-    "inputs": 5,
+    "inputs": 4,
     "columns": 5,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 4,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/screens/commission/FairnessPanel.tsx": {
     "buttons": 1,
@@ -1907,6 +1901,27 @@
     "modals": 0,
     "icons": 3,
     "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/confirmation/DeskTabs.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 2,
+    "iconButtons": 1
+  },
+  "src/components/screens/confirmation/DoneList.tsx": {
+    "buttons": 4,
+    "inputs": 2,
+    "columns": 6,
+    "cards": 1,
+    "modals": 0,
+    "icons": 2,
+    "links": 1,
     "tabs": 0
   },
   "src/components/screens/finance/AssembleStatementDialog.tsx": {
@@ -1983,7 +1998,7 @@
     "buttons": 7,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 5,
     "links": 0,
@@ -1993,7 +2008,7 @@
     "buttons": 12,
     "inputs": 0,
     "columns": 11,
-    "cards": 0,
+    "cards": 2,
     "modals": 0,
     "icons": 11,
     "links": 0,
@@ -2003,7 +2018,7 @@
     "buttons": 2,
     "inputs": 1,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 1,
     "links": 0,
@@ -2297,14 +2312,15 @@
     "tabs": 0
   },
   "src/components/settings/AdAccountsCard.tsx": {
-    "buttons": 7,
+    "buttons": 3,
     "inputs": 4,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 12,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/settings/AgentCommissionCard.tsx": {
     "buttons": 3,
@@ -2349,14 +2365,15 @@
     "tabs": 0
   },
   "src/components/settings/CustomConversionsCard.tsx": {
-    "buttons": 11,
+    "buttons": 9,
     "inputs": 8,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 12,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/settings/IntakeFilterCard.tsx": {
     "buttons": 0,
@@ -2400,14 +2417,16 @@
     "iconButtons": 3
   },
   "src/components/settings/MessageTemplatesCard.tsx": {
-    "buttons": 5,
-    "inputs": 6,
+    "buttons": 4,
+    "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "switches": 1
   },
   "src/components/settings/PartnersCard.tsx": {
     "buttons": 2,
@@ -2553,14 +2572,16 @@
     "tabs": 0
   },
   "src/components/settings/TrackingPixelsSection.tsx": {
-    "buttons": 5,
-    "inputs": 7,
+    "buttons": 3,
+    "inputs": 6,
     "columns": 4,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 9,
     "links": 0,
-    "tabs": 1
+    "tabs": 1,
+    "iconButtons": 2,
+    "checkboxes": 1
   },
   "src/components/settings/WhatsAppAfterNoAnswerCard.tsx": {
     "buttons": 1,

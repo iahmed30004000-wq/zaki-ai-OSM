@@ -89,6 +89,7 @@ export const GUIDED_PATHS: readonly string[] = [
   '/finance/wallets',
   '/finance/transfers',
   '/finance/profit',
+  '/finance/rules',
   // الرقابة
   '/control/change-requests',
   '/control/discount-alerts',
@@ -118,6 +119,7 @@ export const GUIDED_PATHS: readonly string[] = [
   '/settings/system',
   '/admin/jobs',
   // الإدارة
+  '/admin/staff-rules',
   '/admin/users',
   '/admin/permissions',
   '/admin/profile',

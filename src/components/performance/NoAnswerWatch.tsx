@@ -6,6 +6,7 @@ import { DateRange } from '@/components/ui/DateRange';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Rows } from '@/components/ui/Rows';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { StatTile } from '@/components/ui/StatTile';
 import { apiFetch, saidBy } from '@/lib/api-client';
 import type { AgentRow, AnswerRateReport, AttemptNumbering, NoAnswerBoard, RateRow } from '@/lib/no-answer-watch';
 import type { MeasureRow } from '@/lib/no-answer-measure';
@@ -156,7 +157,7 @@ export function NoAnswerWatch() {
           ) : (
             <>
               {report.truncated && (
-                <p className="px-5 pt-3 text-xs text-[var(--sys-warning)]">المدة أطول من حد القراءة — الأرقام لجزء منها. اختر مدة أقصر.</p>
+                <p className="px-5 pt-3 text-note text-[var(--sys-warning)]">المدة أطول من حد القراءة — الأرقام لجزء منها. اختر مدة أقصر.</p>
               )}
               <Rows
                 rows={report.byHour}
@@ -255,7 +256,7 @@ function MeasurePart({ range }: { range: { from: string; to: string } }) {
                 })),
               ]}
             />
-            <details className="border-t border-[var(--sys-border)] px-4 py-3 text-xs text-[var(--sys-muted-foreground)]">
+            <details className="border-t border-[var(--sys-border)] px-4 py-3 text-note text-[var(--sys-muted-foreground)]">
               <summary className="cursor-pointer font-bold text-[var(--sys-foreground)]">قاعدة الاحتساب</summary>
               <p className="mt-2">{answer.measure.rule}</p>
             </details>
@@ -278,10 +279,7 @@ function BoardPart({ board, rules }: BoardAnswer) {
     <>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {team.map(([label, value]) => (
-          <div key={label} className="bg-[var(--sys-card)] border border-[var(--sys-border)] p-4 rounded-lg">
-            <span className="text-xs font-bold text-[var(--sys-muted-foreground)]">{label}</span>
-            <p className="text-lg font-black tabular-nums text-[var(--sys-heading)] mt-1.5">{value}</p>
-          </div>
+          <StatTile key={label} label={label} value={value} />
         ))}
       </div>
 
@@ -292,7 +290,7 @@ function BoardPart({ board, rules }: BoardAnswer) {
         />
         <CardContent className="p-0">
           {board.truncated && (
-            <p className="px-5 pt-3 text-xs text-[var(--sys-warning)]">القائمة أطول من حد القراءة — الأرقام حد أدنى.</p>
+            <p className="px-5 pt-3 text-note text-[var(--sys-warning)]">القائمة أطول من حد القراءة — الأرقام حد أدنى.</p>
           )}
           <Rows
             rows={board.agents}
