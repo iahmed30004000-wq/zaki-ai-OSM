@@ -389,3 +389,24 @@ describe('OFF — the desk is today’s', () => {
     for (const r of all(d)) expect('closesOnNext' in r).toBe(false);
   });
 });
+
+/**
+ * Request Q3b (review 19/11, blocker 2): THE DESK SAYS THE RULE IN FORCE. The company stores «4 attempts, proof 45». The reader caches per company for thirty seconds and
+ * the clock here is faked, so this test runs an hour on from the others (whose reads cached «nothing stored»).
+ */
+describe('an edited rule stored for the company — the desk counts and waits by it', () => {
+  it('«of 4» on the limit, the cards and the hint; the proof answered as 45 s, and a press 40 s old still waits', async () => {
+    const { CONFIRMATION_RULE_DEFAULT, documentAfterSave } = await import('@/lib/confirmation-rule-settings');
+    const doc = documentAfterSave(null, { rule: { ...CONFIRMATION_RULE_DEFAULT, steps: CONFIRMATION_RULE_DEFAULT.steps.slice(0, 3), proofSeconds: 45 }, effectiveAt: new Date(0), byUserId: 'u9' }, 0);
+    db.company.findUnique.mockImplementation(async () => ({ settings: JSON.stringify({ confirmationRule: doc }) }));
+    const later = NOW + 3_600_000;
+    vi.setSystemTime(later);
+    proof.on = true;
+    attempts.push({ orderId: 'nw', createdAt: new Date(later - 40_000), result: 'OPENED', employeeId: 'u1', attemptNumber: 1 });
+    const d = (await desk()) as Desk & { proofSeconds?: number };
+    expect(d.noAnswerLimit).toBe(4);
+    expect(d.proofSeconds).toBe(45);
+    expect(byId(d, 'wt').attemptWords).toMatch(/من 4$/);
+    expect((byId(d, 'nw') as Row & { callProof?: unknown }).callProof).toEqual({ state: 'WAIT', unlocksAtMs: later + 5_000 });
+  });
+});

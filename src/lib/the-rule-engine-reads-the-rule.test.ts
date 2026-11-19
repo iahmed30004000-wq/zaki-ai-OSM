@@ -39,12 +39,14 @@ import {
   confirmationRuleOnce,
   documentAfterSave,
   readConfirmationRule,
+  validateConfirmationRule,
   type ConfirmationRuleNumbers,
 } from './confirmation-rule-settings';
 import { callProofState, callProofVerdict } from './call-proof';
 import { freshSince } from './queue-priority';
 import { RETURNS_MODE, priorityPlanFor, returnsLimits } from './confirmation-queue';
 import { ruleSummaryLines, type RuleFacts } from './confirmation-rule-summary';
+import { orderTimeline } from './order-timeline';
 
 const SINCE = new Date('2026-11-01T00:00:00.000Z');
 // Damascus is UTC+3 all year: a local clock is the UTC hour minus three. 16/11/2026 is a Monday.
@@ -317,5 +319,110 @@ describe('every door and job hands the rule down', () => {
       const src = stripComments(readFileSync(join(root, p), 'utf8'));
       expect(src, p).not.toMatch(/\b(CADENCE_LIMIT|CADENCE_MIN_DAYS|CADENCE_GAPS_MS|CADENCE_FLOORS_MS|POSTPONE_MAX_TIMES|QUEUE_PRIORITY_LIMITS|MIN_CALL_MS)\b/);
     }
+  });
+});
+
+/**
+ * REVIEW 19/11 (blocker 1): NO RULE THE SAVE DOOR ACCEPTS MAY LEAVE AN ORDER THAT NEVER CLOSES. Random VALID rules (each passes `validateConfirmationRule`) × random
+ * calendars × random first presses, every later press made at its due (or later): the press number `steps + 1` closes the order, and no press before it does.
+ */
+describe('every valid rule closes exactly at its limit when every due is pressed', () => {
+  const seeded = (seed: number) => () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  const CALS = [
+    { timezone: 'Asia/Damascus', weekendDays: [] as number[], workHoursStart: '09:00', workHoursEnd: '22:00' },
+    { timezone: 'Asia/Damascus', weekendDays: [5], workHoursStart: '09:00', workHoursEnd: '17:00' },
+    { timezone: 'Asia/Amman', weekendDays: [5, 6], workHoursStart: '10:00', workHoursEnd: '18:00' },
+    { timezone: 'Europe/Berlin', weekendDays: [0], workHoursStart: '08:00', workHoursEnd: '20:00' },
+    { timezone: 'Asia/Damascus', weekendDays: [] as number[], workHoursStart: '12:00', workHoursEnd: '12:40' },
+  ];
+  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+  it('the reviewer\'s case: after 10 min · evening anchor, not before 1 h · two days — pressed 10:00, 10:10, 19:30 → the third press is on a new day and closes', () => {
+    const r = rule({ steps: [{ kind: 'after', minutes: 10 }, { kind: 'anchor', anchor: 'evening', floorHours: 1 }], minDays: 2 });
+    expect(validateConfirmationRule(r).ok).toBe(true);
+    const a = pressAll([dam(16, 10)], r);
+    const second = cadencePress(a.lines, { at: dam(16, 10, 10), result: 'NO_ANSWER' }, calOf(r));
+    expect(iso(second.dueAt)).toBe(iso(dam(17, 19, 30)));
+    const { out } = pressAll([dam(16, 10), dam(16, 10, 10), dam(17, 19, 30)], r);
+    expect(out.map((p) => p.closes)).toEqual([false, false, true]);
+  });
+
+  it('2,000 random valid rules: never stuck, never early', () => {
+    const r = seeded(20261119);
+    let checked = 0;
+    for (let n = 0; n < 2000; n++) {
+      const count = 2 + Math.floor(r() * 5);
+      const steps = Array.from({ length: count }, () =>
+        r() < 0.5
+          ? { kind: 'after' as const, minutes: 10 + Math.floor(r() * 711) }
+          : { kind: 'anchor' as const, anchor: r() < 0.5 ? ('morning' as const) : ('evening' as const), floorHours: 1 + Math.floor(r() * 24) }
+      );
+      const anchors = steps.filter((s) => s.kind === 'anchor').length;
+      const morningAt = 6 * 60 + Math.floor(r() * 8 * 60);
+      const candidate = {
+        ...CONFIRMATION_RULE_DEFAULT,
+        steps,
+        minDays: 1 + Math.floor(r() * Math.min(3, anchors + 1)),
+        morning: hhmm(morningAt),
+        evening: hhmm(morningAt + 30 + Math.floor(r() * 8 * 60)),
+      };
+      const v = validateConfirmationRule(candidate);
+      if (!v.ok) continue;
+      const country = CALS[Math.floor(r() * CALS.length)];
+      const cal = cadenceCalOf(SINCE, country, v.rule);
+      const limit = steps.length + 1;
+      const lines: CadenceFact[] = [];
+      let at = new Date(Date.UTC(2026, 10 + Math.floor(r() * 8), 1 + Math.floor(r() * 27), Math.floor(r() * 24), Math.floor(r() * 60)));
+      for (let k = 1; k <= limit; k++) {
+        const p = cadencePress(lines, { at, result: 'NO_ANSWER' }, cal);
+        const where = `rule ${JSON.stringify(v.rule)} in ${country.timezone} ${country.workHoursStart}-${country.workHoursEnd}, press ${k} at ${at.toISOString()}`;
+        expect(p.counted, where).toBe(true);
+        expect(p.closes, where).toBe(k === limit);
+        lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: k, nextFollowUpAt: p.counted ? p.dueAt : null });
+        if (k < limit) at = r() < 0.8 ? p.dueAt! : new Date(p.dueAt!.getTime() + Math.floor(r() * 30) * 3_600_000);
+      }
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it('a rule changed mid-cycle that leaves the limit reached on too few days: a later press on a new day closes it (a press, never a job)', () => {
+    const r = rule({ steps: [{ kind: 'after', minutes: 10 }, { kind: 'anchor', anchor: 'evening', floorHours: 1 }], minDays: 2 });
+    // three presses on ONE day, their dues stored under another rule
+    const stored = [dam(16, 10, 10), dam(16, 19, 30), null];
+    const lines: CadenceFact[] = [dam(16, 10), dam(16, 10, 10), dam(16, 19, 30)].map((t, i) => ({ createdAt: t, result: 'NO_ANSWER', attemptNumber: i + 1, nextFollowUpAt: stored[i] }));
+    expect(cadenceState(lines, calOf(r)).counted).toHaveLength(3);
+    expect(cadenceState(lines, calOf(r)).days).toBe(1);
+    expect(cadencePress(lines, { at: dam(16, 20), result: 'NO_ANSWER' }, calOf(r)).closes).toBe(false);
+    expect(cadencePress(lines, { at: dam(17, 10), result: 'NO_ANSWER' }, calOf(r)).closes).toBe(true);
+  });
+});
+
+describe('the timeline numbers the lines by the rule in force (review 19/11, blocker 2)', () => {
+  it('a stored rule of FOUR attempts: «محاولة 1 من 4», «محاولة 2 من 4»', async () => {
+    const doc = documentAfterSave(null, { rule: rule({ steps: CONFIRMATION_RULE_DEFAULT.steps.slice(0, 3) }), effectiveAt: new Date(0), byUserId: 'u9' }, 0);
+    const AT = (h: number, mi = 0) => new Date(Date.UTC(2026, 10, 15, h - 3, mi)); // Amman, Sunday
+    const line = (id: string, at: Date, n: number, due: Date | null) => ({ id, companyId: 'co-tl-q3b', orderId: 'o1', createdAt: at, result: 'NO_ANSWER', contactMethod: 'PHONE', attemptNumber: n, employeeId: 'u1', note: null, nextFollowUpAt: due });
+    const none = { findMany: vi.fn(async () => []) };
+    const tx = {
+      orderStatusLog: none, callLog: none, callHelperReading: none, deliveryAttempt: none, orderNote: none, orderActivity: none, orderChangeRequest: none, orderIssue: none, orderClaimHistory: none,
+      orderContactAttempt: { findMany: vi.fn(async () => [line('a', AT(13), 1, AT(13, 30)), line('b', AT(13, 30), 2, AT(15, 30))]) },
+      user: { findMany: vi.fn(async () => [{ id: 'u1', name: 'موظفة' }]) },
+      order: { findUnique: vi.fn(async () => ({ country: { timezone: 'Asia/Amman', weekendDays: [5, 6], workHoursStart: '09:00', workHoursEnd: '17:00' } })) },
+      company: { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ confirmationRule: doc }) })) },
+    };
+    const titles = (await orderTimeline(tx as never, 'o1')).filter((e) => e.kind === 'CONTACT').map((e) => e.title.split(' عبر ')[0]);
+    expect(titles).toEqual(['محاولة 1 من 4', 'محاولة 2 من 4']);
+  });
+});
+
+describe('the default steps keep main\'s dues even where the days guarantee would move them', () => {
+  it('a hand-built state, four presses on one day: #5 stays at 19:30 that evening (main), for the stored default too — the guarantee is for edited rules', () => {
+    const state = { counted: [dam(16, 10), dam(16, 10, 30), dam(16, 12, 30)], days: 1, dueAt: null };
+    for (const cal of [calOf(), calOf(CONFIRMATION_RULE_DEFAULT), calOf(rule({ morning: '10:00' }))]) {
+      expect(iso(cadenceStep(state, dam(16, 13), cal).next.dueAt)).toBe(iso(dam(16, 19, 30)));
+    }
+    // …while the same steps with three days asked would be an edited rule, and are moved
+    expect(iso(cadenceStep(state, dam(16, 13), calOf(rule({ steps: [...CONFIRMATION_RULE_DEFAULT.steps.slice(0, 3), { kind: 'anchor', anchor: 'evening', floorHours: 2 }] }))).next.dueAt)).toBe(iso(dam(17, 19, 30)));
   });
 });

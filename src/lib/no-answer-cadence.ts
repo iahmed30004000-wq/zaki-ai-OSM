@@ -314,20 +314,58 @@ function dueAfter(times: readonly Date[], cal: CadenceCal): Date {
     const raw = new Date(at.getTime() + step.minutes * 60_000);
     return insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, start, rest, false, cal.timeZone);
   }
+  let due: Date;
+  let clock: { hour: number; minute: number };
   if (step.anchor === 'morning') {
     // The MORNING ANCHOR (request C2: 11:00 clamped into the window; it was the start of work) on the first working day at least `floorHours` (elapsed; 8 by default) after the press — `>=`: exactly the floor counts.
-    const morning = clockOf(cadenceMorningAnchor(window, rule.morning));
-    const due = firstClockOnWorkday(new Date(at.getTime() + step.floorHours * 3_600_000), morning, rest, false, cal.timeZone);
+    clock = clockOf(cadenceMorningAnchor(window, rule.morning));
+    const first = firstClockOnWorkday(new Date(at.getTime() + step.floorHours * 3_600_000), clock, rest, false, cal.timeZone);
     // The first-day guard: five attempts over two local days must stay true on a 25-hour DST day, so #4 is never on #1's local day (defence in depth now: see the header — #2 and #3 inside work time already put #4 a day on).
-    return dayKey(due, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(due, morning, rest, true, cal.timeZone) : due;
+    due = dayKey(first, cal.timeZone) === dayKey(times[0], cal.timeZone) ? firstClockOnWorkday(first, clock, rest, true, cal.timeZone) : first;
+  } else {
+    // The EVENING ANCHOR (the old #5): the first evening anchor local STRICTLY after the press on a working day, but never less than `floorHours` (elapsed; 3 by default) after it — and if that lands outside work time
+    // (the floor can carry it past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
+    clock = clockOf(cadenceEveningAnchor(window, rule.evening));
+    const evening = firstClockOnWorkday(at, clock, rest, true, cal.timeZone);
+    const floor = new Date(at.getTime() + step.floorHours * 3_600_000);
+    const raw = evening.getTime() >= floor.getTime() ? evening : floor;
+    due = insideWorkTime(raw, window, rest, cal.timeZone) ? raw : firstClockOnWorkday(raw, clock, rest, true, cal.timeZone);
   }
-  // The EVENING ANCHOR (the old #5): the first evening anchor local STRICTLY after the press on a working day, but never less than `floorHours` (elapsed; 3 by default) after it — and if that lands outside work time
-  // (the floor can carry it past the end of a short day), the anchor of the first working day AFTER it. Terminates: `firstClockOnWorkday` looks ahead a bounded sixteen days, and the anchor is inside the window.
-  const anchor = clockOf(cadenceEveningAnchor(window, rule.evening));
-  const evening = firstClockOnWorkday(at, anchor, rest, true, cal.timeZone);
-  const floor = new Date(at.getTime() + step.floorHours * 3_600_000);
-  const due = evening.getTime() >= floor.getTime() ? evening : floor;
-  return insideWorkTime(due, window, rest, cal.timeZone) ? due : firstClockOnWorkday(due, anchor, rest, true, cal.timeZone);
+  return mustBeANewDay(times, rule, counted, cal.timeZone) ? onALaterDay(due, at, clock, rest, cal.timeZone) : due;
+}
+
+/**
+ * THE DAYS GUARANTEE OF AN EDITED RULE (request Q3b, review 19/11). The save door accepts `minDays` up to «anchor steps + 1», on the promise that the anchors can carry the
+ * attempts onto that many local days. This keeps the promise: when every anchor step still to come (this one included) is needed for a NEW local day — the days already
+ * counted plus those anchors are no more than `minDays` — this anchor's due is moved to its clock on the first working day AFTER the press's day (so any press at or after it is
+ * on a day none of the counted presses is on). Then, pressing at every due, the last counted press always meets `minDays` and closes the order exactly at the limit.
+ *
+ * NOT FOR THE DEFAULT STEPS (the old five over two days): their own guard — #4 never on #1's local day, above — already gives every history the door can write its two days,
+ * and they keep main's dues byte for byte, even for a hand-built state that no door wrote.
+ */
+function mustBeANewDay(times: readonly Date[], rule: CadenceRule, counted: number, timeZone: string): boolean {
+  if (isDefaultPlan(rule)) return false;
+  const days = new Set(times.map((d) => dayKey(d, timeZone))).size;
+  const anchorsLeft = rule.steps.slice(counted - 1).filter((s) => s.kind === 'anchor').length;
+  return days < rule.minDays && days + anchorsLeft <= rule.minDays;
+}
+
+/** The anchor's clock on the first working day after `at`'s local day, when `due` is still on that day (bounded, as `firstClockOnWorkday` is). */
+function onALaterDay(due: Date, at: Date, clock: { hour: number; minute: number }, rest: ReadonlySet<number>, timeZone: string): Date {
+  let d = due;
+  for (let i = 0; i < 3 && dayKey(d, timeZone) === dayKey(at, timeZone); i++) d = firstClockOnWorkday(d, clock, rest, true, timeZone);
+  return d;
+}
+
+/** Are these the default STEPS and DAYS (whatever the two clocks) — the plan whose own first-day guard already holds the days? */
+function isDefaultPlan(rule: CadenceRule): boolean {
+  const d = CADENCE_RULE_DEFAULT;
+  return (
+    rule === d ||
+    (rule.minDays === d.minDays &&
+      rule.steps.length === d.steps.length &&
+      rule.steps.every((s, i) => JSON.stringify(s) === JSON.stringify(d.steps[i])))
+  );
 }
 
 /**
@@ -417,7 +455,20 @@ export function cadencePress(
   const before = cadenceState(stored, cal);
   if (!(NO_ANSWER_RESULTS as readonly string[]).includes(press.result)) return { counted: false, dueAt: null, next: before, closes: false };
   const { next, counted } = cadenceStep(before, press.at, cal);
-  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next, ruleOf(cal)) };
+  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next, ruleOf(cal)) || completesTheDays(before, press.at, cal) };
+}
+
+/**
+ * THE WAY OUT OF A RULE CHANGED MID-CYCLE (request Q3b, review 19/11): an order whose counted presses already reach an EDITED rule's limit on fewer local days than it asks
+ * (its dues were stored under the old rule, so the days guarantee could not place them) is not left with no press that can ever close it: a press past the limit, not early,
+ * on a local day none of its counted presses is on, closes it. Never for the default steps and days — there the door's history always has its two days (main, unchanged).
+ */
+function completesTheDays(state: CadenceState, at: Date, cal: CadenceCal): boolean {
+  const rule = ruleOf(cal);
+  if (isDefaultPlan(rule) || state.counted.length < cadenceLimit(rule) || state.days >= rule.minDays) return false;
+  const t = at.getTime();
+  if (Number.isNaN(t) || !(t > cal.since.getTime()) || (state.dueAt !== null && t < state.dueAt.getTime())) return false;
+  return new Set([...state.counted, at].map((d) => dayKey(d, cal.timeZone))).size >= rule.minDays;
 }
 
 const WEEKDAY_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
@@ -487,7 +538,7 @@ export function cadenceDesk(
     dueAt: s.dueAt,
     due: ahead && s.dueAt!.getTime() <= now.getTime(),
     waiting: ahead && s.dueAt!.getTime() > now.getTime(),
-    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next, ruleOf(cal)),
+    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next, ruleOf(cal)) || completesTheDays(s, now, cal),
   };
 }
 
