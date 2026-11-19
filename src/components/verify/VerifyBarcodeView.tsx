@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
-import { RiCheckboxCircleFill, RiErrorWarningFill, RiShieldCheckLine } from '@remixicon/react';
+import { RiShieldCheckFill, RiShieldCheckLine, RiShieldCrossLine } from '@remixicon/react';
 
 /**
  * THE PUBLIC FACE OF ONE COMPANY'S AUTHENTICITY LIST.
@@ -70,8 +70,9 @@ export function VerifyBarcodeView({ storeId }: { storeId: string }) {
 }
 
 function ResultScreen({ genuine, onRetry }: { genuine: boolean; onRetry: () => void }) {
-  // The verdict this scan landed on — fill means "this is the one", same rule as an active tab.
-  const VerdictIcon = genuine ? RiCheckboxCircleFill : RiErrorWarningFill;
+  // The verdict this scan landed on. Only icons the dashboard already draws: every Remix icon used anywhere lands in one
+  // shared chunk that each staff screen downloads, so a new glyph here would weigh on «طلباتي» (staff-confirmation-first-load).
+  const VerdictIcon = genuine ? RiShieldCheckFill : RiShieldCrossLine;
   return (
     <main dir="rtl" className="min-h-screen flex items-center justify-center p-6 bg-[var(--sys-background)]">
       <div className="w-full max-w-sm text-center space-y-5">
