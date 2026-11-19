@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { arStamp } from '@/lib/format';
 import { routeLabel } from '@/lib/route-registry';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
 import { Rows } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pager } from '@/components/ui/Pager';
@@ -105,24 +105,27 @@ export function AuditScreen() {
   const { rows, pagination } = list;
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={routeLabel('/control/audit')}
-        description="سجلٌّ لا يُمحى: كلُّ تعديلٍ على طلبٍ أو مالٍ أو صلاحيةٍ أو إعداد — مَن فعله ومتى وعلى أيّ سجلّ."
-      />
-
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        placeholder="بحث بالإجراء (حذف، تأكيد…) أو نوع السجلّ أو معرّفه…"
-        filters={filters}
-        activeCount={activeCount}
-        onReset={reset}
-      />
-      <div className="w-56">
-        <DateRange value={range} onChange={setRange} label="كل المدة" />
-      </div>
-
+    <PageShell
+      title={routeLabel('/control/audit')}
+      description="سجلٌّ لا يُمحى: كلُّ تعديلٍ على طلبٍ أو مالٍ أو صلاحيةٍ أو إعداد — مَن فعله ومتى وعلى أيّ سجلّ."
+      // 18/11 (R16h, the arrangement): the span of days acts on the whole log, so it is the frame's toolbar row, under the title;
+      // the search and the two dropdowns narrow the list, so they are its filters row. Same controls, same values, same query.
+      toolbar={
+        <div className="w-56">
+          <DateRange value={range} onChange={setRange} label="كل المدة" />
+        </div>
+      }
+      filters={
+        <ListToolbar
+          search={search}
+          onSearch={setSearch}
+          placeholder="بحث بالإجراء (حذف، تأكيد…) أو نوع السجلّ أو معرّفه…"
+          filters={filters}
+          activeCount={activeCount}
+          onReset={reset}
+        />
+      }
+    >
       {list.error && (
         <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">
           {list.error}
@@ -144,7 +147,7 @@ export function AuditScreen() {
                   render: (l) => (
                     <>
                       {l.user?.name || 'النظام (تلقائي)'}
-                      <span className="block text-xs text-[var(--sys-muted)] font-mono">{l.user?.role || 'SYSTEM'}</span>
+                      <span className="block text-note text-[var(--sys-muted)] font-mono">{l.user?.role || 'SYSTEM'}</span>
                     </>
                   ),
                 },
@@ -177,10 +180,10 @@ export function AuditScreen() {
                       )}
                       {/* Said, so a missing amount does not read as a missing record. */}
                       {l.payWithheld && (
-                        <span className="block text-xs text-[var(--sys-muted)]">المبالغ لا تظهر إلا لمن معه صلاحية «عرض الرواتب».</span>
+                        <span className="block text-note text-[var(--sys-muted)]">المبالغ لا تظهر إلا لمن معه صلاحية «عرض الرواتب».</span>
                       )}
                       {l.partnersWithheld && (
-                        <span className="block text-xs text-[var(--sys-muted)]">الأسماء والنسب والمبالغ لا تظهر إلا لمن معه صلاحية «الشركاء والسحوبات».</span>
+                        <span className="block text-note text-[var(--sys-muted)]">الأسماء والنسب والمبالغ لا تظهر إلا لمن معه صلاحية «الشركاء والسحوبات».</span>
                       )}
                     </>
                   ),
@@ -213,7 +216,7 @@ export function AuditScreen() {
 
       {/* The owner's window on the team leader (step H2): its door answers 403 to everyone else, and then nothing is drawn — not even the title. */}
       <TeamLeaderAudit />
-    </div>
+    </PageShell>
   );
 }
 
@@ -223,11 +226,11 @@ function RecordCell({ row, mayOpen }: { row: Row; mayOpen: (path: string) => boo
   const door = row.entity === 'Order' ? '/orders' : '/products';
   return (
     <span className="flex items-center gap-2">
-      <span className="font-mono text-xs text-[var(--sys-muted)]" dir="ltr" title={row.entityId}>
+      <span className="font-mono text-note text-[var(--sys-muted)]" dir="ltr" title={row.entityId}>
         {row.entityId.slice(0, 8)}
       </span>
       {href && mayOpen(door) && (
-        <Link href={href} className="text-xs font-semibold text-[var(--sys-primary)] hover:underline">
+        <Link href={href} className="text-note font-semibold text-[var(--sys-primary)] hover:underline">
           افتح
         </Link>
       )}

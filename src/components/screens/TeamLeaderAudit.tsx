@@ -72,7 +72,7 @@ export function TeamLeaderAudit() {
         action={
           <div className="flex items-center gap-2">
             {data && data.leaders.length > 1 && (
-              <select aria-label="قائد الفريق" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs" value={data.leader?.id ?? ''} onChange={(e) => setLeaderId(e.target.value)}>
+              <select aria-label="قائد الفريق" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-note" value={data.leader?.id ?? ''} onChange={(e) => setLeaderId(e.target.value)}>
                 {data.leaders.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name ?? '—'}
@@ -80,7 +80,7 @@ export function TeamLeaderAudit() {
                 ))}
               </select>
             )}
-            <input aria-label="اليوم" type="date" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-xs" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} />
+            <input aria-label="اليوم" type="date" className="h-11 md:h-8 rounded-md border border-[var(--sys-border-strong)] bg-[var(--sys-card)] px-2 text-note" value={day} onChange={(e) => e.target.value && setDay(e.target.value)} />
           </div>
         }
       />
@@ -94,12 +94,12 @@ export function TeamLeaderAudit() {
             <section className="space-y-2 px-4 pt-4">
               <h4 className="text-sm font-bold text-[var(--sys-foreground)]">أرقامها مقابل النظام{data.leader?.name ? ` — ${data.leader.name}` : ''}</h4>
               {!data.leader ? (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">ما في حدا بدور «قائد الفريق».</p>
+                <p className="text-note text-[var(--sys-muted-foreground)]">ما في حدا بدور «قائد الفريق».</p>
               ) : !data.report ? (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">ما أرسلت تقرير هاليوم.</p>
+                <p className="text-note text-[var(--sys-muted-foreground)]">ما أرسلت تقرير هاليوم.</p>
               ) : (
                 <>
-                  <p className="text-xs text-[var(--sys-muted-foreground)]">أرسلتو {arStamp(data.report.submittedAt)}</p>
+                  <p className="text-note text-[var(--sys-muted-foreground)]">أرسلتو {arStamp(data.report.submittedAt)}</p>
                   <Rows
                     rows={data.report.comparison}
                     keyOf={(r: Comparison) => r.userId}
@@ -108,8 +108,8 @@ export function TeamLeaderAudit() {
                       ...EOD_METRICS.map((m) => ({ key: m, label: EOD_METRIC_AR[m], render: (r: Comparison) => <Cell v={r.metrics[m]} /> })),
                     ]}
                   />
-                  <p className="text-xs text-[var(--sys-foreground)]">أكبر مشكلة: {data.report.biggestProblem || '—'}</p>
-                  <p className="text-xs text-[var(--sys-foreground)]">نصيحة بكرا: {data.report.tip || '—'}</p>
+                  <p className="text-note text-[var(--sys-foreground)]">أكبر مشكلة: {data.report.biggestProblem || '—'}</p>
+                  <p className="text-note text-[var(--sys-foreground)]">نصيحة بكرا: {data.report.tip || '—'}</p>
                 </>
               )}
             </section>
@@ -117,9 +117,9 @@ export function TeamLeaderAudit() {
             <section className="space-y-2 px-4">
               <h4 className="text-sm font-bold text-[var(--sys-foreground)]">سجل شغلها بهاليوم</h4>
               {data.actions.length === 0 ? (
-                <p className="text-xs text-[var(--sys-muted-foreground)]">ما في حركات مسجّلة.</p>
+                <p className="text-note text-[var(--sys-muted-foreground)]">ما في حركات مسجّلة.</p>
               ) : (
-                <ul className="space-y-1 text-xs text-[var(--sys-muted-foreground)]">
+                <ul className="space-y-1 text-note text-[var(--sys-muted-foreground)]">
                   {data.actions.map((a, i) => (
                     <li key={i}>
                       <span className="tabular-nums">{arStamp(a.createdAt)}</span> — {describeAction(a.action, a.entity)}
