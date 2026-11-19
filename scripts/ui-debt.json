@@ -266,11 +266,6 @@
       "rawButtons": 1,
       "textXs": 23
     },
-    "src/components/screens/DiscountAlertsScreen.tsx": {
-      "rawCheckboxes": 1,
-      "rawSurfaces": 2,
-      "textXs": 3
-    },
     "src/components/screens/FinanceProfitScreen.tsx": {
       "textXs": 1
     },
