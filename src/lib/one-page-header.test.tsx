@@ -39,6 +39,8 @@ afterEach(() => cleanup());
 /** [file, the address it is titled by, how many headers it draws, the page file that draws it there (null: a tab, drawn embedded)] */
 const TABLE: [string, string, number, string | null][] = [
   ['src/app/(system)/(shell)/settings/tracking/page.tsx', '/settings/tracking', 1, 'src/app/(system)/(shell)/settings/tracking/page.tsx'],
+  // 18/11 (R15g): «الذكاء الاصطناعي والنصوص» typed its own title into PageHeader; on the frame it reads it from the registry, so it joins the table.
+  ['src/components/screens/AiSettingsScreen.tsx', '/settings/ai', 1, 'src/app/(system)/(shell)/settings/ai/page.tsx'],
   ['src/components/screens/BenchScreen.tsx', '/growth/bench', 1, 'src/app/(system)/(shell)/growth/bench/page.tsx'],
   ['src/components/screens/BlacklistScreen.tsx', '/control/blacklist', 1, 'src/app/(system)/(shell)/control/blacklist/page.tsx'],
   ['src/components/screens/ChangeRequestsScreen.tsx', '/control/change-requests', 1, 'src/app/(system)/(shell)/control/change-requests/page.tsx'],

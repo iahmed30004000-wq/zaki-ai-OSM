@@ -9,7 +9,10 @@ import { Input } from '@/components/ui/Input';
 import { MAX_PROMPT, missingSlots, type AiJob, type PromptVersion } from '@/lib/ai-prompts';
 import { tierOf } from '@/lib/ai-provider';
 import { RiAlertLine, RiArrowDownSLine, RiArrowGoBackLine, RiCheckLine, RiKey2Line, RiLoader4Line, RiPlugLine } from '@remixicon/react';
-import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/ui/PageShell';
+import { Card } from '@/components/ui/Card';
+import { Segmented } from '@/components/ui/Segmented';
+import { routeLabel } from '@/lib/route-registry';
 import { arDate } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCan } from '@/hooks/useCan';
@@ -377,32 +380,30 @@ export function AiSettingsScreen() {
   const tier = settings.model ? tierOf(settings.model) : null;
 
   return (
-    <div className="max-w-3xl space-y-4" dir="rtl">
-      <PageHeader title="الذكاء الاصطناعي والنصوص"
-          description="أي نموذج تستعمل، وبأي كلمات يخاطبه النظام."
+    <div dir="rtl">
+    <PageShell
+      title={routeLabel('/settings/ai')}
+      description="أي نموذج تستعمل، وبأي كلمات يخاطبه النظام."
+      width="narrow"
+      /* Three questions, three places: which model, who may read what, and
+         in whose words. They were one long scroll, so the assistants — the
+         part that decides what leaves the company — had nowhere to live.
+         18/11 (R15g): the three hand-drawn tab buttons are the kit's bar of
+         choices, on the same `tab` variable — one press, one place. */
+      toolbar={
+        <Segmented
+          aria-label="أقسام الشاشة"
+          className="w-full"
+          value={tab}
+          onChange={(v) => setTab(v as typeof tab)}
+          options={[
+            { value: 'provider', label: 'المزوّد والمفتاح' },
+            { value: 'assistants', label: 'المساعدون' },
+            { value: 'prompts', label: 'النصوص والقوالب' },
+          ]}
         />
-
-      {/* Three questions, three places: which model, who may read what, and
-          in whose words. They were one long scroll, so the assistants — the
-          part that decides what leaves the company — had nowhere to live. */}
-      <div className="flex gap-1.5">
-        {([
-          ['provider', 'المزوّد والمفتاح'],
-          ['assistants', 'المساعدون'],
-          ['prompts', 'النصوص والقوالب'],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={`h-11 md:h-10 flex-1 rounded-lg border text-xs font-medium ${
-              tab === value ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] text-[var(--sys-primary)]' : 'border-[var(--sys-border)] text-[var(--sys-foreground)]'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      }
+    >
 
       {tab === 'assistants' && (
         <AssistantsTable
@@ -417,7 +418,7 @@ export function AiSettingsScreen() {
       )}
 
       {/* ── the vendor ── */}
-      <section className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 ${tab === 'provider' ? '' : 'hidden'}`}>
+      <Card padding="md" className={tab === 'provider' ? '' : 'hidden'}>
         <h2 className="mb-3 text-sm font-bold text-[var(--sys-heading)]">المزوّد والمفتاح</h2>
         {/*
           THE MODEL IS NOT CHOSEN HERE ANY MORE.
@@ -431,7 +432,7 @@ export function AiSettingsScreen() {
           that names no assistant, so nothing is hidden.
         */}
         <div>
-          <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-provider">
+          <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-provider">
             المزوّد
           </label>
           <select
@@ -446,7 +447,7 @@ export function AiSettingsScreen() {
           >
             {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+          <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
             النموذج يُختار لكلِّ مساعدٍ في تبويب «المساعدون». وما لا يخصّه مساعدٌ يُجاب بـ
             <span className="mx-1 font-semibold text-[var(--sys-foreground)]" dir="ltr">{settings.model}</span>
             {tier && <>— {tier.tier}: {tier.note}</>}
@@ -459,7 +460,7 @@ export function AiSettingsScreen() {
             getting the other.
           */}
           {defaultRoute && (
-            <p className="mt-1 text-xs text-[var(--sys-muted)]">
+            <p className="mt-1 text-note text-[var(--sys-muted)]">
               الجواب الفعليّ:
               <span className="mx-1 font-semibold text-[var(--sys-foreground)]" dir="ltr">
                 {providers.find((p) => p.id === defaultRoute.provider)?.label ?? defaultRoute.provider} · {defaultRoute.model}
@@ -483,46 +484,48 @@ export function AiSettingsScreen() {
         */}
         {systemAllowed && system && (
           <div className="mt-4 border-t border-[var(--sys-border)] pt-3">
-            <h3 className="flex items-center gap-1 text-xs font-bold text-[var(--sys-heading)]">
+            <h3 className="flex items-center gap-1 text-note font-bold text-[var(--sys-heading)]">
               <RiKey2Line className="h-4 w-4" /> حسابات المزوّدين — للنظام كله
             </h3>
-            <p className="mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+            <p className="mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
               تُحفظ مرة واحدة للنظام لا لكل شركة. المفتاح يُشفَّر، ولا يعود منه شيء إلى الشاشة
               بعد حفظه — ولا آخر حروفه — ولا يُكتب في سجل التدقيق.
             </p>
 
             {!system.encryptionAvailable && (
-              <p className="mt-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs leading-relaxed text-[var(--sys-destructive)]">
+              <p className="mt-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note leading-relaxed text-[var(--sys-destructive)]">
                 مفتاح التشفير غير مُهيّأ على الخادم — لن يُقبل حفظ أي مفتاح حتى يُضبط. لا يُحفظ مفتاح بلا تشفير.
               </p>
             )}
 
             <ul className="mt-2 space-y-2">
               {providers.map((p) => (
-                <li key={p.id} className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3">
+                <li key={p.id}>
+                <Card plain padding="sm">
                   <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-[var(--sys-heading)]">{p.label}</span>
+                    <span className="text-note font-bold text-[var(--sys-heading)]">{p.label}</span>
                     {system.providerKeys[p.id]?.configured ? (
                       <span className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-md border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--sys-success)]">
+                        <span className="rounded-md border border-[var(--sys-success)]/40 bg-[var(--sys-success-soft)] px-2 py-0.5 text-note font-semibold text-[var(--sys-success)]">
                           مفتاح محفوظ
                         </span>
                         {system.providerKeys[p.id]?.savedAt && (
-                          <span className="text-xs text-[var(--sys-muted)]">
+                          <span className="text-note text-[var(--sys-muted)]">
                             منذ {arDate(system.providerKeys[p.id]!.savedAt as string)}
                           </span>
                         )}
-                        <button
+                        <Button
                           type="button"
-                          onClick={() => void clearKey(p.id)}
+                          variant="quiet"
+                          size="sm"
+                          onClick={() => { void clearKey(p.id); }}
                           disabled={systemBusy}
-                          className="inline-flex min-h-11 items-center text-xs font-semibold text-[var(--sys-destructive)] hover:underline disabled:opacity-50 md:min-h-0"
                         >
                           احذف المفتاح
-                        </button>
+                        </Button>
                       </span>
                     ) : (
-                      <span className="text-xs text-[var(--sys-muted)]">
+                      <span className="text-note text-[var(--sys-muted)]">
                         {p.keyOptional ? 'بلا مفتاح — وأكثر الخوادم المحلية لا تطلب مفتاحاً' : 'بلا مفتاح'}
                       </span>
                     )}
@@ -539,7 +542,7 @@ export function AiSettingsScreen() {
                     dir="ltr"
                     autoComplete="off"
                   />
-                  <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">{p.keyHelp}</p>
+                  <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">{p.keyHelp}</p>
 
                   {/*
                     THE ADDRESS OF A MODEL THE OWNER RUNS HIMSELF.
@@ -550,7 +553,7 @@ export function AiSettingsScreen() {
                   */}
                   {p.needsEndpoint && (
                     <div className="mt-2 border-t border-[var(--sys-border)] pt-2">
-                      <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-local-url">
+                      <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-local-url">
                         عنوان الخادم
                       </label>
                       <input
@@ -562,7 +565,7 @@ export function AiSettingsScreen() {
                         dir="ltr"
                         autoComplete="off"
                       />
-                      <p className="mt-1 text-xs leading-relaxed text-[var(--sys-muted)]">
+                      <p className="mt-1 text-note leading-relaxed text-[var(--sys-muted)]">
                         على الخادم نفسه أو على شبكتك الداخلية فقط. عنوان على الإنترنت مرفوض — مزوّد على
                         الإنترنت يُضاف كـ«خادم متوافق مع OpenAI» بمفتاحه.
                       </p>
@@ -579,7 +582,7 @@ export function AiSettingsScreen() {
                   {p.needsHttpsEndpoint && (
                     <div className="mt-2 space-y-2 border-t border-[var(--sys-border)] pt-2">
                       <div>
-                        <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-url">
+                        <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-url">
                           عنوان الخادم (https)
                         </label>
                         <input
@@ -593,7 +596,7 @@ export function AiSettingsScreen() {
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-model">
+                        <label className="mb-1 block text-note font-semibold text-[var(--sys-foreground)]" htmlFor="ai-compat-model">
                           اسم النموذج على خادمك
                         </label>
                         <input
@@ -605,34 +608,34 @@ export function AiSettingsScreen() {
                           autoComplete="off"
                         />
                       </div>
-                      <p className="text-xs leading-relaxed text-[var(--sys-muted)]">
+                      <p className="text-note leading-relaxed text-[var(--sys-muted)]">
                         اسم النموذج كما يعرّفه خادمك، وكل مساعد بيقدر يختار غيره من «أخرى». هذا الخادم خارجي:
                         اسم الزبون ورقمه وعنوانه ما بيوصلوه أبداً. وتغيير العنوان بيحذف المفتاح — الصق مفتاحاً جديداً معه.
                       </p>
                     </div>
                   )}
+                </Card>
                 </li>
               ))}
             </ul>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="button"
-                onClick={() => void saveSystem()}
+                onClick={() => { void saveSystem(); }}
                 disabled={systemBusy}
-                className="inline-flex h-11 items-center gap-1.5 rounded-lg bg-[var(--sys-primary)] px-4 text-xs font-bold text-[var(--sys-primary-foreground)] disabled:opacity-50 md:h-10"
               >
                 {systemBusy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : null}
                 احفظ حسابات النظام
-              </button>
+              </Button>
               {system.savedAt && (
-                <span className="text-xs text-[var(--sys-muted)]">
+                <span className="text-note text-[var(--sys-muted)]">
                   آخر تعديل {arDate(system.savedAt)}
                   {system.savedBy ? ` — ${system.savedBy}` : ''}
                 </span>
               )}
               {systemMsg && (
-                <span className={`text-xs ${systemMsg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>
+                <span className={`text-note ${systemMsg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>
                   {systemMsg.text}
                 </span>
               )}
@@ -641,19 +644,23 @@ export function AiSettingsScreen() {
         )}
 
         {systemAllowed === false && (
-          <p className="mt-3 rounded-lg border border-[var(--sys-border)] bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
-            حسابات المزوّدين تُضبط على مستوى النظام، ويضبطها مدير النظام. النصوص وتوجيه المساعدين
-            في التبويبات الأخرى تخصّ شركتك ويمكنك تعديلها.
-          </p>
+          <Card plain padding="sm" className="mt-3">
+            <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+              حسابات المزوّدين تُضبط على مستوى النظام، ويضبطها مدير النظام. النصوص وتوجيه المساعدين
+              في التبويبات الأخرى تخصّ شركتك ويمكنك تعديلها.
+            </p>
+          </Card>
         )}
 
         {/* A key is pasted and saved, and nothing says whether it works —
             the assistant just quietly stops being an assistant. This asks
             the provider one cheap question and repeats what came back. */}
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--sys-border)] pt-3">
-          <button
+          <Button
             type="button"
-            onClick={() => void testConnection()}
+            variant="secondary"
+            size="sm"
+            onClick={() => { void testConnection(); }}
             /* A local server needs no key, so "has a key" is the wrong gate
                for it — the gate is whether anything is configured at all. */
             /*
@@ -666,19 +673,18 @@ export function AiSettingsScreen() {
               `describeRoute` answers it once, the same way the call will.
             */
             disabled={testing || !canTest}
-            className="inline-flex h-11 md:h-8 items-center gap-1.5 rounded-lg border border-[var(--sys-border)] px-3 text-xs font-semibold text-[var(--sys-foreground)] hover:border-[var(--sys-primary)] disabled:opacity-50"
           >
             {testing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPlugLine className="h-4 w-4" />}
             اختبار الاتصال
-          </button>
+          </Button>
           {!canTest && (
-            <span className="text-xs text-[var(--sys-muted)]">احفظ المفتاح أو عنوان الخادم أولاً.</span>
+            <span className="text-note text-[var(--sys-muted)]">احفظ المفتاح أو عنوان الخادم أولاً.</span>
           )}
           {test && (
-            <span className={`text-xs ${test.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{test.text}</span>
+            <span className={`text-note ${test.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{test.text}</span>
           )}
         </div>
-      </section>
+      </Card>
 
       {/* ── the ceiling on how much the assistants may use ── */}
       <div className={tab === 'provider' ? '' : 'hidden'}>
@@ -692,9 +698,9 @@ export function AiSettingsScreen() {
       </div>
 
       {/* ── the words ── */}
-      <section className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 ${tab === 'prompts' ? '' : 'hidden'}`}>
+      <Card padding="md" className={tab === 'prompts' ? '' : 'hidden'}>
         <h2 className="text-sm font-bold text-[var(--sys-heading)]">النصوص</h2>
-        <p className="mb-3 mt-0.5 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <p className="mb-3 mt-0.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           كل وظيفة ونصّها. اترك الحقل فارغاً ليعود النص الأصلي — لا يُحفَظ إلا ما غيّرته أنت،
           فتبقى الوظائف التي لم تلمسها على أحدث صياغة.
         </p>
@@ -714,27 +720,27 @@ export function AiSettingsScreen() {
                 >
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-[var(--sys-foreground)]">{job.label}</span>
+                      <span className="text-note font-semibold text-[var(--sys-foreground)]">{job.label}</span>
                       {overridden && (
-                        <span className="rounded-lg bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-xs font-semibold text-[var(--sys-primary)]">
+                        <span className="rounded-lg bg-[var(--sys-primary-soft)] px-1.5 py-0.5 text-note font-semibold text-[var(--sys-primary)]">
                           معدّل
                         </span>
                       )}
                     </span>
-                    <span className="mt-0.5 block text-xs text-[var(--sys-muted)]">{job.where}</span>
+                    <span className="mt-0.5 block text-note text-[var(--sys-muted)]">{job.where}</span>
                   </span>
                   <RiArrowDownSLine className={`mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-muted)] transition ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isOpen && (
                   <div className="border-t border-[var(--sys-surface-strong)] p-3">
-                    <p className="mb-2 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">{job.note}</p>
+                    <p className="mb-2 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{job.note}</p>
 
                     {job.slots.length > 0 && (
-                      <p className="mb-2 text-xs text-[var(--sys-muted-foreground)]">
+                      <p className="mb-2 text-note text-[var(--sys-muted-foreground)]">
                         يستبدل النظام:{' '}
                         {job.slots.map((s) => (
-                          <code key={s} className="mx-0.5 rounded-lg bg-[var(--sys-surface-strong)] px-1 font-mono text-xs">{s}</code>
+                          <code key={s} className="mx-0.5 rounded-lg bg-[var(--sys-surface-strong)] px-1 font-mono text-note">{s}</code>
                         ))}
                       </p>
                     )}
@@ -744,19 +750,20 @@ export function AiSettingsScreen() {
                       onChange={(e) => setDrafts({ ...drafts, [job.key]: e.target.value.slice(0, MAX_PROMPT) })}
                       rows={8}
                       placeholder={job.default || 'لا نصّ افتراضي لهذه الوظيفة — اكتب تعليماتك.'}
-                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 w-full rounded-lg border border-[var(--sys-border-input)] p-2 font-mono text-xs leading-relaxed text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
+                      className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 w-full rounded-lg border border-[var(--sys-border-input)] p-2 font-mono text-note leading-relaxed text-[var(--sys-heading)] outline-none focus:border-[var(--sys-primary)]"
                     />
 
                     <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs text-[var(--sys-muted)]">{value.length} / {MAX_PROMPT}</span>
+                      <span className="text-note text-[var(--sys-muted)]">{value.length} / {MAX_PROMPT}</span>
                       {overridden && (
-                        <button
+                        <Button
                           type="button"
+                          variant="quiet"
+                          size="sm"
                           onClick={() => setDrafts({ ...drafts, [job.key]: '' })}
-                          className="flex items-center gap-1 text-xs font-semibold text-[var(--sys-muted-foreground)] hover:text-[var(--sys-primary)]"
                         >
                           <RiArrowGoBackLine className="icon-mirror h-4 w-4" /> أعد النص الأصلي
-                        </button>
+                        </Button>
                       )}
                     </div>
 
@@ -765,28 +772,29 @@ export function AiSettingsScreen() {
                         box, and the wording that worked is otherwise gone. */}
                     {(settings.promptHistory?.[job.key]?.length ?? 0) > 0 && (
                       <details className="mt-2 rounded-lg border border-[var(--sys-border)]">
-                        <summary className="min-h-11 md:min-h-0 inline-flex items-center cursor-pointer px-2 py-1.5 text-xs font-semibold text-[var(--sys-muted-foreground)]">
+                        <summary className="min-h-11 md:min-h-0 inline-flex items-center cursor-pointer px-2 py-1.5 text-note font-semibold text-[var(--sys-muted-foreground)]">
                           النسخ السابقة ({settings.promptHistory![job.key].length})
                         </summary>
                         <ul className="divide-y divide-[var(--sys-surface-strong)] border-t border-[var(--sys-surface-strong)]">
                           {settings.promptHistory![job.key].map((v, n) => (
                             <li key={n} className="px-2 py-2">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs text-[var(--sys-muted)]">
+                                <span className="text-note text-[var(--sys-muted)]">
                                   <span dir="ltr" className="tabular-nums">{v.at.slice(0, 16).replace('T', ' ')}</span>
                                   {v.by && <span> · {v.by}</span>}
                                 </span>
-                                <button
+                                <Button
                                   type="button"
+                                  variant="quiet"
+                                  size="sm"
                                   onClick={() => setDrafts({ ...drafts, [job.key]: v.text })}
-                                  className="flex items-center gap-1 text-xs font-semibold text-[var(--sys-primary)]"
                                 >
                                   <RiArrowGoBackLine className="icon-mirror h-4 w-4" /> استرجع
-                                </button>
+                                </Button>
                               </div>
                               {/* Restoring puts it in the box; the save button
                                   is still the one that commits it. */}
-                              <p className="mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+                              <p className="mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-note leading-relaxed text-[var(--sys-muted-foreground)]">
                                 {v.text || 'النص الأصلي (بلا تعديل)'}
                               </p>
                             </li>
@@ -800,7 +808,7 @@ export function AiSettingsScreen() {
                         summary prompt with no {context} summarises nothing
                         and fails silently otherwise. */}
                     {missing.length > 0 && (
-                      <p className="mt-1.5 flex items-start gap-1 rounded-lg bg-[var(--sys-warning-soft)] p-1.5 text-xs leading-relaxed text-[var(--sys-warning)]">
+                      <p className="mt-1.5 flex items-start gap-1 rounded-lg bg-[var(--sys-warning-soft)] p-1.5 text-note leading-relaxed text-[var(--sys-warning)]">
                         <RiAlertLine className="mt-px h-4 w-4 shrink-0" />
                         <span>
                           نصّك لا يحتوي {missing.join('، ')} — لن تصل الأرقام إلى النموذج، وسيجيب من
@@ -814,7 +822,7 @@ export function AiSettingsScreen() {
             );
           })}
         </div>
-      </section>
+      </Card>
 
       {/* The words said to a CUSTOMER, on the same tab as the words said to
           the model — they are the same job of work, and a seller fixing how
@@ -822,10 +830,10 @@ export function AiSettingsScreen() {
           holds which half of it. Its own save button, because these are
           stored apart and one form saving both would be a form where half
           of it silently did nothing. */}
-      <section className={`rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 ${tab === 'prompts' ? '' : 'hidden'}`}>
+      <Card padding="md" className={tab === 'prompts' ? '' : 'hidden'}>
         <h2 className="mb-3 text-sm font-bold text-[var(--sys-heading)]">قوالب رسائل الزبائن</h2>
         <MessageTemplatesCard />
-      </section>
+      </Card>
 
       {/*
         AND THE SAVE BUTTON IS ON EVERY TAB.
@@ -836,17 +844,18 @@ export function AiSettingsScreen() {
       */}
       <div className="flex items-center gap-2">
         {canManage ? (
-        <Button onClick={save} disabled={busy}>
+        <Button type="button" onClick={() => { void save(); }} disabled={busy}>
           {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiCheckLine className="h-4 w-4" />}
           احفظ الإعدادات والنصوص
         </Button>
         ) : (
-          <span className="text-xs text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</span>
+          <span className="text-note text-[var(--sys-muted)]">قراءة فقط — التعديل لمن عنده «الإعدادات الحسّاسة».</span>
         )}
         {msg && (
-          <span className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>
+          <span className={`text-note font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>{msg.text}</span>
         )}
       </div>
+    </PageShell>
     </div>
   );
 }

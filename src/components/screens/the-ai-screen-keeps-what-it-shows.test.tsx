@@ -153,7 +153,7 @@ describe('«الذكاء الاصطناعي والنصوص» keeps every control
 
   it('the words tab with one job and one group of customer messages open', async () => {
     const { container } = await draw();
-    fireEvent.click(screen.getByRole(screen.queryByRole('radio') ? 'radio' : 'button', { name: 'النصوص والقوالب' }));
+    fireEvent.click(screen.getByRole(screen.queryAllByRole('radio').length ? 'radio' : 'button', { name: 'النصوص والقوالب' }));
     fireEvent.click(screen.getByRole('button', { name: /الملخّص اليومي/ }));
     fireEvent.click(screen.getByRole('button', { name: /^التأكيد/ }));
     await screen.findByText('النسخ السابقة (1)');
@@ -162,7 +162,7 @@ describe('«الذكاء الاصطناعي والنصوص» keeps every control
 
   it('the assistants tab', async () => {
     const { container } = await draw();
-    fireEvent.click(screen.getByRole(screen.queryByRole('radio') ? 'radio' : 'button', { name: 'المساعدون' }));
+    fireEvent.click(screen.getByRole(screen.queryAllByRole('radio').length ? 'radio' : 'button', { name: 'المساعدون' }));
     await screen.findByText('ما يقرؤه مركز الذكاء');
     expect(tally(container)).toEqual({ buttons: 22, ticks: 5, fields: 29, secrets: 3, folds: 0, h1: 1 });
   });
