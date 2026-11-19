@@ -83,13 +83,14 @@
   },
   "src/components/apps/SystemTokensPanel.tsx": {
     "buttons": 5,
-    "inputs": 3,
+    "inputs": 2,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 7,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "checkboxes": 1
   },
   "src/components/attendance/ShiftChip.tsx": {
     "buttons": 2,
@@ -1325,10 +1326,10 @@
     "switches": 2
   },
   "src/components/screens/InstalledAppsScreen.tsx": {
-    "buttons": 2,
+    "buttons": 1,
     "inputs": 0,
     "columns": 0,
-    "cards": 0,
+    "cards": 5,
     "modals": 0,
     "icons": 6,
     "links": 2,

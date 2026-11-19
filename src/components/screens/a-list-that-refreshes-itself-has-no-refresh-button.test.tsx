@@ -114,8 +114,9 @@ describe('«التطبيقات المثبتة» — a list that reloads itself',
       throw new Error(`unexpected request ${u}`);
     });
     render(<InstalledAppsScreen />);
-    // the filter pills are the screen's buttons; wait for them, then look for a refresh
-    await waitFor(() => expect(screen.getAllByRole('button').length).toBeGreaterThan(1));
+    // 18/11 (R15i): was «the filter pills are the screen's buttons; wait for them» — getAllByRole('button') > 1. The three filters
+    // became one kit Segmented over the same filter, and its options are radios, not buttons; so wait for the three radios instead.
+    await waitFor(() => expect(screen.getAllByRole('radio').length).toBeGreaterThan(1));
     expect(screen.queryByRole('button', { name: /تحديث/ })).toBeNull();
     expect(api).toHaveBeenCalled();
   });
