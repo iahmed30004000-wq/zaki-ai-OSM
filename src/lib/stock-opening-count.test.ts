@@ -237,7 +237,9 @@ describe('the door', () => {
     expect(route).toContain("requirePermission('inventory.adjust')");
     expect(route).toContain("requirePermission('inventory.view')");
     const keys = [...ALL_CATALOG_KEYS].filter((k) => k.startsWith('inventory.'));
-    expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual(['inventory.adjust', 'inventory.view']);
+    // 20/11 (W3a): old ['inventory.adjust', 'inventory.view']; new + the three keys of the stock transfer (send, receive, approve a
+    // shortfall), granted by no migration. The opening count still asks only the two above (pinned by the lines before).
+    expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual(['inventory.adjust', 'inventory.difference_approve', 'inventory.transfer', 'inventory.transfer_receive', 'inventory.view']);
   });
 
   it('runs every rule inside the transaction that writes', () => {
