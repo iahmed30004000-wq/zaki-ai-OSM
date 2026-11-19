@@ -21,6 +21,7 @@ const { db, calls, requireContext, assertOrderAccess, can, plan, priority } = vi
     orderContactAttempt: { count: vi.fn(), findMany: vi.fn(async () => []) },
     user: { findUnique: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   };
   return {
     db,
@@ -53,6 +54,7 @@ vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => false, call
 vi.mock('@/lib/queue-priority-switch', () => ({ queuePrioritySwitch: async () => ((priority.asked += 1), { enabled: priority.enabled, enabledAt: null }) }));
 
 import { POST } from '@/app/api/orders/[id]/confirmation/route';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const ME = { id: 'actor-1', name: 'منفّذ', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' };
 const ctx = { user: ME, companyId: 'c1', storeId: 'store-a', countryId: 'jo', country: { id: 'jo', code: 'JO', timezone: 'Asia/Amman', allowNegativeStock: false, workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5] } };
@@ -167,5 +169,64 @@ describe('the plan OFF — the door is main\'s, line for line', () => {
     const res = await postpone('CUSTOMER_REQUESTED_CALLBACK');
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: 'هالطلب انأجّل 2 مرات — ما بينأجّل مرة تالتة. اتصل فيه وخذ قرار: تأكيد أو رفض.', code: 'POSTPONE_LIMIT' });
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): each of the confirmation door's four rule refusals leaves ONE row (code, door, the order) through the
+ * real `logDeskRefusal`, written after the refusal is decided and outside the door's transaction (none is opened); an accepted press
+ * leaves none; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — the confirmation door', () => {
+  const deskRows = () =>
+    db.$executeRaw.mock.calls
+      .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
+      .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
+  const one = (code: string) => [{ companyId: 'c1', storeId: 'store-a', userId: ME.id, orderId: 'o1', code, door: 'confirmation' }];
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('NO_ANSWER_NOT_A_POSTPONE: one row, no transaction', async () => {
+    expect((await postpone('NO_ANSWER')).status).toBe(409);
+    expect(deskRows()).toEqual(one('NO_ANSWER_NOT_A_POSTPONE'));
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('POSTPONE_LIMIT: one row', async () => {
+    db.order.findFirst.mockResolvedValue({ postponeCount: 2 });
+    expect((await postpone('CUSTOMER_REQUESTED_CALLBACK')).status).toBe(409);
+    expect(deskRows()).toEqual(one('POSTPONE_LIMIT'));
+  });
+
+  it('CONTACT_FIRST: one row', async () => {
+    db.orderContactAttempt.count.mockResolvedValue(0);
+    const res = await postpone('CUSTOMER_REQUESTED_CALLBACK');
+    expect((await res.json()).code).toBe('CONTACT_FIRST');
+    expect(deskRows()).toEqual(one('CONTACT_FIRST'));
+  });
+
+  it('NOT_HELD: one row', async () => {
+    can.mockImplementation((_u: unknown, key: string) => ['orders.contact_log', 'orders.confirm', 'confirmation.work'].includes(key));
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: order({ claimedById: 'someone-else' }) });
+    const res = await postpone('CUSTOMER_REQUESTED_CALLBACK');
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('NOT_HELD');
+    expect(deskRows()).toEqual(one('NOT_HELD'));
+  });
+
+  it('NEGATIVE: an accepted postponement writes no row', async () => {
+    expect((await postpone('OTHER')).status).toBe(200);
+    expect(deskRows()).toEqual([]);
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    const ok = await postpone('NO_ANSWER');
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await postpone('NO_ANSWER');
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

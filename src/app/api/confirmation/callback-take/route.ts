@@ -5,6 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { orderVisibilityWhere } from '@/lib/rbac';
 import { CALLBACK_MESSAGES, takeOnTheLine } from '@/lib/customer-on-the-line';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 
 /**
  * «الزبون على الخط» — `customer-on-the-line.ts` holds the rule; this door asks who is calling and says the answer.
@@ -46,6 +47,8 @@ export async function POST(req: Request) {
     });
 
     if (!result.ok) {
+      // «سجل الرفض»: the «on the line» refusals (not an unknown order) — after the take decided, outside its transaction.
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId, code: result.code, door: 'callback-take' });
       return NextResponse.json(
         { error: result.message, errorAr: result.message, code: result.code, ...(result.heldBy !== undefined ? { heldBy: result.heldBy } : {}) },
         { status: result.code === 'NOT_FOUND' ? 404 : 409 }

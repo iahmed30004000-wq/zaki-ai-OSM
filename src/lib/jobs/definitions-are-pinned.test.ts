@@ -47,6 +47,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['convert-waiting-carts', 300, undefined],
   // Appended 17/11: «سحب الإنفاق بعد منتصف الليل» (media-buyer doors, PR-A) — the 06:00 pull again at 00:10 Asia/Amman, so yesterday is whole for the media buyer's 00:35 round.
   ['pull-ad-spend-night', 86_400, '00:10'],
+  // Appended 19/11: «سجل الرفض» — the confirmation desk's refusal rows older than 90 days go, in bounded passes. Not 04:00 (the carts' prune).
+  ['prune-desk-refusals', 86_400, '04:10'],
 ];
 
 describe('the jobs table', () => {

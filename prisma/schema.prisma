@@ -1583,6 +1583,28 @@ model OrderClaimHistory {
   @@map("order_claim_history")
 }
 
+// «سجل الرفض» (19/11): one row each time a confirmation-desk rule refuses somebody (`src/lib/desk-refusals.ts`) — the evidence the rules
+// page counts. Ids and codes ONLY: no customer field, no sentence. Written by raw SQL as its own statement (never inside a door's
+// transaction, never on a success path), folded to one row per (user, code, order) a minute; kept 90 days (job `prune-desk-refusals`).
+// Deliberately NO relations: a refusal of an order that was since deleted, or a rolled-back table, must never fail a door — and the
+// row outlives nothing it points at by more than the 90 days.
+model DeskRefusal {
+  id        String   @id @default(uuid())
+  companyId String
+  storeId   String?
+  userId    String
+  orderId   String?
+  code      String
+  door      String
+  createdAt DateTime @default(now())
+
+  // The rules page: a store's refusals of one day.
+  @@index([companyId, storeId, createdAt])
+  // One person's refusals (the counters), and the minute's fold of the insert.
+  @@index([companyId, userId, createdAt])
+  @@map("desk_refusals")
+}
+
 // Order status audit separate log per status category
 model OrderStatusLog {
   id            String   @id @default(uuid())

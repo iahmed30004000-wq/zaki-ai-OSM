@@ -46,6 +46,7 @@ const { db, state, requireContext, assertOrderAccess, logAudit } = vi.hoisted(()
     order: { updateMany: vi.fn(), findUnique: vi.fn() },
     orderClaimHistory: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
+    $executeRaw: vi.fn(),
   };
   return { db, state, requireContext: vi.fn(), assertOrderAccess: vi.fn(), logAudit: vi.fn() };
 });
@@ -67,6 +68,7 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) })
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { GET, POST } from './route';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const grants = (...keys: string[]) => keys.map((permission) => ({ permission, scope: 'ALL_COMPANY', scopeIds: null }));
 
@@ -278,5 +280,51 @@ describe('an agent giving her own order up keeps to her rank — keys are not as
     const res = await post('layla');
     expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
     expect(db.user.findMany, 'the audience resolver is for whoever assigns').not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): handing an order to somebody who cannot work it (CANNOT_WORK_IT) or, for an agent, to another job
+ * (DIFFERENT_RANK) leaves ONE row naming the one who pressed and the order, through the real `logDeskRefusal`; a hand-over that worked
+ * leaves none; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — the transfer', () => {
+  const deskRows = () =>
+    db.$executeRaw.mock.calls
+      .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
+      .map((c: unknown[]) => ({ storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('CANNOT_WORK_IT: one row', async () => {
+    expect((await post('wh')).status).toBe(409);
+    expect(deskRows()).toEqual([{ storeId: 's1', userId: 'boss', orderId: ORDER_ID, code: 'CANNOT_WORK_IT', door: 'transfer' }]);
+  });
+
+  it('DIFFERENT_RANK: one row', async () => {
+    const abeer = await sessionOf('abeer', 'CONFIRMATION_AGENT', 'role-agent', LIVE_AGENT);
+    requireContext.mockResolvedValue({ user: abeer, companyId: 'c1', storeId: 's1' });
+    const mine = { ...ORDER, claimedById: 'abeer', currentOwnerId: 'abeer' };
+    assertOrderAccess.mockResolvedValue({ allowed: true, order: mine });
+    const res = await post('wh');
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('DIFFERENT_RANK');
+    expect(deskRows()).toEqual([{ storeId: 's1', userId: 'abeer', orderId: ORDER_ID, code: 'DIFFERENT_RANK', door: 'transfer' }]);
+  });
+
+  it('NEGATIVE: a hand-over that worked writes no row', async () => {
+    expect((await post('abeer')).status).toBe(200);
+    expect(deskRows()).toEqual([]);
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    const ok = await post('wh');
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await post('wh');
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

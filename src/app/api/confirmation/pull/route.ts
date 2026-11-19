@@ -8,6 +8,7 @@ import { pullNextOrder } from '@/lib/confirmation-queue';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 import { sweepIntakeForPull } from '@/lib/intake-filter';
 import { db } from '@/lib/db';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 
 /**
  * THE PULL RAN OUT OF TIME — SAY SO, AND SAY PRESS AGAIN (RV711).
@@ -56,6 +57,11 @@ export async function POST() {
 
     if (!result.ok) {
       const refusal = result.refusal;
+      // «سجل الرفض»: one row for a rule that caught her (an empty queue is not one) — after the pull's transaction, never on its success path.
+      await logDeskRefusal({
+        companyId, storeId, userId: user.id, door: 'pull', code: refusal?.code,
+        orderId: refusal && (refusal.code === 'UNTOUCHED_ORDER' || refusal.code === 'WORK_FIRST') ? refusal.orderId : null,
+      });
       return NextResponse.json(
         {
           error: refusal?.message,

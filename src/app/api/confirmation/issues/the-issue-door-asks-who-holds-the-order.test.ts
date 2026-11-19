@@ -30,6 +30,7 @@ const { db, state, requireContext, assertOrderAccess, logAudit, createNotificati
     orderIssue: { findFirst: vi.fn(), create: vi.fn() },
     orderNote: { create: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   state: { user: null as unknown },
   requireContext: vi.fn(),
@@ -63,6 +64,7 @@ import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { NOT_HELD_MESSAGE, OPEN_CONFIRMATION } from '@/lib/confirmation-queue';
 import { POST } from './route';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 /** CONFIRMATION_AGENT, live, 1/11 (`GET /api/roles`): all 22 keys, every one at the whole company. `confirmation.supervise` excuses nobody. */
 const LIVE_AGENT = [
@@ -284,3 +286,49 @@ describe('whoever can take or hand out any order, and whoever is no agent of the
     expectNothingWritten();
   });
 });
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): «اسحبي الطلب أول» leaves ONE row (NOT_HELD, this door, the order) through the real `logDeskRefusal`,
+ * written after the refusal is decided; the order she holds leaves none; the same press ten times is one row; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — issues', () => {
+  const deskRows = () =>
+    db.$executeRaw.mock.calls
+      .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
+      .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('NOT_HELD: one row', async () => {
+    const res = await asResponse(raise(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)));
+    expect(res.status).toBe(403);
+    expect(deskRows()).toEqual([{ companyId: 'c1', storeId: 's1', orderId: '55555555-5555-4555-8555-555555555555', code: 'NOT_HELD', door: 'issues' }]);
+  });
+
+  it('NEGATIVE: the order she holds writes no row', async () => {
+    const res = await asResponse(raise(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT), { claimedById: 'abeer' }));
+    expect(res.status).toBe(201);
+    expect(deskRows()).toEqual([]);
+  });
+
+  it('the same press ten times is one row', async () => {
+    for (let i = 0; i < 10; i++) expect((await asResponse(raise(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)))).status).toBe(403);
+    expect(deskRows()).toHaveLength(1);
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    const ok = await asResponse(raise(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)));
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await asResponse(raise(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)));
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
+  });
+});
+
+async function asResponse(p: Promise<{ status: number; body: Record<string, unknown> }>) {
+  const r = await p;
+  return { status: r.status, json: async () => r.body };
+}

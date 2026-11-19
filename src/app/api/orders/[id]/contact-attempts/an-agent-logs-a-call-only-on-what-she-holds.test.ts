@@ -23,6 +23,7 @@ const { db, requireContext, can, authorize, assertOrderAccess, logAudit } = vi.h
     order: { update: vi.fn(), findUnique: vi.fn() },
     orderActivity: { create: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   requireContext: vi.fn(),
   can: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock('@/lib/api-error', () => ({
 }));
 
 import { POST } from './route';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const ME = { id: 'agent-1', name: 'عبير', role: 'CONFIRMATION_AGENT' };
 const ORDER = { id: 'o1', companyId: 'c1', orderNumber: 'ORD-2026-1896', confirmationStatus: 'NEW', noAnswerCount: 0, customerId: 'cu1', claimedById: null as string | null };
@@ -163,5 +165,46 @@ describe('the old refusals come first', () => {
     const res = await record();
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe('CONTACT_LOG_NOT_ALLOWED');
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): «اسحبي الطلب أول» leaves ONE row (NOT_HELD, this door, the order) through the real `logDeskRefusal`,
+ * written after the refusal is decided; the order she holds leaves none; the same press ten times is one row; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — contact-attempts', () => {
+  const deskRows = () =>
+    db.$executeRaw.mock.calls
+      .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
+      .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('NOT_HELD: one row', async () => {
+    const res = await record();
+    expect(res.status).toBe(403);
+    expect(deskRows()).toEqual([{ companyId: 'c1', storeId: 's1', orderId: 'o1', code: 'NOT_HELD', door: 'contact-attempts' }]);
+  });
+
+  it('NEGATIVE: the order she holds writes no row', async () => {
+    const res = await (orderIs({ claimedById: ME.id }), record());
+    expect(res.status).toBe(200);
+    expect(deskRows()).toEqual([]);
+  });
+
+  it('the same press ten times is one row', async () => {
+    for (let i = 0; i < 10; i++) expect((await record()).status).toBe(403);
+    expect(deskRows()).toHaveLength(1);
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    const ok = await record();
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await record();
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

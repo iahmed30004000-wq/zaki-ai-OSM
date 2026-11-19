@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, requirePermission, pullNextOrder, reserve, handedOut } = vi.hoisted(() => ({
-  db: { order: { findUnique: vi.fn() } },
+  db: { order: { findUnique: vi.fn() }, $executeRaw: vi.fn() },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
   pullNextOrder: vi.fn(),
@@ -40,6 +40,7 @@ vi.mock('@/lib/confirmation-queue', async (importOriginal) => {
 });
 
 import { pullPaceRefusal } from '@/lib/confirmation-queue';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 import { POST } from './route';
 
 const COUNTRY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
@@ -102,5 +103,64 @@ describe('«اسحب» refused for its pace', () => {
     const res = await POST();
     expect(res.status).toBe(201);
     expect((await res.json()).order).toEqual({ id: 'o1', orderNumber: 'ORD-1' });
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): a refused pull leaves ONE row (code, door, the order it names, none for the pace) through the real
+ * `logDeskRefusal`, AFTER the pull answered; a pull that worked and an empty queue leave none; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — the pull', () => {
+  const rows = () => db.$executeRaw.mock.calls.map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('the pace refusal: one row, no order', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: pullPaceRefusal(FORTY, NOW) });
+    await POST();
+    expect(rows()).toEqual([{ companyId: 'c1', storeId: 's1', userId: 'huda', orderId: null, code: 'PULL_TOO_FAST', door: 'pull' }]);
+  });
+
+  it('«الشغل أول» and the untouched order: the row names the order', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: { code: 'WORK_FIRST', message: 'م', orderId: 'o9', orderNumber: 'ORD-9', count: 2 } });
+    await POST();
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: { code: 'UNTOUCHED_ORDER', message: 'م', orderId: 'o8', orderNumber: 'ORD-8' } });
+    await POST();
+    expect(rows().map((r: { code: unknown; orderId: unknown }) => [r.code, r.orderId])).toEqual([['WORK_FIRST', 'o9'], ['UNTOUCHED_ORDER', 'o8']]);
+  });
+
+  it('a full hand (CAP_TOTAL) is a row', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: { code: 'CAP_TOTAL', message: 'إيدك مليانة' } });
+    await POST();
+    expect(rows().map((r: { code: unknown }) => r.code)).toEqual(['CAP_TOTAL']);
+  });
+
+  it('NEGATIVE: a pull that worked writes no row', async () => {
+    expect((await POST()).status).toBe(201);
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: an empty queue is not a rule catching her — no row', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: { code: 'QUEUE_EMPTY', message: 'لا توجد طلبات بانتظار التأكيد الآن.' } });
+    expect((await POST()).status).toBe(404);
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('the same press hammered ten times is one row', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: pullPaceRefusal(FORTY, NOW) });
+    for (let i = 0; i < 10; i++) expect((await POST()).status).toBe(409);
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failing insert (the table rolled back) changes neither the status nor the body', async () => {
+    pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: pullPaceRefusal(FORTY, NOW) });
+    const ok = await POST();
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    const failed = await POST();
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

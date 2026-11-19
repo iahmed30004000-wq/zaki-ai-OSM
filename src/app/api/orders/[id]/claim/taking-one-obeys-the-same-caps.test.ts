@@ -25,6 +25,7 @@ const { db, requireContext, can, assertOrderAccess, atomicClaim, logAudit } = vi
     orderActivity: { create: vi.fn() },
     orderClaimHistory: { create: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   requireContext: vi.fn(),
   can: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock('@/lib/api-error', () => ({
 
 import { POST } from './route';
 import { CLAIM_CAPS } from '@/lib/confirmation-queue';
+import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 /** An unclaimed order sitting in the queue. */
 const QUEUED = {
@@ -235,5 +237,53 @@ describe('RV706 — what is held for her counts toward the cap here too', () => 
     expect(res.status, await res.clone().text()).toBeLessThan(400);
     expect(atomicClaim).toHaveBeenCalledTimes(1);
     expect(askedWhetherHeldForHer()).toBe(false);
+  });
+});
+
+/**
+ * «سجل الرفض» (request Q2a, 19/11): the claim-by-id door's rule refusals — a full hand, the untouched order, and an agent sent to the
+ * pull — leave ONE row each through the real `logDeskRefusal`; a claim that worked leaves none; a failing insert changes nothing.
+ */
+describe('«سجل الرفض» — the claim by id', () => {
+  const deskRows = () =>
+    db.$executeRaw.mock.calls
+      .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
+      .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
+  const one = (code: string) => [{ companyId: 'c1', storeId: 's1', userId: 'a1', orderId: 'o1', code, door: 'claim' }];
+  beforeEach(() => {
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockResolvedValue(1);
+  });
+
+  it('CAP_TOTAL: one row', async () => {
+    desk({ total: CLAIM_CAPS.total });
+    expect((await take()).status).toBe(409);
+    expect(deskRows()).toEqual(one('CAP_TOTAL'));
+  });
+
+  it('USE_THE_PULL: one row, and nothing else is read', async () => {
+    can.mockImplementation((_u: unknown, k: string) => k === 'orders.claim' || k === 'confirmation.work');
+    const res = await take();
+    expect(res.status).toBe(403);
+    expect((await res.json()).code).toBe('USE_THE_PULL');
+    expect(deskRows()).toEqual(one('USE_THE_PULL'));
+    expect(assertOrderAccess).not.toHaveBeenCalled();
+  });
+
+  it('NEGATIVE: a claim that worked writes no row', async () => {
+    desk({ total: 0 });
+    expect((await take()).status).toBeLessThan(400);
+    expect(deskRows()).toEqual([]);
+  });
+
+  it('a failing insert changes neither the status nor the body', async () => {
+    desk({ total: CLAIM_CAPS.total });
+    const ok = await take();
+    forgetDeskRefusalFold();
+    db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
+    desk({ total: CLAIM_CAPS.total });
+    const failed = await take();
+    expect(failed.status).toBe(ok.status);
+    expect(await failed.json()).toEqual(await ok.json());
   });
 });

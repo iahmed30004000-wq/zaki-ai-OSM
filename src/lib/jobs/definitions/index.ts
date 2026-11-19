@@ -19,8 +19,10 @@ import { pruneAbandonedCarts } from './prune-abandoned-carts';
 import { intakeFilter } from './intake-filter';
 import { queueHealthJob } from './queue-health';
 import { convertWaitingCartsJob } from './convert-waiting-carts';
+import { pruneDeskRefusals } from './prune-desk-refusals';
 
 export {
+  pruneDeskRefusals,
   pullAdSpendNight,
   convertWaitingCartsJob,
   queueHealthJob,
@@ -85,6 +87,8 @@ export const JOBS: JobDefinition[] = [
   convertWaitingCartsJob,
   // «سحب الإنفاق بعد منتصف الليل» (the owner, 17/11): the 06:00 pull again at 00:10 Asia/Amman, so yesterday is whole before the media buyer's 00:35 night round.
   pullAdSpendNight,
+  // «سجل الرفض» (19/11): the confirmation desk's refusal rows are kept 90 days, deleted in bounded passes.
+  pruneDeskRefusals,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {

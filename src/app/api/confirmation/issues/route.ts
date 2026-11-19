@@ -8,6 +8,7 @@ import { ORDER_WORK_DOOR } from '@/lib/order-work-door';
 import { STATE_LABEL_AR, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { mustHoldToWork, NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 import { apiErrorResponse } from '@/lib/api-error';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 import { createNotification } from '@/lib/notification';
 import { logAudit } from '@/lib/audit';
 import { zodMessage } from '@/lib/zod-message';
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
     // colleague held, and it was taken out of her hands. Asked before anything is read from the order or written; whoever can take or
     // hand out any order (`orders.unlock`, `orders.assign`) is not bound, and `confirmation.supervise` excuses nobody.
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: order.id, code: 'NOT_HELD', door: 'issues' });
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
