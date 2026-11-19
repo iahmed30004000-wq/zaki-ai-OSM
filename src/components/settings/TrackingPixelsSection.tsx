@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Checkbox } from '@/components/ui/Checkbox';
+import { IconButton } from '@/components/ui/IconButton';
 import { useAsk, useConfirm } from '@/components/ui/Confirm';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
@@ -83,7 +86,7 @@ function WherePicker({
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
+      className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
     >
       <option value={COMPANY_WIDE}>كل المتاجر</option>
       {countries.length > 0 && (
@@ -238,19 +241,22 @@ export function TrackingPixelsSection() {
   }
 
   return (
-    <section id="tracking" dir="rtl" className="rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] p-4 sm:p-6">
+    <section id="tracking" dir="rtl">
+    <Card padding="md" className="sm:p-6">
       <div className="mb-1 flex items-center gap-2">
         <RiRadarLine className="h-4 w-4 text-[var(--sys-primary)]" />
-        <h1 className="text-base font-bold text-[var(--sys-heading)]">بكسل الإعلانات</h1>
+        {/* 18/11 (R15e): a second-level heading. The frame's `PageHeader` above draws the page's one `h1` with the same name;
+            this card drew another, so the page had two. The words are the same. */}
+        <h2 className="text-base font-bold text-[var(--sys-heading)]">بكسل الإعلانات</h2>
       </div>
-      <p className="mb-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+      <p className="mb-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
         البكسلات تعمل على صفحات البيع وحدها — صفحات الهبوط وواجهات المتاجر — ولا تُحمَّل أبداً داخل لوحة التحكم
         ولا في المعاينة.
       </p>
 
       <div className="mb-4 flex items-start gap-2 rounded-lg border border-[var(--sys-warning)]/40 bg-[var(--sys-warning-soft)] px-3 py-2.5">
         <RiAlertLine className="mt-0.5 h-4 w-4 shrink-0 text-[var(--sys-warning)]" />
-        <p className="text-xs leading-relaxed text-[var(--sys-warning)]">
+        <p className="text-note leading-relaxed text-[var(--sys-warning)]">
           كل بكسل إضافي سكربت آخر يحمّله متصفح الزبون قبل أن تكتمل الصفحة — أضف ما تحتاجه فعلاً، وعطّل ما لم تعد
           تستعمله بدل أن تتركه يعمل.
         </p>
@@ -261,25 +267,26 @@ export function TrackingPixelsSection() {
         {PLATFORMS.map((p) => {
           const active = p.key === platform;
           return (
-            <button
+            // 18/11 (R15e): the kit's `Button` — the chosen platform filled, the others framed (the look `Segmented` gives a
+            // chosen value). Not `Segmented` itself: each platform carries its mark and its count, and a segment holds words only.
+            <Button
               key={p.key}
               type="button"
               role="tab"
               aria-selected={active}
               data-testid={`platform-${p.key}`}
+              variant={active ? 'primary' : 'secondary'}
               onClick={() => { setPlatform(p.key); setNewId(''); setMsg(null); }}
-              className={`flex h-12 items-center justify-center gap-2 rounded-lg border px-2 text-sm font-semibold transition ${
-                active ? 'border-[var(--sys-heading)] text-[var(--sys-heading)]' : 'border-[var(--sys-border)] text-[var(--sys-muted-foreground)] hover:border-[var(--sys-border-strong)]'
-              }`}
+              className="gap-2 px-2 font-semibold"
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10" style={{ backgroundColor: p.markBg }}>
                 {p.mark}
               </span>
               {p.label}
               {counts[p.key] ? (
-                <span className="rounded-full bg-[var(--sys-surface-strong)] px-1.5 text-xs tabular-nums text-[var(--sys-foreground)]">{counts[p.key]}</span>
+                <span className="rounded-full bg-[var(--sys-surface-strong)] px-1.5 text-note tabular-nums text-[var(--sys-foreground)]">{counts[p.key]}</span>
               ) : null}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -291,7 +298,7 @@ export function TrackingPixelsSection() {
       ) : (
         <div className="space-y-2">
           {rows.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[var(--sys-border)] py-5 text-center text-xs text-[var(--sys-muted)]">
+            <p className="rounded-lg border border-dashed border-[var(--sys-border)] py-5 text-center text-note text-[var(--sys-muted)]">
               لا بكسل {meta.label} بعد.
             </p>
           )}
@@ -303,8 +310,8 @@ export function TrackingPixelsSection() {
                 title={p.enabled ? 'يعمل' : 'معطّل'}
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-[var(--sys-heading)]">{p.name}</p>
-                <p className="truncate font-mono text-xs text-[var(--sys-muted-foreground)]" dir="ltr">{p.pixelId}</p>
+                <p className="truncate text-note font-semibold text-[var(--sys-heading)]">{p.name}</p>
+                <p className="truncate font-mono text-note text-[var(--sys-muted-foreground)]" dir="ltr">{p.pixelId}</p>
               </div>
 
               {/* WHICH KIND of page, and WHOSE visitors. Two different
@@ -317,7 +324,7 @@ export function TrackingPixelsSection() {
                 onChange={(e) =>
                   void send(`/api/settings/tracking-pixels/${p.id}`, { method: 'PATCH', body: JSON.stringify({ scope: e.target.value }) }, 'حُفظ.')
                 }
-                className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
+                className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
               >
                 {SCOPE_CHOICES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -352,7 +359,7 @@ export function TrackingPixelsSection() {
                 onChange={(e) =>
                   void send(`/api/settings/tracking-pixels/${p.id}`, { method: 'PATCH', body: JSON.stringify({ orderEvent: e.target.value }) }, 'حُفظ.')
                 }
-                className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
+                className="h-11 md:h-8 rounded-md border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note text-[var(--sys-foreground)] disabled:bg-[var(--sys-surface)]"
               >
                 {ORDER_EVENTS.map((ev) => (
                   <option key={ev} value={ev}>الطلب = {ORDER_EVENT_AR[ev]}</option>
@@ -362,36 +369,37 @@ export function TrackingPixelsSection() {
                 ['sendViewContent', 'مشاهدة المنتج'],
                 ['sendInitiateCheckout', 'بدء الطلب'],
               ] as const).map(([key, label]) => (
-                <label key={key} className="inline-flex min-h-11 md:min-h-0 items-center gap-1 text-xs text-[var(--sys-foreground)]">
-                  <input
-                    type="checkbox"
-                    checked={p[key] !== false}
-                    disabled={!canEdit}
-                    onChange={(e) =>
-                      void send(`/api/settings/tracking-pixels/${p.id}`, { method: 'PATCH', body: JSON.stringify({ [key]: e.target.checked }) }, 'حُفظ.')
-                    }
-                  />
-                  {label}
-                </label>
+                // 18/11 (R15e): the kit's `Checkbox`, with an id of the row's own — every row draws the same two ticks.
+                <Checkbox
+                  key={key}
+                  id={`${p.id}-${key}`}
+                  label={label}
+                  checked={p[key] !== false}
+                  disabled={!canEdit}
+                  onChange={(checked) =>
+                    void send(`/api/settings/tracking-pixels/${p.id}`, { method: 'PATCH', body: JSON.stringify({ [key]: checked }) }, 'حُفظ.')
+                  }
+                />
               ))}
 
               {canEdit && (
                 <div className="flex items-center gap-0.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="quiet"
+                    size="sm"
                     onClick={() =>
                       void send(`/api/settings/tracking-pixels/${p.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !p.enabled }) }, p.enabled ? 'عُطّل البكسل.' : 'فُعّل البكسل.')
                     }
-                    className="min-h-11 md:min-h-0 inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)] hover:text-[var(--sys-foreground)]"
                   >
                     {p.enabled ? 'تعطيل' : 'تفعيل'}
-                  </button>
-                  <button type="button" onClick={() => void rename(p)} aria-label="تعديل الاسم" title="تعديل الاسم" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-md p-1.5 text-[var(--sys-muted-foreground)] hover:bg-[var(--sys-surface)]">
+                  </Button>
+                  <IconButton type="button" size="sm" label="تعديل الاسم" onClick={() => void rename(p)}>
                     <RiPencilLine className="h-4 w-4" />
-                  </button>
-                  <button type="button" onClick={() => void remove(p)} aria-label="حذف" title="حذف" className="min-h-11 min-w-11 md:min-h-0 md:min-w-0 rounded-md p-1.5 text-[var(--sys-muted)] hover:bg-[var(--sys-destructive-soft)] hover:text-[var(--sys-destructive)]">
+                  </IconButton>
+                  <IconButton type="button" size="sm" label="حذف" onClick={() => void remove(p)}>
                     <RiDeleteBinLine className="h-4 w-4" />
-                  </button>
+                  </IconButton>
                 </div>
               )}
             </div>
@@ -413,7 +421,7 @@ export function TrackingPixelsSection() {
                 aria-label="أين يعمل"
                 value={newScope}
                 onChange={(e) => setNewScope(e.target.value as TrackingScope)}
-                className="h-11 md:h-10 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-xs text-[var(--sys-foreground)]"
+                className="h-11 md:h-10 rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-2 text-note text-[var(--sys-foreground)]"
               >
                 {SCOPE_CHOICES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -426,20 +434,21 @@ export function TrackingPixelsSection() {
                 countries={countries}
                 onChange={setNewWhere}
               />
-              <Button type="submit" variant="outline" disabled={busy || !newId.trim()} className="h-10">
+              <Button type="submit" variant="secondary" disabled={busy || !newId.trim()}>
                 {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
                 أضف
               </Button>
             </form>
           ) : (
-            <p className="text-xs text-[var(--sys-muted-foreground)]">عرض فقط — تعديل البكسلات يحتاج صلاحية تعديل الإعدادات.</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">عرض فقط — تعديل البكسلات يحتاج صلاحية تعديل الإعدادات.</p>
           )}
 
           {msg && (
-            <p className={`text-xs font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`} role="status">{msg.text}</p>
+            <p className={`text-note font-medium ${msg.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`} role="status">{msg.text}</p>
           )}
         </div>
       )}
+    </Card>
     </section>
   );
 }

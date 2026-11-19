@@ -2310,14 +2310,15 @@
     "tabs": 0
   },
   "src/components/settings/AdAccountsCard.tsx": {
-    "buttons": 7,
+    "buttons": 3,
     "inputs": 4,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 12,
     "links": 3,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/settings/AgentCommissionCard.tsx": {
     "buttons": 3,
@@ -2362,14 +2363,15 @@
     "tabs": 0
   },
   "src/components/settings/CustomConversionsCard.tsx": {
-    "buttons": 11,
+    "buttons": 9,
     "inputs": 8,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 12,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 2
   },
   "src/components/settings/IntakeFilterCard.tsx": {
     "buttons": 0,
@@ -2566,14 +2568,16 @@
     "tabs": 0
   },
   "src/components/settings/TrackingPixelsSection.tsx": {
-    "buttons": 5,
-    "inputs": 7,
+    "buttons": 3,
+    "inputs": 6,
     "columns": 4,
-    "cards": 0,
+    "cards": 1,
     "modals": 0,
     "icons": 9,
     "links": 0,
-    "tabs": 1
+    "tabs": 1,
+    "iconButtons": 2,
+    "checkboxes": 1
   },
   "src/components/settings/WhatsAppAfterNoAnswerCard.tsx": {
     "buttons": 1,
