@@ -40,7 +40,10 @@ const COOKIE_NAME = 'salesflow_session';
 // matcher's static-asset list, so without this the request reached the
 // session check and every public page was served a 302 to /login instead of
 // its font.
-const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/lp', '/s', '/fonts'];
+//
+// /verify is the public authenticity checker (`/verify/<storeId>`, 19/11): anyone scans a barcode there with no session.
+// Its own guards: the API answers only `{genuine}`, rate-limited per address and per store.
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/lp', '/s', '/fonts', '/verify'];
 
 /**
  * Edge pass: session presence and account state only.
