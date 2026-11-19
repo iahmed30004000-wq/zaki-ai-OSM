@@ -2343,6 +2343,16 @@
     "tabs": 0,
     "checkboxes": 1
   },
+  "src/components/settings/AuthenticityCodesCard.tsx": {
+    "buttons": 3,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/settings/CallProofCard.tsx": {
     "buttons": 0,
     "inputs": 1,
@@ -3218,6 +3228,16 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/verify/VerifyBarcodeView.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   }

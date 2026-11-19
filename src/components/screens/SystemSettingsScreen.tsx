@@ -5,6 +5,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
+import { AuthenticityCodesCard } from '@/components/settings/AuthenticityCodesCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -131,6 +132,10 @@ export function SystemSettingsScreen() {
           among the product's own offers, where every price in this system
           lives. */}
       <PostOrderOfferCard />
+
+      {/* «رموز الأصالة» (19/11): the codes the public `/verify/[storeId]` page reads «أصلي» for. A card here and not a page of
+          its own, because a new page is a line of the registry every staff screen downloads, and those ceilings only hold or fall. */}
+      <AuthenticityCodesCard />
 
       {/*
         THE EIGHT CONFIRMATION-RULE CARDS ARE NOT HERE ANY MORE (18/11, request C1): «نظام الجولات» · «الطلب يرجع للطابور فوراً» · «إثبات المكالمات وجدول المحاولات» ·

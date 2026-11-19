@@ -31,6 +31,7 @@ vi.mock('@/components/settings/PartnersCard', () => ({ PartnersCard: () => <div 
 vi.mock('@/components/settings/PerformanceSettingsCard', () => ({ PerformanceSettingsCard: () => <div data-card="PerformanceSettingsCard" /> }));
 vi.mock('@/components/settings/PenaltyRulesCard', () => ({ PenaltyRulesCard: () => <div data-card="PenaltyRulesCard" /> }));
 vi.mock('@/components/settings/PostOrderOfferCard', () => ({ PostOrderOfferCard: () => <div data-card="PostOrderOfferCard" /> }));
+vi.mock('@/components/settings/AuthenticityCodesCard', () => ({ AuthenticityCodesCard: () => <div data-card="AuthenticityCodesCard" /> }));
 
 import { FinanceRulesScreen } from './FinanceRulesScreen';
 import { SystemSettingsScreen } from './SystemSettingsScreen';
@@ -138,7 +139,8 @@ describe('2 · the two cards, on this page and on no other', () => {
     for (const name of Object.keys(CARDS)) expect(drawn, name).not.toContain(name);
     // 19/11 (R15a): was ['PerformanceSettingsCard', 'PenaltyRulesCard', 'PostOrderOfferCard'] — the score and the deductions moved, unchanged, to «قواعد الموظفين»
     // (/admin/staff-rules); `the-staff-rules-page-holds-the-two-cards.test.tsx` pins them there. Only the offer after the order stays beside the name.
-    expect(drawn).toEqual(['PostOrderOfferCard']);
+    // 19/11 (barcode authenticity): «رموز الأصالة» joined this screen as a card of its own (not a page: a registry line rides in every staff screen's first load).
+    expect(drawn).toEqual(['PostOrderOfferCard', 'AuthenticityCodesCard']);
   });
 
   it('NEGATIVE: no other source file in src draws or imports either card', () => {
