@@ -24,6 +24,9 @@ const { api, refresh, who, door } = vi.hoisted(() => ({
   door: { refusal: null as string | null },
 }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a) }));
+// 19/11 (W0b): the screen gained «المخازن» under each country — its own card, with its own door and its own test
+// (`geo/WarehousesCard.test.tsx`). Drawn as nothing here, so what THIS file counts and presses stays what it was.
+vi.mock('@/components/geo/WarehousesCard', () => ({ WarehousesCard: () => null }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh }),
   usePathname: () => '/settings/geo',

@@ -9,7 +9,8 @@ import { firstIssue, warehouseKeepersSchema } from '@/lib/geo-schemas';
 import { WAREHOUSE_NOT_FOUND_AR, reachesCountryOf, sessionPeople } from '@/lib/warehouses';
 
 /**
- *   GET /api/geo/warehouses/:id/keepers  (geo.manage) — who keeps it, and whether each still reaches its country
+ *   GET /api/geo/warehouses/:id/keepers  (geo.manage) — who keeps it, and whether each still reaches its country;
+ *                                                      plus `candidates`: the active people who may be named (the picker's list)
  *   PUT /api/geo/warehouses/:id/keepers  (geo.manage) — { userIds }: the whole list, replacing the old one
  *
  * A keeper row CONFINES a person: whoever keeps any warehouse reaches only the
@@ -45,7 +46,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const keepers = await Promise.all(
       people.map(async (p) => ({ id: p.id, name: p.name, reachesCountry: await reachesCountryOf(p.user, companyId, warehouse.countryId) }))
     );
-    return NextResponse.json({ keepers });
+
+    // THE PICKER'S LIST (W0b): every ACTIVE person of this company who reaches
+    // the warehouse's country — judged by the same rule the PUT below judges a
+    // name by, on keys computed as a session computes them. Asked only when the
+    // picker opens; a staff list is tens of people, not thousands.
+    const active = await db.user.findMany({ where: { companyId, status: 'ACTIVE' }, select: { id: true } });
+    const pool = await sessionPeople(companyId, active.map((u) => u.id));
+    const candidates: { id: string; name: string }[] = [];
+    for (const p of pool) {
+      if (await reachesCountryOf(p.user, companyId, warehouse.countryId)) candidates.push({ id: p.id, name: p.name });
+    }
+    candidates.sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    return NextResponse.json({ keepers, candidates });
   } catch (error) {
     return apiErrorResponse(error);
   }
