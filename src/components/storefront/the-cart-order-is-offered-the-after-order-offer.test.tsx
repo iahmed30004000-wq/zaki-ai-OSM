@@ -283,8 +283,9 @@ describe('the thank-you page draws the same card, only for its own reference', (
     expect(trackEvent.mock.calls).toEqual([
       ['Purchase', { orderId: `${N}:${OFFER.id}`, value: 11, currency: 'JOD', contentName: 'كريم' }],
     ]);
-    // Answered — so a refresh does not ask again.
-    expect(sessionStorage.getItem(afterOrderKey(N))).toBeNull();
+    // Answered — so a refresh does not ask again. The entry is forgotten by an effect that runs AFTER the answer is
+    // drawn, so it is awaited, as «لا شكراً» below awaits it: asserted at once it races that effect.
+    await waitFor(() => expect(sessionStorage.getItem(afterOrderKey(N))).toBeNull());
     cleanup();
     await page();
     expect(card(), 'رجع العرض بعد ما انضاف').toBeNull();
@@ -300,7 +301,8 @@ describe('the thank-you page draws the same card, only for its own reference', (
     expect(screen.queryByRole('button', { name: 'لا شكراً' })).toBeNull();
     expect(trackEvent).not.toHaveBeenCalled();
     expect(screen.queryByRole('status')).toBeNull();
-    expect(sessionStorage.getItem(afterOrderKey(N))).toBeNull();
+    // Forgotten by an effect after the sentence is drawn — awaited, not asserted at once (see the 200 case).
+    await waitFor(() => expect(sessionStorage.getItem(afterOrderKey(N))).toBeNull());
   });
 
   it('«لا شكراً» sends nothing, closes the card and forgets the entry', async () => {
