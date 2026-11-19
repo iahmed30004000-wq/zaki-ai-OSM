@@ -561,5 +561,985 @@
     "src/components/store-admin/StoreAdminScreen.tsx": {
       "textXs": 2
     }
-  }
+  },
+  "allowed": [
+    {
+      "file": "src/app/(system)/error.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/app/(system)/not-found.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها؛ مربع أيقونة صغير بقياس ثابت، مش بطاقة"
+    },
+    {
+      "file": "src/app/forbidden.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/ai/AiDock.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه"
+    },
+    {
+      "file": "src/components/attendance/ShiftChip.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "شريحة لونها وإطارها بيتبدّلوا حسب الحالة، مش زر بشكل ثابت"
+    },
+    {
+      "file": "src/components/attendance/ShiftChip.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/carts/cart-parts.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/confirmation/CallHelperCard.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/confirmation/CallOutcomeSheet.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه"
+    },
+    {
+      "file": "src/components/confirmation/CallOutcomeSheet.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ورقة أو لوحة عائمة بموقع ثابت فوق الصفحة، مش بطاقة بمكانها"
+    },
+    {
+      "file": "src/components/confirmation/WhatsAppAfterNoAnswer.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/confirmation/WinbackRuleDialog.tsx",
+      "kind": "rawCheckboxes",
+      "count": 2,
+      "why": "خانة اختيار أصلية داخل نموذج بنص مجاور — بتنرحّل للمكوّن الجاهز مع شاشتها"
+    },
+    {
+      "file": "src/components/dashboard/DetailsLinks.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/dashboard/MissionCard.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/dashboard/WorkToday.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها؛ سطح لونه وإطاره بيتبدّلوا حسب الحالة، وبطاقة العدّة بلون واحد"
+    },
+    {
+      "file": "src/components/growth/AskAi.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/growth/CampaignsBoard.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "مقبض سحب لإعادة الترتيب: بيمرّر مراجع ومستمعي السحب للعنصر نفسه، والزر الجاهز ما بمرّرها"
+    },
+    {
+      "file": "src/components/growth/CampaignsBoard.tsx",
+      "kind": "rawSurfaces",
+      "count": 4,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة؛ مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة؛ حاوية قائمة بخطوط فاصلة وحواف مقصوصة — شكلها جزء من القائمة؛ بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/growth/IntelligenceStrip.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/inventory/OpeningStockCount.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/landing-editor/Advanced.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AfterOrderPanel.tsx",
+      "kind": "rawButtons",
+      "count": 6,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AfterOrderPanel.tsx",
+      "kind": "rawCheckboxes",
+      "count": 5,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AfterOrderPanel.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AiCopyPanel.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AiCopyPanel.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/AiCopyPanel.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BlockBuilder.tsx",
+      "kind": "rawButtons",
+      "count": 29,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BlockBuilder.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BlockBuilder.tsx",
+      "kind": "rawSurfaces",
+      "count": 7,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BuildMyLandingPage.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BuildMyLandingPage.tsx",
+      "kind": "rawCheckboxes",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/BuildMyLandingPage.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/EditorPanes.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/SelectionBar.tsx",
+      "kind": "rawButtons",
+      "count": 12,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/SelectionBar.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/SlidesField.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/StoreThemePreview.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/StoreThemePreview.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-editor/UndoBar.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-flow/CreateWizard.tsx",
+      "kind": "rawButtons",
+      "count": 5,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-flow/CreateWizard.tsx",
+      "kind": "rawSurfaces",
+      "count": 4,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/landing-flow/DesignCards.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/ops/DelayShipmentDialog.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء؛ ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/ops/DelayShipmentDialog.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/orders/AiOrderModal.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة اختيار أصلية داخل نموذج بنص مجاور — بتنرحّل للمكوّن الجاهز مع شاشتها"
+    },
+    {
+      "file": "src/components/orders/AiOrderModal.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "رقعة صغيرة بخط ثابت لعرض رمز أو قيمة، مش بطاقة"
+    },
+    {
+      "file": "src/components/orders/ChangeRequestReview.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/orders/ContactButtons.tsx",
+      "kind": "rawButtons",
+      "count": 3,
+      "why": "ضغطة بشكل مخصّص (رابط أو شريحة أو مقبض) بتاخد مظهرها من مكان استعمالها، مش من زر العدّة؛ زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه؛ ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/orders/ContactButtons.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ورقة أو لوحة عائمة بموقع ثابت فوق الصفحة، مش بطاقة بمكانها"
+    },
+    {
+      "file": "src/components/orders/CopyValue.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه"
+    },
+    {
+      "file": "src/components/orders/CourierNotifyDialog.tsx",
+      "kind": "rawButtons",
+      "count": 4,
+      "why": "رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته؛ زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته؛ زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/CreateOrderModal.tsx",
+      "kind": "rawCheckboxes",
+      "count": 2,
+      "why": "خانة اختيار أصلية داخل نموذج بنص مجاور — بتنرحّل للمكوّن الجاهز مع شاشتها"
+    },
+    {
+      "file": "src/components/orders/CreateOrderModal.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/orders/CustomerHistory.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "شريحة لونها وإطارها بيتبدّلوا حسب الحالة، مش زر بشكل ثابت"
+    },
+    {
+      "file": "src/components/orders/ImportOrdersDialog.tsx",
+      "kind": "rawButtons",
+      "count": 4,
+      "why": "زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته؛ خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء؛ زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/ImportOrdersDialog.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة اختيار أصلية داخل نموذج بنص مجاور — بتنرحّل للمكوّن الجاهز مع شاشتها"
+    },
+    {
+      "file": "src/components/orders/LinesRequestReview.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/MigrateOrdersDialog.tsx",
+      "kind": "rawButtons",
+      "count": 3,
+      "why": "زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته؛ زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/MigrateOrdersDialog.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/orders/OrderNotesPeek.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/OrderNotesPeek.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/orders/OrderRef.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/ProductLinesEditor.tsx",
+      "kind": "rawButtons",
+      "count": 5,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه؛ زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/RatingLinkButton.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/orders/RatingLinkButton.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/production/BatchCostDialog.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته؛ زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه"
+    },
+    {
+      "file": "src/components/products/ProductOffers.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "مقبض سحب لإعادة الترتيب: بيمرّر مراجع ومستمعي السحب للعنصر نفسه، والزر الجاهز ما بمرّرها"
+    },
+    {
+      "file": "src/components/scan/ScanButton.tsx",
+      "kind": "rawButtons",
+      "count": 3,
+      "why": "ضغطة بشكل مخصّص (رابط أو شريحة أو مقبض) بتاخد مظهرها من مكان استعمالها، مش من زر العدّة؛ خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء؛ زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/screens/AgentCustodyScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/AiSettingsScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/CampaignsScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/CampaignsScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/CommissionSettingsScreen.tsx",
+      "kind": "rawDatePickers",
+      "count": 2,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/GeoSettingsScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "مربع أيقونة صغير بقياس ثابت، مش بطاقة"
+    },
+    {
+      "file": "src/components/screens/InstalledAppsScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/IntelligenceScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "سطح لونه وإطاره بيتبدّلوا حسب الحالة، وبطاقة العدّة بلون واحد"
+    },
+    {
+      "file": "src/components/screens/InventoryBalancesScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/screens/InventoryBalancesScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "سطح لونه وإطاره بيتبدّلوا حسب الحالة، وبطاقة العدّة بلون واحد"
+    },
+    {
+      "file": "src/components/screens/JobsScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "رقعة صغيرة بخط ثابت لعرض رمز أو قيمة، مش بطاقة؛ سطح لونه وإطاره بيتبدّلوا حسب الحالة، وبطاقة العدّة بلون واحد"
+    },
+    {
+      "file": "src/components/screens/LandingLibraryScreen.tsx",
+      "kind": "rawButtons",
+      "count": 3,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingLibraryScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingPageDetailScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingPageDetailScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 6,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingPageEditorScreen.tsx",
+      "kind": "rawButtons",
+      "count": 14,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingPageEditorScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 4,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/LandingPagesScreen.tsx",
+      "kind": "rawButtons",
+      "count": 8,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/PermissionsScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/PreparationScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/PreparationScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع أيقونة صغير بقياس ثابت، مش بطاقة"
+    },
+    {
+      "file": "src/components/screens/ProductDetailScreen.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه"
+    },
+    {
+      "file": "src/components/screens/SettingsHomeScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/ShipmentsNewScreen.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/ShippingBatchesScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/StoreDomainScreen.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreDomainScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreLanguagesScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreLanguagesScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreMenusScreen.tsx",
+      "kind": "rawButtons",
+      "count": 5,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreMenusScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StorePagesScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StorePagesScreen.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StorePagesScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreReviewsScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreRoutesScreen.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreRoutesScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreSearchScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreThemeScreen.tsx",
+      "kind": "rawButtons",
+      "count": 11,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreThemeScreen.tsx",
+      "kind": "rawCheckboxes",
+      "count": 10,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoreThemeScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 5,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoresScreen.tsx",
+      "kind": "rawButtons",
+      "count": 8,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/StoresScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/screens/TeamLeaderAudit.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/TelegramSettingsScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/TrackingScreen.tsx",
+      "kind": "rawButtons",
+      "count": 4,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء؛ رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/screens/UserDetailScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/screens/WhatsAppInboxScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/confirmation/ActionDialogs.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/screens/confirmation/ActionDialogs.tsx",
+      "kind": "rawDatePickers",
+      "count": 2,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/confirmation/AssistantDialog.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "رابط أو زر هادئ بلا إطار كتبته الشاشة بيدها — بديله الزر الهادئ من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/screens/confirmation/AssistantDialog.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/finance/ClosingScreen.tsx",
+      "kind": "rawDatePickers",
+      "count": 1,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/finance/CollectionScreen.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "شريحة أو رابط بإطار وحجم لمس، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/screens/finance/LinkLineDialog.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/finance/MatchingScreen.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "رأس قسم بيفتح ويسكّر: الصف كله هو الزر وفيه أكثر من نص"
+    },
+    {
+      "file": "src/components/screens/finance/SearchAllStatements.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/finance/SwapDialog.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/screens/finance/WalletLookDialog.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/screens/finance/WalletsScreen.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص؛ خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/screens/finance/WalletsScreen.tsx",
+      "kind": "rawDatePickers",
+      "count": 2,
+      "why": "حقل تاريخ واحد داخل نموذج: مش مدى تواريخ، فمكوّن المدى ما بنفع مكانه"
+    },
+    {
+      "file": "src/components/screens/tracking/DeliverDialog.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "شريحة لونها وإطارها بيتبدّلوا حسب الحالة، مش زر بشكل ثابت"
+    },
+    {
+      "file": "src/components/screens/tracking/DifferenceMark.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "شريحة لونها وإطارها بيتبدّلوا حسب الحالة، مش زر بشكل ثابت"
+    },
+    {
+      "file": "src/components/screens/users/UserShift.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/settings/CallProofCard.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/CourierFees.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "سطح لونه وإطاره بيتبدّلوا حسب الحالة، وبطاقة العدّة بلون واحد"
+    },
+    {
+      "file": "src/components/settings/CustomConversionsCard.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/settings/IntakeFilterCard.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/LeadsV2Card.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/MenuOrderCard.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "مقبض سحب لإعادة الترتيب: بيمرّر مراجع ومستمعي السحب للعنصر نفسه، والزر الجاهز ما بمرّرها"
+    },
+    {
+      "file": "src/components/settings/MessageTemplatesCard.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/settings/PartnersCard.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/PenaltyRulesCard.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر إجراء بإطار كتبته الشاشة بيدها — بديله الزر الثانوي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/settings/PenaltyRulesCard.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/settings/PerLineSettlementCard.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/PerformanceSettingsCard.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/settings/PostOrderOfferCard.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/settings/QueueModesCard.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "زر إجراء أساسي بلون العلامة كتبته الشاشة بيدها — بديله الزر الأساسي من العدّة، وبينرحّل مع شاشته"
+    },
+    {
+      "file": "src/components/settings/QueuePriorityCard.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/settings/StorefrontSettings.tsx",
+      "kind": "rawSurfaces",
+      "count": 2,
+      "why": "بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/settings/ThemePicker.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/settings/WinbackV2Card.tsx",
+      "kind": "rawCheckboxes",
+      "count": 1,
+      "why": "خانة تشغيل لإعداد داخل بطاقة إعدادات، مربوطة بنص مجاور وبتنحفظ فوراً"
+    },
+    {
+      "file": "src/components/shell/AccountScreens.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/shell/CommandPalette.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص؛ خيار من مجموعة أو تبويب بلونه بيتبدّل حسب المختار — شريحة اختيار مش زر إجراء"
+    },
+    {
+      "file": "src/components/shell/EntryPicker.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/shell/EntryPicker.tsx",
+      "kind": "rawSurfaces",
+      "count": 4,
+      "why": "مربع أيقونة صغير بقياس ثابت، مش بطاقة؛ بطاقة بإطار وخلفية كتبتها الشاشة بيدها — بديلها بطاقة العدّة، وبتنرحّل مع شاشتها"
+    },
+    {
+      "file": "src/components/shell/Header.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة بشكل مخصّص (رابط أو شريحة أو مقبض) بتاخد مظهرها من مكان استعمالها، مش من زر العدّة"
+    },
+    {
+      "file": "src/components/shell/Header.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "مربع ملاحظة أو تلميح صغير بخلفية السطح، مش بطاقة صفحة"
+    },
+    {
+      "file": "src/components/shell/InstallApp.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة بشكل مخصّص (رابط أو شريحة أو مقبض) بتاخد مظهرها من مكان استعمالها، مش من زر العدّة"
+    },
+    {
+      "file": "src/components/shell/MobileNav.tsx",
+      "kind": "rawButtons",
+      "count": 2,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص؛ رأس قسم بيفتح ويسكّر: الصف كله هو الزر وفيه أكثر من نص"
+    },
+    {
+      "file": "src/components/shell/NotificationBell.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ضغطة صف أو بطاقة كاملة: الصف كله زر وفيه محتوى متعدد، مش زر بنص"
+    },
+    {
+      "file": "src/components/shell/Sidebar.tsx",
+      "kind": "rawButtons",
+      "count": 4,
+      "why": "زر أيقونة لوحده بتسمية للقارئ وحجم لمس مضبوط لمكانه؛ رأس قسم بيفتح ويسكّر: الصف كله هو الزر وفيه أكثر من نص؛ ضغطة بشكل مخصّص (رابط أو شريحة أو مقبض) بتاخد مظهرها من مكان استعمالها، مش من زر العدّة"
+    },
+    {
+      "file": "src/components/store-admin/PanelHeader.tsx",
+      "kind": "rawButtons",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    },
+    {
+      "file": "src/components/store-admin/PanelHeader.tsx",
+      "kind": "rawSurfaces",
+      "count": 1,
+      "why": "ملف صاحب المتجر لحد R18"
+    }
+  ]
 }

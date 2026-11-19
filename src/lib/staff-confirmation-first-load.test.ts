@@ -129,7 +129,15 @@ describe('what an agent downloads before «طلباتي» draws', () => {
    * Each paid for itself separately (v2: 413.5 KB; carts: +~0.9 KB of shell); together a real `next build` then this file under REQUIRE_BUILD=1 read 415.2 KB,
    * 28 files. Nothing new is in the route: the order window, the create window, the assistant and the «مؤجّلة» tab are still absent from the chunks.
    */
-  const CEILING_KB = 416;
+  /*
+   * 19/11 (R19 — the ceilings come down): 416 → 413.1, MEASURED. The route's JavaScript, gzipped, as this file reads it
+   * (the framework floor in `rootMainFiles` + the chunks of the route's client-reference manifest), from a production build in a
+   * worktree (`NEXT_TURBOPACK_ROOT=<the main checkout> NEXT_DIST_DIR=.next-verify` `next build`, Turbopack, on osm/main 473ab6ac plus
+   * this change; the build stops at the type-check step on a stale shared database client, after it has written its manifests): 413.094 KB,
+   * 28 files. The ceiling is the measurement rounded UP to the next hundredth — 413.10, written 413.1 — and not a round figure.
+   * Never above today's 416; from here it only holds or falls.
+   */
+  const CEILING_KB = 413.1;
 
   it(`keeps /confirmation/mine at or under ${CEILING_KB} KB of JS, gzipped`, () => {
     if (!measurable()) return noBuild();

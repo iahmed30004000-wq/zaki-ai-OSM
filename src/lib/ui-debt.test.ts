@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ALLOWED,
   DEBT_KINDS,
+  MIN_WHY,
+  ZERO_KINDS,
+  allowedGaps,
+  allowedProblems,
+  allowedSums,
+  allowedReport,
   compare,
   countsOf,
   explain,
@@ -14,6 +21,8 @@ import {
   riseLine,
   run,
   totalsOf,
+  gapLine,
+  type AllowedEntry,
   type Io,
   type Registry,
 } from '../../scripts/ui-debt';
@@ -35,7 +44,11 @@ import {
  *
  * 18/11: the registry no longer stores a `totals` block (every screen PR changed those lines, so any two PRs conflicted on
  * the file). The totals are computed from the per-file rows (`totalsOf`) wherever they are needed, and a registry that
- * carries a `totals` key again is refused. The old test «keeps its totals equal to the sum of its files» guarded a stored
+ * carries a `totals` key again is refused.
+ *
+ * 19/11 (R19c): the registry gained ONE more key, `allowed` — the list of raw controls that are right to stay raw, each with a
+ * sentence in plain Arabic. It is WRITTEN in `scripts/ui-debt.ts` (`ALLOWED`) and copied to the JSON by `--write`; the JSON is
+ * never its source. Five kinds are pinned to ZERO outside it (the last describes of this file); `textXs` keeps «only falls». The old test «keeps its totals equal to the sum of its files» guarded a stored
  * number that no longer exists; its intent (no hand-edited ceiling) is held by the byte check and by the refusal test.
  */
 
@@ -61,19 +74,20 @@ describe('the pinned debt against what is written now', () => {
 
   it('holds per-file rows only — a stored totals block is refused, so it never comes back', () => {
     const raw = JSON.parse(readFileSync(join(process.cwd(), 'scripts', 'ui-debt.json'), 'utf8')) as Record<string, unknown>;
-    expect(Object.keys(raw), 'السجل بيحمل «files» بس — المجاميع بتنحسب').toEqual(['files']);
-    const withTotals = JSON.stringify({ totals: totalsOf(pinned), files: pinned.files });
+    expect(Object.keys(raw), 'السجل بيحمل «files» و«allowed» بس — المجاميع بتنحسب').toEqual(['files', 'allowed']);
+    const withTotals = JSON.stringify({ totals: totalsOf(pinned), files: pinned.files, allowed: pinned.allowed });
     expect(() => parseRegistry(withTotals)).toThrow(/totals/);
-    expect(() => parseRegistry(JSON.stringify({ files: {}, other: 1 }))).toThrow(/other/);
+    expect(() => parseRegistry(JSON.stringify({ files: {}, allowed: [], other: 1 }))).toThrow(/other/);
+    expect(() => parseRegistry(JSON.stringify({ files: {} }))).toThrow(/allowed/);
     expect(() => parseRegistry(JSON.stringify({ totals: {} }))).toThrow();
-    expect(parseRegistry(JSON.stringify({ files: { 'a.tsx': { rawButtons: 1 } } }))).toEqual({ files: { 'a.tsx': { rawButtons: 1 } } });
+    expect(parseRegistry(JSON.stringify({ files: { 'a.tsx': { rawButtons: 1 } }, allowed: [] }))).toEqual({ files: { 'a.tsx': { rawButtons: 1 } }, allowed: [] });
   });
 
   it('the plain run and --write both refuse a registry carrying totals, and write nothing', () => {
     const written: string[] = [];
     const fake: Io = {
       measure: () => now,
-      read: () => parseRegistry(JSON.stringify({ totals: totalsOf(now), files: now.files })),
+      read: () => parseRegistry(JSON.stringify({ totals: totalsOf(now), files: now.files, allowed: now.allowed })),
       write: (t) => written.push(t),
       source: () => null,
     };
@@ -86,7 +100,7 @@ describe('the pinned debt against what is written now', () => {
   });
 
   it('adds its totals up from the files', () => {
-    expect(totalsOf({ files: { 'a.tsx': { rawButtons: 2, textXs: 1 }, 'b.tsx': { rawButtons: 3 } } })).toEqual({
+    expect(totalsOf({ files: { 'a.tsx': { rawButtons: 2, textXs: 1 }, 'b.tsx': { rawButtons: 3 } }, allowed: [] })).toEqual({
       rawButtons: 5, rawCheckboxes: 0, rawSurfaces: 0, rawDatePickers: 0, screenTitle: 0, textXs: 1,
     });
   });
@@ -229,7 +243,13 @@ describe('what the counter counts', () => {
 
 // ───────────────────────── the commands ─────────────────────────
 
-const reg = (files: Registry['files']): Registry => ({ files });
+/** A registry whose allowed list says exactly what is written (the five zero kinds), so a command test starts from agreement. */
+const reg = (files: Registry['files']): Registry => ({
+  files,
+  allowed: Object.entries(files).flatMap(([file, row]) =>
+    ZERO_KINDS.filter((kind) => (row[kind] ?? 0) > 0).map((kind) => ({ file, kind, count: row[kind] as number, why: 'سبب مكتوب بالعربي للاختبار فقط' }))
+  ),
+});
 
 function io(pinnedReg: Registry | null, nowReg: Registry) {
   const written: string[] = [];
@@ -307,5 +327,137 @@ describe('the plain run prints the totals against the ceilings', () => {
     const missing = run(['--explain', 'nope.tsx'], fake);
     expect(missing.code).toBe(1);
     expect(missing.err.join('\n')).toContain('nope.tsx');
+  });
+});
+
+// ───────────────────────── R19c: zero outside the allowed list ─────────────────────────
+
+/**
+ * R19c (19/11). Five of the six kinds are pinned to ZERO outside `ALLOWED` (scripts/ui-debt.ts): a raw button, a raw checkbox, a hand
+ * drawn surface, a raw date box and a `<ScreenTitle` are all either in the list — with a sentence saying why it stays raw — or a
+ * failure naming the file. A list count above what is written is a stale entry and fails too, so the list can only shrink with the
+ * truth. `textXs` is NOT here: a caption is `text-note`, but some `text-xs` are legitimate small labels, so it keeps «only falls».
+ */
+const gaps = allowedGaps(now);
+
+describe('zero outside the allowed list — the five kinds', () => {
+  it.each(ZERO_KINDS)('«%s»: no file writes more than the list allows', (kind) => {
+    expect(
+      gaps.unlisted.filter((g) => g.kind === kind).map(gapLine),
+      `في ملف كتب «${kind}» بلا إذن. استعمل مكوّن العدّة (npx tsx scripts/ui-debt.ts --explain <ملف>)، أو لو العنصر الخام صح فعلاً أضف سطراً بسبب بالعربي في ALLOWED داخل scripts/ui-debt.ts`
+    ).toEqual([]);
+  });
+
+  it.each(ZERO_KINDS)('«%s»: no allowed count is above the truth (a stale entry)', (kind) => {
+    expect(
+      gaps.stale.filter((g) => g.kind === kind).map(gapLine),
+      `إذن بلا عنصر خلفه — نزّل العدد أو احذف السطر من ALLOWED داخل scripts/ui-debt.ts، وبعدها npx tsx scripts/ui-debt.ts --write`
+    ).toEqual([]);
+  });
+
+  it('nothing is outside the list, so its sums equal the totals', () => {
+    const sums = allowedSums(ALLOWED);
+    const totals = totalsOf(now);
+    for (const kind of ZERO_KINDS) expect(sums[kind], kind).toBe(totals[kind]);
+    expect(allowedReport(now)).toEqual([]);
+  });
+
+  it('every entry is well formed: a real file, a pinned kind, a count, a plain-Arabic sentence, one line per file and kind', () => {
+    expect(allowedProblems(ALLOWED)).toEqual([]);
+    for (const e of ALLOWED) {
+      expect(existsSync(join(process.cwd(), e.file)), `${e.file}: لا ملف بهذا المسار`).toBe(true);
+      expect(inDebtScope(e.file), `${e.file}: خارج نطاق العدّاد`).toBe(true);
+      expect(e.why.trim().length, `${e.file}: السبب أقصر من ${MIN_WHY}`).toBeGreaterThanOrEqual(MIN_WHY);
+    }
+    expect(ALLOWED.length).toBeGreaterThan(100);
+  });
+
+  it('the JSON copy of the list is the list in the script — it is generated, never the source', () => {
+    expect(pinned.allowed).toEqual(now.allowed);
+  });
+
+  it('«textXs» stays out of the list: it keeps «only falls»', () => {
+    expect([...ZERO_KINDS], 'الأنواع الخمسة بسقف صفر، وتحديداً هي').toEqual(['rawButtons', 'rawCheckboxes', 'rawSurfaces', 'rawDatePickers', 'screenTitle']);
+    expect((ZERO_KINDS as readonly string[]).includes('textXs')).toBe(false);
+    const withXs = [{ file: 'src/components/screens/OrdersScreen.tsx', kind: 'textXs', count: 1, why: 'سبب كافي بالعربي طويل بما يكفي' }] as unknown as AllowedEntry[];
+    expect(allowedProblems(withXs).join('\n')).toContain('textXs');
+    expect(totalsOf(now).textXs).toBeGreaterThan(0);
+  });
+
+  it('the storefront owner’s files are in the list with the owner’s sentence, and only they', () => {
+    const owner = ALLOWED.filter((e) => e.why.startsWith('ملف صاحب المتجر لحد R18'));
+    expect(owner.length).toBeGreaterThan(10);
+    for (const e of owner) {
+      expect(/landing-editor|landing-flow|Store[A-Za-z]*Screen|LandingPage[A-Za-z]*Screen|LandingLibraryScreen|store-admin/.test(e.file), e.file).toBe(true);
+    }
+  });
+});
+
+describe('the zero is real: an edit that breaks it is refused, naming the file', () => {
+  /** Real source of one real screen, then ONE raw button more — the exact edit the guard exists to catch. */
+  const screen = 'src/components/screens/OrdersScreen.tsx';
+  const source = readFileSync(join(process.cwd(), screen), 'utf8');
+
+  it('the screen is clean today, so the tests below start from agreement', () => {
+    expect(now.files[screen]?.rawButtons ?? 0).toBe(0);
+    expect(ALLOWED.some((e) => e.file === screen)).toBe(false);
+  });
+
+  it('one raw button added to that screen: the count rises by one and the comparison names the file and the kind', () => {
+    const worse = countsOf(source + '\n<button onClick={go}>x</button>');
+    expect(worse.rawButtons).toBe(countsOf(source).rawButtons + 1);
+    const planted: Registry = { files: { ...now.files, [screen]: { ...now.files[screen], rawButtons: worse.rawButtons } }, allowed: now.allowed };
+    expect(allowedGaps(planted).unlisted.map(gapLine)).toEqual([`${screen} — «rawButtons»: المكتوب ${worse.rawButtons}، المسموح 0`]);
+    expect(allowedReport(planted).join('\n')).toContain(screen);
+  });
+
+  it('the plain run and --write both refuse it and write nothing', () => {
+    const planted: Registry = { files: { ...now.files, [screen]: { rawButtons: 1 } }, allowed: now.allowed };
+    const written: string[] = [];
+    const fake: Io = { measure: () => planted, read: () => ({ files: planted.files, allowed: planted.allowed }), write: (t) => written.push(t), source: () => null };
+    for (const argv of [[], ['--write']]) {
+      const r = run(argv, fake);
+      expect(r.code, argv.join(' ')).toBe(1);
+      expect(r.err.join('\n'), argv.join(' ')).toContain(screen);
+    }
+    expect(written).toEqual([]);
+  });
+
+  it('a new raw checkbox, hand-drawn surface, raw date box or ScreenTitle is refused the same way', () => {
+    for (const kind of ZERO_KINDS) {
+      const planted: Registry = { files: { ...now.files, [screen]: { [kind]: 1 } }, allowed: now.allowed };
+      expect(allowedGaps(planted).unlisted.map((g) => `${g.file}|${g.kind}`), kind).toEqual([`${screen}|${kind}`]);
+    }
+  });
+
+  it('an allowed count above the truth fails as a stale entry, naming the file', () => {
+    const entry = ALLOWED[0];
+    const inflated: Registry = { files: now.files, allowed: now.allowed.map((e) => (e.file === entry.file && e.kind === entry.kind ? { ...e, count: e.count + 1 } : e)) };
+    const g = allowedGaps(inflated);
+    expect(g.unlisted).toEqual([]);
+    expect(g.stale.map(gapLine)).toEqual([`${entry.file} — «${entry.kind}»: المكتوب ${entry.count}، المسموح ${entry.count + 1}`]);
+    expect(allowedReport(inflated).join('\n')).toContain('إذن أكبر من الحقيقة');
+  });
+
+  it('an entry for a file that no longer has the control is stale too', () => {
+    const ghost: AllowedEntry = { file: screen, kind: 'rawButtons', count: 1, why: 'سبب كافي بالعربي طويل بما يكفي' };
+    const g = allowedGaps({ files: now.files, allowed: [...now.allowed, ghost] });
+    expect(g.stale.map((x) => x.file)).toEqual([ghost.file]);
+  });
+
+  it('a short or English reason is refused, and so is a repeated file and kind, and a zero count', () => {
+    const e = (why: string): AllowedEntry => ({ file: 'a.tsx', kind: 'rawButtons', count: 1, why });
+    expect(allowedProblems([e('قصير')]).join('')).toContain('بالعربي');
+    expect(allowedProblems([e('this reason is long enough but not arabic at all')]).join('')).toContain('بالعربي');
+    expect(allowedProblems([e('سبب عربي طويل بما يكفي تماماً'), e('سبب عربي ثانٍ طويل بما يكفي')]).join('')).toContain('مكرّر');
+    expect(allowedProblems([{ ...e('سبب عربي طويل بما يكفي تماماً'), count: 0 }]).join('')).toContain('العدد');
+  });
+
+  it('the plain run prints the allowed sums beside the totals', () => {
+    const r = run([], { measure: () => now, read: () => pinned, write: () => {}, source: () => null });
+    expect(r.code).toBe(0);
+    for (const kind of ZERO_KINDS) {
+      expect(r.out.join('\n')).toMatch(new RegExp(`${kind}\\s+${totalsOf(now)[kind]}\\s+السقف\\s+${totalsOf(pinned)[kind]}\\s+المسموح\\s+${allowedSums(now.allowed)[kind]}\\b`));
+    }
   });
 });
