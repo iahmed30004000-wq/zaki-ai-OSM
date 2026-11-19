@@ -168,6 +168,18 @@ describe('what it asks the server — unchanged', () => {
     });
     await waitFor(() => expect(logUrls().at(-1)).toBe(`/api/audit-logs?${TODAY}&page=1&limit=25`));
   });
+
+  it('the search is asked for trimmed, and a search of only spaces asks nothing', async () => {
+    render(<AuditScreen />);
+    await screen.findAllByText('تغيير حالة طلب');
+    const box = screen.getByPlaceholderText(/بحث بالإجراء/);
+    fireEvent.change(box, { target: { value: '   ' } });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(logUrls().every((u) => !u.includes('q='))).toBe(true);
+    fireEvent.change(box, { target: { value: '  حذف  ' } });
+    await waitFor(() => expect(logUrls().some((u) => u.includes(`q=${encodeURIComponent('حذف')}&`))).toBe(true), { timeout: 3000 });
+    expect(logUrls().some((u) => /q=(%20|\+)/.test(u) || u.includes(`${encodeURIComponent('حذف')}%20`) || u.includes(`${encodeURIComponent('حذف')}+`))).toBe(false);
+  });
 });
 
 describe('«افتح» is drawn per door (the screen has no `can(` of its own: the route is the key, the link is the door)', () => {

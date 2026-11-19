@@ -1093,14 +1093,16 @@
     "tabs": 0
   },
   "src/components/screens/AppStoreScreen.tsx": {
-    "buttons": 11,
-    "inputs": 6,
+    "buttons": 10,
+    "inputs": 5,
     "columns": 0,
-    "cards": 0,
+    "cards": 3,
     "modals": 2,
     "icons": 11,
     "links": 1,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1,
+    "checkboxes": 1
   },
   "src/components/screens/AssistantScreen.tsx": {
     "buttons": 2,
@@ -1366,7 +1368,7 @@
     "buttons": 3,
     "inputs": 0,
     "columns": 5,
-    "cards": 0,
+    "cards": 3,
     "modals": 0,
     "icons": 9,
     "links": 0,
@@ -2278,7 +2280,7 @@
     "buttons": 5,
     "inputs": 6,
     "columns": 0,
-    "cards": 0,
+    "cards": 1,
     "modals": 1,
     "icons": 3,
     "links": 0,

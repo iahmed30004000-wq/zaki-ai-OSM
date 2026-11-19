@@ -269,12 +269,6 @@
       "rawSurfaces": 5,
       "textXs": 42
     },
-    "src/components/screens/AppStoreScreen.tsx": {
-      "rawButtons": 2,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 3,
-      "textXs": 20
-    },
     "src/components/screens/BlacklistScreen.tsx": {
       "rawButtons": 6,
       "rawCheckboxes": 1,
@@ -328,9 +322,7 @@
       "rawSurfaces": 1
     },
     "src/components/screens/JobsScreen.tsx": {
-      "rawButtons": 2,
-      "rawSurfaces": 5,
-      "textXs": 9
+      "rawSurfaces": 2
     },
     "src/components/screens/LandingLibraryScreen.tsx": {
       "rawButtons": 3,
@@ -550,18 +542,8 @@
     "src/components/screens/tracking/WriteOffDialog.tsx": {
       "textXs": 1
     },
-    "src/components/screens/users/UserCommissionCurrency.tsx": {
-      "rawButtons": 2,
-      "textXs": 6
-    },
-    "src/components/screens/users/UserSalary.tsx": {
-      "rawButtons": 5,
-      "rawSurfaces": 1,
-      "textXs": 22
-    },
     "src/components/screens/users/UserShift.tsx": {
-      "rawButtons": 3,
-      "textXs": 11
+      "rawButtons": 1
     },
     "src/components/settings/AdAccountsCard.tsx": {
       "rawButtons": 5,
