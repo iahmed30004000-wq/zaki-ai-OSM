@@ -11,6 +11,7 @@ import { workHoursError } from '@/lib/work-hours';
 import { CurrencyPicker, currencyChoiceReady, type CurrencyChoice } from '@/components/ui/CurrencyPicker';
 import { StorefrontSettings } from '@/components/settings/StorefrontSettings';
 import { StoreIdentityCard } from '@/components/settings/StoreIdentityCard';
+import { WarehousesCard } from '@/components/geo/WarehousesCard';
 import { storeTypeLabel } from '@/lib/store-types';
 import { RiAddCircleLine, RiCloseLine, RiDeleteBinLine, RiEarthLine, RiLoader4Line, RiStore2Line } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
@@ -399,6 +400,11 @@ export function GeoSettingsScreen() {
               )}
             </li>
           </ul>
+
+          {/* Under each country, open without a click (W0b): a warehouse is a place of the country, not of a store. */}
+          <div className="p-3 border-t border-[var(--sys-border)]">
+            <WarehousesCard countryId={c.id} countryName={c.name} mayManage={mayManage} />
+          </div>
         </Card>
       ))}
     </PageShell>
