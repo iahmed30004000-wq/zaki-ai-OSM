@@ -455,20 +455,27 @@ export function cadencePress(
   const before = cadenceState(stored, cal);
   if (!(NO_ANSWER_RESULTS as readonly string[]).includes(press.result)) return { counted: false, dueAt: null, next: before, closes: false };
   const { next, counted } = cadenceStep(before, press.at, cal);
-  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next, ruleOf(cal)) || completesTheDays(before, press.at, cal) };
+  return { counted, dueAt: counted ? next.dueAt : null, next, closes: cadenceCloses(next, ruleOf(cal)) || completesTheDays(before, stored, press.at, cal) };
 }
 
 /**
  * THE WAY OUT OF A RULE CHANGED MID-CYCLE (request Q3b, review 19/11): an order whose counted presses already reach an EDITED rule's limit on fewer local days than it asks
- * (its dues were stored under the old rule, so the days guarantee could not place them) is not left with no press that can ever close it: a press past the limit, not early,
- * on a local day none of its counted presses is on, closes it. Never for the default steps and days — there the door's history always has its two days (main, unchanged).
+ * (its dues were stored under the old rule, so the days guarantee could not place them) is not left with no press that can ever close it: the «لا يرد» presses past the limit
+ * (after the last counted one, not early) count toward the MISSING DAYS, and the press that brings the local days of the counted presses and those to `minDays` closes it — so
+ * a day with a press on it, each working day, always gets there (three days asked, one counted: two more days of presses). Never for the default steps and days — there the
+ * door's history always has its two days (main, unchanged) — and only at a press, never by a job.
  */
-function completesTheDays(state: CadenceState, at: Date, cal: CadenceCal): boolean {
+function completesTheDays(state: CadenceState, lines: readonly CadenceFact[], at: Date, cal: CadenceCal): boolean {
   const rule = ruleOf(cal);
   if (isDefaultPlan(rule) || state.counted.length < cadenceLimit(rule) || state.days >= rule.minDays) return false;
+  const floor = Math.max(cal.since.getTime(), state.counted[state.counted.length - 1].getTime(), state.dueAt ? state.dueAt.getTime() - 1 : -Infinity);
   const t = at.getTime();
-  if (Number.isNaN(t) || !(t > cal.since.getTime()) || (state.dueAt !== null && t < state.dueAt.getTime())) return false;
-  return new Set([...state.counted, at].map((d) => dayKey(d, cal.timeZone))).size >= rule.minDays;
+  if (Number.isNaN(t) || !(t > floor)) return false;
+  const past = lines
+    .filter((f) => (NO_ANSWER_RESULTS as readonly string[]).includes(f.result))
+    .map((f) => new Date(f.createdAt))
+    .filter((d) => d.getTime() > floor && d.getTime() <= t);
+  return new Set([...state.counted, ...past, at].map((d) => dayKey(d, cal.timeZone))).size >= rule.minDays;
 }
 
 const WEEKDAY_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
@@ -538,7 +545,7 @@ export function cadenceDesk(
     dueAt: s.dueAt,
     due: ahead && s.dueAt!.getTime() <= now.getTime(),
     waiting: ahead && s.dueAt!.getTime() > now.getTime(),
-    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next, ruleOf(cal)) || completesTheDays(s, now, cal),
+    closesOnNext: cadenceCloses(cadenceStep(s, now, cal).next, ruleOf(cal)) || completesTheDays(s, facts, now, cal),
   };
 }
 

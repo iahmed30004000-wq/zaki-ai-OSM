@@ -426,3 +426,76 @@ describe('the default steps keep main\'s dues even where the days guarantee woul
     expect(iso(cadenceStep(state, dam(16, 13), calOf(rule({ steps: [...CONFIRMATION_RULE_DEFAULT.steps.slice(0, 3), { kind: 'anchor', anchor: 'evening', floorHours: 2 }] }))).next.dueAt)).toBe(iso(dam(17, 19, 30)));
   });
 });
+
+/**
+ * REVIEW 19/11, round 2: A RULE SAVED MID-CYCLE NEVER STRANDS AN ORDER. Orders pressed under the DEFAULT for 1–4 counted presses (each line storing the due the door
+ * stored), then a random VALID rule (three days asked included) is in force; every later press is made at the due the door answers, or — past the limit — once a day.
+ * Every order closes, at a door press.
+ */
+describe('mid-cycle switches: every order still closes', () => {
+  const DAMASCUS = { timezone: 'Asia/Damascus', weekendDays: [] as number[], workHoursStart: '10:00', workHoursEnd: '22:00' };
+  const DAY = 86_400_000;
+  const DAM = (d: number, h: number, mi = 0) => new Date(Date.UTC(2026, 10, d, h - 3, mi));
+
+  /** Press on, door-style, from `lines` under `cal`, up to `max` presses: at each answered due, else the same clock the next day. The press that closed, or null. */
+  function pressUntilClosed(lines: CadenceFact[], cal: ReturnType<typeof cadenceCalOf>, start: Date, max = 40): number | null {
+    let at = start;
+    for (let i = 0; i < max; i++) {
+      const p = cadencePress(lines, { at, result: 'NO_ANSWER' }, cal);
+      lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: lines.length + 1, nextFollowUpAt: p.counted ? p.dueAt : null });
+      if (p.closes) return i;
+      at = p.next.dueAt && p.next.dueAt.getTime() > at.getTime() ? p.next.dueAt : new Date(at.getTime() + DAY);
+    }
+    return null;
+  }
+
+  it('the reviewer\'s case: 11:00 and 11:30 under the default, then two evening steps and three days — the order closes on the third local day', () => {
+    // the default's stored due after #2 is 13:30 the same day (10:00–22:00 here)
+    const lines: CadenceFact[] = [];
+    const defCal = cadenceCalOf(new Date('2026-10-01T00:00:00.000Z'), DAMASCUS);
+    let at = DAM(2, 11);
+    for (let i = 0; i < 2; i++) {
+      const p = cadencePress(lines, { at, result: 'NO_ANSWER' }, defCal);
+      lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: i + 1, nextFollowUpAt: p.dueAt });
+      at = p.dueAt!;
+    }
+    expect(iso(at)).toBe(iso(DAM(2, 13, 30)));
+    const edited = rule({ steps: [{ kind: 'anchor', anchor: 'evening', floorHours: 1 }, { kind: 'anchor', anchor: 'evening', floorHours: 1 }], minDays: 3 });
+    expect(validateConfirmationRule(edited).ok).toBe(true);
+    const cal = cadenceCalOf(new Date('2026-10-01T00:00:00.000Z'), DAMASCUS, edited);
+    const closedAt = pressUntilClosed(lines, cal, at);
+    expect(closedAt).not.toBeNull();
+    expect(new Set(lines.map((l) => new Date(l.createdAt).toISOString().slice(0, 10))).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('1,500 random switches (default history of 1–4 counted presses → a random valid rule): none stranded', () => {
+    const r = ((seed: number) => () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296))(19112026);
+    const since = new Date('2026-10-01T00:00:00.000Z');
+    let checked = 0;
+    for (let n = 0; n < 1500; n++) {
+      const count = 2 + Math.floor(r() * 5);
+      const steps = Array.from({ length: count }, () =>
+        r() < 0.4
+          ? { kind: 'after' as const, minutes: 10 + Math.floor(r() * 711) }
+          : { kind: 'anchor' as const, anchor: r() < 0.5 ? ('morning' as const) : ('evening' as const), floorHours: 1 + Math.floor(r() * 24) }
+      );
+      const anchors = steps.filter((s) => s.kind === 'anchor').length;
+      const v = validateConfirmationRule({ ...CONFIRMATION_RULE_DEFAULT, steps, minDays: 1 + Math.floor(r() * Math.min(3, anchors + 1)) });
+      if (!v.ok) continue;
+      const country = r() < 0.5 ? DAMASCUS : { timezone: 'Asia/Amman', weekendDays: [5, 6], workHoursStart: '09:00', workHoursEnd: '17:00' };
+      const lines: CadenceFact[] = [];
+      const defCal = cadenceCalOf(since, country);
+      let at = new Date(Date.UTC(2026, 10, 1 + Math.floor(r() * 25), 6 + Math.floor(r() * 12), Math.floor(r() * 60)));
+      const before = 1 + Math.floor(r() * 4);
+      for (let k = 0; k < before; k++) {
+        const p = cadencePress(lines, { at, result: 'NO_ANSWER' }, defCal);
+        lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: k + 1, nextFollowUpAt: p.counted ? p.dueAt : null });
+        at = p.dueAt ?? new Date(at.getTime() + DAY);
+      }
+      const where = `rule ${JSON.stringify(v.rule)} in ${country.timezone}, after ${before} default presses`;
+      expect(pressUntilClosed(lines, cadenceCalOf(since, country, v.rule), at), where).not.toBeNull();
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(800);
+  });
+});
