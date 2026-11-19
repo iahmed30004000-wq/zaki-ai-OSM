@@ -11,6 +11,7 @@ import { endOrder } from '@/lib/order-cancel';
 import { can, authorize } from '@/lib/authorization';
 import { ORDER_NOT_FOUND } from '@/lib/order-refusals';
 import { mustHoldToWork, NOT_HELD_MESSAGE, returnToThePool, returnsModeOn } from '@/lib/confirmation-queue';
+import { logDeskRefusal } from '@/lib/desk-refusals';
 import { NO_ANSWER_RETURNED_REASON, markPlanReturnLine } from '@/lib/no-answer-returns';
 import { countedRounds, roundsClose, roundsOn, workClock } from '@/lib/no-answer-rounds';
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
@@ -139,6 +140,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // AN AGENT WORKS ONLY THE ORDER SHE HOLDS (the owner, 1/11): the call she logs is on the order in her hands, as the confirmation
     // door next door asks. Whoever can take or hand out any order (`orders.unlock`, `orders.assign`) logs a call on any order, as before.
     if (mustHoldToWork((permission) => can(user, permission)) && order.claimedById !== user.id) {
+      await logDeskRefusal({ companyId, storeId, userId: user.id, orderId: order.id, code: 'NOT_HELD', door: 'contact-attempts' });
       return NextResponse.json({ error: NOT_HELD_MESSAGE, errorAr: NOT_HELD_MESSAGE, code: 'NOT_HELD' }, { status: 403 });
     }
 
