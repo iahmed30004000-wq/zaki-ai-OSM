@@ -182,6 +182,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   'app/api/orders/import/migrate/route.ts': { reason: 'مقيَّد بأرقام طلباتٍ مُسمّاة من الملف — هل الرقم محجوز لطلبٍ آخر', sites: 1 },
   'app/api/whatsapp/conversations/[id]/route.ts': { reason: 'مقيَّد بـ customerId واحد — محادثةٌ بعينها', sites: 1 },
   // new (15/11, السلات المهجورة): «له طلب» — the orders of the customers whose phones are on the carts shown (`customerId: { in }`), to mark a cart whose visitor already ordered. A read of named persons, not a store figure.
+  // 19/11 (W1a): the split's walk to the rows split from a run, by batch ids it was handed — never a figure.
+  'lib/batch-split.ts': { reason: 'مقيَّد بـ splitFromBatchId: { in } — الصفوف المقسومة من دفعاتٍ مُسمّاة (لتصحيح كلفتها)', sites: 1 },
   'lib/abandoned-carts.ts': { reason: 'مقيَّد بـ customerId: { in } — طلباتُ أصحابِ أرقامِ السلات المعروضة («له طلب»)', sites: 1 },
   'lib/commission-metrics.ts': { reason: 'مقيَّد بـ orderId: { in } ومستخدمٍ واحد', sites: 1 },
   // The send and its plan (`dispatchPlan`, the orders left to send): both read the orders of ONE batch, which was found in this store first.
@@ -204,6 +206,8 @@ const ID_SCOPED: Record<string, Excuse> = {
   // close of the matching — the orders ONE statement's lines settle.
   'lib/statement-close.ts': { reason: 'مقيَّد بـ settledOrderIds — سطورُ كشفٍ بعينه', sites: 2 },
   'lib/shortfall.ts': { reason: 'مقيَّد بـ id: { in } لطلباتِ سطورِ كشفٍ مُسمّاة — يقرأ حالةَ الطلب لا رقمَ متجر', sites: 1 },
+  // 19/11 (W1a): the placement reads the batches of ONE store's products (the store it places), not the company.
+  'lib/warehouse-placement.ts': { reason: 'مقيَّد بـ productId: { in } — منتجاتُ المتجر اللي عم يتوزّع، مقروءة بـ storeId', sites: 1 },
   'lib/v1/product-figures.ts': { reason: 'مقيَّد بـ productId: { in } — منتجاتٌ قرأها الكتالوجُ أصلاً بـ realStoresOnly', sites: 1 },
 };
 
