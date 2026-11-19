@@ -73,6 +73,9 @@ const ACTION_AR: Record<string, string> = {
   QUEUE_PRIORITY_SWITCHED: 'تشغيل أو إيقاف «أولوية الطابور»',
   EOD_REPORT_SUBMITTED: 'إرسال تقرير نهاية اليوم',
   QUEUE_MODES_CHANGED: 'تعديل ساعات وضعَي الطابور',
+  // «أرقام القاعدة» (`/api/settings/confirmation-rule`, request Q3a of 19/11): a save of the rule's numbers, and a «رجّع» (back to a version, or a pending change cancelled).
+  CONFIRMATION_RULE_CHANGED: 'تعديل أرقام قاعدة مركز التأكيد',
+  CONFIRMATION_RULE_REVERTED: 'رجوع لنسخة سابقة من أرقام قاعدة مركز التأكيد (أو إلغاء تعديل معلّق)',
   INTEGRATION_SETTING_SAVED: 'حفظ إعداد ربط (واتساب أو تيليجرام)',
   INTEGRATION_SETTING_CLEARED: 'مسح إعداد ربط محفوظ بالموقع',
   LEAD_CONVERTED: 'تحويل ليد لطلب',
