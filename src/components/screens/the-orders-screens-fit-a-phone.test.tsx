@@ -379,7 +379,9 @@ describe('«طلباتي» — the tabs, the pull panel and the card', () => {
     expect(screen.getByText('لديك بلا محاولة اتصال')).toBeTruthy();
     expect(screen.getByText(/الطلب الجديد اللي ما حدا اتصل فيه/)).toBeTruthy();
     const deskPull = screen.getByRole('button', { name: 'اسحب الطلب التالي' });
-    expect(tokens(deskPull)).toEqual(expect.arrayContaining(['min-h-11', 'md:min-h-0']));
+    // 18/11 (R8b): the pull button is the kit's `Button` now. It said «min-h-11 md:min-h-0» (44px on a phone, its own height on a
+    // desk); the kit states the same thing as a height — 44px on a phone, 40px on a desk — so the pin follows the kit's words.
+    expect(tokens(deskPull)).toEqual(expect.arrayContaining(['h-11', 'md:h-10']));
     expect(deskPull.closest('section')!.querySelector('details')).toBeNull();
     cleanup();
 

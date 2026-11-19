@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 import { Money } from '@/components/ui/Money';
 import { RiAlertLine } from '@remixicon/react';
 
@@ -107,7 +108,7 @@ export function WriteOffDialog({
         className="space-y-3"
       >
         {/* THE CONSEQUENCE FIRST, IN MONEY — not «سيتم تحديث المخزون». */}
-        <div className="flex gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-xs leading-relaxed text-[var(--sys-destructive)]">
+        <div className="flex gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-note leading-relaxed text-[var(--sys-destructive)]">
           <RiAlertLine className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             بضاعةُ هذا الطلب{' '}
@@ -119,7 +120,7 @@ export function WriteOffDialog({
           </span>
         </div>
 
-        <div className="rounded-lg bg-[var(--sys-surface)] p-3 text-xs leading-relaxed text-[var(--sys-muted-foreground)]">
+        <div className="rounded-lg bg-[var(--sys-surface)] p-3 text-note leading-relaxed text-[var(--sys-muted-foreground)]">
           مع <b className="text-[var(--sys-foreground)]">{order.deliveryProvider?.name ?? 'جهة غير معروفة'}</b>
           {order.daysInTransit !== null && (
             <> منذ <b className="text-[var(--sys-foreground)] tabular-nums" dir="ltr">{order.daysInTransit}</b> يوماً</>
@@ -149,16 +150,16 @@ export function WriteOffDialog({
             reached from the same row should not be two shapes. Only the
             fill differs, because only one of them cannot be undone. */}
         <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onClose} className="h-11 md:h-10 px-4 rounded-lg border border-[var(--sys-border)] text-sm">
+          <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="danger"
             disabled={!ready || saving}
-            className="h-11 md:h-10 px-4 rounded-lg bg-[var(--sys-destructive)] text-[var(--sys-primary-foreground)] text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'جارٍ الإغلاق…' : 'أغلقه كخسارة'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>
