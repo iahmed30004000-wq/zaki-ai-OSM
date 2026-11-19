@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { apiErrorResponse } from '@/lib/api-error';
 import { firstIssue, warehouseUpdateSchema } from '@/lib/geo-schemas';
 import { WAREHOUSE_NAME_TAKEN_AR, WAREHOUSE_NOT_FOUND_AR, stopRefusalAr, warehouseStopBlockers } from '@/lib/warehouses';
+import { lockWarehouseForStop } from '@/lib/warehouse-intake';
 
 /**
  *   PATCH /api/geo/warehouses/:id  (geo.manage) — { name?, isActive? }
@@ -15,9 +16,9 @@ import { WAREHOUSE_NAME_TAKEN_AR, WAREHOUSE_NOT_FOUND_AR, stopRefusalAr, warehou
  * history of every batch, movement and shipment that names it. Stopping is
  * refused (409) while the warehouse still holds units — the one list of
  * reasons is `warehouseStopBlockers`, read inside the same transaction as
- * the write. Nothing writes a place into a batch in this release; the
- * request that first does (receiving into a warehouse) must refuse a stopped
- * warehouse inside its own transaction, so the two cannot cross.
+ * the write. The receiving and production doors (W2a) refuse a stopped
+ * warehouse inside their own transaction, reading its row FOR SHARE; the stop
+ * locks the row FOR UPDATE before it counts, so the two cannot cross.
  */
 
 const refuse = (status: number, code: string, ar: string, extra: Record<string, unknown> = {}) =>
@@ -49,6 +50,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     try {
       outcome = await db.$transaction(async (tx) => {
         if (stopping) {
+          // 19/11 (W2a): the row FOR UPDATE first, so a receipt into it (which reads it FOR SHARE) and this stop cannot
+          // cross — whichever comes second sees what the first wrote (`warehouse-intake.ts`, race 2).
+          await lockWarehouseForStop(tx, id);
           const blockers = await warehouseStopBlockers(tx, companyId, id);
           if (blockers.length > 0) return { refused: blockers };
         }

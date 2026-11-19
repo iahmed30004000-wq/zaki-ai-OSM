@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { receiveStock } from './receiving';
 import { resolveUnitCost } from './unit-cost';
+import { lockProductsStock } from './reservation';
+import { storeIsPlaced } from './warehouse-intake';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -46,7 +48,9 @@ export interface OpeningStockLine {
  * warehouse» and no `Warehouse` model exists; stock belongs to a STORE, and a
  * store here is a separate business with its own shelf. So this is one count
  * per store, which for the launch scope is one count for صحة بلس. Reported,
- * not resolved.
+ * not resolved. (19/11, the warehouse plan: warehouses exist now, and a store's
+ * book is divided between them by the opening PLACEMENT, which comes after this
+ * count — see the refusal of a placed store below.)
  *
  * WHY A ZERO UNIT COST IS REFUSED UNLESS IT IS EXPLAINED. Cost is captured
  * when stock arrives, and everything sold out of a zero-cost batch reports
@@ -79,6 +83,23 @@ export async function recordOpeningStockCount(
       'ALREADY_COUNTED',
       `عُدَّ مخزون هذا المتجر مرّةً بمعرفة ${existing.countedByName} في ` +
         `${existing.countedAt.toISOString().slice(0, 10)}. العدُّ الافتتاحيُّ يُسجَّل مرّةً واحدة.`
+    );
+  }
+
+  /*
+   * THE OPENING COUNT COMES BEFORE THE PLACEMENT (the warehouse plan, W2a).
+   *
+   * The opening count is the book a store starts from; the placement divides that book between warehouses. A store
+   * already placed has its book divided — an «opening» count now would put units on no warehouse. It is told where its
+   * goods go in instead. Asked under every line's stock lock, taken once and SORTED (`lockProductsStock`), the order every
+   * other locker takes them in: the receipts below take the same locks again one by one, and in the order typed they
+   * could cross a reservation holding two of them the other way round.
+   */
+  await lockProductsStock(tx, input.companyId, input.lines.map((l) => l.productId));
+  if (await storeIsPlaced(input.storeId, tx)) {
+    throw new OpeningStockRefused(
+      'STORE_PLACED',
+      'هالمتجر انوزّع على مخازن، والعدّ الافتتاحي بيصير قبل التوزيع. دخّل البضاعة من «استلام» باسم مخزنها.'
     );
   }
 

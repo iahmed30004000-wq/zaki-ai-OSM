@@ -10,6 +10,8 @@ import { onHandTotal } from '@/lib/receiving';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
+import { intakePlace, IntakePlaceRefused, intakeRefusalBody } from '@/lib/warehouse-intake';
+import { reachesWarehouse } from '@/lib/warehouses';
 
 export async function GET(req: Request) {
   try {
@@ -132,6 +134,12 @@ const createSchema = z.object({
     .optional()
     .nullable(),
   notes: z.string().trim().max(2000).optional().nullable(),
+  /**
+   * The warehouse the run's units landed in (the warehouse plan, W2a). Read only when the store is placed in warehouses,
+   * where it is required. `.catch` because the old schema stripped any such field: a body the old door accepted is never
+   * refused for it.
+   */
+  warehouseId: z.string().max(64).optional().nullable().catch(undefined),
 });
 
 export async function POST(req: Request) {
@@ -197,99 +205,120 @@ export async function POST(req: Request) {
       );
     }
 
-    const batch = await db.productionBatch.create({
-      data: {
-        costLines: costLines.length
-          ? { create: costLines.map((l, i) => ({ companyId, label: l.label, amount: l.amount, sortOrder: i })) }
-          : undefined,
+    /*
+     * THE RUN AND ITS LEDGER LINE ARE ONE TRANSACTION (the warehouse plan, W2a).
+     *
+     * They were two separate writes: a failure between them left a batch whose units nobody could trace in the
+     * movements ledger. Now both land or neither does. And for a store placed in warehouses the run names the
+     * warehouse its units landed in — required, of the store's country, running, and one this person reaches
+     * (`warehouse-intake.intakePlace`, asked inside this same transaction). For a store that is not placed `place` is
+     * null and the two rows are exactly the ones this door always wrote.
+     */
+    const batch = await db.$transaction(async (tx) => {
+      const place = await intakePlace(tx, {
         companyId,
-        // WHICH SHELF THESE UNITS LAND ON.
-        //
-        // The column was here and this door never wrote it, so a batch
-        // created through it belonged to no store — and the GET above
-        // filters `inStore(companyId, storeId)`, which per
-        // `store-filter.ts` is an EXACT `storeId: storeId` match that a
-        // NULL can never satisfy. The run was stored, held
-        // `quantityRemaining` units, fed `costPerUnit` into cost of
-        // goods — and was invisible on the one screen that owns it. The
-        // PATCH in `[id]/route.ts` looks a batch up the same way, so its
-        // costs could not be corrected either, and nobody knew to look.
-        //
-        // The store is the request context's, and that is not a choice
-        // between candidates: `requireContext()` refuses a request with
-        // no store (`STORE_REQUIRED`) so `storeId` is always a string
-        // here, and the product was just tenant-validated with the same
-        // `inStore(companyId, storeId)` — so `prodCheck.storeId` IS this
-        // `storeId`, exactly. The two paths that get this right agree:
-        // `receiveStock` takes the store from the receiving context and
-        // the return restock puts units «back onto the shelf it left».
         storeId,
         productId,
-        batchNumber: batchNumber.trim().toUpperCase(),
-        quantityProduced: qty,
-        quantitySold: 0,
-        quantityRemaining: qty,
-        manufacturingCost: mfg,
-        packagingCost: pack,
-        rawMaterialCost: raw,
-        otherCosts: other,
-        totalProductionCost,
-        costPerUnit,
-        productionDate: productionDate ? new Date(productionDate) : new Date(),
-        notes: notes?.trim() || null,
-        status: 'COMPLETED',
-      },
-    });
+        warehouseId: parsed.data.warehouseId,
+        mayUse: (w) => reachesWarehouse(user, companyId, w),
+      });
+      const batch = await tx.productionBatch.create({
+        data: {
+          costLines: costLines.length
+            ? { create: costLines.map((l, i) => ({ companyId, label: l.label, amount: l.amount, sortOrder: i })) }
+            : undefined,
+          companyId,
+          // WHICH SHELF THESE UNITS LAND ON.
+          //
+          // The column was here and this door never wrote it, so a batch
+          // created through it belonged to no store — and the GET above
+          // filters `inStore(companyId, storeId)`, which per
+          // `store-filter.ts` is an EXACT `storeId: storeId` match that a
+          // NULL can never satisfy. The run was stored, held
+          // `quantityRemaining` units, fed `costPerUnit` into cost of
+          // goods — and was invisible on the one screen that owns it. The
+          // PATCH in `[id]/route.ts` looks a batch up the same way, so its
+          // costs could not be corrected either, and nobody knew to look.
+          //
+          // The store is the request context's, and that is not a choice
+          // between candidates: `requireContext()` refuses a request with
+          // no store (`STORE_REQUIRED`) so `storeId` is always a string
+          // here, and the product was just tenant-validated with the same
+          // `inStore(companyId, storeId)` — so `prodCheck.storeId` IS this
+          // `storeId`, exactly. The two paths that get this right agree:
+          // `receiveStock` takes the store from the receiving context and
+          // the return restock puts units «back onto the shelf it left».
+          storeId,
+          ...(place ? { warehouseId: place } : {}),
+          productId,
+          batchNumber: batchNumber.trim().toUpperCase(),
+          quantityProduced: qty,
+          quantitySold: 0,
+          quantityRemaining: qty,
+          manufacturingCost: mfg,
+          packagingCost: pack,
+          rawMaterialCost: raw,
+          otherCosts: other,
+          totalProductionCost,
+          costPerUnit,
+          productionDate: productionDate ? new Date(productionDate) : new Date(),
+          notes: notes?.trim() || null,
+          status: 'COMPLETED',
+        },
+      });
 
-    // Create corresponding Inventory Movement
-    await db.inventoryMovement.create({
-      data: {
-        companyId,
-        // The same shelf as the batch. One of the pair getting a store
-        // while the other does not is the defect half-fixed: the stock
-        // ledger (`/api/inventory/movements`) filters the movement
-        // itself with `inStore`, so an unplaced movement is a run that
-        // happened and left no trace of how the balance got that way.
-        storeId,
-        productId,
-        batchId: batch.id,
-        type: 'PRODUCTION',
-        quantity: qty,
-        /*
-         * THE SHELF'S BALANCE, NOT THIS RUN'S SIZE.
-         *
-         * This was `qty` — the new batch's own quantity. For the FIRST run
-         * of a product the two agree, which is why it read as correct; for
-         * every run after it the column says something that is not the
-         * balance. Measured on the shape: a product holding 50 that takes a
-         * second run of 20 wrote `balanceAfter: 20` beside `quantity: 20`,
-         * so the ledger read 20 where the shelf held 70, and the next line
-         * under it — a sale of 1 written by `consumeOrderStock` from
-         * `onHandTotal` — read 69. The series jumps 20 → 69 and the column
-         * whose whole purpose is that somebody can read the shelf's history
-         * and have it add up stops adding up at exactly that row.
-         *
-         * `onHandTotal` is what the other five writers use —
-         * `receiving.ts:77,87`, `stock-consumption.ts:139,398`,
-         * `inventory/route.ts:476` — and this door was the only exception.
-         * It is read AFTER `productionBatch.create` above, so the run just
-         * written is already in the sum.
-         *
-         * AND IT IS COMPANY-WIDE PER PRODUCT ON PURPOSE, not an oversight
-         * left behind by the `storeId` work above. `Product.storeId` is a
-         * single column, so one `productId` belongs to one store and this
-         * sum can never mix two shelves; and the shelf screen itself —
-         * `GET /api/inventory` — filters the PRODUCT by store and then sums
-         * ALL of that product's batches, which is this exact figure. A
-         * store filter here would make `balanceAfter` disagree with the
-         * number the operator reads as on hand, which is the opposite of
-         * what the column is for.
-         */
-        balanceAfter: await onHandTotal(db, companyId, productId),
-        referenceId: batch.id,
-        reason: `Production Batch ${batch.batchNumber} completed`,
-        createdById: user.id,
-      },
+      // Create corresponding Inventory Movement
+      await tx.inventoryMovement.create({
+        data: {
+          companyId,
+          // The same shelf as the batch. One of the pair getting a store
+          // while the other does not is the defect half-fixed: the stock
+          // ledger (`/api/inventory/movements`) filters the movement
+          // itself with `inStore`, so an unplaced movement is a run that
+          // happened and left no trace of how the balance got that way.
+          storeId,
+          ...(place ? { warehouseId: place } : {}),
+          productId,
+          batchId: batch.id,
+          type: 'PRODUCTION',
+          quantity: qty,
+          /*
+           * THE SHELF'S BALANCE, NOT THIS RUN'S SIZE.
+           *
+           * This was `qty` — the new batch's own quantity. For the FIRST run
+           * of a product the two agree, which is why it read as correct; for
+           * every run after it the column says something that is not the
+           * balance. Measured on the shape: a product holding 50 that takes a
+           * second run of 20 wrote `balanceAfter: 20` beside `quantity: 20`,
+           * so the ledger read 20 where the shelf held 70, and the next line
+           * under it — a sale of 1 written by `consumeOrderStock` from
+           * `onHandTotal` — read 69. The series jumps 20 → 69 and the column
+           * whose whole purpose is that somebody can read the shelf's history
+           * and have it add up stops adding up at exactly that row.
+           *
+           * `onHandTotal` is what the other five writers use —
+           * `receiving.ts:77,87`, `stock-consumption.ts:139,398`,
+           * `inventory/route.ts:476` — and this door was the only exception.
+           * It is read AFTER `productionBatch.create` above, so the run just
+           * written is already in the sum.
+           *
+           * AND IT IS COMPANY-WIDE PER PRODUCT ON PURPOSE, not an oversight
+           * left behind by the `storeId` work above. `Product.storeId` is a
+           * single column, so one `productId` belongs to one store and this
+           * sum can never mix two shelves; and the shelf screen itself —
+           * `GET /api/inventory` — filters the PRODUCT by store and then sums
+           * ALL of that product's batches, which is this exact figure. A
+           * store filter here would make `balanceAfter` disagree with the
+           * number the operator reads as on hand, which is the opposite of
+           * what the column is for.
+           */
+          balanceAfter: await onHandTotal(tx, companyId, productId),
+          referenceId: batch.id,
+          reason: `Production Batch ${batch.batchNumber} completed`,
+          createdById: user.id,
+        },
+      });
+      return batch;
     });
 
     await logAudit({
@@ -303,6 +332,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, batch });
   } catch (error: any) {
+    if (error instanceof IntakePlaceRefused) return NextResponse.json(intakeRefusalBody(error), { status: error.status });
     return apiErrorResponse(error);
   }
 }

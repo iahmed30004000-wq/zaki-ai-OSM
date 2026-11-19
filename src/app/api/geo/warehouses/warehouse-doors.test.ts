@@ -114,6 +114,8 @@ vi.mock('@/lib/db', () => {
     },
   };
   db.$transaction = async (fn: (tx: Row) => unknown) => fn(db);
+  // 19/11 (W2a): the stop locks the warehouse row FOR UPDATE before it counts (`warehouse-intake.lockWarehouseForStop`).
+  db.$executeRaw = async () => 1;
   return { db };
 });
 

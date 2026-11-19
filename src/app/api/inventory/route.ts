@@ -14,6 +14,8 @@ import { resolveUnitCost } from '@/lib/unit-cost';
 import { reservedElsewhere, reservedForProducts } from '@/lib/reservation';
 import { MAX_WINDOW_DAYS, stockHealth, summariseStock, type StockFacts } from '@/lib/stock-health';
 import { DAY_MS, deliveredPerProduct, ledgerDepthDays } from '@/lib/stock-ledger';
+import { IntakePlaceRefused, intakeRefusalBody, storeIsPlaced } from '@/lib/warehouse-intake';
+import { reachesWarehouse } from '@/lib/warehouses';
 
 export async function GET() {
   try {
@@ -184,6 +186,9 @@ async function previousUnitCost(companyId: string, storeId: string | null, produ
   return last?.costPerUnit ?? null;
 }
 
+const PLACED_RECOUNT_WAITS_AR =
+  'هالمتجر موزّع على مخازن، وجرد المتاح لسا على مستوى المتجر كله. الجرد بالمخزن جاي بالخطوة الجاية؛ لهلّق دخّل الزيادة من «استلام» باسم مخزنها.';
+
 /** A recount that found units of something never costed. Carried out of the transaction. */
 class UncostedSurplus extends Error {}
 
@@ -241,6 +246,12 @@ export async function POST(req: Request) {
           /** Only ever read when the cost really is zero — a sample, a gift. */
           zeroCostReason: z.string().max(200).optional().nullable(),
           note: z.string().max(200).optional().nullable(),
+          /**
+           * The warehouse the goods landed in (the warehouse plan, W2a). Read only when the store is placed in warehouses,
+           * where it is required (`warehouse-intake.intakePlace`). `.catch` because the old schema stripped any such
+           * field: a body the old door accepted is never refused for it.
+           */
+          warehouseId: z.string().max(64).optional().nullable().catch(undefined),
         }),
         z.object({
           action: z.literal('recount'),
@@ -303,6 +314,8 @@ export async function POST(req: Request) {
           unitCost: priced.unitCost,
           note: input.note?.trim() || null,
           createdById: user.id,
+          warehouseId: input.warehouseId,
+          mayUse: (w) => reachesWarehouse(user, companyId, w),
         })
       );
 
@@ -330,6 +343,21 @@ export async function POST(req: Request) {
     }
 
     // ── recount ──
+
+    /*
+     * A STORE PLACED IN WAREHOUSES IS NOT COUNTED HERE YET (the warehouse plan, W2a — marked, not removed).
+     *
+     * This count is of the whole store, and its surplus enters as a new batch: in a placed store that batch would need a
+     * warehouse, and the count would have to say which warehouse was counted. That is the next request of the plan (the
+     * count by warehouse, W2b), waiting for the owner's word on what a count counts. Until then a placed store is told so,
+     * by name, and nothing is written. A store that is not placed counts exactly as before.
+     */
+    if (await storeIsPlaced(storeId)) {
+      return NextResponse.json(
+        { error: PLACED_RECOUNT_WAITS_AR, errorAr: PLACED_RECOUNT_WAITS_AR, code: 'PLACED_STORE_COUNT_WAITS' },
+        { status: 409 }
+      );
+    }
     const onHand = await onHandTotal(db, companyId, product.id);
     // What open orders already hold: the very figure the balances screen prints as «محجوز», so the two cannot disagree.
     const reserved = await reservedElsewhere(db, companyId, product.id, undefined, storeId);
@@ -454,6 +482,7 @@ export async function POST(req: Request) {
       balanceAfter: movement.balanceAfter,
     });
   } catch (error) {
+    if (error instanceof IntakePlaceRefused) return NextResponse.json(intakeRefusalBody(error), { status: error.status });
     return apiErrorResponse(error);
   }
 }
