@@ -288,12 +288,6 @@
     "src/components/screens/AuditScreen.tsx": {
       "textXs": 5
     },
-    "src/components/screens/BlacklistScreen.tsx": {
-      "rawButtons": 6,
-      "rawCheckboxes": 1,
-      "rawSurfaces": 4,
-      "textXs": 13
-    },
     "src/components/screens/CampaignsScreen.tsx": {
       "rawButtons": 1,
       "rawSurfaces": 1,
