@@ -27,6 +27,7 @@ import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
 import { RoleMenuPanel } from '@/components/settings/RoleMenuPanel';
+import { EXEMPTS_FROM_HOLD, EXEMPT_FROM_HOLD_SENTENCE } from '@/lib/desk-exempt-keys';
 
 interface RolePerm { permission: string; scope: string; scopeIds?: unknown }
 interface RoleRow {
@@ -725,6 +726,10 @@ export function PermissionsScreen() {
                                 </p>
                               )}
                               {item.note && <p className="mt-1 ms-6 text-note text-[var(--sys-muted)]">{item.note}</p>}
+                              {/* Q1b (19/11): the keys that free their holder from «اسحبي الطلب أول» say so, from the lib's own list. */}
+                              {(EXEMPTS_FROM_HOLD as readonly string[]).includes(item.key) && (
+                                <p className="mt-1 ms-6 text-note text-[var(--sys-warning)]" data-exempts-from-hold>{EXEMPT_FROM_HOLD_SENTENCE}</p>
+                              )}
                               {item.opens && item.opens.length > 0 && (
                                 <p className="mt-1 ms-6 text-note text-[var(--sys-muted)]">{`بتفتح: ${item.opens.join(' · ')}`}</p>
                               )}
