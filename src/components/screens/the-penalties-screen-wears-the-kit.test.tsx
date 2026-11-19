@@ -288,4 +288,22 @@ describe('the figures on a row are the ones it printed before', () => {
     expect(item.textContent).toContain('التأخير');
     expect(item.textContent).toContain('2026-10-18');
   });
+
+  it('each row prints its amount in its OWN currency, not one currency for the page', async () => {
+    rows = [row({ id: 'p1', amount: 3, currencyCode: 'JOD' }), row({ id: 'p2', amount: 7, currencyCode: 'USD' })];
+    const printedAs = (value: number, currency: string) => {
+      const { container, unmount } = render(<Money value={value} currency={currency} />);
+      const text = container.textContent!;
+      unmount();
+      return text;
+    };
+    const jod = printedAs(3, 'JOD');
+    const usd = printedAs(7, 'USD');
+    expect(jod).not.toBe(printedAs(3, 'USD'));
+    render(<PenaltiesScreen />);
+    const [first, second] = await screen.findAllByRole('listitem');
+    expect(first.textContent).toContain(jod);
+    expect(second.textContent).toContain(usd);
+    expect(second.textContent).not.toContain(printedAs(7, 'JOD'));
+  });
 });

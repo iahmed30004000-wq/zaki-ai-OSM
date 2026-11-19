@@ -5,7 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { userCan } from '@/lib/can';
 import { useApp } from '@/context/AppContext';
 import { Modal } from '@/components/ui/Modal';
-import { RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiLoader4Line, RiUserSharedLine } from '@remixicon/react';
+import { RiArrowGoBackLine, RiCheckLine, RiCloseCircleLine, RiLoader4Line, RiUserSharedLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -210,7 +210,7 @@ export function PenaltiesScreen() {
                           disabled={busy === row.id}
                           onClick={() => setAsking({ row, action: 'waive' })}
                         >
-                          <RiCloseLine className="h-4 w-4" /> ألغِ
+                          <RiCloseCircleLine className="h-4 w-4" /> ألغِ
                         </Button>
                         {isShortfall && (
                           <Button
