@@ -1451,10 +1451,10 @@
     "checkboxes": 2
   },
   "src/components/screens/PenaltiesScreen.tsx": {
-    "buttons": 7,
+    "buttons": 6,
     "inputs": 2,
     "columns": 3,
-    "cards": 0,
+    "cards": 2,
     "modals": 1,
     "icons": 5,
     "links": 0,

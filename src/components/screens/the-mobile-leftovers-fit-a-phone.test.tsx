@@ -189,13 +189,16 @@ describe('FIN-28 · نافذة سبب الخصم', () => {
     });
   });
 
+  // 19/11 (R16g, the penalties screen on the kit): the two were hand-made buttons and carried
+  // the pair «min-h-11 md:min-h-0»; they are now the kit `Button` at size md, which says the same
+  // promise with «h-11 md:h-10» — 44px under a thumb, 40px on a desk. Same question, new classes.
   it('«تأكيد» and «تراجع» are 44px under a thumb and keep their desk height (the class pair)', async () => {
     render(<PenaltiesScreen />);
     fireEvent.click(await screen.findByRole('button', { name: /ألغِ/ }));
     const dialog = await screen.findByRole('dialog');
     for (const name of ['تأكيد', 'تراجع']) {
       const b = within(dialog).getByRole('button', { name });
-      expect(has(b, 'min-h-11', 'md:min-h-0')).toBe(true);
+      expect(has(b, 'h-11', 'md:h-10')).toBe(true);
     }
   });
 
