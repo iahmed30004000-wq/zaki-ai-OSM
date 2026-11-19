@@ -55,7 +55,6 @@ vi.mock('@/lib/api-error', () => ({
 
 import { POST } from './route';
 import { CLAIM_CAPS } from '@/lib/confirmation-queue';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 /** An unclaimed order sitting in the queue. */
 const QUEUED = {
@@ -251,7 +250,8 @@ describe('«سجل الرفض» — the claim by id', () => {
       .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
   const one = (code: string) => [{ companyId: 'c1', storeId: 's1', userId: 'a1', orderId: 'o1', code, door: 'claim' }];
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -279,7 +279,7 @@ describe('«سجل الرفض» — the claim by id', () => {
   it('a failing insert changes neither the status nor the body', async () => {
     desk({ total: CLAIM_CAPS.total });
     const ok = await take();
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     desk({ total: CLAIM_CAPS.total });
     const failed = await take();

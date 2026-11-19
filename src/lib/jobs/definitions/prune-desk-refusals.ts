@@ -17,7 +17,6 @@ export const PRUNE_DESK_REFUSALS_PASSES = 20;
 export const pruneDeskRefusals: JobDefinition = {
   name: 'prune-desk-refusals',
   everySeconds: 86_400,
-  at: '04:10',
   description: `حذف سطور سجل رفض مكتب التأكيد الأقدم من ${DESK_REFUSAL_KEEP_DAYS} يوم`,
   async run({ now }): Promise<JobResult> {
     let removed = 0;

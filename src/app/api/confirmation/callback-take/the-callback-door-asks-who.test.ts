@@ -40,7 +40,6 @@ import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { POST } from './route';
 import { POST as SEARCH } from './search/route';
 import { CALLBACK_SEARCHES_PER_WINDOW } from '@/lib/customer-on-the-line';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 let n = 0;
 async function as(keys: string[], scope: 'ALL_COMPANY' | 'ASSIGNED' = 'ALL_COMPANY') {
@@ -183,7 +182,8 @@ describe('the claim-by-number door is as it was', () => {
 describe('«سجل الرفض» — «الزبون على الخط»', () => {
   const rows = () => rawDb.$executeRaw.mock.calls.map((c: unknown[]) => ({ storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     rawDb.$executeRaw.mockResolvedValue(1);
   });
 
@@ -216,7 +216,7 @@ describe('«سجل الرفض» — «الزبون على الخط»', () => {
     await as(AGENT);
     take.mockResolvedValue({ ok: false, code: 'HELD_BY_COLLEAGUE', message: 'الطلب مع هند', heldBy: 'هند' });
     const ok = await press();
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     rawDb.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await press();
     expect(failed.status).toBe(ok.status);

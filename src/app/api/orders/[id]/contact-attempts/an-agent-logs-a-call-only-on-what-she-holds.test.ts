@@ -51,7 +51,6 @@ vi.mock('@/lib/api-error', () => ({
 }));
 
 import { POST } from './route';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const ME = { id: 'agent-1', name: 'عبير', role: 'CONFIRMATION_AGENT' };
 const ORDER = { id: 'o1', companyId: 'c1', orderNumber: 'ORD-2026-1896', confirmationStatus: 'NEW', noAnswerCount: 0, customerId: 'cu1', claimedById: null as string | null };
@@ -178,7 +177,8 @@ describe('«سجل الرفض» — contact-attempts', () => {
       .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
       .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -201,7 +201,7 @@ describe('«سجل الرفض» — contact-attempts', () => {
 
   it('a failing insert changes neither the status nor the body', async () => {
     const ok = await record();
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await record();
     expect(failed.status).toBe(ok.status);

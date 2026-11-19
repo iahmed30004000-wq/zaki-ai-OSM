@@ -40,7 +40,6 @@ vi.mock('@/lib/confirmation-queue', async (importOriginal) => {
 });
 
 import { pullPaceRefusal } from '@/lib/confirmation-queue';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 import { POST } from './route';
 
 const COUNTRY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6], timezone: 'Asia/Amman' };
@@ -113,7 +112,8 @@ describe('«اسحب» refused for its pace', () => {
 describe('«سجل الرفض» — the pull', () => {
   const rows = () => db.$executeRaw.mock.calls.map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -157,7 +157,7 @@ describe('«سجل الرفض» — the pull', () => {
   it('a failing insert (the table rolled back) changes neither the status nor the body', async () => {
     pullNextOrder.mockResolvedValue({ ok: false, released: 0, refusal: pullPaceRefusal(FORTY, NOW) });
     const ok = await POST();
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await POST();
     expect(failed.status).toBe(ok.status);

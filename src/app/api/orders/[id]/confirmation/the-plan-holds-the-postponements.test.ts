@@ -54,7 +54,6 @@ vi.mock('@/lib/call-proof-switch', () => ({ callProofOn: async () => false, call
 vi.mock('@/lib/queue-priority-switch', () => ({ queuePrioritySwitch: async () => ((priority.asked += 1), { enabled: priority.enabled, enabledAt: null }) }));
 
 import { POST } from '@/app/api/orders/[id]/confirmation/route';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const ME = { id: 'actor-1', name: 'منفّذ', role: 'CONFIRMATION_AGENT', status: 'ACTIVE' };
 const ctx = { user: ME, companyId: 'c1', storeId: 'store-a', countryId: 'jo', country: { id: 'jo', code: 'JO', timezone: 'Asia/Amman', allowNegativeStock: false, workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5] } };
@@ -184,7 +183,8 @@ describe('«سجل الرفض» — the confirmation door', () => {
       .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
   const one = (code: string) => [{ companyId: 'c1', storeId: 'store-a', userId: ME.id, orderId: 'o1', code, door: 'confirmation' }];
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -223,7 +223,7 @@ describe('«سجل الرفض» — the confirmation door', () => {
 
   it('a failing insert changes neither the status nor the body', async () => {
     const ok = await postpone('NO_ANSWER');
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await postpone('NO_ANSWER');
     expect(failed.status).toBe(ok.status);

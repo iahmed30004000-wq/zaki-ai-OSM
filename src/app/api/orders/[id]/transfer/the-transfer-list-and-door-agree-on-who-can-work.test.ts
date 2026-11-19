@@ -68,7 +68,6 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) })
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { GET, POST } from './route';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 const grants = (...keys: string[]) => keys.map((permission) => ({ permission, scope: 'ALL_COMPANY', scopeIds: null }));
 
@@ -294,7 +293,8 @@ describe('«سجل الرفض» — the transfer', () => {
       .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
       .map((c: unknown[]) => ({ storeId: c[3], userId: c[4], orderId: c[5], code: c[6], door: c[7] }));
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -321,7 +321,7 @@ describe('«سجل الرفض» — the transfer', () => {
 
   it('a failing insert changes neither the status nor the body', async () => {
     const ok = await post('wh');
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await post('wh');
     expect(failed.status).toBe(ok.status);

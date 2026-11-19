@@ -113,10 +113,6 @@ function foldedHere(key: string, nowMs: number): boolean {
   return false;
 }
 
-/** Tests only: forget what this process folded. */
-export function forgetDeskRefusalFold(): void {
-  recent.clear();
-}
 
 /**
  * Write one refusal row. Answers `true` when a row was written, `false` otherwise (not a listed code, folded, or the write failed).

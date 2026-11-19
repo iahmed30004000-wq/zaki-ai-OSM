@@ -22,7 +22,6 @@ import {
   DESK_REFUSAL_CODES,
   DESK_REFUSAL_FOLD_MS,
   DESK_REFUSAL_KEEP_DAYS,
-  forgetDeskRefusalFold,
   isLoggedDeskRefusal,
   logDeskRefusal,
   pruneDeskRefusalsOnce,
@@ -30,7 +29,8 @@ import {
 import { pruneDeskRefusals, PRUNE_DESK_REFUSALS_BATCH, PRUNE_DESK_REFUSALS_PASSES } from './jobs/definitions/prune-desk-refusals';
 
 type Call = [TemplateStringsArray, ...unknown[]];
-const T0 = new Date('2026-11-19T10:00:00.000Z');
+/** A fresh hour per test, so what one test folded in this process never folds the next one's presses. */
+let T0 = new Date('2026-11-19T10:00:00.000Z');
 const BASE = { companyId: 'c1', storeId: 's1', userId: 'u1', door: 'pull' as const };
 
 function client(answer: () => Promise<number> = async () => 1) {
@@ -50,7 +50,9 @@ function row(call: Call) {
   return { id, companyId, storeId, userId, orderId, code, door, at };
 }
 
-beforeEach(() => forgetDeskRefusalFold());
+beforeEach(() => {
+  T0 = new Date(T0.getTime() + 3_600_000);
+});
 
 describe('which refusals are written', () => {
   it('every code the request names is listed, and nothing else', () => {
@@ -225,7 +227,7 @@ describe('the prune', () => {
     expect(await pruneDeskRefusalsOnce(c, T0, 500)).toBe(3);
     const [q, before, batch] = c.calls[0];
     expect(q.join('?').replace(/\s+/g, ' ')).toContain('DELETE FROM "desk_refusals" WHERE "id" IN ( SELECT "id" FROM "desk_refusals" WHERE "createdAt" < ?::timestamp(3) LIMIT ?::int )');
-    expect(before).toBe('2026-08-21T10:00:00.000Z');
+    expect(before).toBe(new Date(T0.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString());
     expect(batch).toBe(500);
   });
 

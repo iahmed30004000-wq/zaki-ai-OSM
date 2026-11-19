@@ -45,7 +45,6 @@ import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { NOT_HELD_MESSAGE } from '@/lib/confirmation-queue';
 import { POST } from './route';
-import { forgetDeskRefusalFold } from '@/lib/desk-refusals';
 
 /** CONFIRMATION_AGENT, live, 1/11 (`GET /api/roles`): all 22 keys at the whole company. `confirmation.supervise` excuses nobody. */
 const LIVE_AGENT = [
@@ -206,7 +205,8 @@ describe('«سجل الرفض» — call-logs', () => {
       .filter((c: unknown[]) => (c[0] as string[]).join('').includes('desk_refusals'))
       .map((c: unknown[]) => ({ companyId: c[2], storeId: c[3], orderId: c[5], code: c[6], door: c[7] }));
   beforeEach(() => {
-    forgetDeskRefusalFold();
+    // A fresh hour of the clock per test (only `Date` is faked), so the minute's fold of one test never folds the next one's press.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 3_600_000 });
     db.$executeRaw.mockResolvedValue(1);
   });
 
@@ -229,7 +229,7 @@ describe('«سجل الرفض» — call-logs', () => {
 
   it('a failing insert changes neither the status nor the body', async () => {
     const ok = await asResponse(logCall(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)));
-    forgetDeskRefusalFold();
+    vi.setSystemTime(Date.now() + 61_000); // past the minute's fold
     db.$executeRaw.mockRejectedValue(new Error('relation "desk_refusals" does not exist'));
     const failed = await asResponse(logCall(await person('abeer', 'CONFIRMATION_AGENT', LIVE_AGENT)));
     expect(failed.status).toBe(ok.status);
