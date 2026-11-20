@@ -31,6 +31,8 @@ const REPORTS: Record<string, string> = {
   'src/app/api/orders/shipping/performance/route.ts': 'the couriers',
   // 19/11 (Q2b): the rules page's «القاعدة اشتغلت عندها كم مرة» — one store's day per person (`GET /api/confirmation/rules/fired`).
   'src/lib/rule-fired.ts': 'how often each confirmation rule caught each person, one day of the store',
+  // 20/11 (W6b): «إخراج بضاعة» — the month's exits of one store, its value at cost cut per person after (`GET /api/inventory/exits/month`).
+  'src/lib/stock-exit-report.ts': 'what left the warehouses for good in one month of the store',
 };
 
 describe('every report of the performance board goes through the lane', () => {

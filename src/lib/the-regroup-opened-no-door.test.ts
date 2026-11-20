@@ -134,6 +134,13 @@ const DATED: Dated[] = [
     permissions: ['inventory.view'],
     sentence: 'نقل البضاعة (W3b): صفحة جديدة آخر تبويب بالمخزون، بمفتاح inventory.view متل جارتيها الأرصدة والحركات — بتشوف النقلات بس؛ الإرسال والاستلام واعتماد الفرق كل ضغطة بتسأل مفتاحها.',
   },
+  {
+    on: '2026-11-20',
+    path: '/inventory/exits',
+    change: 'added',
+    permissions: ['inventory.view'],
+    sentence: 'إخراج بضاعة (W6b): صفحة جديدة آخر تبويب بالمخزون، بمفتاح inventory.view متل جاراتها — بتشوف الطلبات وتقرير الشهر بس؛ الطلب بيسأل inventory.exit، والاعتماد والرفض inventory.exit_approve، والقيمة بالكلفة لصاحب costs.view بس.',
+  },
 ];
 
 // ───────────────────────── the comparison ─────────────────────────
