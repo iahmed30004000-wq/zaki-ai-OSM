@@ -4,6 +4,7 @@ import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
 import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
 import { drawDownVariants, restoreVariants } from './product-variants';
+import { sourceWarehouseNames } from './order-source-warehouse';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -51,6 +52,24 @@ export interface ConsumptionResult {
 
 /** The review mark a delivery leaves on an order whose shelf could not cover it. */
 export const STOCK_SHORT_ACTION = 'STOCK_SHORT_AT_DELIVERY';
+
+/** «فرق مكان» — the mark a delivery leaves on an order whose units did not all leave the warehouse it left from (W4b). */
+export const STOCK_PLACE_DIFFERENCE_ACTION = 'STOCK_PLACE_DIFFERENCE_AT_DELIVERY';
+
+/** One place a line's units came from that is not the order's warehouse: another warehouse, or none (`warehouseId` null). */
+interface ElsewherePlace {
+  warehouseId: string | null;
+  units: number;
+}
+
+/**
+ * The «فرق مكان» words written on the SALE line (pure). «2 من «مخزن ب» · 1 بلا مكان — مش من «مخزن أ»». A warehouse whose
+ * name is not found is still said, as «مخزن تاني».
+ */
+export function placeDifferenceNote(elsewhere: readonly ElsewherePlace[], sourceName: string | undefined, names: ReadonlyMap<string, string>): string {
+  const parts = elsewhere.map((p) => (p.warehouseId ? `${p.units} من «${names.get(p.warehouseId) ?? 'مخزن تاني'}»` : `${p.units} بلا مكان`));
+  return `فرق مكان: ${parts.join(' · ')} — مش من «${sourceName ?? 'مخزن الطلب'}»`;
+}
 
 /** The mark the legacy import (scripts/migration) writes on every order. */
 export const LEGACY_IMPORT_SOURCE = 'Legacy import';
@@ -151,6 +170,9 @@ export async function consumeOrderStock(
       // store-scoped; this draw-down was not, so an order could be promised
       // from its own store's shelf and served out of another's.
       storeId: true,
+      // THE WAREHOUSE IT LEFT FROM (W4a stamps it when the order joins a shipment of a placed store) — its units are taken
+      // from there first. Null for every order of a store that is not placed, and then the draw is today's, unchanged.
+      sourceWarehouseId: true,
       source: true,
       items: {
         select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true, variantSummary: true },
@@ -191,6 +213,20 @@ export async function consumeOrderStock(
    */
   const figures = await fixedCostsOf(tx, input.companyId, [...new Set(lines.map((l) => l.productId))]);
   let orderCost = 0;
+  /*
+   * ── FROM THE WAREHOUSE IT LEFT, FIRST (the warehouse plan, W4b — the ONE disclosed money point, the owner's word 20/11) ──
+   *
+   * An order with a source warehouse takes its units from that warehouse's batches, oldest first; what that warehouse
+   * lacks comes from the store's other warehouses, oldest first, then from the rows with no warehouse. Every unit taken
+   * anywhere but the source is said: on the line's SALE movement («فرق مكان») and in ONE activity on the order. The same
+   * rows are eligible as before (the store's, never on the road — `drawDownStock`); only their order changes, so the
+   * units, the shortfall and every batch total are what they were. The money: a product with a fixed figure costs the
+   * order the figure × the units, whichever batch they left; a product without one costs what its batches cost, and
+   * those can be other batches than the store-wide oldest — that is the disclosed point, and nothing else moves.
+   */
+  const source = order.sourceWarehouseId ?? null;
+  const elsewhereLines: { productId: string; productName: string; fromSource: number; elsewhere: ElsewherePlace[] }[] = [];
+  let names: Map<string, string> | null = null;
   for (const line of lines) {
     // The gift units are goods too. Leaving them in stock is how a shelf
     // ends up holding inventory that was given away.
@@ -204,7 +240,22 @@ export async function consumeOrderStock(
       quantity: need,
       // The delivery happened. The draw takes what the shelf holds and reports the rest — see above.
       allowNegative: true,
+      ...(source ? { prefer: source } : {}),
     });
+    const elsewhere: ElsewherePlace[] = source
+      ? (result.places ?? []).filter((p) => p.warehouseId !== source && p.taken > 0).map((p) => ({ warehouseId: p.warehouseId, units: p.taken }))
+      : [];
+    let note: string | null = null;
+    if (source && elsewhere.length > 0) {
+      names ??= await sourceWarehouseNames(tx, input.companyId, [source, ...elsewhere.map((p) => p.warehouseId)]);
+      note = placeDifferenceNote(elsewhere, names.get(source), names);
+      elsewhereLines.push({
+        productId: line.productId,
+        productName: line.productName,
+        fromSource: result.taken - elsewhere.reduce((s, p) => s + p.units, 0),
+        elsewhere,
+      });
+    }
     taken += result.taken;
     short += result.short;
     cost += result.cost;
@@ -241,12 +292,15 @@ export async function consumeOrderStock(
            * `onHand` and `drawDownStock` already keep.
            */
           storeId: order.storeId,
+          // The warehouse the order left from (W4b) — written only for an order that has one, so every other SALE line is
+          // the row it always was.
+          ...(source ? { warehouseId: source } : {}),
           productId: line.productId,
           type: SALE,
           quantity: -result.taken,
           balanceAfter: await onHandTotal(tx, input.companyId, line.productId),
           referenceId: input.orderId,
-          reason: `تسليم الطلب ${order.orderNumber}`,
+          reason: note ? `تسليم الطلب ${order.orderNumber} — ${note}` : `تسليم الطلب ${order.orderNumber}`,
           createdById: input.userId ?? null,
         },
       });
@@ -337,6 +391,31 @@ export async function consumeOrderStock(
     if (allFigured !== null) {
       await tx.order.update({ where: { id: input.orderId }, data: { estimatedCostOfGoods: allFigured } });
     }
+  }
+
+  /*
+   * «فرق مكان», ONCE, ON THE ORDER — units only, in the delivery's own transaction, read by whoever counts the warehouses
+   * (W5). Not a proof of consumption (the SALE line is), and never written for an order with no source warehouse.
+   */
+  if (source && elsewhereLines.length > 0) {
+    await tx.orderActivity.create({
+      data: {
+        companyId: input.companyId,
+        orderId: input.orderId,
+        userId: input.userId ?? null,
+        action: STOCK_PLACE_DIFFERENCE_ACTION,
+        metadata: JSON.stringify({
+          order: order.orderNumber,
+          sourceWarehouseId: source,
+          sourceWarehouseName: names?.get(source) ?? null,
+          units: elsewhereLines.reduce((s, l) => s + l.elsewhere.reduce((t, p) => t + p.units, 0), 0),
+          lines: elsewhereLines.map((l) => ({
+            ...l,
+            elsewhere: l.elsewhere.map((p) => ({ ...p, warehouseName: p.warehouseId ? (names?.get(p.warehouseId) ?? null) : null })),
+          })),
+        }),
+      },
+    });
   }
 
   /*
