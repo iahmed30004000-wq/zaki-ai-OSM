@@ -215,7 +215,7 @@ describe('an order with no source warehouse — the window answers what it answe
         else holding('orders.view');
         calls.length = 0;
         const body = await open();
-        now[`${seed} ${arrows ? 'arrows' : 'plain'}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('hex'), asked: [...calls] };
+        now[`${seed} ${arrows ? 'arrows' : 'plain'}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('base64url'), asked: [...calls] };
       }
     }
     if (process.env.W4D_WRITE_GOLDEN === '1') {

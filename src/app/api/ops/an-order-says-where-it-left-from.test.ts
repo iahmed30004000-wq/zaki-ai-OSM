@@ -305,7 +305,7 @@ describe('an unplaced store — the doors answer what they answered before, byte
         world = scenario(seed, 10 + seed * 3);
         calls.length = 0;
         const body = await ask(q);
-        now[`${seed} ${q}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('hex'), rows: body.orders.length, asked: [...calls] };
+        now[`${seed} ${q}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('base64url'), rows: body.orders.length, asked: [...calls] };
       }
     }
     if (process.env.W4D_WRITE_GOLDEN === '1') {
