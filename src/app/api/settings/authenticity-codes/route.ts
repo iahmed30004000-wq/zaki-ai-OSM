@@ -43,7 +43,8 @@ const schema = z.object({
     .string()
     .trim()
     .min(3, 'الرمز قصير — 3 أحرف على الأقل')
-    .max(AUTHENTICITY_CODE_MAX, `الرمز طويل — ${AUTHENTICITY_CODE_MAX} حرفاً على الأكثر`),
+    // A pasted verify link may be longer than its code; the code inside is held to AUTHENTICITY_CODE_MAX below.
+    .max(1000, `الرمز طويل — ${AUTHENTICITY_CODE_MAX} حرفاً على الأكثر`),
   note: z.string().trim().max(500).nullable().optional(),
   productId: z.string().trim().max(100).nullable().optional(),
 });
@@ -59,7 +60,10 @@ export async function POST(req: Request) {
     }
     const code = normalizeAuthenticityCode(parsed.data.code);
     if (!code) {
-      return NextResponse.json({ error: `الرمز غير صالح — حروف وأرقام وشرطات فقط، من 3 إلى ${AUTHENTICITY_CODE_MAX} حرفاً` }, { status: 400 });
+      return NextResponse.json(
+        { error: `الرمز غير صالح — من 3 إلى ${AUTHENTICITY_CODE_MAX} حرفاً (أي حروف أو أرقام أو رموز أو روابط)` },
+        { status: 400 }
+      );
     }
 
     const existing = await db.authenticityCode.findUnique({ where: { companyId_code: { companyId, code } } });
