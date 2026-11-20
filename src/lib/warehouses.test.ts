@@ -272,6 +272,10 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 20/11, W8c (the combination grid in the stock screens): READ ONLY — it reads the variants door's own answer
     // (`places[].warehouseId`, W8a) to print one combination's shelf figure in the form's source warehouse. No column, no write.
     'src/components/inventory/CombinationBoxes.tsx',
+    // 20/11, W4b (the delivery takes the units from the order's warehouse — the owner's word on the cost point): the one
+    // function every delivery door shares reads the order's `sourceWarehouseId`, hands it to the draw as `prefer` and
+    // writes it on the SALE line; the warehouse names of a «فرق مكان» come from `order-source-warehouse.ts`.
+    'src/lib/stock-consumption.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
