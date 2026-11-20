@@ -24,7 +24,8 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 interface Movement {
   id: string;
   type: string;
-  quantity: number;
+  /** Null for a transfer still on the road, to anybody but its sender (the door says why in `reason`). */
+  quantity: number | null;
   balanceAfter: number;
   reason: string | null;
   createdAt: string;
@@ -170,7 +171,9 @@ export function InventoryMovementsScreen() {
               { key: 'c2', label: "النوع",
                 render: (m) => (TYPE_AR[m.type] ?? m.type) },
               { key: 'c3', label: "الكمية",
-                render: (m) => (
+                render: (m) => m.quantity === null ? (
+                  <span className="text-[var(--sys-muted-foreground)]">مخفي</span>
+                ) : (
                   <><span
                       className={`inline-flex items-center gap-1 tabular-nums font-medium ${
                         m.quantity >= 0 ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'

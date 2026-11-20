@@ -27,6 +27,23 @@ vi.mock('@/lib/db', () => {
         (where.roleId ? S.rolePerms[where.roleId] ?? [] : S.rolePerms[`template:${where.role?.name}`] ?? []).map((permission) => ({ permission, scope: 'ALL_COMPANY', scopeIds: null })),
     },
     userPermission: { findMany: async ({ where }: Row) => (S.overrides[where.userId] ?? []).map((o) => ({ ...o, scope: 'ALL_COMPANY', scopeIds: null })) },
+    // 20/11 (W3b review): the movements door reads the ledger with its relations and a grouped count; the in-memory
+    // database judges the `where`, and this adds only the relation rows and the grouping it does not do itself.
+    inventoryMovement: {
+      findMany: async ({ where, orderBy, take }: Row) =>
+        ((await (S.m.db.inventoryMovement as Row).findMany({ where, orderBy, take })) as Row[]).map((r) => ({
+          ...r,
+          product: S.m.data.product.find((p) => p.id === r.productId) ?? null,
+          batch: null,
+          warehouse: S.m.data.warehouse.find((w) => w.id === r.warehouseId) ?? null,
+        })),
+      groupBy: async ({ by, where }: Row) => {
+        const rows = (await (S.m.db.inventoryMovement as Row).findMany({ where })) as Row[];
+        const counts = new Map<unknown, number>();
+        for (const r of rows) counts.set(r[by[0]], (counts.get(r[by[0]]) ?? 0) + 1);
+        return [...counts].map(([v, n]) => ({ [by[0]]: v, _count: { type: n } }));
+      },
+    },
   };
   const db = new Proxy({} as Row, {
     get: (_t, prop: string) => (prop in extra ? extra[prop] : (S.m.db as Row)[prop]),
@@ -61,6 +78,12 @@ import * as receiveDoor from './[id]/receive/route';
 import * as cancelDoor from './[id]/cancel/route';
 import * as differenceDoor from './[id]/difference/route';
 import { PATCH as stopDoor } from '@/app/api/geo/warehouses/[id]/route';
+import { GET as movementsDoor } from '@/app/api/inventory/movements/route';
+import { HIDDEN_ON_ROAD_AR } from '@/lib/stock-transfers';
+
+/** Every number anywhere in an answer, top level and nested — the sent figure may hide in no field. */
+const numbersIn = (v: unknown): number[] =>
+  typeof v === 'number' ? [v] : v && typeof v === 'object' ? Object.values(v as Row).flatMap(numbersIn) : [];
 
 const C1 = 'c1';
 let seq = 0;
@@ -333,7 +356,8 @@ describe('the list: the receiver counts blind', () => {
     await as('u-receiver');
     const hers = (await list.GET().then(json)).body;
     expect(hers.transfers[0].lines).toEqual([{ productId: 'p1', productName: 'منتج ١', quantitySent: null, quantityReceived: null, difference: null }]);
-    expect(Object.values(hers.transfers[0]).filter((v) => v === 7)).toEqual([]);
+    // The WHOLE answer, walked: no number 7 at any depth (the stock on the shelf is 10, so a 3 or a 10 may stand; 7 may not).
+    expect(numbersIn(hers)).not.toContain(7);
     expect(hers.warehouses.map((w: Row) => [w.id, w.countryId])).toEqual([
       ['wA', 'k1'],
       ['wB', 'k1'],
@@ -354,6 +378,59 @@ describe('the list: the receiver counts blind', () => {
     const hers = await list.GET().then(json);
     expect(hers.body.transfers[0].lines[0].quantitySent).toBeNull();
     expect(hers.body.transfers[0]).toMatchObject({ statusAr: 'بالطريق', kindAr: 'نقل داخل المتجر', fromName: 'أ', toName: 'ب', sentByName: 'u-sender', blind: true });
+  });
+});
+
+describe('20/11 (W3b review): the movements tab is blind too — the TRANSFER_OUT line of a transfer on the road', () => {
+  const ledger = async () => (await movementsDoor(new Request('http://x/api/inventory/movements')).then(json)).body;
+  const outLine = (b: Row) => b.movements.find((m: Row) => m.type === 'TRANSFER_OUT');
+
+  it('NEGATIVE: the receiver (view + receive) and the owner see the line with no figure; the sender sees −7', async () => {
+    await as('u-sender');
+    await send({ lines: [{ productId: 'p1', quantity: 7 }] });
+    expect(outLine(await ledger())).toMatchObject({ quantity: -7, reason: 'نقل إلى ب' });
+    for (const who of ['u-receiver', 'u-owner', 'u-viewer']) {
+      await as(who);
+      const b = await ledger();
+      expect(outLine(b), who).toMatchObject({ quantity: null, reason: HIDDEN_ON_ROAD_AR, hiddenOnRoad: true, balanceAfter: 10 });
+      expect(numbersIn(b), who).not.toContain(7);
+      expect(numbersIn(b), who).not.toContain(-7);
+      expect(JSON.stringify(b), who).not.toContain('نقل إلى');
+    }
+  });
+
+  it('after the receipt — or a cancel — everyone reads the figure', async () => {
+    await as('u-sender');
+    const a = (await send({ lines: [{ productId: 'p1', quantity: 7 }] })).body.transfer.id;
+    await as('u-receiver');
+    await receive(a, [{ productId: 'p1', quantity: 7 }]);
+    for (const who of ['u-receiver', 'u-owner']) {
+      await as(who);
+      expect(outLine(await ledger()), who).toMatchObject({ quantity: -7, reason: 'نقل إلى ب' });
+    }
+    await as('u-sender');
+    const c = (await send({ lines: [{ productId: 'p1', quantity: 2 }] })).body.transfer.id;
+    await as('u-receiver');
+    expect((await ledger()).movements.filter((m: Row) => m.type === 'TRANSFER_OUT').map((m: Row) => m.quantity)).toEqual(
+      expect.arrayContaining([null, -7])
+    );
+    await as('u-sender');
+    await cancel(c);
+    await as('u-receiver');
+    expect(
+      (await ledger()).movements
+        .filter((m: Row) => m.type === 'TRANSFER_OUT')
+        .map((m: Row) => m.quantity)
+        .sort()
+    ).toEqual([-2, -7].sort());
+  });
+
+  it('a page with no transfer line asks nothing more of the database', async () => {
+    await as('u-receiver');
+    const spy = vi.spyOn(S.m.db.stockTransfer as Row, 'findMany');
+    const b = await ledger();
+    expect(b.movements).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

@@ -241,11 +241,17 @@ describe('the receiver counts blind (the blocker)', () => {
     fireEvent.click((await table()).getByRole('button', { name: 'استلم' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).not.toMatch(/37/);
+    // Not in any attribute either — a placeholder, an aria-label, a title, a value, a data-* (20/11, review).
+    // (An icon's drawing — an svg path's `d` — is not words, and its coordinates are full of digits.)
+    const attributes = () =>
+      [dialog, ...dialog.querySelectorAll('*')].flatMap((el) => [...el.attributes].filter((a) => a.name !== 'd').map((a) => `${a.name}=${a.value}`));
+    expect(attributes().filter((a) => a.includes('37'))).toEqual([]);
     expect(dialog.textContent).toContain('الكمية المبعوتة بتبين بعد ما تضغط');
     const press = within(dialog).getByRole('button', { name: 'استلمت' }) as HTMLButtonElement;
     expect(press.disabled).toBe(true);
     fireEvent.change(within(dialog).getByLabelText('عدد «كريم اليدين» اللي وصل'), { target: { value: '30' } });
     expect(dialog.textContent).not.toMatch(/37/);
+    expect(attributes().filter((a) => a.includes('37'))).toEqual([]);
     expect(press.disabled).toBe(false);
     fireEvent.click(press);
     expect(await screen.findByText('انستلم النقل')).toBeTruthy();
@@ -422,6 +428,30 @@ describe('the send form: the kind before the press', () => {
       cleanup();
       api.mockClear();
     }
+  });
+});
+
+describe('the movements tab draws the door’s blind line (20/11, review)', () => {
+  it('a TRANSFER_OUT line with no figure says «مخفي» and the door’s reason — no number, no arrow', async () => {
+    api.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/inventory/movements')) {
+        return {
+          movements: [
+            { id: 'm1', type: 'TRANSFER_OUT', quantity: null, balanceAfter: 10, reason: 'العدد مخفي لحد ما ينستلم النقل', hiddenOnRoad: true, createdAt: '2026-11-20T08:00:00.000Z', product: { id: 'p1', name: 'كريم اليدين', sku: null }, batchNumber: null, createdByName: 'رنا' },
+          ],
+          types: [{ type: 'TRANSFER_OUT', count: 1 }],
+          hasMore: false,
+        };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    const { InventoryMovementsScreen } = await import('./InventoryMovementsScreen');
+    render(<InventoryMovementsScreen />);
+    const t = await table();
+    expect(t.getByText('مخفي')).toBeTruthy();
+    expect(t.getByText('العدد مخفي لحد ما ينستلم النقل')).toBeTruthy();
+    expect(t.getByText('نقل — طالع من مخزن')).toBeTruthy();
+    expect(t.queryByText('NaN')).toBeNull();
   });
 });
 

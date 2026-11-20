@@ -706,6 +706,34 @@ export async function approveDifference(
   return { transfer: await readTransfer(tx, companyId, storeId, transferId), replay: false };
 }
 
+/* ───────────────────────────── the ledger while on the road ───────────────────────────── */
+
+/** What the ledger says in place of a sent figure the reader may not see yet. */
+export const HIDDEN_ON_ROAD_AR = 'العدد مخفي لحد ما ينستلم النقل';
+
+/**
+ * 20/11 (W3b review): THE LEDGER IS BLIND TOO. The send writes a `TRANSFER_OUT −n` line at once, and the movements door
+ * answers every holder of `inventory.view` — the receiver included — so her count was blind on this tab and not on the
+ * next. Of the given ledger lines, the transfers whose `TRANSFER_OUT` line this viewer may not read yet: still on the road
+ * (`SENT`) and not sent by her. Received or cancelled, the line says its figure to everyone.
+ *
+ * No `TRANSFER_OUT` line in the page = no read at all (a store that never transferred answers as it did).
+ */
+export async function transfersBlindTo(
+  tx: Tx,
+  companyId: string,
+  viewerId: string,
+  lines: readonly { type: string; referenceId: string | null }[]
+): Promise<Set<string>> {
+  const ids = [...new Set(lines.filter((l) => l.type === 'TRANSFER_OUT' && l.referenceId).map((l) => l.referenceId as string))];
+  if (ids.length === 0) return new Set();
+  const open = await tx.stockTransfer.findMany({
+    where: { id: { in: ids }, companyId, status: 'SENT', sentById: { not: viewerId } },
+    select: { id: true },
+  });
+  return new Set(open.map((t) => t.id));
+}
+
 /* ───────────────────────────── what the list shows ───────────────────────────── */
 
 /**
