@@ -126,6 +126,9 @@ export function leavesTheShipment(opts: { fromTrolley: boolean }): Record<string
     courierSendStartedAt: null,
     shipHoldUntil: null,
     shipHoldReason: null,
+    // W4a: the warehouse it was to leave from goes with the trolley (`shipment-warehouse.ts`). Null on an unplaced store's
+    // order already, so writing it there changes nothing.
+    sourceWarehouseId: null,
     ...(opts.fromTrolley
       ? { deliveryProviderId: null, deliveryAssignedAt: null, deliveryAssignedById: null }
       : {}),
@@ -147,6 +150,8 @@ export function leavesTheTrolley(): Record<string, unknown> {
     shippingBatchId: null,
     deliveryAssignedAt: null,
     deliveryAssignedById: null,
+    // W4a: off the trolley, still in the building — the warehouse is named again by the trolley it joins next.
+    sourceWarehouseId: null,
   };
 }
 

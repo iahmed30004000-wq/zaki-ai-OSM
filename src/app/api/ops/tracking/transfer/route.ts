@@ -109,11 +109,19 @@ export async function POST(req: Request) {
     // no batch open leaves it assigned to somebody who has not agreed to
     // carry anything today — invisible on every batch screen and nobody's
     // job. An agent is exempt: he takes it by hand, now.
-    let openBatch: { id: string; batchNumber: string } | null = null;
+    let openBatch: { id: string; batchNumber: string; warehouseId: string | null } | null = null;
     if (requiresOpenBatch(target)) {
       openBatch = await db.shippingBatch.findFirst({
-        where: { companyId, storeId, deliveryProviderId: to.id, status: 'READY' },
-        select: { id: true, batchNumber: true },
+        // W4a: a parcel that leaves from a warehouse goes onto the new courier's trolley OF THAT WAREHOUSE — a trolley never
+        // mixes warehouses. An order with no warehouse (every order of a store not placed) asks as before.
+        where: {
+          companyId,
+          storeId,
+          deliveryProviderId: to.id,
+          status: 'READY',
+          ...(order.sourceWarehouseId ? { warehouseId: order.sourceWarehouseId } : {}),
+        },
+        select: { id: true, batchNumber: true, warehouseId: true },
         orderBy: { createdAt: 'desc' },
       });
       if (!openBatch) {
@@ -244,6 +252,16 @@ export async function POST(req: Request) {
         shippingBatchId: openBatch?.id ?? null,
         internalNotes: `بديل عن ${order.orderNumber}: ${plan.reason}`,
       });
+
+      /*
+       * W4a: THE REPLACEMENT LEAVES FROM THE TROLLEY'S WAREHOUSE. It rides a trolley of one warehouse, so it carries that
+       * warehouse like every order that joins one — in this same transaction, right after it is raised (how an order is
+       * raised, `createReplacement`, is not touched). Without it the warehouse's free stock would not count its hold. A
+       * trolley with no warehouse (every trolley of a store not placed) writes nothing more.
+       */
+      if (openBatch?.warehouseId) {
+        await tx.order.update({ where: { id: replacement.id }, data: { sourceWarehouseId: openBatch.warehouseId } });
+      }
 
       /*
        * WHICH SIDE OF THE PAIR EACH COPY IS WRITTEN ON. Both orders carry the
