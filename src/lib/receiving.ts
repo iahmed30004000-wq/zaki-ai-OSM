@@ -154,9 +154,18 @@ export async function drawDownStock(
      * never on the road). Everything else — oldest first, the guarded write, the family cost — is the same code.
      */
     warehouseId?: string | null;
+    /**
+     * THE ORDER'S OWN WAREHOUSE FIRST (the warehouse plan, W4b — read by the delivery, `consumeOrderStock`, and nobody else).
+     * Given: the same rows as without it (the store's, never on the road), in a different order — this warehouse's rows
+     * oldest first, then the store's other warehouses' rows oldest first, then the rows with no warehouse oldest first —
+     * and the answer says how many units left each place (`places`). Absent: not one read, write or answer changes.
+     * Ignored when `warehouseId` is given (that draw already names its one place).
+     */
+    prefer?: string | null;
   }
-): Promise<{ taken: number; short: number; cost: number }> {
+): Promise<{ taken: number; short: number; cost: number; places?: DrawnPlace[] }> {
   if (input.quantity <= 0) return { taken: 0, short: 0, cost: 0 };
+  const prefer = input.warehouseId ? null : input.prefer || null;
 
   const read = () =>
     tx.productionBatch.findMany({
@@ -183,8 +192,9 @@ export async function drawDownStock(
       // returned, so every margin in the product rested on the estimate
       // taken when the order was written instead.
       // `splitFromBatchId`: rows split from one run are costed as that run (`batch-family.ts`).
-      select: { id: true, quantityRemaining: true, quantitySold: true, costPerUnit: true, splitFromBatchId: true },
-    });
+      // `warehouseId` is read only for a preferring draw: every other draw asks exactly the question it always asked.
+      select: { id: true, quantityRemaining: true, quantitySold: true, costPerUnit: true, splitFromBatchId: true, ...(prefer ? { warehouseId: true } : {}) },
+    }).then((rows) => (prefer ? preferring(rows, prefer) : rows));
 
   let batches = await read();
   const available = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
@@ -201,6 +211,8 @@ export async function drawDownStock(
    * run that never moved gives (`batch-family.ts`).
    */
   const costs = new FamilyCost();
+  // Units that left each place — kept only for a preferring draw (the key is the warehouse, or null for «بلا مكان»).
+  const fromPlace = new Map<string | null, number>();
   for (let attempt = 0; ; attempt++) {
     const familyOf = await familyRootOf(tx, input.companyId, [input.productId], batches);
     let changed = false;
@@ -231,6 +243,10 @@ export async function drawDownStock(
         throw e;
       }
       costs.add(familyOf(batch), take, batch.costPerUnit ?? 0);
+      if (prefer && take > 0) {
+        const at = (batch as { warehouseId?: string | null }).warehouseId ?? null;
+        fromPlace.set(at, (fromPlace.get(at) ?? 0) + take);
+      }
       left -= take;
     }
     if (!changed || left <= 0) break;
@@ -259,5 +275,33 @@ export async function drawDownStock(
    * whoever knows the currency — never on the way there.
    */
   const cost = costs.total();
-  return { taken: input.quantity - left, short: left, cost };
+  if (!prefer) return { taken: input.quantity - left, short: left, cost };
+  // The order's warehouse first, then the other warehouses by id, then «بلا مكان» — the order the units were taken in.
+  const places = [...fromPlace]
+    .map(([warehouseId, taken]) => ({ warehouseId, taken }))
+    .sort((a, b) => placeRank(a.warehouseId, prefer) - placeRank(b.warehouseId, prefer) || ((a.warehouseId ?? '') < (b.warehouseId ?? '') ? -1 : 1));
+  return { taken: input.quantity - left, short: left, cost, places };
+}
+
+/** How many units of a preferring draw left one place: a warehouse, or `null` for the rows with no warehouse. */
+export interface DrawnPlace {
+  warehouseId: string | null;
+  taken: number;
+}
+
+/** 0 = the preferred warehouse · 1 = another warehouse of the store · 2 = no warehouse (`null`). */
+function placeRank(warehouseId: string | null | undefined, prefer: string): number {
+  return warehouseId === prefer ? 0 : warehouseId ? 1 : 2;
+}
+
+/**
+ * THE ROWS A PREFERRING DRAW TAKES, IN THE ORDER IT TAKES THEM (W4b). The same rows the read returned; a STABLE sort by
+ * place only, so inside each place the read's own order — oldest first — stands. When every row is in the preferred
+ * warehouse (a store with one warehouse and nothing left unplaced) nothing moves, and the draw is the draw it always was.
+ */
+export function preferring<T extends { warehouseId?: string | null }>(rows: readonly T[], prefer: string): T[] {
+  return rows
+    .map((row, i) => ({ row, i, rank: placeRank(row.warehouseId, prefer) }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((x) => x.row);
 }
