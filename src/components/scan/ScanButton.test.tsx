@@ -78,7 +78,13 @@ afterEach(() => {
 });
 
 const sheet = (props: Partial<React.ComponentProps<typeof ScanSheet>> = {}) => (
-  <ScanSheet title="مسح" onClose={props.onClose ?? vi.fn()} onScan={props.onScan ?? vi.fn()} continuous={props.continuous ?? false} />
+  <ScanSheet
+    title="مسح"
+    onClose={props.onClose ?? vi.fn()}
+    onScan={props.onScan ?? vi.fn()}
+    continuous={props.continuous ?? false}
+    clean={props.clean}
+  />
 );
 
 describe('opening the camera', () => {
@@ -228,6 +234,34 @@ describe('what the lens is not allowed to pass on', () => {
     });
     expect(onScan).not.toHaveBeenCalled();
     expect(screen.getByTestId('scan-said').textContent).toBe('هذا ليس مرجعاً نعرفه.');
+  });
+
+  // 19/11: the public authenticity page's QR holds a whole link. The warehouse rule refused it («هذا ليس مرجعاً
+  // نعرفه»); that page now hands the sheet its own cleaner, and every other caller keeps the default.
+  const LINK = 'https://crm.zakiai.io/verify/168f776f-7144-4422-864d-e63ac8c6ddc8?code=P-00042';
+
+  it('by default a link is not a reference — the warehouse rule is unchanged', async () => {
+    const onScan = vi.fn();
+    await act(async () => {
+      render(sheet({ onScan, continuous: true }));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('أو اكتب المرجع'), { target: { value: LINK } });
+      fireEvent.click(screen.getByText('إدخال'));
+    });
+    expect(onScan).not.toHaveBeenCalled();
+  });
+
+  it('a caller that passes its own cleaner gets what that cleaner keeps — the link, exactly', async () => {
+    const onScan = vi.fn();
+    await act(async () => {
+      render(sheet({ onScan, continuous: true, clean: (raw) => raw.trim() || null }));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('أو اكتب المرجع'), { target: { value: `  ${LINK}  ` } });
+      fireEvent.click(screen.getByText('إدخال'));
+    });
+    expect(onScan).toHaveBeenCalledWith(LINK);
   });
 });
 

@@ -56,6 +56,12 @@ export interface ScanButtonProps {
   /** The trigger's own label. */
   label?: string;
   className?: string;
+  /**
+   * What counts as a readable code, before `onScan` sees it. Defaults to `cleanScan` — the warehouse's references
+   * (3–40 letters, digits and dashes). 19/11: the public authenticity page passes its own, because a printed QR
+   * there holds a whole link, and the server is the one that judges it.
+   */
+  clean?: (raw: string) => string | null;
 }
 
 /** A short, dry tick. Loud enough for a warehouse, short enough to repeat. */
@@ -95,7 +101,14 @@ const FRAME_MS = 125;
  * ZXing fallback alike. Only the words said barcode, so anybody holding a
  * label with a QR square on it had no reason to think this would read it.
  */
-export function ScanButton({ onScan, title = 'مسح الرمز (QR أو باركود)', continuous = false, label = 'مسح', className }: ScanButtonProps) {
+export function ScanButton({
+  onScan,
+  title = 'مسح الرمز (QR أو باركود)',
+  continuous = false,
+  label = 'مسح',
+  className,
+  clean,
+}: ScanButtonProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -110,7 +123,7 @@ export function ScanButton({ onScan, title = 'مسح الرمز (QR أو بار�
         <RiCameraLine className="w-4 h-4" />
         {label}
       </button>
-      {open && <ScanSheet onClose={() => setOpen(false)} onScan={onScan} title={title} continuous={continuous} />}
+      {open && <ScanSheet onClose={() => setOpen(false)} onScan={onScan} title={title} continuous={continuous} clean={clean} />}
     </>
   );
 }
@@ -126,11 +139,13 @@ export function ScanSheet({
   onScan,
   title,
   continuous,
+  clean = cleanScan,
 }: {
   onClose: () => void;
   onScan: ScanButtonProps['onScan'];
   title: string;
   continuous: boolean;
+  clean?: ScanButtonProps['clean'];
 }) {
   const video = useRef<HTMLVideoElement | null>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -166,9 +181,12 @@ export function ScanSheet({
    */
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
+  // The cleaner rides in a ref too, for the same reason: a caller passing it inline must not restart the camera.
+  const cleanRef = useRef(clean);
   useEffect(() => {
     onScanRef.current = onScan;
     onCloseRef.current = onClose;
+    cleanRef.current = clean;
   });
 
   /**
@@ -178,7 +196,7 @@ export function ScanSheet({
    */
   const accept = useCallback(
     async (raw: string) => {
-      const code = cleanScan(raw);
+      const code = cleanRef.current(raw);
       if (!code) {
         announce(false);
         setSaid({ text: 'هذا ليس مرجعاً نعرفه.', ok: false });
