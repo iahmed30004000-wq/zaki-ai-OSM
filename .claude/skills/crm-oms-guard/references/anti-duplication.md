@@ -122,6 +122,10 @@ cancel before receipt; kind read by `stock-transfer-kind.ts`). Between stores / 
 (request with one reason of `stock-exit-reasons.ts` → held in the free stock → a DIFFERENT person approves through
 `receiving.drawDownStock` with `warehouseId`, or rejects). The free stock of a warehouse is ONE function: `stock-transfers.freeStockOf`.
 Nothing posted to a profit, a wallet or an expense.
+(20/11, W7a) The same article in two stores: `ProductPair` and `src/lib/product-pairs.ts` (proposed by equal sku, then equal
+name — `order-parser.foldForMatch` — and SAVED by a person; one twin per product per other store, held by the database's
+unique keys). Doors `/api/inventory/pairs` (key `inventory.transfer`). Nothing reads it yet — the transfer between stores
+(W7b) will; never link two stores' products another way.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

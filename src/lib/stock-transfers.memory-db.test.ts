@@ -43,6 +43,8 @@ const TABLES = [
   'userCountryAccess',
   'userStoreAccess',
   'userWarehouseAccess',
+  // 20/11 (W7a): the same article in two stores — its three unique keys answer P2002 here as the database does.
+  'productPair',
 ] as const;
 
 const known = (code: string) => new Prisma.PrismaClientKnownRequestError(code, { code, clientVersion: 'memory' });
@@ -171,6 +173,10 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       const { lines, ...rest } = d;
       const row: Row = { createdAt: new Date(), updatedAt: new Date(), ...rest, id: rest.id ?? `${name}-${++seq}` };
       if (data[name].some((x) => x.id === row.id)) throw known('P2002');
+      if (name === 'productPair') {
+        const keys = [['productAId', 'productBId'], ['productAId', 'storeBId'], ['productBId', 'storeAId']];
+        if (data.productPair.some((x) => keys.some((k) => k.every((c) => x[c] === row[c])))) throw known('P2002');
+      }
       if (name === 'stockTransfer') row.status ??= 'SENT';
       if (name === 'stockTransfer') row.sentAt ??= new Date();
       if (name === 'stockExit') row.requestedAt ??= new Date();
@@ -195,6 +201,14 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       const r = data[name].find((x) => matches(name, x, where));
       if (!r) throw known('P2025');
       apply(r, d);
+      return pick(name, r, select);
+    },
+    // 20/11 (W7a): a pair is removed for good (nothing points at it).
+    delete: async ({ where, select }: Row) => {
+      touched.push(`${name}.delete`);
+      const i = data[name].findIndex((x) => matches(name, x, where));
+      if (i < 0) throw known('P2025');
+      const [r] = data[name].splice(i, 1);
       return pick(name, r, select);
     },
     updateMany: async ({ where, data: d }: Row) => {

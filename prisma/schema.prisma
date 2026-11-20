@@ -58,6 +58,7 @@ model Company {
   warehouses            Warehouse[]
   stockTransfers        StockTransfer[]
   stockExits            StockExit[]
+  productPairs          ProductPair[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -469,6 +470,9 @@ model Product {
   inventoryMovements InventoryMovement[]
   stockTransferLines StockTransferLine[]
   stockExitLines     StockExitLine[]
+  /// 20/11 (W7a): the same article in another store of the company — at most one twin per other store (`ProductPair`).
+  pairsAsA           ProductPair[]               @relation("ProductPairA")
+  pairsAsB           ProductPair[]               @relation("ProductPairB")
   offers             Offer[]
   orders             Order[]
   orderItems         OrderItem[]
@@ -2806,6 +2810,46 @@ model StockExitLineVariant {
   @@index([exitId])
   @@index([variantId])
   @@map("stock_exit_line_variants")
+}
+
+/// THE SAME ARTICLE IN TWO STORES (the warehouse plan, request W7a). Two `Product` rows of two stores of ONE company
+/// that a person said are the same goods — what a transfer between stores will read to know where the goods land
+/// (W7b). Chosen by a person (the door proposes equal sku first, then equal name), never made by the system.
+///
+/// One row per unordered couple, written in ONE direction: side A is the store whose id sorts first (byte order), so
+/// a product sits on the same side of every pair it has with a given store. That turns «one twin per product per
+/// other store» into two plain unique keys (`productAId + storeBId`, `productBId + storeAId`), and the couple itself
+/// into a third (`productAId + productBId`).
+///
+/// `storeAId` / `storeBId` are copies of the products' stores, written once by `product-pairs.savePair` (no door moves
+/// a product to another store). No foreign key to `stores`: a store with products cannot be deleted
+/// (`products.store_id` RESTRICT), and a pair goes with either of its products (CASCADE).
+/// `hint`: why the two were proposed — 'SKU', 'NAME', 'NAME_EN' — or null when a person picked them by hand.
+///
+/// Held by CHECKs in the migration, which this file cannot express:
+///   product_pairs_store_order_check («storeAId» < «storeBId», COLLATE "C" — also: two different stores),
+///   product_pairs_hint_check (null or one of the three hints).
+model ProductPair {
+  id          String   @id @default(uuid())
+  companyId   String
+  productAId  String
+  storeAId    String
+  productBId  String
+  storeBId    String
+  hint        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productA Product @relation("ProductPairA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("ProductPairB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId])
+  @@unique([productAId, storeBId])
+  @@unique([productBId, storeAId])
+  @@index([companyId, storeAId])
+  @@index([companyId, storeBId])
+  @@map("product_pairs")
 }
 
 // ─── ORDER LINES (Stage 3) ───
