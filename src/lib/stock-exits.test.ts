@@ -426,7 +426,7 @@ describe('conservation on random sequences — every unit accounted for, and onl
       if (op === 0 || pending.length === 0) {
         const productId = rnd(2) ? 'p1' : 'p2';
         const warehouseId = productId === 'p1' && rnd(2) ? 'wB' : 'wA';
-        const res = await ask(m, [{ productId, quantity: 1 + rnd(6) }], { warehouseId, reason: EXIT_REASONS[rnd(6)] }).catch((e) => e);
+        const res = await ask(m, [{ productId, quantity: 1 + rnd(6) }], { warehouseId, reason: EXIT_REASONS[rnd(6)] }).catch((e: unknown) => e as Row);
         if (res instanceof StockExitRefused) expect(res.code).toBe('NOT_ENOUGH_FREE');
         else pending.push(res.exit.id);
       } else {
