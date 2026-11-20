@@ -31,10 +31,29 @@ const withSystem = (value: unknown) =>
   db.systemSetting.findUnique.mockResolvedValue({ value: JSON.stringify(value), updatedAt: new Date(), updatedById: 'u1' });
 
 type Call = [string, RequestInit];
-const okJson = (body: unknown, status = 200) =>
-  ({ ok: status >= 200 && status < 300, status, type: 'basic', text: async () => JSON.stringify(body) }) as unknown as Response;
+// Real responses with real bodies — the probe reads `res.body`, never `res.text()`.
+const okJson = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 const raw = (text: string, status: number, type = 'basic') =>
-  ({ ok: status >= 200 && status < 300, status, type, text: async () => text }) as unknown as Response;
+  type === 'basic'
+    ? new Response(text, { status })
+    : ({ ok: false, status, type, body: null } as unknown as Response);
+
+/** A body of `chunks` × `size` bytes that records how far it was read and whether it was cancelled. */
+const streamed = (chunks: number, size: number) => {
+  const seen = { pulled: 0, cancelled: false };
+  const piece = new TextEncoder().encode('x'.repeat(size));
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (seen.pulled >= chunks) return c.close();
+      seen.pulled += 1;
+      c.enqueue(piece);
+    },
+    cancel() {
+      seen.cancelled = true;
+    },
+  });
+  return { res: new Response(body, { status: 200 }), seen };
+};
 
 const fetchWith = (res: Response | (() => Promise<Response>)) =>
   vi.fn(async () => (typeof res === 'function' ? res() : res)) as unknown as typeof fetch & { mock: { calls: Call[] } };
@@ -154,7 +173,89 @@ describe('what it says back, in Arabic', () => {
   });
 });
 
+describe('how much of an answer is read (review of #438)', () => {
+  it('NEGATIVE: a 60 MB answer stops at the cap — the reader is cancelled, the rest is never pulled', async () => {
+    const big = streamed(60 * 16, 64 * 1024); // 60 MB in 64 KB pieces
+    const r = await probe({ fetchImpl: fetchWith(big.res) });
+    expect(r).toMatchObject({ ok: false, code: 'NOT_OPENAI' });
+    expect(big.seen.cancelled).toBe(true);
+    expect(big.seen.pulled).toBeLessThanOrEqual(2);
+  });
+
+  it('NEGATIVE: the same for a refusal body (a 500 that never ends)', async () => {
+    const seen = { pulled: 0, cancelled: false };
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        seen.pulled += 1;
+        c.enqueue(new TextEncoder().encode('e'.repeat(65536)));
+      },
+      cancel() {
+        seen.cancelled = true;
+      },
+    });
+    const r = await probe({ fetchImpl: fetchWith(new Response(endless, { status: 500 })) });
+    expect(r).toMatchObject({ ok: false, code: 'SERVER_ERROR', status: 500 });
+    expect(seen.cancelled).toBe(true);
+    expect(seen.pulled).toBeLessThanOrEqual(3);
+  });
+
+  it('NEGATIVE: a body that drips past the deadline is a timeout, not a malformed answer', async () => {
+    const enc = new TextEncoder();
+    let cancelled = false;
+    const drip = new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(enc.encode('{"choices":['));
+        },
+        pull() {
+          return new Promise(() => undefined); // never another byte
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      { status: 200 }
+    );
+    const r = await probe({ fetchImpl: fetchWith(drip), timeoutMs: 30 });
+    expect(r).toMatchObject({ ok: false, code: 'TIMEOUT' });
+    expect(cancelled).toBe(true);
+  });
+
+  it('a small answer still reads whole', async () => {
+    const r = await probe({ fetchImpl: fetchWith(okJson({ choices: [{ message: { content: 'OK' } }] })) });
+    expect(r).toMatchObject({ ok: true, reply: 'OK' });
+  });
+});
+
 describe('the key', () => {
+  // A key whose JSON and URL spellings differ from the raw one.
+  const ODD = 'loc"al/key+12\\345678';
+  const SPELLINGS = [ODD, JSON.stringify(ODD).slice(1, -1), encodeURIComponent(ODD)];
+
+  it('NEGATIVE: every spelling of the key an echo can take is scrubbed from the reply', async () => {
+    for (const spelling of SPELLINGS) {
+      const r = await probe({
+        fetchImpl: fetchWith(okJson({ choices: [{ message: { content: `you sent ${spelling} back` } }] })),
+        key: ODD,
+      });
+      const out = JSON.stringify(r);
+      expect(r.ok).toBe(true);
+      expect((r as { reply: string }).reply).toContain('«مفتاح»');
+      for (const s of SPELLINGS) expect((r as { reply: string }).reply, s).not.toContain(s);
+      expect(out).not.toContain('345678');
+    }
+  });
+
+  it('NEGATIVE: the refusal of a key never carries the key', async () => {
+    for (const status of [401, 403]) {
+      const r = await probe({ fetchImpl: fetchWith(raw(`bad key ${ODD}`, status)), key: ODD });
+      expect(r).toMatchObject({ ok: false, code: 'AUTH' });
+      const out = JSON.stringify(r);
+      for (const s of SPELLINGS) expect(out).not.toContain(s);
+      expect(out).not.toContain('345678');
+    }
+  });
+
   it('rides in the header when one is saved, and none is sent without one', async () => {
     const f = fetchWith(okJson({ choices: [{ message: { content: 'OK' } }] }));
     await probe({ fetchImpl: f, key: 'local-key-12345678' });

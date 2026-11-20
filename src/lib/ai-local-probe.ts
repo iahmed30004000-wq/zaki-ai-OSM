@@ -90,12 +90,54 @@ function scrub(text: string, key: string | null): string {
   return out;
 }
 
-async function readBounded(res: Response): Promise<string> {
+/** The deadline passed while the answer was still arriving. */
+class ReadAborted extends Error {}
+
+/**
+ * AT MOST `MAX_READ` BYTES, AND THE STREAM IS CANCELLED THERE.
+ *
+ * `res.text()` reads the whole answer before anything can be cut — a server
+ * that answers with 60 MB is read in full (review of #438). The body is read
+ * chunk by chunk instead, the reader is cancelled the moment the cap is
+ * reached, and a body that is still dripping when the deadline passes is a
+ * timeout, not a malformed answer.
+ */
+async function readBounded(res: Response, signal: AbortSignal): Promise<string> {
+  const body = res.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let onAbort: (() => void) | null = null;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(new ReadAborted());
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  });
+  aborted.catch(() => undefined);
   try {
-    return (await res.text()).slice(0, MAX_READ);
-  } catch {
-    return '';
+    while (size < MAX_READ) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done || !value) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } catch (e) {
+    if (e instanceof ReadAborted || signal.aborted) throw new ReadAborted();
+    // A body that breaks part way reads as what arrived before it broke.
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
+    reader.cancel().catch(() => undefined);
   }
+  const all = new Uint8Array(Math.min(size, MAX_READ));
+  let at = 0;
+  for (const c of chunks) {
+    if (at >= all.length) break;
+    const part = c.subarray(0, all.length - at);
+    all.set(part, at);
+    at += part.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeResult> {
@@ -118,6 +160,7 @@ export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeRes
   if (!checked.ok) return fail('ADDRESS_REFUSED', checked.message, null);
   const host = checked.host;
 
+  const timedOut = () => fail('TIMEOUT', 'الخادم ما ردّ خلال المهلة — تأكّد إنه شغّال وإن النموذج محمّل.', host);
   const doFetch = input.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? PROBE_TIMEOUT_MS);
@@ -144,7 +187,7 @@ export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeRes
     clearTimeout(timer);
     const aborted = controller.signal.aborted || (e instanceof Error && e.name === 'AbortError');
     return aborted
-      ? fail('TIMEOUT', 'الخادم ما ردّ خلال المهلة —تأكّد إنه شغّال وإن النموذج محمّل.', host)
+      ? timedOut()
       : fail('UNREACHABLE', 'ما قدرنا نوصل للخادم — تأكّد من العنوان والمنفذ وإن الخادم شغّال وعلى نفس الشبكة.', host);
   }
 
@@ -164,7 +207,7 @@ export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeRes
       );
     }
     if (!res.ok) {
-      const said = scrub(await readBounded(res), key);
+      const said = scrub(await readBounded(res, controller.signal), key);
       if ((status === 404 || status === 400) && /model/i.test(said)) {
         return fail('MODEL_NOT_FOUND', `النموذج «${model}» مش موجود على خادمك — اكتب اسم نموذج محمّل عليه.`, host, status);
       }
@@ -179,7 +222,7 @@ export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeRes
       return fail('SERVER_ERROR', `الخادم ردّ بخطأ ${status}.`, host, status);
     }
 
-    const text = await readBounded(res);
+    const text = await readBounded(res, controller.signal);
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -192,6 +235,10 @@ export async function probeLocalServer(input: ProbeInput): Promise<LocalProbeRes
     }
     const reply = scrub(content.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, ''), key).trim().slice(0, 120);
     return { ok: true, host, model, reply };
+  } catch (e) {
+    // The answer was still arriving when the deadline passed.
+    if (e instanceof ReadAborted) return timedOut();
+    throw e;
   } finally {
     clearTimeout(timer);
   }
