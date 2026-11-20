@@ -241,7 +241,9 @@ describe('the door', () => {
     // shortfall), granted by no migration. The opening count still asks only the two above (pinned by the lines before).
     // 20/11 (W6a): old = the five above; new + the two keys of goods leaving a warehouse for good (request, approve or reject),
     // granted by no migration. The opening count still asks only inventory.adjust and inventory.view.
-    expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual(['inventory.adjust', 'inventory.difference_approve', 'inventory.exit', 'inventory.exit_approve', 'inventory.transfer', 'inventory.transfer_receive', 'inventory.view']);
+    // 20/11 (W7b): old = the seven above; new + inventory.transfer_abroad (goods to a store of another country), granted by
+    // no migration. The opening count still asks only inventory.adjust and inventory.view.
+    expect(keys.sort(), 'مفتاح صلاحية جديد يحتاج منحاً').toEqual(['inventory.adjust', 'inventory.difference_approve', 'inventory.exit', 'inventory.exit_approve', 'inventory.transfer', 'inventory.transfer_abroad', 'inventory.transfer_receive', 'inventory.view']);
   });
 
   it('runs every rule inside the transaction that writes', () => {

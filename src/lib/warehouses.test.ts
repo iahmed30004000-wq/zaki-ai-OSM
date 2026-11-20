@@ -147,7 +147,9 @@ describe('why a warehouse may not stop', () => {
       where: {
         companyId: 'c1',
         OR: [{ fromWarehouseId: 'w1' }, { toWarehouseId: 'w1' }],
-        AND: [{ OR: [{ status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }] }],
+        // 20/11 (W7b): a transfer to another country AWAITING the owner holds its units too, so it keeps the warehouse
+        // running (was: SENT and the unapproved difference only).
+        AND: [{ OR: [{ status: 'AWAITING_APPROVAL' }, { status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }] }],
       },
     });
   });

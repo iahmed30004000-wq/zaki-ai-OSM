@@ -33,6 +33,8 @@ export const RECEIVE_KEY = 'inventory.transfer_receive';
 export interface SentTransfer {
   id: string;
   storeId: string;
+  /** 20/11 (W7b): the store whose goods arrive, for a transfer across stores — its receivers are told (null = INTERNAL). */
+  toStoreId?: string | null;
   fromWarehouseId: string;
   toWarehouseId: string;
   sentById: string;
@@ -52,7 +54,8 @@ export async function announceTransferSent(companyId: string, t: SentTransfer): 
     if (!to) return 0;
     const from = ends.find((w) => w.id === t.fromWarehouseId);
 
-    const holders = await resolveAudience({ companyId, storeId: t.storeId, audience: { permission: RECEIVE_KEY }, actorId: t.sentById });
+    const arrivesIn = t.toStoreId ?? t.storeId;
+    const holders = await resolveAudience({ companyId, storeId: arrivesIn, audience: { permission: RECEIVE_KEY }, actorId: t.sentById });
     if (holders.length === 0) return 0;
     const reach = await Promise.all(holders.map((u) => reachesWarehouse(u, companyId, to)));
     const receivers = holders.filter((_, i) => reach[i]);
@@ -71,7 +74,7 @@ export async function announceTransferSent(companyId: string, t: SentTransfer): 
     const words = transferSentWords(from?.name, t.lines.length);
     return await createNotification({
       companyId,
-      storeId: t.storeId,
+      storeId: arrivesIn,
       audience: { permission: RECEIVE_KEY },
       recipients: told,
       actorId: t.sentById,

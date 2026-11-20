@@ -48,6 +48,13 @@ export interface ReceiveInput {
   warehouseId?: string | null;
   /** Does the caller reach that warehouse? The door passes `warehouses.reachesWarehouse` for its session. */
   mayUse?: (warehouse: WarehouseRef) => Promise<boolean>;
+  /**
+   * 20/11 (W7b): THE LEDGER LINE OF A TRANSFER ACROSS STORES. Units that arrive from another store (or come back to the
+   * source on a cancel) open a batch here like any receipt, but their ledger line says what they are — `TRANSFER_IN`,
+   * with the transfer's id and its sentence — not «استلام بضاعة». Absent: the line is the `PRODUCTION` line it always was,
+   * byte for byte.
+   */
+  movement?: { type: 'TRANSFER_IN'; referenceId: string; reason: string };
 }
 
 export async function nextBatchNumber(tx: Tx, companyId: string): Promise<string> {
@@ -102,10 +109,11 @@ export async function receiveStock(tx: Tx, input: ReceiveInput) {
       ...(place ? { warehouseId: place } : {}),
       productId: input.productId,
       batchId: batch.id,
-      type: 'PRODUCTION',
+      type: input.movement?.type ?? 'PRODUCTION',
       quantity: input.quantity,
       balanceAfter,
-      reason: input.note?.trim() || 'استلام بضاعة',
+      ...(input.movement ? { referenceId: input.movement.referenceId } : {}),
+      reason: input.movement?.reason ?? (input.note?.trim() || 'استلام بضاعة'),
       createdById: input.createdById,
     },
   });

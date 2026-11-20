@@ -160,6 +160,12 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'inventory.transfer_receive', requires: 'inventory.view', ar: 'استلام نقل بضاعة بالعدّ', en: 'Receive a stock transfer by count' },
       { key: 'inventory.difference_approve', requires: 'inventory.view', ar: 'اعتماد فرق نقل البضاعة (ضايع أو تالف)', en: 'Approve a stock transfer shortfall (lost or damaged)' },
       /*
+       * 20/11 (warehouse plan W7b): sending goods to a store of ANOTHER country (the owner's explicit word of 20/11). It rides behind the send key — a person who cannot send a transfer cannot send one abroad —
+       * and opens nothing else: the request still waits for the owner's own press before anything moves. Granted by no
+       * migration: nobody holds it until the owner ticks it; his full access holds it.
+       */
+      { key: 'inventory.transfer_abroad', requires: 'inventory.transfer', ar: 'نقل بضاعة لبلد تاني (بعد اعتماد المالك)', en: 'Send stock to a store of another country (after the owner approves)' },
+      /*
        * 20/11 (warehouse plan W6a): the two hands of goods that leave a warehouse for good (damaged, expired, samples, back
        * to the supplier, sold outside the system, a partner's draw, other) — who asks, and who approves or rejects. Two boxes,
        * because the requester never decides her own request. Granted by no migration: nobody holds them until the owner

@@ -13,7 +13,8 @@ type Client = Prisma.TransactionClient | typeof prismaDb;
  * Two `Product` rows of two stores of ONE company that a person said are the same goods. A transfer between stores
  * (W7b) takes units out of product A and must know which product of the other store they land in; nothing links the
  * two today (`Product.sku` is unique per store, not per company). This module holds the link and nothing else: no
- * stock, no batch, no ledger line and no money is read or written here, and nothing reads the table yet.
+ * stock, no batch, no ledger line and no money is read or written here. 20/11 (W7b): the transfer across stores reads the
+ * table through `product-twins.ts`, and through nothing else.
  *
  *   propose  the products of the store the caller stands in against those of ONE other store she reaches, by hints
  *            that are equalities, never a fuzzy score: the same sku first, then the same name, then the same English

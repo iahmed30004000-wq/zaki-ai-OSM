@@ -108,14 +108,18 @@ const EXPECTED: ReadonlyArray<readonly [string, string]> = [
   // 20/11 (warehouse plan W6a): the two hands of goods leaving a warehouse for good — request, approve or reject (no migration
   // grants them — the owner ticks them; his full access holds them). Each sits behind the inventory view. 94 -> 96.
   ['inventory.exit', 'inventory.view'], ['inventory.exit_approve', 'inventory.view'],
+  // 20/11 (warehouse plan W7b): goods to a store of another country (no migration grants it — the owner ticks it; his full
+  // access holds it). It sits behind the send key. 96 -> 97.
+  ['inventory.transfer_abroad', 'inventory.transfer'],
 ];
 
 const items = PERMISSION_MODULES.flatMap((m) => m.items);
 
 describe('the catalog names what each action needs', () => {
-  it('holds exactly the 96 pairs — none lost, none invented', () => {
+  // 20/11 (W7b): 96 -> 97 — «نقل بضاعة لبلد تاني» behind the send key.
+  it('holds exactly the 97 pairs — none lost, none invented', () => {
     const actual = items.filter((i) => i.requires).map((i) => [i.key, i.requires] as const);
-    expect(EXPECTED).toHaveLength(96);
+    expect(EXPECTED).toHaveLength(97);
     expect(actual.length, 'عدد الأزواج').toBe(EXPECTED.length);
     for (const [action, view] of EXPECTED) {
       expect(catalogItem(action)?.requires, `${action} لازم يطلب ${view}`).toBe(view);
