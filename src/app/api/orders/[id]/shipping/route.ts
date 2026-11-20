@@ -418,6 +418,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           return NextResponse.json({ error: BENCH_STOPS_AR, errorAr: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
         }
         updateData.shippingBatchId = batch.id;
+        // W4a: the order leaves from the trolley's warehouse (`shipment-warehouse.ts`). On an unplaced store both are
+        // null and nothing more is written.
+        if ((batch.warehouseId ?? null) !== ((order as { sourceWarehouseId?: string | null }).sourceWarehouseId ?? null)) {
+          updateData.sourceWarehouseId = batch.warehouseId ?? null;
+        }
         break;
       }
 

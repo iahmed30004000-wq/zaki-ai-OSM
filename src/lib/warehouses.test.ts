@@ -196,6 +196,11 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',
+    // 20/11, W8a (a combination's count per warehouse): the one writer and its ledger, the draw-down and the restock that
+    // hand a placed store's pieces to it (the draw reads the order's source warehouse), and the variants door's count.
+    'src/lib/variant-stock.ts',
+    'src/lib/product-variants.ts',
+    'src/app/api/products/[id]/variants/route.ts',
     // 19/11, W2c (the stock screens show places): the balances and the ledger read where units are; the runs list and the
     // product page fold a split row into its run; the receive dialog sends the receive door's own `warehouseId` field.
     'src/app/api/inventory/movements/route.ts',
@@ -217,6 +222,17 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // `stock-transfer-kind.readStockTransfer` the end's own field `warehouseId` (`StockTransferEnd`) to say the kind before
     // the press, which this sweep cannot tell from a column by its name.
     'src/components/screens/StockTransfersScreen.tsx',
+    // 20/11, W4a (a shipment is made in ONE warehouse): the shipment's place and the warehouse's shelf for the blocks; the
+    // two doors that open a trolley and the preparation list that may be asked per warehouse; the two «off the trolley»
+    // column lists that drop the order's source; the doors that put an order on an existing trolley (assign to a batch,
+    // move to another courier's trolley before the handover) so a trolley never mixes warehouses.
+    'src/lib/shipment-warehouse.ts',
+    'src/lib/shipment-cancel.ts',
+    'src/app/api/ops/shipments/route.ts',
+    'src/app/api/shipping-batches/route.ts',
+    'src/app/api/ops/preparation/route.ts',
+    'src/app/api/orders/[id]/shipping/route.ts',
+    'src/app/api/ops/tracking/transfer/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
