@@ -6,6 +6,7 @@ import { holdingWhere, lockProductsStock } from './reservation';
 import { onHandTotal } from './receiving';
 import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { NOT_BUILT_AR, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
+import { PENDING_EXIT } from './stock-exit-reasons';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -212,10 +213,10 @@ export const differenceSchema = z.object(
 
 /* ───────────────────────────── shared reads ───────────────────────────── */
 
-type WarehouseRow = { id: string; companyId: string; countryId: string; isActive: boolean; name: string };
+export type WarehouseRow = { id: string; companyId: string; countryId: string; isActive: boolean; name: string };
 
 /** The warehouse rows FOR SHARE, in id order: a stop waits for this transaction, and this one waits for a stop under way. */
-async function lockWarehousesForShare(tx: Tx, ids: readonly string[]): Promise<Map<string, WarehouseRow>> {
+export async function lockWarehousesForShare(tx: Tx, ids: readonly string[]): Promise<Map<string, WarehouseRow>> {
   const out = new Map<string, WarehouseRow>();
   for (const id of [...new Set(ids)].sort()) {
     const rows = await tx.$queryRaw<WarehouseRow[]>`
@@ -238,6 +239,11 @@ const OLDEST_FIRST = [{ productionDate: 'asc' as const }, { createdAt: 'asc' as 
  * stamped when an order joins a shipping batch — from W4a; until then no order is sourced and this term is 0) − units
  * held by pending exits (W6a; none exist yet). The reservation's own «still holding» rule decides which orders count
  * (`reservation.holdingWhere`), with the store's filter, so a bench store's orders never count here.
+ *
+ * 20/11 (W6a): the third term is real — Σ quantity of the lines of this store's exits from this warehouse that are still
+ * PENDING (`stock-exit-reasons.PENDING_EXIT`). A rejected exit releases its units (it is no longer pending); an approved one has
+ * already taken them off the shelf (the first term), so it is not counted twice. ONE formula: the exit request and the
+ * transfer send both ask this function.
  */
 export async function freeStockOf(
   tx: Tx,
@@ -252,12 +258,17 @@ export async function freeStockOf(
     });
     const held = holdingWhere({ companyId: p.companyId, productId, storeId: p.storeId });
     const where = { ...held, order: { ...held.order, sourceWarehouseId: p.warehouseId } };
-    const [lines, addOns] = await Promise.all([
+    const [lines, addOns, exits] = await Promise.all([
       tx.orderItem.aggregate({ where, _sum: { reservedQty: true } }),
       tx.orderAddOn.aggregate({ where, _sum: { reservedQty: true } }),
+      tx.stockExitLine.aggregate({
+        where: { productId, exit: { companyId: p.companyId, storeId: p.storeId, warehouseId: p.warehouseId, status: PENDING_EXIT } },
+        _sum: { quantity: true },
+      }),
     ]);
     const reserved = (lines._sum.reservedQty ?? 0) + (addOns._sum.reservedQty ?? 0);
-    free.set(productId, (shelf._sum.quantityRemaining ?? 0) - reserved);
+    const pendingExits = exits._sum.quantity ?? 0;
+    free.set(productId, (shelf._sum.quantityRemaining ?? 0) - reserved - pendingExits);
   }
   return free;
 }

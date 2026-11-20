@@ -147,6 +147,13 @@ export async function drawDownStock(
      * convention `onHand` uses, so an order with no store still draws.
      */
     storeId?: string | null;
+    /**
+     * WHICH WAREHOUSE (the warehouse plan, W6a — an exit draws from the one warehouse it names). Absent or null: every
+     * warehouse of the store, exactly as before — no caller before W6a passes it, so their reads are the very ones they
+     * were. Given: only that warehouse's rows. Units on the road stay excluded either way (a row with a warehouse is
+     * never on the road). Everything else — oldest first, the guarded write, the family cost — is the same code.
+     */
+    warehouseId?: string | null;
   }
 ): Promise<{ taken: number; short: number; cost: number }> {
   if (input.quantity <= 0) return { taken: 0, short: 0, cost: 0 };
@@ -158,6 +165,7 @@ export async function drawDownStock(
         productId: input.productId,
         quantityRemaining: { gt: 0 },
         ...(input.storeId ? { storeId: input.storeId } : {}),
+        ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
         /*
          * NEVER UNITS ON THE ROAD (the warehouse plan, W2a). A row with `inTransitTransferId` holds units travelling
          * between two warehouses (`batch-split.ts`): they are on no shelf, nobody can hand them to a courier, and the

@@ -3,6 +3,7 @@ import { computeEffectiveGrants } from './permissions-core';
 import { attachGrants } from './authorization';
 import { seesAllCountries } from './geo-context';
 import { OPEN_TRANSFER_WHERE } from './stock-transfer-kind';
+import { PENDING_EXIT } from './stock-exit-reasons';
 import type { SessionUser } from '@/types/auth';
 
 /**
@@ -183,14 +184,18 @@ export async function warehousesOfStore(companyId: string, storeId: string) {
  * Units on the road have no warehouse, so the batch count above cannot see
  * them: without this line the source could be stopped with its goods half
  * way to the destination, and the destination stopped with goods arriving.
+ *
+ * 20/11 (W6a): a PENDING exit from it — units held for an exit that waits for its
+ * second hand. Stopping the warehouse would leave the approver a request on a
+ * place nobody may use any more; it is approved or rejected first.
  */
 export interface StopBlocker {
-  code: 'HOLDS_UNITS' | 'OPEN_TRANSFER';
+  code: 'HOLDS_UNITS' | 'OPEN_TRANSFER' | 'PENDING_EXIT';
   count: number;
   ar: string;
 }
 
-type Reader = Pick<typeof db, 'productionBatch' | 'stockTransfer'>;
+type Reader = Pick<typeof db, 'productionBatch' | 'stockTransfer' | 'stockExit'>;
 
 export async function warehouseStopBlockers(client: Reader, companyId: string, warehouseId: string): Promise<StopBlocker[]> {
   const blockers: StopBlocker[] = [];
@@ -205,6 +210,10 @@ export async function warehouseStopBlockers(client: Reader, companyId: string, w
   });
   if (transfers > 0) {
     blockers.push({ code: 'OPEN_TRANSFER', count: transfers, ar: `في نقل مفتوح منه أو عليه (${transfers})` });
+  }
+  const exits = await client.stockExit.count({ where: { companyId, warehouseId, status: PENDING_EXIT } });
+  if (exits > 0) {
+    blockers.push({ code: 'PENDING_EXIT', count: exits, ar: `في طلب إخراج بضاعة منه مستني اعتماد (${exits})` });
   }
   return blockers;
 }

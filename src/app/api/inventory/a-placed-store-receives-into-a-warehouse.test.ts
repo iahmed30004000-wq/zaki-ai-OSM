@@ -119,7 +119,8 @@ vi.mock('@/lib/db', () => {
         },
       };
     };
-    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount', 'stockTransfer'];
+    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount', 'stockTransfer', 'stockExit'];
+    // 20/11 (W6a): 'stockExit' — the stop door also counts PENDING exits from the warehouse; none exist here (0, today's answer).
     // 20/11 (W3a): 'stockTransfer' — the stop door also counts OPEN transfers from or to the warehouse; none exist here (0, today's answer).
     const c: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
     c.userStoreAccess = {

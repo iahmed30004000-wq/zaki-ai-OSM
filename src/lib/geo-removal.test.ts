@@ -245,7 +245,9 @@ describe('asking about many stores at once', () => {
     // document of goods that moved, never deleted.
     // 20/11 (W8a, merged after W3a): 35 → 36 — the ledger of a combination's count per warehouse (`variant_stock_movements`)
     // has a storeId and no foreign key to the store, so it is a stopper too: a store with one has a stock history.
-    expect(one.asked.length).toBe(36);
+    // 20/11 (W6a): 36 → 37 — the exits of goods from a store's warehouses (`stock_exits`) are a stopper too: a document of
+    // goods that left, never deleted.
+    expect(one.asked.length).toBe(37);
   });
 
   it('and no stores asks nothing at all', async () => {
