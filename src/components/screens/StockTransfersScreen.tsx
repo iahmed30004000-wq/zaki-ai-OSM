@@ -23,6 +23,8 @@ import { userCan } from '@/lib/can';
 import { routeLabel } from '@/lib/route-registry';
 import { arDateTime } from '@/lib/format';
 import { NOT_BUILT_AR, readStockTransfer, stockTransferRefusal } from '@/lib/stock-transfer-kind';
+// A client-made id, made once when the form opens: the same press sent twice is one transfer at the door.
+import { newId } from '@/lib/client-id';
 
 /**
  * /inventory/transfers — «نقل البضاعة» (the warehouse plan, request W3b): moving units between two warehouses of ONE store.
@@ -99,19 +101,6 @@ const WHOLE = /^\d+$/;
 const waitsForApproval = (t: StockTransferItem) => t.status === 'RECEIVED_WITH_DIFFERENCE' && !t.differenceApprovedAt;
 
 const nameOf = (l: Line) => l.productName ?? 'منتج';
-
-/** A client-made id, made once when the form opens: the same press sent twice is one transfer at the door. */
-function newId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-  // Older browsers: a version-4 shape from the browser's own random numbers.
-  const b = new Uint8Array(16);
-  c?.getRandomValues?.(b);
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
 
 const errorText = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 

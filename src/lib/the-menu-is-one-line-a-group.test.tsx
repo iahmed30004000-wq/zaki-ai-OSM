@@ -113,9 +113,11 @@ describe('the menu is ten lines', () => {
     // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 20 = 57.
     // 20/11 (W3b): 58 with `/inventory/transfers` «نقل البضاعة» — moving units between two warehouses of one store, the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; each press asks its own key. Not one address moved. One more screen, no more line (a tab of an existing hub):
     // 1 + 6 + 5 + 5 + 5 + 9 + 5 + 2 + 20 = 58.
-    expect(ALL_ROUTES).toHaveLength(58);
+    // 20/11 (W6b): 59 with `/inventory/exits` «إخراج بضاعة» — goods out of a warehouse for good (request, a second hand's approval, the month's table), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; the request and the decision each ask their own key. Not one address moved. One more screen, no more line (a tab of an existing hub):
+    // 1 + 6 + 5 + 5 + 6 + 9 + 5 + 2 + 20 = 59.
+    expect(ALL_ROUTES).toHaveLength(59);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 5, 9, 5, 2, 20]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 6, 9, 5, 2, 20]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });

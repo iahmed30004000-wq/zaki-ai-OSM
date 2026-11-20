@@ -56,6 +56,8 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       if ('not' in o && (o.not === null ? v === null || v === undefined : v === o.not)) return false;
       if ('gt' in o && !((v as number) > o.gt)) return false;
       if ('lt' in o && !((v as number) < o.lt)) return false;
+      // 20/11 (W6b): the month of the exits report asks `decidedAt: { gte, lt }` — a Date compares by its time.
+      if ('gte' in o && !(v != null && (v as number) >= o.gte)) return false;
       if ('startsWith' in o && !String(v).startsWith(o.startsWith)) return false;
       return true;
     }

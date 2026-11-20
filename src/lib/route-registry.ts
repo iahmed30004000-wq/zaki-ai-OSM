@@ -230,6 +230,10 @@ export const NAV: NavGroup[] = [
       // «نقل البضاعة» (20/11, W3b): moving units between two warehouses of one store — send, on the road, received by count. Opens on
       // `inventory.view` like its two neighbours; every press asks its own key (inventory.transfer · transfer_receive · difference_approve).
       r('/inventory/transfers', 'نقل البضاعة', 'Repeat', ['inventory.view']),
+      // «إخراج بضاعة» (20/11, W6b): goods out of a warehouse for good, not by a sale — request, a second hand's approval or
+      // rejection, and the month's table. Opens on `inventory.view` like its neighbours; the request asks `inventory.exit`,
+      // the decision `inventory.exit_approve`, and the value at cost reaches `costs.view` holders only.
+      r('/inventory/exits', 'إخراج بضاعة', 'PackagePlus', ['inventory.view']),
     ],
   },
   {

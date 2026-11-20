@@ -459,7 +459,8 @@ describe('the page and its place', () => {
   it('a tab of «المخزون والمنتجات» on inventory.view, guarded, with its guide', () => {
     expect(findRoute('/inventory/transfers')).toMatchObject({ label: 'نقل البضاعة', permissions: ['inventory.view'] });
     const inv = NAV.find((g) => g.key === 'inventory')!;
-    expect(inv.routes.at(-1)!.path).toBe('/inventory/transfers');
+    // 20/11 (W6b): was `inv.routes.at(-1)` — «إخراج بضاعة» (`/inventory/exits`) is the last tab now, right after this one.
+    expect(inv.routes.map((r) => r.path).slice(-2)).toEqual(['/inventory/transfers', '/inventory/exits']);
     expect(GUIDED_PATHS).toContain('/inventory/transfers');
     expect(GUIDE_TEXTS['/inventory/transfers']?.steps.join(' ')).toContain('استلم');
     const page = readFileSync(join(process.cwd(), 'src/app/(system)/(shell)/inventory/transfers/page.tsx'), 'utf8');
