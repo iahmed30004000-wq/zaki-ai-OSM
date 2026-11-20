@@ -65,7 +65,8 @@ describe('the guard contract names only routes that are pages', () => {
   it('says the confirmation queue’s limits as the code has them', () => {
     const src = repoFile('src/lib/confirmation-queue.ts');
     const caps = src.match(/CLAIM_CAPS = \{ withoutAttempt: (\d+), total: (\d+) \}/)!;
-    const pace = src.match(/PULL_PACE = \{ perHour: (\d+)/)!;
+    // 21/11 (Q4b): `PULL_PACE` is defined in `confirmation-rules.ts` (an owner's rule may change one person's pace, and the resolver reads its base there); `confirmation-queue.ts` re-exports it.
+    const pace = repoFile('src/lib/confirmation-rules.ts').match(/PULL_PACE = \{ perHour: (\d+)/)!;
     // 18/11 (C1): `RETURNS_MODE` is defined in `returns-mode.ts` (a file with no imports, so the release notice can say it without dragging a rules module into the desk's bundle); `confirmation-queue.ts` re-exports it.
     const hand = repoFile('src/lib/returns-mode.ts').match(/RETURNS_MODE = \{ handLimit: (\d+)/)!;
     const release = src.match(/AUTO_RELEASE_BUSINESS_MINUTES = (\d+)/)!;
