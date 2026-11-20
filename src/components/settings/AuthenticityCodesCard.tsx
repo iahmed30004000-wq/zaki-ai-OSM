@@ -69,6 +69,20 @@ export function AuthenticityCodesCard() {
     else toast.failed('تعذر النسخ — الرابط: ' + url);
   };
 
+  /**
+   * The text to print as this piece's QR (19/11, owner): the verify link with the code in it, so a phone's own camera
+   * opens the page and it checks by itself. A code that is already a link is its own QR text.
+   */
+  const qrText = (storeId: string, code: string) =>
+    /^https?:\/\//i.test(code) ? code : `${window.location.origin}/verify/${storeId}?code=${encodeURIComponent(code)}`;
+
+  const copyQr = async (storeId: string, code: string) => {
+    const text = qrText(storeId, code);
+    const ok = await copyText(text);
+    if (ok) toast.done('تم نسخ رابط الـQR — ضعه في مولّد QR واطبعه على القطعة');
+    else toast.failed('تعذر النسخ — الرابط: ' + text);
+  };
+
   const add = async () => {
     if (!draft.code.trim()) return;
     setBusy(true);
@@ -137,7 +151,7 @@ export function AuthenticityCodesCard() {
             <input
               value={draft.code}
               onChange={(e) => setDraft({ ...draft, code: e.target.value })}
-              placeholder="رمز جديد (باركود أو QR)"
+              placeholder="رمز جديد (باركود، أو رابط QR)"
               aria-label="رمز جديد"
               dir="ltr"
               style={{ minWidth: 160 }}
@@ -170,18 +184,28 @@ export function AuthenticityCodesCard() {
             )}
             {codes.map((c) => (
               <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--sys-border)] p-2.5 text-note">
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-mono font-semibold text-[var(--sys-foreground)]" dir="ltr">{c.code}</span>
+                {/* Codes run to 300 characters and may be links: the text wraps anywhere instead of pushing the card wide. */}
+                <div className="flex flex-col gap-0.5" style={{ minWidth: 0, flex: '1 1 16rem' }}>
+                  <span className="font-mono font-semibold text-[var(--sys-foreground)]" dir="ltr" style={{ wordBreak: 'break-all' }}>
+                    {c.code}
+                  </span>
                   {c.note && <span className="text-[var(--sys-muted-foreground)]">{c.note}</span>}
                   <span className="text-[var(--sys-muted-foreground)]">
                     عدد الفحوصات: <span className="tabular-nums">{c.scanCount}</span>
                   </span>
                 </div>
-                {canManage && (
-                  <Button variant="danger" size="sm" onClick={() => remove(c.id, c.code)}>
-                    <RiDeleteBinLine className="h-4 w-4" /> حذف
-                  </Button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {stores[0] && (
+                    <Button variant="quiet" size="sm" onClick={() => copyQr(stores[0].id, c.code)}>
+                      <RiFileCopyLine className="h-4 w-4" /> نسخ رابط QR
+                    </Button>
+                  )}
+                  {canManage && (
+                    <Button variant="danger" size="sm" onClick={() => remove(c.id, c.code)}>
+                      <RiDeleteBinLine className="h-4 w-4" /> حذف
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

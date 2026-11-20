@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
@@ -72,8 +72,10 @@ function ShieldArt({ bad = false, id }: { bad?: boolean; id: string }) {
   );
 }
 
-export function VerifyBarcodeView({ storeId }: { storeId: string }) {
-  const [phase, setPhase] = useState<Phase>({ at: 'start' });
+export function VerifyBarcodeView({ storeId, initialCode }: { storeId: string; initialCode?: string }) {
+  // Opened from a printed QR (`?code=…`): the page starts on the radar, so there is no flash of the hero first.
+  const [phase, setPhase] = useState<Phase>(initialCode ? { at: 'checking' } : { at: 'start' });
+  const started = useRef(false);
 
   const check = useCallback(
     async (code: string) => {
@@ -104,8 +106,21 @@ export function VerifyBarcodeView({ storeId }: { storeId: string }) {
     [check]
   );
 
+  // The code the QR carried is checked once, on arrival — the ref keeps a second effect run from checking it twice.
+  useEffect(() => {
+    if (!initialCode || started.current) return;
+    started.current = true;
+    void check(initialCode);
+  }, [initialCode, check]);
+
+  const retry = () => {
+    // «تحقق من منتج آخر» starts clean: the code that came in the link is dropped, so a reload does not repeat it.
+    if (initialCode) window.history.replaceState(null, '', window.location.pathname);
+    setPhase({ at: 'start' });
+  };
+
   if (phase.at === 'checking') return <Checking />;
-  if (phase.at === 'verdict') return <Verdict genuine={phase.genuine} onRetry={() => setPhase({ at: 'start' })} />;
+  if (phase.at === 'verdict') return <Verdict genuine={phase.genuine} onRetry={retry} />;
 
   return (
     <main className="vf">
