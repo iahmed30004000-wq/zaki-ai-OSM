@@ -182,6 +182,30 @@ describe('«افحص موظفة»', () => {
     expect(box.querySelector('[data-pull-code]')!.getAttribute('data-pull-code')).toBe('OPEN');
   });
 
+  // Q4b (21/11): the door now also answers her three numbers, each with the source in the server's words; the panel says them as three lines.
+  it('her numbers and where each came from — the server\'s words, as they came; an older answer without them draws no list', async () => {
+    const numbers = {
+      hand: { value: 2, from: 'من قاعدة «الجديدة»' },
+      idleMinutes: { value: 20, from: 'من القاعدة الأساسية' },
+      pullPerHour: { value: 12, from: 'من قاعدة «الجديدة»' },
+    };
+    h.check.sara = answer({ open: true, code: null, sentence: 'السحب مفتوح إلها هلّق.' }, { numbers });
+    await pickAndCheck();
+    const list = (await screen.findByLabelText('أرقامها')) as HTMLElement;
+    expect([...list.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'حد اليد إلها: 2 — من قاعدة «الجديدة»',
+      'مهلة الطلب المتروك إلها: 20 دقيقة دوام — من القاعدة الأساسية',
+      'سرعة السحب إلها: 12 طلب بالساعة — من قاعدة «الجديدة»',
+    ]);
+  });
+
+  it('NEGATIVE: an answer without numbers draws no numbers list', async () => {
+    h.check.sara = answer({ open: true, code: null, sentence: 'السحب مفتوح إلها هلّق.' });
+    await pickAndCheck();
+    await screen.findByText(/السحب مفتوح/);
+    expect(document.querySelector('[data-check-numbers]')).toBeNull();
+  });
+
   it('the cap of 500 is named «السقف», and no «محجوز» when nothing is held for her', async () => {
     h.check.sara = answer({ open: true, code: null, sentence: 'مفتوح.' }, { hold: { inHand: 4, heldForHer: 0, load: 4, limit: 500, limitFrom: 'CAP', withoutAttempt: 0, withoutAttemptLimit: 40 } });
     await pickAndCheck();

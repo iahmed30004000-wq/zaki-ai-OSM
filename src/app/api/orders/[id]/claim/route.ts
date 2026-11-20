@@ -27,7 +27,7 @@ import { logDeskRefusal } from '@/lib/desk-refusals';
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('mode');
     const body = await req.json().catch(() => ({}));
@@ -124,7 +124,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // A returning customer's order is held for the agent who worked him last BEFORE anybody may take it — best-effort: a hold
     // that could not be written must never stop a claim (the order is then the shared queue's, as it was before holds). Asked
     // only of somebody who may claim: the hold write and the audience read behind it are not for any signed-in user to trigger.
-    await reserveReturningCustomers({ companyId, storeId }, new Date(), { orderIds: [id] }).catch(() => 0);
+    await reserveReturningCustomers({ companyId, storeId }, new Date(), { orderIds: [id], timezone: country?.timezone }).catch(() => 0);
 
     let access = await assertOrderAccess(id, user, { companyId, storeId });
     if (!access.allowed && access.reason === 'NOT_ASSIGNED') {
@@ -197,7 +197,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (order.claimedById !== user.id) {
       const counts = await ownedCounts(db, { companyId, storeId }, user.id);
       // «الطلب يرجع للطابور فوراً»: where it is on, the limit is its hand limit and the refusal says so; off, the cap of 500 as ever.
-      const hand = (await returnsModeOn(db, companyId)) ? (await returnsLimits(db, companyId)).handLimit : undefined;
+      // Request Q4b: HER hand limit — an owner's rule that names her (or her store) changes it for her alone.
+      const hand = (await returnsModeOn(db, companyId))
+        ? (await returnsLimits(db, companyId, Date.now(), undefined, { userId: user.id, storeId, timezone: country?.timezone })).handLimit
+        : undefined;
       const limit = hand ?? CLAIM_CAPS.total;
       // At the cap because of what is held for her (RV706), THIS order may still be taken if it is one of those — it is already
       // counted. Asked only then: anywhere else the answer changes nothing.

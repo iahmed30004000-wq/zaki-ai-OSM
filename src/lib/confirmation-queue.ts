@@ -37,6 +37,8 @@ import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
 import { QUEUE_PRIORITY, freshSince, isAged, queueModeAt, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
 import { confirmationRuleOnce, type RuleNow } from './confirmation-rule-settings';
+import { PULL_PACE } from './confirmation-rules';
+import { NOBODY_NAMED, confirmationRulesOnce, employeeNumbers, employeeNumbersOf, namedByRules, pullPaceOf, type HerAsk, type RulesNow } from './employee-numbers';
 
 import { RETURNS_MODE } from './returns-mode';
 // The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
@@ -78,10 +80,11 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
- * `windowMinutes`. The caps above bound how MANY she holds, not how FAST she takes them. The only place the numbers live —
- * `pullPaceRefusal` and its sentence read them here.
+ * `windowMinutes`. The caps above bound how MANY she holds, not how FAST she takes them. `pullPaceRefusal` and its sentence read
+ * them. Request Q4b (21/11): the object is DEFINED in `confirmation-rules.ts` (an owner's rule may change one person's `perHour`, and
+ * the resolver reads its base there) and re-exported here, so every importer is unchanged.
  */
-export const PULL_PACE = { perHour: 40, windowMinutes: 60 } as const;
+export { PULL_PACE };
 
 /** The reason the pull writes on the history line of the order it hands out — and the one the pace counts. */
 const PULL_NEXT_REASON = 'PULL_NEXT';
@@ -804,21 +807,22 @@ function minutesInArabic(minutes: number): string {
 }
 
 /** What she pulled, the limit, and when the pull opens — and what to do meanwhile. */
-function pullTooFastMessage(pulled: number, opensInMinutes: number): string {
-  return `سحبت ${pulled} طلباً خلال آخر ${PULL_PACE.windowMinutes} دقيقة — الحد ${PULL_PACE.perHour}. اشتغل على اللي بإيدك، والسحب بيفتح بعد ${minutesInArabic(opensInMinutes)}.`;
+function pullTooFastMessage(pulled: number, opensInMinutes: number, perHour: number): string {
+  return `سحبت ${pulled} طلباً خلال آخر ${PULL_PACE.windowMinutes} دقيقة — الحد ${perHour}. اشتغل على اللي بإيدك، والسحب بيفتح بعد ${minutesInArabic(opensInMinutes)}.`;
 }
 
 /**
  * Is she pulling faster than the pace allows? `pulledAt` are the times of her pulls inside the window, in any order
- * (`recentPullTimes` reads them). Pure: the same rule answers the pull and its tests.
+ * (`recentPullTimes` reads them). Pure: the same rule answers the pull and its tests. `perHour` is HER pace (request Q4b:
+ * an owner's rule may name her — `pullPaceOf`); left out, the base `PULL_PACE.perHour`, as on main.
  */
-export function pullPaceRefusal(pulledAt: readonly Date[], now: Date): PullRefusal | null {
-  if (pulledAt.length < PULL_PACE.perHour) return null;
+export function pullPaceRefusal(pulledAt: readonly Date[], now: Date, perHour: number = PULL_PACE.perHour): PullRefusal | null {
+  if (pulledAt.length < perHour) return null;
   // The pull whose leaving brings her back under the limit: the `perHour`-th newest — the oldest, when she is exactly at the limit.
-  const mustLeave = [...pulledAt].sort((a, b) => b.getTime() - a.getTime())[PULL_PACE.perHour - 1];
+  const mustLeave = [...pulledAt].sort((a, b) => b.getTime() - a.getTime())[perHour - 1];
   const opensAt = mustLeave.getTime() + PULL_PACE.windowMinutes * 60_000;
   const opensInMinutes = Math.max(1, Math.ceil((opensAt - now.getTime()) / 60_000));
-  return { code: 'PULL_TOO_FAST', message: pullTooFastMessage(pulledAt.length, opensInMinutes) };
+  return { code: 'PULL_TOO_FAST', message: pullTooFastMessage(pulledAt.length, opensInMinutes, perHour) };
 }
 
 /** The times of her pulls inside the window: the lines `pullNextOrder` wrote (`CLAIMED` / `PULL_NEXT`), released since or not. */
@@ -844,8 +848,9 @@ export async function releaseStaleClaims(
    * «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go.
    * `returns` is the same for «الطلب يرجع للطابور فوراً»: the mode when the caller already read it (`null` = off), left out = read here.
    * `rule` is the rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, it is read here when a figure is needed.
+   * `rules` is the owner's own rules as the caller asks them (request Q4b, `confirmationRulesOnce`) — the idle release reads each holder's minutes from them.
    */
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow; rules?: RulesNow } = {}
 ) {
   const stale = await tx.order.findMany({
     where: {
@@ -923,16 +928,20 @@ export async function releaseNoAnswerRounds(
   scope: QueueScope,
   cal: BusinessCalendar,
   now = new Date(),
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow; rules?: RulesNow } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
   // Request Q3b: ONE reading of the rule for the whole pass — the mode's idle cut and the notice's figure come from the same rule.
   const rule = opts.rule ?? confirmationRuleOnce(tx, scope.companyId, now.getTime());
+  // Request Q4b: the owner's rules, read the same way — each holder's idle minutes (`idlePlanFor`), asked only where an idle release runs.
+  const rules = opts.rules ?? confirmationRulesOnce(tx, scope.companyId, now.getTime());
+  // No room left in the pass is no question at all (the release below asks nothing either).
+  const idle = (returns: ReturnsMode, room: number) => (room > 0 ? idlePlanFor(tx, scope, returns, cal, rule, rules) : null);
   if (!roundsOn(rounds)) {
     // The cadence (step B) brings the returns mode with it, so ITS idle release runs without «نظام الجولات» — but only when the CALLER handed the cadence mode in (the pull does,
     // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
-    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit, rule) : 0;
+    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit, rule, await idle(opts.returns, limit)) : 0;
   }
   /*
    * REQUEST C2 (18/11): THE ROUNDS' RELEASES STOP WHILE THE PLAN IS ON. «نظام الجولات» stored on beside «إثبات المكالمات وجدول المحاولات» used to keep its three
@@ -941,12 +950,57 @@ export async function releaseNoAnswerRounds(
    * caller that handed none has it read here. The plan off: the lines below, as ever.
    */
   const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule }) : null;
-  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit, rule);
+  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit, rule, await idle(planReturns, limit));
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
   const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
   // more than `limit` in all — 200 in the job’s one short transaction, 25 inside a pull — whichever of the two rules an old order meets.
-  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released), rule)) : released;
+  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released), rule, await idle(returns, limit - released))) : released;
+}
+
+/**
+ * EACH HOLDER'S OWN IDLE MINUTES (request Q4b, 21/11) — the plan of one pass of the idle release, or null when every holder's minutes are the base rule's (then the pass is
+ * main's, query for query).
+ *
+ * A rule of the owner changes the idle minutes of the people it names (or of everyone in a store, at some hours). The release used to place ONE cut for the whole store;
+ * now every holder is judged by HER minutes: `everyone` is the cut of whoever no rule names (the base, or a rule for everyone), and `named` holds the cut of each person a
+ * rule names, by her own minutes — so a colleague is never released by another's minutes. Asked only where the idle minutes come from the base rule at all (the plan on, or
+ * «أولوية الطابور» — exactly `limitsOf`'s question); with `RETURNS_MODE`'s 30 a rule does not act, as with the base rule.
+ */
+export interface IdlePlan {
+  everyone: { cut: Date; minutes: number };
+  named: ReadonlyMap<string, { cut: Date; minutes: number }>;
+}
+
+export async function idlePlanFor(client: Tx, scope: QueueScope, returns: ReturnsMode, cal: BusinessCalendar, rule: RuleNow, rules: RulesNow): Promise<IdlePlan | null> {
+  const rows = await rules();
+  if (!rows.some((r) => r.kind === 'EMPLOYEE_NUMBERS' && r.companyId === scope.companyId)) return null;
+  const nowMs = returns.now.getTime();
+  if (!returns.cadence && !(await queuePrioritySwitch(client, scope.companyId, nowMs)).enabled) return null;
+  const base = await rule();
+  const clock = workClock(cal);
+  const ctx = { companyId: scope.companyId, base, timezone: cal.timezone, rules: rows };
+  const minutesOf = (id: string) => employeeNumbersOf({ person: { id, storeId: scope.storeId }, now: returns.now }, ctx).idleMinutes.value;
+  const at = (minutes: number) => ({ minutes, cut: returnsMode(returns.now, clock, minutes).idleCut });
+  const named = new Map<string, { cut: Date; minutes: number }>();
+  for (const id of namedByRules(rows, scope.companyId)) named.set(id, at(minutesOf(id)));
+  return { everyone: at(minutesOf(NOBODY_NAMED)), named };
+}
+
+/** `idleHeldWhere` with each holder's own cut (`IdlePlan`): ONE query, one branch for whoever no rule names and one per person a rule names. */
+export function idleHeldWherePerHolder(scope: QueueScope, plan: IdlePlan) {
+  // The fields that do not depend on the cut are `idleHeldWhere`'s own; the three that do are asked per holder below.
+  const perHolder = new Set(['claimedById', 'claimedAt', 'contactAttempts']);
+  const common = Object.fromEntries(Object.entries(idleHeldWhere(scope, { idleCut: plan.everyone.cut })).filter(([k]) => !perHolder.has(k)));
+  const branch = (cut: Date) => ({ claimedAt: { not: null, lte: cut }, contactAttempts: { none: { createdAt: { gt: cut } } } });
+  const named = [...plan.named.keys()];
+  return {
+    ...common,
+    OR: [
+      { claimedById: named.length ? { not: null, notIn: named } : { not: null }, ...branch(plan.everyone.cut) },
+      ...[...plan.named].map(([holderId, { cut }]) => ({ claimedById: holderId, ...branch(cut) })),
+    ],
+  };
 }
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
@@ -989,11 +1043,16 @@ export async function returnsLimits(
   companyId: string,
   nowMs: number = Date.now(),
   /** The rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, read here (cached) when the figures come from it. */
-  rule?: RuleNow
+  rule?: RuleNow,
+  /**
+   * Request Q4b: WHO asks — her numbers, where the owner's rules name her (`employeeNumbers`), over the base rule's. Left out, the base rule's numbers, as before
+   * (a screen that speaks for the whole store). Asked only where the figures come from the base rule at all; `RETURNS_MODE` is nobody's rule.
+   */
+  her?: HerAsk
 ): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
   // REQUEST C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on, the hand and the idle release are the one rule set's — 3 and 20 — WHATEVER «أولوية الطابور» says.
   // The plan is asked first (a cached read); off, or unreadable, this is the line it always was.
-  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)), rule);
+  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)), rule, her);
 }
 
 /**
@@ -1001,10 +1060,13 @@ export async function returnsLimits(
  * REQUEST Q3b (19/11): where the figures were `QUEUE_PRIORITY_LIMITS` (the default rule's 3 and 20) they are now the RULE IN FORCE's hand and idle minutes — read only
  * then, so with both switches off nothing new is read and the answer is `RETURNS_MODE`, as ever.
  */
-async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean, rule?: RuleNow): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean, rule?: RuleNow, her?: HerAsk): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
   if (!planOn && !(await queuePrioritySwitch(client, companyId, nowMs)).enabled) return RETURNS_MODE;
   const r = await (rule ?? confirmationRuleOnce(client, companyId, nowMs))();
-  return { handLimit: r.hand, idleBusinessMinutes: r.idleMinutes };
+  if (!her) return { handLimit: r.hand, idleBusinessMinutes: r.idleMinutes };
+  // Request Q4b: her own numbers over this very base rule (no rule naming her → the base's, the same two figures).
+  const mine = await employeeNumbers(client, companyId, nowMs, r, her);
+  return { handLimit: mine.hand.value, idleBusinessMinutes: mine.idleMinutes.value };
 }
 
 /**
@@ -1152,26 +1214,37 @@ export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idl
  * customer's other orders held for her go back with it, as the rounds release lets them go: nobody is working this customer, so
  * whoever takes the order next takes him whole.
  */
-export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT, rule?: RuleNow): Promise<number> {
+export async function releaseIdleReturns(
+  tx: Tx,
+  scope: QueueScope,
+  returns: ReturnsMode,
+  limit: number = ROUNDS_RELEASE_LIMIT,
+  rule?: RuleNow,
+  /** Request Q4b: each holder's own minutes (`idlePlanFor`). Null or left out = one cut for everyone, `returns.idleCut` — main's pass, query for query. */
+  idle?: IdlePlan | null
+): Promise<number> {
   if (limit <= 0) return 0;
   const rows = await tx.order.findMany({
-    where: idleHeldWhere(scope, returns),
+    where: idle ? idleHeldWherePerHolder(scope, idle) : idleHeldWhere(scope, returns),
     orderBy: { claimedAt: 'asc' },
     take: limit,
     select: { id: true, claimedAt: true, claimedById: true, companyId: true, customerId: true, orderNumber: true },
   });
-  const told: { holderId: string; orderNumber: string }[] = [];
+  /** The holder's own cut and minutes — the one she is judged by, at the read and again at the write. */
+  const hers = (holderId: string) => (idle ? (idle.named.get(holderId) ?? idle.everyone) : null);
+  const told: { holderId: string; orderNumber: string; idleMinutes?: number }[] = [];
   for (const row of rows) {
+    const own = hers(row.claimedById!);
     const gone = await returnToThePool(tx, {
       companyId: row.companyId,
       orderId: row.id,
       holderId: row.claimedById!,
       reason: IDLE_RETURNED_REASON,
       claimedAt: row.claimedAt,
-      notLoggedSince: returns.idleCut,
+      notLoggedSince: own ? own.cut : returns.idleCut,
     });
     if (!gone) continue;
-    told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber });
+    told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber, ...(own ? { idleMinutes: own.minutes } : {}) });
     if (row.customerId) {
       await tx.order.updateMany({
         where: {
@@ -1191,9 +1264,12 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
   }
   if (told.length) {
     // The notice says the limit the release USED: asked of `returnsLimits`, the one function every reader asks (30, or 20 with «أولوية الطابور»). `ReturnsMode` itself carries no figure: its shape is pinned key for key.
-    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime(), rule)).idleBusinessMinutes;
+    // With each holder's own minutes (Q4b) the notice says HERS — the figure her order was released by.
+    const idleMinutes = idle ? 0 : (await returnsLimits(tx, scope.companyId, returns.now.getTime(), rule)).idleBusinessMinutes;
     await tx.notification.createMany({
-      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes })),
+      data: told.map(({ idleMinutes: own, ...n }) =>
+        releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes: own ?? idleMinutes })
+      ),
     });
   }
   return told.length;
@@ -1953,16 +2029,23 @@ export async function pullNextOrder(
   // Request Q3b: the rule in force, asked ONCE for the whole pull and only by what needs a figure of it (a cached read BEFORE the transaction; with both switches off it is
   // never asked). Every number below — the idle cut, the hand, the fresh minutes, the notice's figure — is this one rule's.
   const rule = confirmationRuleOnce(db, scope.companyId, now.getTime());
+  // Request Q4b: the owner's own rules, read ONCE for the whole pull, before the transaction (cached thirty seconds: on a warm cache no statement). Her hand, her pace
+  // and each holder's idle minutes in the release below come from them; with no rule they are the base numbers, line for line.
+  const rules = confirmationRulesOnce(db, scope.companyId, now.getTime());
+  await rules();
+  const her: HerAsk = { userId: user.id, storeId: scope.storeId, timezone: cal.timezone, rules };
   // «الطلب يرجع للطابور فوراً»: read the same way (a cached read, and not even asked while the rounds are off). `null` = off, and then
   // everything below is today's, line for line.
   const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds, rule });
-  // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
-  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime(), rule)).handLimit : undefined;
+  // The hand limit the mode hands to every cap question below — HERS (Q4b); left out, each one asks the cap of 500 and says today's words.
+  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime(), rule, her)).handLimit : undefined;
+  // Her pace (Q4b): the base 40 unless a rule names another for her.
+  const perHour = (await pullPaceOf(db, scope.companyId, now.getTime(), her, rule)).value;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
   const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule);
   // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
-    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule });
+    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule, rules });
 
     const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = hand === undefined ? pullRefusal(counts) : pullRefusal(counts, undefined, hand);
@@ -1974,7 +2057,7 @@ export async function pullNextOrder(
     if (owed) return { ok: false, refusal: owed, released };
     // THE PACE, LAST among the refusals (the owner, 8/11): the untouched order and the caps above are the more useful sentence, and keep
     // theirs. A refusal here returns before anything is picked — no lock, no claim, no row.
-    const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now);
+    const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now, perHour);
     if (tooFast) return { ok: false, refusal: tooFast, released };
     // AT THE CAP WITH HOLDS (RV706): only an order held for her — it is already counted, so taking it does not grow the load.
     const atCap = capLoad(counts) >= (hand ?? CLAIM_CAPS.total);

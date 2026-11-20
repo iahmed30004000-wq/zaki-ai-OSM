@@ -26,6 +26,22 @@ export interface DeskCheckAnswer {
   };
   pace: { pulled: number; perHour: number; windowMinutes: number };
   pull: { open: boolean; code: string | null; sentence: string };
+  /** Her three numbers, each with where it came from in the server's words (request Q4b). Absent from an older server. */
+  numbers?: { hand: NumberAnswer; idleMinutes: NumberAnswer; pullPerHour: NumberAnswer };
+}
+
+export interface NumberAnswer {
+  value: number;
+  from: string;
+}
+
+/** Her numbers as three lines: the value, then the source the server wrote («من القاعدة الأساسية» or «من قاعدة «…»»). */
+export function numbersSentences(n: NonNullable<DeskCheckAnswer['numbers']>): string[] {
+  return [
+    `حد اليد إلها: ${n.hand.value} — ${n.hand.from}`,
+    `مهلة الطلب المتروك إلها: ${n.idleMinutes.value} دقيقة دوام — ${n.idleMinutes.from}`,
+    `سرعة السحب إلها: ${n.pullPerHour.value} طلب بالساعة — ${n.pullPerHour.from}`,
+  ];
 }
 
 export const CHECK_WRITES_NOTHING =
@@ -91,6 +107,13 @@ export function DeskPersonCheck({ people }: { people: { id: string; name: string
             <li>{untriedSentence(answer.hold)}</li>
             <li>{paceSentence(answer.pace)}</li>
           </ul>
+          {answer.numbers && (
+            <ul className="space-y-1 text-sm text-[var(--sys-foreground)]" aria-label="أرقامها" data-check-numbers>
+              {numbersSentences(answer.numbers).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )}
           <p
             className={`text-sm font-medium ${answer.pull.open ? 'text-[var(--sys-foreground)]' : 'text-[var(--sys-warning)]'}`}
             data-pull-code={answer.pull.code ?? 'OPEN'}

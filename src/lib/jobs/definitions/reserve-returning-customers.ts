@@ -22,7 +22,7 @@ export const reserveReturning: JobDefinition = {
   async run({ now }): Promise<JobResult> {
     let held = 0;
     for (const store of await activeStores()) {
-      held += await reserveReturningCustomers({ companyId: store.companyId, storeId: store.id }, now);
+      held += await reserveReturningCustomers({ companyId: store.companyId, storeId: store.id }, now, { timezone: store.country?.timezone });
     }
     return { processed: held, detail: held ? `حُجز ${held} طلباً لموظفاتها` : 'لا طلب جديد لزبون راجع' };
   },
