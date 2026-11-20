@@ -234,6 +234,10 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/exits/route.ts',
     'src/app/api/inventory/exits/[id]/approve/route.ts',
     'src/app/api/inventory/exits/[id]/reject/route.ts',
+    // 20/11, W3b (the «نقل البضاعة» screen): the screen of the four transfer doors above. It reads no column; it hands
+    // `stock-transfer-kind.readStockTransfer` the end's own field `warehouseId` (`StockTransferEnd`) to say the kind before
+    // the press, which this sweep cannot tell from a column by its name.
+    'src/components/screens/StockTransfersScreen.tsx',
     // 20/11, W4a (a shipment is made in ONE warehouse): the shipment's place and the warehouse's shelf for the blocks; the
     // two doors that open a trolley and the preparation list that may be asked per warehouse; the two «off the trolley»
     // column lists that drop the order's source; the doors that put an order on an existing trolley (assign to a batch,

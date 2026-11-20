@@ -7,6 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { inStore } from '@/lib/store-filter';
 import { typed } from '@/lib/text-search';
 import { storeIsPlaced } from '@/lib/warehouse-intake';
+import { HIDDEN_ON_ROAD_AR, transfersBlindTo } from '@/lib/stock-transfers';
 
 /**
  * GET /api/inventory/movements — the stock ledger.
@@ -26,7 +27,7 @@ import { storeIsPlaced } from '@/lib/warehouse-intake';
  */
 export async function GET(req: Request) {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('inventory.view');
 
     const q = new URL(req.url).searchParams;
@@ -79,6 +80,14 @@ export async function GET(req: Request) {
       : [];
     const nameOf = new Map(actors.map((a) => [a.id, a.name]));
 
+    /*
+     * 20/11 (W3b review): a transfer still on the road is counted BLIND by its receiver. Its `TRANSFER_OUT` line is kept,
+     * but its figure and its reason (which names the destination) are told only to the sender until it is received or
+     * cancelled (`stock-transfers.transfersBlindTo`). No such line in the page = no read, the answer it always was.
+     */
+    const blind = await transfersBlindTo(db, companyId, user.id, movements);
+    const hidden = (m: { type: string; referenceId: string | null }) => m.type === 'TRANSFER_OUT' && !!m.referenceId && blind.has(m.referenceId);
+
     // Types present in this company, so the filter offers only real ones.
     const types = await db.inventoryMovement.groupBy({
       by: ['type'],
@@ -93,9 +102,10 @@ export async function GET(req: Request) {
       movements: movements.map((m) => ({
         id: m.id,
         type: m.type,
-        quantity: m.quantity,
+        quantity: hidden(m) ? null : m.quantity,
         balanceAfter: m.balanceAfter,
-        reason: m.reason,
+        reason: hidden(m) ? HIDDEN_ON_ROAD_AR : m.reason,
+        ...(hidden(m) ? { hiddenOnRoad: true } : {}),
         createdAt: m.createdAt,
         product: m.product,
         batchNumber: m.batch?.batchNumber ?? null,
