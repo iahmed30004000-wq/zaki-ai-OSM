@@ -8,6 +8,7 @@ import { postponedScope } from '@/lib/postponed-list';
 import { whenWhere } from '@/lib/postponed-filters';
 import { kindsFor, type WorkItem, type WorkKey } from '@/lib/my-work';
 import { transitOf } from '@/lib/transit';
+import { stuckTransfersWhere } from '@/lib/stock-transfer-watch';
 
 /**
  * GET /api/me/work — what is waiting for THIS person. Counts, never lists.
@@ -140,6 +141,14 @@ export async function GET() {
     if (wanted.has('STATEMENTS_OPEN')) {
       // Open until its MATCHING is closed: a statement whose money is posted while a line is still a question is work.
       count('STATEMENTS_OPEN', db.courierStatement.count({ where: { companyId, storeId, matchingClosedAt: null } }));
+    }
+
+    /**
+     * 20/11 (W3c): a stock transfer of this store that needs somebody — on the road for more than a store day (the
+     * country's own timezone), or received short with the difference not approved. The very rule of the lib, one count.
+     */
+    if (wanted.has('TRANSFERS_STUCK')) {
+      count('TRANSFERS_STUCK', db.stockTransfer.count({ where: stuckTransfersWhere(scope, new Date(), country.timezone) }));
     }
 
     /**

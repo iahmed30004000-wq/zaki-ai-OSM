@@ -34,7 +34,8 @@ export type WorkKey =
   | 'TO_PREPARE'
   | 'ISSUES_OPEN'
   | 'POSTPONED_DUE'
-  | 'STATEMENTS_OPEN';
+  | 'STATEMENTS_OPEN'
+  | 'TRANSFERS_STUCK';
 
 export interface WorkKind {
   key: WorkKey;
@@ -91,6 +92,21 @@ export const WORK_KINDS: readonly WorkKind[] = [
     tone: 'urgent',
     todo: 'تنتظر قراراً، وبعضها يوقف تقدّم الطلب — راجعها واتخذ قرارك.',
     rank: 1,
+  },
+  {
+    /**
+     * 20/11 (W3c): a stock transfer that needs somebody — on the road for more than a store day, or received short with
+     * the difference not approved. Counted by `stock-transfer-watch.stuckTransfersWhere`; shown to whoever
+     * approves the differences (the owner holds it). Late work, so it sits with the late kinds — after the two that were there.
+     */
+    key: 'TRANSFERS_STUCK',
+    ar: 'نقل بضاعة عالق',
+    permissions: ['inventory.difference_approve'],
+    href: '/inventory/transfers',
+    icon: 'ArrowLeftRight',
+    tone: 'urgent',
+    todo: 'إله أكتر من يوم بالطريق أو فرقه ما انعتمد — تابعه مع المخزنين.',
+    rank: 1.5,
   },
   {
     key: 'RETURNS_WAITING',
