@@ -5,7 +5,12 @@ import { requireContext } from './geo-context';
 import { apiErrorResponse } from './api-error';
 import { logAudit } from './audit';
 import { reachesWarehouse } from './warehouses';
-import { StockTransferRefused, refusalBody, shownTo, type StockTransferRow } from './stock-transfers';
+import { hasFullAccess } from './authorization';
+import { maySeeCost } from './cost-visibility';
+import { storesReachedBy } from './product-pairs';
+import { IntakePlaceRefused, intakeRefusalBody } from './warehouse-intake';
+import type { SessionUser } from '@/types/auth';
+import { StockTransferRefused, auditLines, refusalBody, shownTo, type StockTransferRow } from './stock-transfers';
 import type { WarehouseRef } from './warehouse-intake';
 import { SplitRefused } from './batch-split';
 import type { Prisma } from '@prisma/client';
@@ -33,6 +38,9 @@ export function arabicIssue(error: z.ZodError): string {
 export function refusalOf(e: unknown): NextResponse | null {
   if (e instanceof StockTransferRefused) return NextResponse.json(refusalBody(e), { status: e.status });
   if (e instanceof SplitRefused) return refuse(409, 'MOVED_MEANWHILE', e.errorAr);
+  // 20/11 (W7b): a receipt across stores opens its batch through the intake's own checks (the destination warehouse's
+  // placement, country, state and reach) — refused in their own Arabic sentence.
+  if (e instanceof IntakePlaceRefused) return NextResponse.json(intakeRefusalBody(e), { status: e.status });
   return null;
 }
 
@@ -41,6 +49,18 @@ export const reachFor =
   (user: Parameters<typeof reachesWarehouse>[0], companyId: string) =>
   (w: WarehouseRef): Promise<boolean> =>
     reachesWarehouse(user, companyId, w);
+
+/**
+ * 20/11 (W7b): the session's store-entry rule, for the lib to ask about the OTHER store of a transfer across stores
+ * (`product-pairs.storesReachedBy` — the one rule, `geo-context.reachesStore`, its facts loaded once per question).
+ */
+export const storeReachFor =
+  (user: SessionUser, companyId: string) =>
+  async (storeId: string): Promise<boolean> =>
+    (await storesReachedBy(db, user, companyId)).some((s) => s.id === storeId);
+
+/** 20/11 (W7b): what a transfer answer may show this person — the cost (`costs.view`), and a request awaiting the owner. */
+export const shownOpts = (user: SessionUser) => ({ seesCost: maySeeCost(user), owner: hasFullAccess(user) });
 
 /** One transaction long enough for a transfer of a few hundred lines; a timeout rolls everything back. */
 export const TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
@@ -53,9 +73,22 @@ export async function transferAction<S extends z.ZodTypeAny>(
     gate: () => Promise<unknown>;
     schema: S;
     audit: string;
+    /** 20/11 (W7b): what to do after a press that wrote something (not a replay) — after the answer, never failing it. */
+    after?: (companyId: string, transfer: StockTransferRow) => void;
     run: (
       tx: Prisma.TransactionClient,
-      p: { companyId: string; storeId: string; transferId: string; userId: string; body: z.infer<S>; mayUse: (w: WarehouseRef) => Promise<boolean> }
+      p: {
+        companyId: string;
+        storeId: string;
+        transferId: string;
+        userId: string;
+        body: z.infer<S>;
+        mayUse: (w: WarehouseRef) => Promise<boolean>;
+        /** 20/11 (W7b): the other store of a transfer across stores, by the session's store-entry rule. */
+        mayReachStore: (storeId: string) => Promise<boolean>;
+        /** 20/11 (W7b): the owner — the engine's own full-access flag (`hasFullAccess`). */
+        isOwner: boolean;
+      }
     ) => Promise<{ transfer: StockTransferRow; replay: boolean }>;
   }
 ) {
@@ -69,7 +102,17 @@ export async function transferAction<S extends z.ZodTypeAny>(
 
     try {
       const out = await db.$transaction(
-        (tx) => spec.run(tx, { companyId, storeId, transferId: id, userId: user.id, body: parsed.data, mayUse: reachFor(user, companyId) }),
+        (tx) =>
+          spec.run(tx, {
+            companyId,
+            storeId,
+            transferId: id,
+            userId: user.id,
+            body: parsed.data,
+            mayUse: reachFor(user, companyId),
+            mayReachStore: storeReachFor(user, companyId),
+            isOwner: hasFullAccess(user),
+          }),
         TX_OPTIONS
       );
       if (!out.replay) {
@@ -79,10 +122,11 @@ export async function transferAction<S extends z.ZodTypeAny>(
           action: spec.audit,
           entity: 'StockTransfer',
           entityId: id,
-          newData: { status: out.transfer.status, lines: out.transfer.lines, by: user.name },
+          newData: { status: out.transfer.status, lines: auditLines(out.transfer.lines), by: user.name },
         });
+        spec.after?.(companyId, out.transfer);
       }
-      return NextResponse.json({ transfer: shownTo(out.transfer, user.id), replay: out.replay });
+      return NextResponse.json({ transfer: shownTo(out.transfer, user.id, shownOpts(user)), replay: out.replay });
     } catch (e) {
       const refused = refusalOf(e);
       if (refused) return refused;

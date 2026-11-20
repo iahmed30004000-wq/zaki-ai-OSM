@@ -101,6 +101,8 @@ const ACTION_AR: Record<string, string> = {
   // The stock transfers between a store's warehouses (`/api/inventory/transfers/**`, W3a).
   STOCK_TRANSFER_SENT: 'إرسال نقل بضاعة', STOCK_TRANSFER_RECEIVED: 'استلام نقل بضاعة', STOCK_TRANSFER_CANCELLED: 'إلغاء نقل بضاعة',
   STOCK_TRANSFER_DIFFERENCE_APPROVED: 'اعتماد فرق نقل بضاعة',
+  // 20/11 (W7b): the owner's press on a transfer to another country.
+  STOCK_TRANSFER_APPROVED: 'اعتماد نقل بضاعة لبلد تاني',
   // Goods out of a warehouse for good (`/api/inventory/exits/**`, W6a).
   STOCK_EXIT_REQUESTED: 'طلب إخراج بضاعة', STOCK_EXIT_APPROVED: 'اعتماد إخراج بضاعة', STOCK_EXIT_REJECTED: 'رفض إخراج بضاعة',
   // The same article in two stores (`/api/inventory/pairs/**`, W7a).

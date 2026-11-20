@@ -83,6 +83,11 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
         const o = data.order.find((x) => x.id === r.orderId);
         return !!o && matches('order', o, c as Row);
       }
+      // 20/11 (W7b): a transfer line asked by its transfer (the free stock's «awaiting the owner» term).
+      if (k === 'transfer' && table === 'stockTransferLine') {
+        const t = data.stockTransfer.find((x) => x.id === r.transferId);
+        return !!t && matches('stockTransfer', t, c as Row);
+      }
       if (k === 'exit' && table === 'stockExitLine') {
         const e = data.stockExit.find((x) => x.id === r.exitId);
         return !!e && matches('stockExit', e, c as Row);
@@ -116,6 +121,10 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       } else if (k === 'country' && v && typeof v === 'object' && table === 'store') {
         const c = data.country.find((x) => x.id === r.countryId);
         out.country = c ? pick('country', c, (v as Row).select) : null;
+      } else if (k === 'toProduct' && v && typeof v === 'object') {
+        // 20/11 (W7b): the twin a line across stores lands in.
+        const p = data.product.find((x) => x.id === r.toProductId);
+        out.toProduct = p ? pick('product', p, (v as Row).select) : null;
       } else if (k === 'product' && v && typeof v === 'object') {
         const p = data.product.find((x) => x.id === r.productId);
         out.product = p ? pick('product', p, (v as Row).select) : null;

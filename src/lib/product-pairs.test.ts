@@ -216,7 +216,11 @@ describe('the pairs stand alone', () => {
     }
   });
 
-  it('nothing outside the pair files reads the table yet', () => {
+  /*
+   * 20/11 (W7b): the transfer across stores reads the table — through ONE small file, `product-twins.ts` (the twin of a
+   * product in one other store), and through nothing else. Before: only this lib read it. After: this lib and that file.
+   */
+  it('nothing outside the pair files reads the table — the transfer reads it through product-twins.ts only', () => {
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir, { withFileTypes: true })) {
@@ -228,6 +232,6 @@ describe('the pairs stand alone', () => {
       }
     };
     walk(join(ROOT, 'src'));
-    expect(hits.sort()).toEqual(['src/lib/product-pairs.ts']);
+    expect(hits.sort()).toEqual(['src/lib/product-pairs.ts', 'src/lib/product-twins.ts']);
   });
 });
