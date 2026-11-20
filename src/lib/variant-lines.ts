@@ -369,6 +369,68 @@ export function withLineVariants<L extends { productId: string }, V>(lines: read
   });
 }
 
+/* ───────────────────────────── 20/11 (W8c): the lists' combinations ───────────────────────────── */
+
+/**
+ * The combination rows of MANY transfers at once (the list door), by transfer then product — ONE read; nothing at all
+ * for an empty page. The rows carry the figures as stored: the list door passes them through `stock-transfers.shownTo`,
+ * which keeps the receiver blind to what was sent of each combination exactly as it does for the product line.
+ */
+export async function transfersVariantsOf(tx: Tx, transferIds: readonly string[]): Promise<Map<string, Map<string, TransferVariantRow[]>>> {
+  const out = new Map<string, Map<string, TransferVariantRow[]>>();
+  if (transferIds.length === 0) return out;
+  const rows = await tx.stockTransferLineVariant.findMany({
+    where: { transferId: { in: [...transferIds] } },
+    orderBy: { variantId: 'asc' },
+    select: { transferId: true, productId: true, variantId: true, quantitySent: true, quantityReceived: true },
+  });
+  for (const r of rows) {
+    const mine = out.get(r.transferId) ?? new Map<string, TransferVariantRow[]>();
+    const list = mine.get(r.productId) ?? [];
+    list.push({ variantId: r.variantId, quantitySent: r.quantitySent, quantityReceived: r.quantityReceived ?? null });
+    mine.set(r.productId, list);
+    out.set(r.transferId, mine);
+  }
+  return out;
+}
+
+/** The combination rows of MANY exits at once (the list door), by exit then product — ONE read; none for an empty page. */
+export async function exitsVariantsOf(tx: Tx, exitIds: readonly string[]): Promise<Map<string, Map<string, VariantQty[]>>> {
+  const out = new Map<string, Map<string, VariantQty[]>>();
+  if (exitIds.length === 0) return out;
+  const rows = await tx.stockExitLineVariant.findMany({
+    where: { exitId: { in: [...exitIds] } },
+    orderBy: { variantId: 'asc' },
+    select: { exitId: true, productId: true, variantId: true, quantity: true },
+  });
+  for (const r of rows) {
+    const mine = out.get(r.exitId) ?? new Map<string, VariantQty[]>();
+    const list = mine.get(r.productId) ?? [];
+    list.push({ variantId: r.variantId, quantity: r.quantity });
+    mine.set(r.productId, list);
+    out.set(r.exitId, mine);
+  }
+  return out;
+}
+
+/** «أسود · L» of each combination named — ONE read, none when no combination is named. */
+export async function variantLabelsOf(tx: Tx, companyId: string, variantIds: Iterable<string>): Promise<Map<string, string>> {
+  const ids = [...new Set(variantIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await tx.productVariant.findMany({ where: { companyId, id: { in: ids } }, select: { id: true, label: true } });
+  return new Map(rows.map((r) => [r.id, r.label]));
+}
+
+/**
+ * A shown line with its combinations' labels added — a word, never a figure, so a blind line stays blind. A line with no
+ * combinations comes back as it went in (no empty list, no new field).
+ */
+export function labelLineVariants<L extends object>(line: L, labels: ReadonlyMap<string, string>): L {
+  const variants = (line as { variants?: readonly { variantId: string }[] }).variants;
+  if (!variants || variants.length === 0) return line;
+  return { ...line, variants: variants.map((v) => ({ ...v, label: labels.get(v.variantId) ?? null })) };
+}
+
 /* ───────────────────────────── the receipt's counts ───────────────────────────── */
 
 /**

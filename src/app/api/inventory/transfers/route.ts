@@ -9,6 +9,7 @@ import { warehousesOfStore } from '@/lib/warehouses';
 import { replayOf, sendSchema, sendTransfer, shownTo } from '@/lib/stock-transfers';
 import { STOCK_TRANSFER_KIND_LABEL, type StockTransferKind } from '@/lib/stock-transfer-kind';
 import { arabicIssue, reachFor, refusalOf, refuse, TX_OPTIONS } from '@/lib/stock-transfer-door';
+import { labelLineVariants, transfersVariantsOf, variantLabelsOf, withLineVariants } from '@/lib/variant-lines';
 import { afterResponse } from '@/lib/notify';
 import { announceTransferSent } from '@/lib/stock-transfer-alerts';
 
@@ -68,13 +69,18 @@ export async function GET() {
     ]);
     const who = new Map(people.map((p) => [p.id, p.name]));
     const where = new Map(places.map((w) => [w.id, w.name]));
+    // 20/11 (W8c): the lines' combinations, blind exactly as their line (`shownTo`), each with its label — a line without
+    // combinations answers what it always answered.
+    const combos = await transfersVariantsOf(db, rows.map((r) => r.id));
+    const labels = await variantLabelsOf(db, companyId, [...combos.values()].flatMap((m) => [...m.values()].flat().map((v) => v.variantId)));
 
     return NextResponse.json({
       // The country rides along (20/11, W3b): the screen reads the kind from the two ends before the press (`readStockTransfer`).
       warehouses: warehouses.map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
       transfers: rows.map((r) => {
         const names = new Map(r.lines.map((l) => [l.productId, l.product.name]));
-        const shown = shownTo({ ...r, lines: r.lines.map(({ productId, quantitySent, quantityReceived }) => ({ productId, quantitySent, quantityReceived })) }, user.id);
+        const plain = r.lines.map(({ productId, quantitySent, quantityReceived }) => ({ productId, quantitySent, quantityReceived }));
+        const shown = shownTo({ ...r, lines: withLineVariants(plain, combos.get(r.id) ?? new Map()) }, user.id);
         return {
           ...shown,
           kindAr: STOCK_TRANSFER_KIND_LABEL[r.kind as StockTransferKind] ?? r.kind,
@@ -84,7 +90,7 @@ export async function GET() {
           receivedByName: r.receivedById ? who.get(r.receivedById) ?? null : null,
           cancelledByName: r.cancelledById ? who.get(r.cancelledById) ?? null : null,
           differenceApprovedByName: r.differenceApprovedById ? who.get(r.differenceApprovedById) ?? null : null,
-          lines: shown.lines.map((l) => ({ ...l, productName: names.get(l.productId) ?? null })),
+          lines: shown.lines.map((l) => labelLineVariants({ ...l, productName: names.get(l.productId) ?? null }, labels)),
         };
       }),
     });

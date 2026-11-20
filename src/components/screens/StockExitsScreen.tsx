@@ -25,6 +25,7 @@ import { userCan } from '@/lib/can';
 import { routeLabel } from '@/lib/route-registry';
 import { arDateTime } from '@/lib/format';
 import { newId } from '@/lib/client-id';
+import { PickedCombinations, badBox, mayHaveCombinations, shelfHint, typedCombinations, useProductCombinations } from '@/components/inventory/CombinationBoxes';
 
 /**
  * /inventory/exits — «إخراج بضاعة» (the warehouse plan, request W6b): goods that leave a warehouse for good, not by a sale.
@@ -49,6 +50,30 @@ interface ExitLine {
   productId: string;
   productName: string | null;
   quantity: number;
+  /** 20/11 (W8c): present only on a line of a product with combinations. */
+  variants?: { variantId: string; label: string | null; quantity: number }[];
+}
+
+/** A line as the list and the decision dialogs say it: the product's quantity, and each of its combinations under it. */
+function ExitLineText({ l }: { l: ExitLine }) {
+  return (
+    <>
+      <span className="block text-sm">
+        {l.productName ?? 'منتج'}:{' '}
+        <span className="tabular-nums font-bold" dir="ltr">
+          {l.quantity}
+        </span>
+      </span>
+      {(l.variants ?? []).map((v) => (
+        <span key={v.variantId} className="block ps-3 text-note" data-variant={v.variantId}>
+          {v.label ?? 'خيار'}:{' '}
+          <span className="tabular-nums font-bold" dir="ltr">
+            {v.quantity}
+          </span>
+        </span>
+      ))}
+    </>
+  );
 }
 
 export interface StockExitItem {
@@ -308,12 +333,7 @@ export function StockExitsScreen() {
                     render: (e) => (
                       <>
                         {e.lines.map((l) => (
-                          <span key={l.productId} className="block text-sm">
-                            {l.productName ?? 'منتج'}:{' '}
-                            <span className="tabular-nums font-bold" dir="ltr">
-                              {l.quantity}
-                            </span>
-                          </span>
+                          <ExitLineText key={l.productId} l={l} />
                         ))}
                       </>
                     ),
@@ -516,6 +536,8 @@ interface DraftLine {
   key: number;
   productId: string;
   quantity: string;
+  /** 20/11 (W8c): the combination boxes as typed, by combination id (a product without combinations: always empty). */
+  combos: Record<string, string>;
 }
 
 function RequestDialog({
@@ -534,14 +556,27 @@ function RequestDialog({
   const [warehouseId, setWarehouseId] = useState(warehouses.length === 1 ? warehouses[0].id : '');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, productId: '', quantity: '' }]);
+  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, productId: '', quantity: '', combos: {} }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const combinations = useProductCombinations();
+
+  /** The active combinations of a line's product — none for a product without options (it is never asked about). */
+  const combosOf = (productId: string) => {
+    const k = combinations.known[productId];
+    return Array.isArray(k) ? k : [];
+  };
+  const pick = (key: number, productId: string) => {
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, productId, combos: {} } : l)));
+    if (mayHaveCombinations(products.find((p) => p.id === productId) as { variantOptions?: string | null } | undefined)) combinations.ask(productId);
+  };
+  const source = warehouses.find((w) => w.id === warehouseId);
 
   const other = reason === 'OTHER';
   const badQty = lines.some((l) => l.quantity.trim() !== '' && (!WHOLE.test(l.quantity.trim()) || Number(l.quantity) <= 0));
+  const badCombo = lines.some((l) => Object.values(l.combos).some(badBox));
   const linesReady = lines.every((l) => l.productId !== '' && WHOLE.test(l.quantity.trim()) && Number(l.quantity) > 0);
-  const ready = warehouseId !== '' && reason !== '' && (!other || note.trim().length >= 3) && linesReady && !busy;
+  const ready = warehouseId !== '' && reason !== '' && (!other || note.trim().length >= 3) && linesReady && !badCombo && !busy;
 
   const setLine = (key: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -557,7 +592,11 @@ function RequestDialog({
           warehouseId,
           reason,
           note: note.trim() || null,
-          lines: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity.trim()) })),
+          lines: lines.map((l) => {
+            // 20/11 (W8c): the combinations asked out, as typed — a line without any goes out exactly as before.
+            const variants = typedCombinations(combosOf(l.productId), l.combos, { dropZero: true });
+            return { productId: l.productId, quantity: Number(l.quantity.trim()), ...(variants.length > 0 ? { variants } : {}) };
+          }),
         }),
         timeoutMs: 60_000,
       });
@@ -604,21 +643,30 @@ function RequestDialog({
 
         <div className="space-y-2">
           {lines.map((l, i) => (
-            <div key={l.key} className="flex flex-wrap items-end gap-2">
-              <ProductPicker products={products} value={l.productId} onChange={(productId) => setLine(l.key, { productId })} className="flex-1" />
-              <Input
-                aria-label={`كمية السطر ${i + 1}`}
-                inputMode="numeric"
-                dir="ltr"
-                placeholder="الكمية"
-                value={l.quantity}
-                onChange={(e) => setLine(l.key, { quantity: e.target.value })}
+            <div key={l.key} className="space-y-1.5">
+              <div className="flex flex-wrap items-end gap-2">
+                <ProductPicker products={products} value={l.productId} onChange={(productId) => pick(l.key, productId)} className="flex-1" />
+                <Input
+                  aria-label={`كمية السطر ${i + 1}`}
+                  inputMode="numeric"
+                  dir="ltr"
+                  placeholder="الكمية"
+                  value={l.quantity}
+                  onChange={(e) => setLine(l.key, { quantity: e.target.value })}
+                />
+                {lines.length > 1 && (
+                  <IconButton label={`شيل السطر ${i + 1}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>
+                    <RiCloseLine className="h-4 w-4" />
+                  </IconButton>
+                )}
+              </div>
+              <PickedCombinations
+                state={combinations.known[l.productId]}
+                combos={combosOf(l.productId).map((c) => ({ variantId: c.variantId, label: c.label, hint: shelfHint(c, source) }))}
+                values={l.combos}
+                onChange={(variantId, value) => setLine(l.key, { combos: { ...l.combos, [variantId]: value } })}
+                line={i + 1}
               />
-              {lines.length > 1 && (
-                <IconButton label={`شيل السطر ${i + 1}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>
-                  <RiCloseLine className="h-4 w-4" />
-                </IconButton>
-              )}
             </div>
           ))}
           {badQty && <p className="text-note text-[var(--sys-destructive)]">الكمية لازم تكون رقم صحيح أكبر من صفر.</p>}
@@ -626,7 +674,7 @@ function RequestDialog({
             type="button"
             variant="secondary"
             size="sm"
-            onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, productId: '', quantity: '' }])}
+            onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, productId: '', quantity: '', combos: {} }])}
           >
             <RiAddLine className="h-4 w-4" /> زيد منتج
           </Button>
@@ -654,12 +702,7 @@ function Summary({ exit }: { exit: StockExitItem }) {
         <span className="font-bold">{exit.reasonAr}</span> · {exit.warehouseName ?? '—'} · طلبه {exit.requestedByName ?? '—'}
       </span>
       {exit.lines.map((l) => (
-        <span key={l.productId} className="block text-sm">
-          {l.productName ?? 'منتج'}:{' '}
-          <span className="tabular-nums font-bold" dir="ltr">
-            {l.quantity}
-          </span>
-        </span>
+        <ExitLineText key={l.productId} l={l} />
       ))}
       {exit.note && <span className="block text-note text-[var(--sys-muted-foreground)]">{exit.note}</span>}
     </div>
