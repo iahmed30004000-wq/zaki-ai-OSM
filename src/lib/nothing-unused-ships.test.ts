@@ -498,11 +498,8 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 20/11 (W6b): the three stock-exit doors of W6a left — the screen «إخراج بضاعة» (`screens/StockExitsScreen.tsx`) calls the list, the request, the approval and the rejection; and its month's table calls the new '/api/inventory/exits/month'.
   // 20/11 (Q4a): NO_CALLER_FOUND for a LIBRARY, not a route — `src/lib/confirmation-rules.ts` (the owner's own rules and `ruleFor`) is read by nothing yet; no route is added, so nothing enters this list. Its own test pins «no importer» and Q4b removes that pin when the pull reads it.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
-  // 20/11 (W7a): the two product-pair doors, built ahead of their screen — the pair picker inside the transfer form (W7c) calls them; they leave this list that day.
-  '/api/inventory/pairs': 'ربطُ المنتج بتوأمه بمتجرٍ تاني (اقتراحٌ وحفظ) — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
-  '/api/inventory/pairs/[id]': 'شيلُ ربطِ منتجٍ بتوأمه — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
-  // 20/11 (W7b): the owner's press on a transfer to another country, built ahead of its button — «اعتماد المالك» on the transfer screen (W7c) calls it; it leaves this list that day.
-  '/api/inventory/transfers/[id]/approve': 'زرُّ المالك «اعتمد وابعت» على نقلٍ لبلدٍ تاني — بُني قبل زرّه؛ شاشةُ النقل (W7c) هي من تستدعيه',
+  // 21/11 (W7c): '/api/inventory/pairs' and '/api/inventory/pairs/[id]' (W7a) left — the twin picker of the transfer form (`inventory/TransferAcross.tsx`) proposes, saves and removes pairs.
+  // 21/11 (W7c): '/api/inventory/transfers/[id]/approve' (W7b) left — the owner's «اعتمد وابعت» on the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',

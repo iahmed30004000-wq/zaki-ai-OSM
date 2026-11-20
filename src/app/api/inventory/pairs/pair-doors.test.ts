@@ -177,7 +177,19 @@ describe('the proposals', () => {
 
   it('without another store named: the stores and the pairs, no proposals', async () => {
     await as('u-sender');
-    expect((await read()).body).toMatchObject({ proposals: null, pairs: [] });
+    // 21/11 (W7c): and no list of the other store's products either.
+    expect((await read()).body).toMatchObject({ proposals: null, pairs: [], otherProducts: null });
+  });
+
+  it('21/11 (W7c): for ONE other store named, its products not paired yet — the twin picker offers them; a paired one leaves', async () => {
+    await as('u-sender');
+    expect((await read('s2')).body.otherProducts.map((p: Row) => p.id).sort()).toEqual(['p2', 'p2b', 'p2c', 'p2d']);
+    await save('p1', 'p2');
+    const after = (await read('s2')).body.otherProducts;
+    // NEGATIVE: the twin already taken is not offered again, and nothing of another store, company or no store is.
+    expect(after.map((p: Row) => p.id).sort()).toEqual(['p2b', 'p2c', 'p2d']);
+    expect(after[0]).toEqual({ id: expect.any(String), name: expect.any(String), sku: expect.any(String) });
+    expect((await read('s3')).body.otherProducts.map((p: Row) => p.id)).toEqual(['p3']);
   });
 
   it('NEGATIVE: a store she does not reach, of another company, or her own, has no proposals', async () => {
