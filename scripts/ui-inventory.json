@@ -1619,6 +1619,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/StockTransfersScreen.tsx": {
+    "buttons": 14,
+    "inputs": 5,
+    "columns": 6,
+    "cards": 3,
+    "modals": 5,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
   "src/components/screens/StoreDesignScreen.tsx": {
     "buttons": 3,
     "inputs": 0,

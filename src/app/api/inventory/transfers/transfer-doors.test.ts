@@ -27,6 +27,23 @@ vi.mock('@/lib/db', () => {
         (where.roleId ? S.rolePerms[where.roleId] ?? [] : S.rolePerms[`template:${where.role?.name}`] ?? []).map((permission) => ({ permission, scope: 'ALL_COMPANY', scopeIds: null })),
     },
     userPermission: { findMany: async ({ where }: Row) => (S.overrides[where.userId] ?? []).map((o) => ({ ...o, scope: 'ALL_COMPANY', scopeIds: null })) },
+    // 20/11 (W3b review): the movements door reads the ledger with its relations and a grouped count; the in-memory
+    // database judges the `where`, and this adds only the relation rows and the grouping it does not do itself.
+    inventoryMovement: {
+      findMany: async ({ where, orderBy, take }: Row) =>
+        ((await (S.m.db.inventoryMovement as Row).findMany({ where, orderBy, take })) as Row[]).map((r) => ({
+          ...r,
+          product: S.m.data.product.find((p) => p.id === r.productId) ?? null,
+          batch: null,
+          warehouse: S.m.data.warehouse.find((w) => w.id === r.warehouseId) ?? null,
+        })),
+      groupBy: async ({ by, where }: Row) => {
+        const rows = (await (S.m.db.inventoryMovement as Row).findMany({ where })) as Row[];
+        const counts = new Map<unknown, number>();
+        for (const r of rows) counts.set(r[by[0]], (counts.get(r[by[0]]) ?? 0) + 1);
+        return [...counts].map(([v, n]) => ({ [by[0]]: v, _count: { type: n } }));
+      },
+    },
   };
   const db = new Proxy({} as Row, {
     get: (_t, prop: string) => (prop in extra ? extra[prop] : (S.m.db as Row)[prop]),
@@ -61,6 +78,12 @@ import * as receiveDoor from './[id]/receive/route';
 import * as cancelDoor from './[id]/cancel/route';
 import * as differenceDoor from './[id]/difference/route';
 import { PATCH as stopDoor } from '@/app/api/geo/warehouses/[id]/route';
+import { GET as movementsDoor } from '@/app/api/inventory/movements/route';
+import { HIDDEN_ON_ROAD_AR } from '@/lib/stock-transfers';
+
+/** Every number anywhere in an answer, top level and nested — the sent figure may hide in no field. */
+const numbersIn = (v: unknown): number[] =>
+  typeof v === 'number' ? [v] : v && typeof v === 'object' ? Object.values(v as Row).flatMap(numbersIn) : [];
 
 const C1 = 'c1';
 let seq = 0;
@@ -255,7 +278,97 @@ describe('reach and tenancy at the doors', () => {
   });
 });
 
+describe('20/11 (W3b): every bad body is refused in Arabic — the screen prints the door’s sentence as it is', () => {
+  const arabic = /[؀-ۿ]/;
+  const latin = /[A-Za-z]/;
+  const raw = (body: string) => new Request('http://x/api', { method: 'POST', body });
+
+  it('send: a missing product, an empty store, a long note, an unknown kind, a body that is not an object', async () => {
+    await as('u-sender');
+    const bodies: unknown[] = [
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: [{ productId: '', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: [{ quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', toStoreId: '', lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', note: 'م'.repeat(501), lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', expectKind: 'SIDEWAYS', lines: [{ productId: 'p1', quantity: 1 }] },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: 'p1' },
+      { fromWarehouseId: 'wA', toWarehouseId: 'wB', lines: ['p1'] },
+      { fromWarehouseId: 7, toWarehouseId: 'wB', lines: [{ productId: 'p1', quantity: 1 }] },
+      null,
+      'نص',
+      [],
+    ];
+    for (const b of bodies) {
+      const r = await list.POST(raw(JSON.stringify(b))).then(json);
+      expect([r.status, r.body.code], JSON.stringify(b)).toEqual([400, 'INVALID']);
+      expect(r.body.errorAr, JSON.stringify(b)).toMatch(arabic);
+      expect(r.body.errorAr, JSON.stringify(b)).not.toMatch(latin);
+    }
+    // Not JSON at all.
+    const broken = await list.POST(raw('{')).then(json);
+    expect([broken.status, broken.body.code]).toEqual([400, 'INVALID']);
+    expect(broken.body.errorAr).not.toMatch(latin);
+    expect(S.m.data.stockTransfer).toEqual([]);
+  });
+
+  it('NEGATIVE: a rule written later without its sentence still answers in Arabic — zod’s English never passes the door', async () => {
+    const { z } = await import('zod');
+    const { arabicIssue, BAD_BODY_AR } = await import('@/lib/stock-transfer-door');
+    const bare = z.object({ a: z.string().min(2) });
+    for (const v of [null, {}, { a: 'x' }, { a: 3 }]) {
+      const r = bare.safeParse(v);
+      expect(r.success).toBe(false);
+      expect(arabicIssue(r.error!)).toBe(BAD_BODY_AR);
+    }
+    // An Arabic sentence of the schema is passed as it is.
+    expect(arabicIssue(z.string().min(3, 'اكتب سبب').safeParse('').error!)).toBe('اكتب سبب');
+  });
+
+  it('receive, cancel, difference: an empty product, a long reason, a wrong type, a body that is not an object', async () => {
+    await as('u-sender');
+    const { body } = await send({ lines: [{ productId: 'p1', quantity: 3 }] });
+    const id = body.transfer.id;
+    const cases: [typeof receiveDoor.POST, unknown][] = [
+      [receiveDoor.POST, { lines: [{ productId: '', quantity: 1 }] }],
+      [receiveDoor.POST, { lines: [{ productId: 'p1', quantity: 'ثلاثة' }] }],
+      [receiveDoor.POST, null],
+      [cancelDoor.POST, { reason: 'م'.repeat(501) }],
+      [cancelDoor.POST, { reason: 4 }],
+      [cancelDoor.POST, 'نص'],
+      [differenceDoor.POST, { type: 'STOLEN', reason: 'سبب' }],
+      [differenceDoor.POST, { type: 'LOSS', reason: 'م'.repeat(501) }],
+      [differenceDoor.POST, []],
+    ];
+    await as('u-owner');
+    for (const [door, b] of cases) {
+      const r = await door(raw(JSON.stringify(b)), ctx(id)).then(json);
+      expect([r.status, r.body.code], JSON.stringify(b)).toEqual([400, 'INVALID']);
+      expect(r.body.errorAr, JSON.stringify(b)).toMatch(arabic);
+      expect(r.body.errorAr, JSON.stringify(b)).not.toMatch(latin);
+    }
+  });
+});
+
 describe('the list: the receiver counts blind', () => {
+  it('20/11 (W3b): NEGATIVE — no field of the receiver’s list carries the sent figure; the warehouses carry their country', async () => {
+    await as('u-sender');
+    await send({ lines: [{ productId: 'p1', quantity: 7 }] });
+    await as('u-receiver');
+    const hers = (await list.GET().then(json)).body;
+    expect(hers.transfers[0].lines).toEqual([{ productId: 'p1', productName: 'منتج ١', quantitySent: null, quantityReceived: null, difference: null }]);
+    // The WHOLE answer, walked: no number 7 at any depth (the stock on the shelf is 10, so a 3 or a 10 may stand; 7 may not).
+    expect(numbersIn(hers)).not.toContain(7);
+    expect(hers.warehouses.map((w: Row) => [w.id, w.countryId])).toEqual([
+      ['wA', 'k1'],
+      ['wB', 'k1'],
+    ]);
+    // Once she has counted, the sent figure and the difference are told — after, never before.
+    await receive(hers.transfers[0].id, [{ productId: 'p1', quantity: 5 }]);
+    const after = (await list.GET().then(json)).body;
+    expect(after.transfers[0].lines[0]).toMatchObject({ quantitySent: 7, quantityReceived: 5, difference: 2 });
+    expect(after.transfers[0]).toMatchObject({ blind: false, statusAr: 'مستلم بفرق' });
+  });
+
   it('while on the road the sent quantity is told only to the sender', async () => {
     await as('u-sender');
     await send({ lines: [{ productId: 'p1', quantity: 7 }] });
@@ -265,6 +378,59 @@ describe('the list: the receiver counts blind', () => {
     const hers = await list.GET().then(json);
     expect(hers.body.transfers[0].lines[0].quantitySent).toBeNull();
     expect(hers.body.transfers[0]).toMatchObject({ statusAr: 'بالطريق', kindAr: 'نقل داخل المتجر', fromName: 'أ', toName: 'ب', sentByName: 'u-sender', blind: true });
+  });
+});
+
+describe('20/11 (W3b review): the movements tab is blind too — the TRANSFER_OUT line of a transfer on the road', () => {
+  const ledger = async () => (await movementsDoor(new Request('http://x/api/inventory/movements')).then(json)).body;
+  const outLine = (b: Row) => b.movements.find((m: Row) => m.type === 'TRANSFER_OUT');
+
+  it('NEGATIVE: the receiver (view + receive) and the owner see the line with no figure; the sender sees −7', async () => {
+    await as('u-sender');
+    await send({ lines: [{ productId: 'p1', quantity: 7 }] });
+    expect(outLine(await ledger())).toMatchObject({ quantity: -7, reason: 'نقل إلى ب' });
+    for (const who of ['u-receiver', 'u-owner', 'u-viewer']) {
+      await as(who);
+      const b = await ledger();
+      expect(outLine(b), who).toMatchObject({ quantity: null, reason: HIDDEN_ON_ROAD_AR, hiddenOnRoad: true, balanceAfter: 10 });
+      expect(numbersIn(b), who).not.toContain(7);
+      expect(numbersIn(b), who).not.toContain(-7);
+      expect(JSON.stringify(b), who).not.toContain('نقل إلى');
+    }
+  });
+
+  it('after the receipt — or a cancel — everyone reads the figure', async () => {
+    await as('u-sender');
+    const a = (await send({ lines: [{ productId: 'p1', quantity: 7 }] })).body.transfer.id;
+    await as('u-receiver');
+    await receive(a, [{ productId: 'p1', quantity: 7 }]);
+    for (const who of ['u-receiver', 'u-owner']) {
+      await as(who);
+      expect(outLine(await ledger()), who).toMatchObject({ quantity: -7, reason: 'نقل إلى ب' });
+    }
+    await as('u-sender');
+    const c = (await send({ lines: [{ productId: 'p1', quantity: 2 }] })).body.transfer.id;
+    await as('u-receiver');
+    expect((await ledger()).movements.filter((m: Row) => m.type === 'TRANSFER_OUT').map((m: Row) => m.quantity)).toEqual(
+      expect.arrayContaining([null, -7])
+    );
+    await as('u-sender');
+    await cancel(c);
+    await as('u-receiver');
+    expect(
+      (await ledger()).movements
+        .filter((m: Row) => m.type === 'TRANSFER_OUT')
+        .map((m: Row) => m.quantity)
+        .sort()
+    ).toEqual([-2, -7].sort());
+  });
+
+  it('a page with no transfer line asks nothing more of the database', async () => {
+    await as('u-receiver');
+    const spy = vi.spyOn(S.m.db.stockTransfer as Row, 'findMany');
+    const b = await ledger();
+    expect(b.movements).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
