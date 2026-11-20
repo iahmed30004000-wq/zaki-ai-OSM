@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { splitBatch } from './batch-split';
 import { holdingWhere, lockProductsStock } from './reservation';
+import { WAREHOUSE_COUNTING_AR, holdWarehousesStill, warehousesUnderCount } from './stock-count-freeze';
 import { drawDownStock, onHandTotal, receiveStock } from './receiving';
 import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { isAcross, needsOwnerApproval, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
@@ -153,6 +154,8 @@ export type StockTransferRefusalCode =
   | 'NO_DIFFERENCE'
   | 'COUNTS_INVALID'
   | 'COUNT_OVER_SENT'
+  // 21/11 (W5a): a count sheet of one of the two warehouses is open.
+  | 'WAREHOUSE_COUNTING'
   | VariantLineRefusalCode;
 
 const STATUS_OF: Record<StockTransferRefusalCode, number> = {
@@ -195,6 +198,7 @@ const STATUS_OF: Record<StockTransferRefusalCode, number> = {
   NO_DIFFERENCE: 409,
   COUNTS_INVALID: 400,
   COUNT_OVER_SENT: 400,
+  WAREHOUSE_COUNTING: 409,
 };
 
 const AR: Partial<Record<StockTransferRefusalCode, string>> = {
@@ -231,6 +235,7 @@ const AR: Partial<Record<StockTransferRefusalCode, string>> = {
   ALREADY_APPROVED: 'فرق هالنقل انعتمد من قبل. حدّث الصفحة.',
   NO_DIFFERENCE: 'ما في فرق مستني اعتماد على هالنقل.',
   COUNTS_INVALID: 'لازم تكتب العدد لكل منتج بالنقل، مرة وحدة لكل منتج.',
+  WAREHOUSE_COUNTING: WAREHOUSE_COUNTING_AR,
 };
 
 export class StockTransferRefused extends Error {
@@ -354,6 +359,16 @@ export async function lockWarehousesForShare(tx: Tx, ids: readonly string[]): Pr
     if (rows[0]) out.set(id, rows[0]);
   }
   return out;
+}
+
+/**
+ * 21/11 (W5a): A WAREHOUSE UNDER COUNT STANDS STILL (`stock-count-freeze.ts`). Asked after its row is read FOR SHARE (a
+ * sheet is opened under the row FOR UPDATE), so a sheet opened first is seen and one opened later waits for this press.
+ */
+async function refuseIfCounting(tx: Tx, warehouseIds: readonly string[], locked = false): Promise<void> {
+  if (!locked) await holdWarehousesStill(tx, warehouseIds);
+  const busy = await warehousesUnderCount(tx, warehouseIds);
+  if (busy.size > 0) throw new StockTransferRefused('WAREHOUSE_COUNTING', undefined, { warehouseIds: [...busy].sort() });
 }
 
 /** The transfer row FOR UPDATE: two presses on one transfer go one after the other. */
@@ -719,6 +734,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
   if (destStoreId && !(await storeIsPlaced(destStoreId, tx))) throw new StockTransferRefused('TO_STORE_NOT_PLACED');
   if (!from.isActive) throw new StockTransferRefused('FROM_STOPPED');
   if (!to.isActive) throw new StockTransferRefused('TO_STOPPED');
+  await refuseIfCounting(tx, [from.id, to.id], true);
   if (!(await input.mayUse({ id: from.id, companyId: from.companyId, countryId: from.countryId }))) {
     throw new StockTransferRefused('NOT_REACHED', 'ما إلك وصول على المخزن اللي بتنقل منه.');
   }
@@ -918,6 +934,7 @@ export async function receiveTransfer(
   checkReceiptCounts(counts, sentVariants, fail);
 
   await lockProductsStock(tx, companyId, [...sentOf.keys()]);
+  await refuseIfCounting(tx, [to.id]);
   let short = false;
   for (const c of counts) {
     if (c.quantity < (sentOf.get(c.productId) ?? 0)) short = true;
@@ -1117,6 +1134,7 @@ export async function approveAbroad(
   if (!from || !to) throw new StockTransferRefused('WAREHOUSE_NOT_FOUND');
   if (!from.isActive) throw new StockTransferRefused('FROM_STOPPED');
   if (!to.isActive) throw new StockTransferRefused('TO_STOPPED');
+  await refuseIfCounting(tx, [from.id], true);
   if (!(await input.mayUse({ id: from.id, companyId: from.companyId, countryId: from.countryId }))) {
     throw new StockTransferRefused('NOT_REACHED', 'ما إلك وصول على المخزن اللي بتنقل منه.');
   }
@@ -1215,6 +1233,7 @@ export async function cancelTransfer(
   }
 
   await lockProductsStock(tx, companyId, t.lines.map((l) => l.productId));
+  await refuseIfCounting(tx, [from.id]);
   for (const l of t.lines) {
     await landFromRoad(tx, { companyId, storeId, transferId, productId: l.productId, quantity: l.quantitySent, warehouseId: from.id });
     await ledger(tx, {

@@ -249,7 +249,9 @@ describe('asking about many stores at once', () => {
     // goods that left, never deleted.
     // 20/11 (Q4a): 37 → 38 — the owner's own confirmation rules (`confirmation_rules`) have a storeId and no foreign key to the
     // store, so they are a stopper too: stopped, never deleted.
-    expect(one.asked.length).toBe(38);
+    // 21/11 (W5a): 38 → 39 — the count sheets of a store's goods in its warehouses (`stock_counts`) are a stopper too: a
+    // document of what was counted and approved, never deleted.
+    expect(one.asked.length).toBe(39);
   });
 
   it('and no stores asks nothing at all', async () => {

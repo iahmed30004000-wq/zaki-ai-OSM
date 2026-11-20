@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { lockProductsStock } from './reservation';
+import { WAREHOUSE_COUNTING_AR, warehouseUnderCount } from './stock-count-freeze';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -36,7 +37,9 @@ export type IntakeRefusalCode =
   | 'WAREHOUSE_NOT_FOUND'
   | 'WAREHOUSE_OTHER_COUNTRY'
   | 'WAREHOUSE_STOPPED'
-  | 'WAREHOUSE_NOT_REACHED';
+  | 'WAREHOUSE_NOT_REACHED'
+  // 21/11 (W5a): a count sheet of the warehouse is open — nothing lands on its shelf until it is approved or voided.
+  | 'WAREHOUSE_COUNTING';
 
 export class IntakePlaceRefused extends Error {
   constructor(
@@ -55,6 +58,7 @@ const INTAKE_REFUSALS: Record<IntakeRefusalCode, { status: number; ar: string }>
   WAREHOUSE_OTHER_COUNTRY: { status: 400, ar: 'هالمخزن مش ببلد هالمتجر. البضاعة بتدخل على مخازن بلدها بس.' },
   WAREHOUSE_STOPPED: { status: 409, ar: 'هالمخزن موقوف. شغّله أول، أو دخّل البضاعة على مخزن تاني.' },
   WAREHOUSE_NOT_REACHED: { status: 403, ar: 'ما إلك وصول على هالمخزن. دخّل البضاعة على مخزن من مخازنك.' },
+  WAREHOUSE_COUNTING: { status: 409, ar: WAREHOUSE_COUNTING_AR },
 };
 
 const refused = (code: IntakeRefusalCode) => new IntakePlaceRefused(code, INTAKE_REFUSALS[code].ar, INTAKE_REFUSALS[code].status);
@@ -122,6 +126,8 @@ async function checkedWarehouse(
   const store = await tx.store.findFirst({ where: { id: input.storeId, companyId: input.companyId }, select: { countryId: true } });
   if (!store || store.countryId !== warehouse.countryId) throw refused('WAREHOUSE_OTHER_COUNTRY');
   if (!warehouse.isActive) throw refused('WAREHOUSE_STOPPED');
+  // 21/11 (W5a): read after the row FOR SHARE — a sheet opened before this receipt is seen; one opened after waits for it.
+  if (await warehouseUnderCount(tx, warehouse.id)) throw refused('WAREHOUSE_COUNTING');
   if (input.mayUse && !(await input.mayUse({ id: warehouse.id, companyId: warehouse.companyId, countryId: warehouse.countryId }))) {
     throw refused('WAREHOUSE_NOT_REACHED');
   }
@@ -161,6 +167,7 @@ export const INTAKE_REFUSAL_CODES: readonly IntakeRefusalCode[] = [
   'WAREHOUSE_OTHER_COUNTRY',
   'WAREHOUSE_STOPPED',
   'WAREHOUSE_NOT_REACHED',
+  'WAREHOUSE_COUNTING',
 ];
 
 /** The stop door's half of race 2: the warehouse row, locked FOR UPDATE before anything it holds is counted. */

@@ -126,6 +126,8 @@ vi.mock('@/lib/db', () => {
     const names = [
       'country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess',
       'userWarehouseAccess', 'order', 'orderItem', 'orderAddOn', 'returnReceipt', 'orderNote',
+      // 21/11 (W5a): the receiving warehouse of a placed store is asked whether it is under count; no sheet here (today's answer).
+      'stockCount',
     ];
     const c: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
     c.userStoreAccess = {

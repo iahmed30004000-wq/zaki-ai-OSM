@@ -53,8 +53,11 @@ export interface ReceiveInput {
    * source on a cancel) open a batch here like any receipt, but their ledger line says what they are — `TRANSFER_IN`,
    * with the transfer's id and its sentence — not «استلام بضاعة». Absent: the line is the `PRODUCTION` line it always was,
    * byte for byte.
+   *
+   * 21/11 (W5a): `MANUAL_ADJUSTMENT` — the surplus of an APPROVED count sheet: its units open a batch here like the
+   * recount's surplus does, and its ONE ledger line is the adjustment, carrying the sheet's id.
    */
-  movement?: { type: 'TRANSFER_IN'; referenceId: string; reason: string };
+  movement?: { type: 'TRANSFER_IN' | 'MANUAL_ADJUSTMENT'; referenceId: string; reason: string };
 }
 
 export async function nextBatchNumber(tx: Tx, companyId: string): Promise<string> {

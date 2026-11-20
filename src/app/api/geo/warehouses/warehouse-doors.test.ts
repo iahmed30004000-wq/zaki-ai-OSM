@@ -59,6 +59,8 @@ vi.mock('@/lib/db', () => {
     stockTransfer: t('stockTransfer'),
     // 20/11 (W6a): …and PENDING exits from it; none exist here (today's answer: 0).
     stockExit: t('stockExit'),
+    // 21/11 (W5a): …and OPEN count sheets on it; none exist here (today's answer: 0).
+    stockCount: t('stockCount'),
     userCountryAccess: t('userCountryAccess'),
     userStoreAccess: {
       findMany: async ({ where }: Row) =>

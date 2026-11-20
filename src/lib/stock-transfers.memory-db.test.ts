@@ -45,6 +45,11 @@ const TABLES = [
   'userWarehouseAccess',
   // 20/11 (W7a): the same article in two stores — its three unique keys answer P2002 here as the database does.
   'productPair',
+  // 21/11 (W5a): the count sheets — every stock door of a placed store asks whether its warehouse is under count, and
+  // the count tests stand on this file too.
+  'stockCount',
+  'stockCountLine',
+  'stockCountLineVariant',
 ] as const;
 
 const known = (code: string) => new Prisma.PrismaClientKnownRequestError(code, { code, clientVersion: 'memory' });
@@ -118,6 +123,9 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       } else if (k === 'lines' && table === 'stockExit') {
         const lines = sortBy(data.stockExitLine.filter((l) => l.exitId === r.id), (v as Row).orderBy);
         out.lines = lines.map((l) => pick('stockExitLine', l, (v as Row).select));
+      } else if (k === 'lines' && table === 'stockCount') {
+        const lines = sortBy(data.stockCountLine.filter((l) => l.countId === r.id), (v as Row).orderBy);
+        out.lines = lines.map((l) => pick('stockCountLine', l, (v as Row).select));
       } else if (k === 'country' && v && typeof v === 'object' && table === 'store') {
         const c = data.country.find((x) => x.id === r.countryId);
         out.country = c ? pick('country', c, (v as Row).select) : null;
@@ -189,6 +197,10 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       if (name === 'stockTransfer') row.status ??= 'SENT';
       if (name === 'stockTransfer') row.sentAt ??= new Date();
       if (name === 'stockExit') row.requestedAt ??= new Date();
+      if (name === 'stockCount') row.openedAt ??= new Date();
+      // 21/11 (W5a): the partial unique index — ONE open sheet (OPEN or SUBMITTED) per warehouse.
+      if (name === 'stockCount' && ['OPEN', 'SUBMITTED'].includes(row.status ?? 'OPEN') && data.stockCount.some((x) => x.warehouseId === row.warehouseId && ['OPEN', 'SUBMITTED'].includes(x.status))) throw known('P2002');
+      if (name === 'stockCountLineVariant' && data.stockCountLineVariant.some((x) => x.lineId === row.lineId && x.variantId === row.variantId)) throw known('P2002');
       data[name].push(row);
       if (lines?.create && name === 'stockTransfer') {
         for (const l of lines.create as Row[]) {
@@ -200,6 +212,12 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
         for (const l of lines.create as Row[]) {
           if (data.stockExitLine.some((x) => x.exitId === row.id && x.productId === l.productId)) throw known('P2002');
           data.stockExitLine.push({ id: `xline-${++seq}`, exitId: row.id, valueAtCost: null, ...l });
+        }
+      }
+      if (lines?.create && name === 'stockCount') {
+        for (const l of lines.create as Row[]) {
+          if (data.stockCountLine.some((x) => x.countId === row.id && x.productId === l.productId)) throw known('P2002');
+          data.stockCountLine.push({ id: `kline-${++seq}`, countId: row.id, counted: null, countedById: null, countedAt: null, book: null, withCourier: null, expected: null, unsourcedWithCourier: null, applied: null, valueAtCost: null, ...l });
         }
       }
       return pick(name, row, select);
@@ -219,6 +237,14 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       if (i < 0) throw known('P2025');
       const [r] = data[name].splice(i, 1);
       return pick(name, r, select);
+    },
+    // 21/11 (W5a): a count line's combinations are written again whole when the keeper answers the line again.
+    deleteMany: async ({ where }: Row = {}) => {
+      touched.push(`${name}.deleteMany`);
+      const keep = data[name].filter((r) => !matches(name, r, where));
+      const count = data[name].length - keep.length;
+      data[name] = keep;
+      return { count };
     },
     updateMany: async ({ where, data: d }: Row) => {
       touched.push(`${name}.updateMany`);

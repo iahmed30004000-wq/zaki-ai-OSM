@@ -505,6 +505,12 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/inventory/transfers/[id]/approve': 'زرُّ المالك «اعتمد وابعت» على نقلٍ لبلدٍ تاني — بُني قبل زرّه؛ شاشةُ النقل (W7c) هي من تستدعيه',
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
+  // 21/11 (W5a): the five count-sheet doors, built ahead of their screen — «الجرد» (`/inventory/counts`, W5b) calls them all; each line leaves that day.
+  '/api/inventory/counts': 'W5a (21/11): قائمة أوراق الجرد وفتح ورقة — شاشة «الجرد» (W5b) هي اللي بتستدعيه',
+  '/api/inventory/counts/[id]': 'W5a (21/11): ورقة الجرد وكتابة العدّ — شاشة «الجرد» (W5b) هي اللي بتستدعيه',
+  '/api/inventory/counts/[id]/submit': 'W5a (21/11): تسليم ورقة الجرد — زر التسليم بشاشة «الجرد» (W5b)',
+  '/api/inventory/counts/[id]/approve': 'W5a (21/11): اعتماد ورقة الجرد — زر الاعتماد بشاشة «الجرد» (W5b)',
+  '/api/inventory/counts/[id]/void': 'W5a (21/11): إلغاء ورقة الجرد — زر الإلغاء بشاشة «الجرد» (W5b)',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
   '/api/orders/follow-ups': 'مسكَّر (410) — طوابيرُ المتابعةِ صارت بشاشات التأكيد، والبابُ كان بلا صلاحية ويقرّر بأسماء الأدوار',
   '/api/webhooks/couriers/[token]':

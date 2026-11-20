@@ -119,7 +119,9 @@ vi.mock('@/lib/db', () => {
         },
       };
     };
-    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount', 'stockTransfer', 'stockExit'];
+    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount', 'stockTransfer', 'stockExit', 'stockCount'];
+    // 21/11 (W5a): 'stockCount' — every intake of a placed store asks whether its warehouse is under count, and the stop door
+    // counts open sheets; none exist here (no sheet, today's answer).
     // 20/11 (W6a): 'stockExit' — the stop door also counts PENDING exits from the warehouse; none exist here (0, today's answer).
     // 20/11 (W3a): 'stockTransfer' — the stop door also counts OPEN transfers from or to the warehouse; none exist here (0, today's answer).
     const c: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
