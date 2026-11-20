@@ -236,6 +236,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 20/11, W4c (the shipping screens by warehouse): «إنشاء شحنة» sends the warehouse the press leaves from (`warehouseId`),
     // for a placed store only — the body W4a's door asks for.
     'src/components/screens/ShipmentsNewScreen.tsx',
+    // 20/11, W3c («بالطريق» where it matters): the notice of a sent transfer reads the two ends' names and the
+    // destination's keeper rows (`userWarehouseAccess`) to tell the keepers who may receive — no stock column, no unit.
+    'src/lib/stock-transfer-alerts.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
