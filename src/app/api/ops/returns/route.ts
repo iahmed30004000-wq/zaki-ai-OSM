@@ -15,6 +15,7 @@ import { readOrderPage } from '@/lib/paged-read';
 import { PENDING_ORDER_BY, RECEIVED_ORDER_BY, daysWaitedOf, returnsFilters, sinceOf, viewScope } from '@/lib/returns-filters';
 import { returnsFacts } from '@/lib/returns-list';
 import { receiveReturn } from '@/lib/return-receipt';
+import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
 
 /**
  * Return receiving.
@@ -96,6 +97,8 @@ export async function GET(req: Request) {
           // The other three places a parcel's moment can live — read to say how long it has waited, not sent on.
           failedAt: true, deliveredAt: true, updatedAt: true,
           regionId: true, deliveryProviderId: true,
+          // «طلع من مخزن كذا» (W4d): read to find the name — the desk's default receiver, shown only — never sent on.
+          sourceWarehouseId: true,
           customer: { select: { fullName: true, phone: true } },
           region: { select: { id: true, name: true } },
           deliveryProvider: { select: { id: true, name: true } },
@@ -125,6 +128,8 @@ export async function GET(req: Request) {
     const inspectorIds = pending
       ? []
       : [...new Set(orders.map((o) => o.returnReceipt?.inspectedById as string | undefined).filter((id): id is string => !!id))];
+    // The warehouses the page's parcels left from, in one read — none at all when no parcel has one (an unplaced store).
+    const places = await sourceWarehouseNames(db, companyId, orders.map((o) => o.sourceWarehouseId as string | null | undefined));
     const inspectors = new Map(
       (inspectorIds.length > 0
         ? await db.user.findMany({ where: { id: { in: inspectorIds }, companyId }, select: { id: true, name: true } })
@@ -149,7 +154,9 @@ export async function GET(req: Request) {
       // `items` is deliberately NOT spread out below: `lines` is the same
       // fact in the shape the desk needs, and shipping both invites the
       // screen to reach for the raw one again.
-      orders: orders.map(({ items, returnReceipt, failedAt, deliveredAt, updatedAt, ...o }) => {
+      orders: orders.map(({ items, returnReceipt, failedAt, deliveredAt, updatedAt, ...whole }) => {
+        // The id leaves; the name joins only when the parcel has a source warehouse (W4d).
+        const o = withSourceWarehouseName(whole, places);
         const customer = redactCustomerForWarehouse(o.customer, maySeeContact);
         if (!pending) {
           // A record: what was counted, by whom and when. No lines, no extra action — nothing here can be received again.
