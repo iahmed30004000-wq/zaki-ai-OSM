@@ -205,6 +205,17 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/transfers/[id]/receive/route.ts',
     'src/app/api/inventory/transfers/[id]/cancel/route.ts',
     'src/app/api/inventory/transfers/[id]/difference/route.ts',
+    // 20/11, W4a (a shipment is made in ONE warehouse): the shipment's place and the warehouse's shelf for the blocks; the
+    // two doors that open a trolley and the preparation list that may be asked per warehouse; the two «off the trolley»
+    // column lists that drop the order's source; the doors that put an order on an existing trolley (assign to a batch,
+    // move to another courier's trolley before the handover) so a trolley never mixes warehouses.
+    'src/lib/shipment-warehouse.ts',
+    'src/lib/shipment-cancel.ts',
+    'src/app/api/ops/shipments/route.ts',
+    'src/app/api/shipping-batches/route.ts',
+    'src/app/api/ops/preparation/route.ts',
+    'src/app/api/orders/[id]/shipping/route.ts',
+    'src/app/api/ops/tracking/transfer/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

@@ -17,6 +17,8 @@ import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, shipment
 import { SHIP_HOLD_RELEASED, holdEndsInBatch } from '@/lib/shipment-hold';
 import { isBenchStore } from '@/lib/bench-store';
 import { BENCH_LIST_EMPTY_AR, BENCH_STOPS_AR, BENCH_STOPS_CODE } from '@/lib/test-store';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody } from '@/lib/shipment-warehouse';
+import { reachesWarehouse } from '@/lib/warehouses';
 
 /**
  * Shipment creation.
@@ -44,6 +46,12 @@ const createSchema = z.object({
   orderIds: z.array(z.string().uuid()).min(1).max(200),
   acknowledgedOrderIds: z.array(z.string().uuid()).default([]),
   notes: z.string().trim().max(300).optional(),
+  /**
+   * W4a: the warehouse the shipment leaves from — REQUIRED for a store placed in warehouses, not read for any other
+   * (`shipment-warehouse.shipmentPlace`). Typed loosely here so that an unplaced store's door answers exactly as before
+   * whatever this field carries.
+   */
+  warehouseId: z.unknown().optional(),
 });
 
 export async function GET(req: Request) {
@@ -152,13 +160,26 @@ export async function GET(req: Request) {
       }),
       country.minorUnit
     );
+    /*
+     * W4a: a PLACED store's list may be asked for one warehouse (`?warehouse=`): the stock blocks are then that
+     * warehouse's, as the door will ask them. Without it — and always for a store that is not placed, where the parameter
+     * is not read — the list answers from the store's shelf as before; the door decides.
+     */
+    const askedWarehouse = q.get('warehouse');
+    const place = askedWarehouse
+      ? await shipmentPlace(db, { companyId, storeId, warehouseId: askedWarehouse, mayUse: (w) => reachesWarehouse(user, companyId, w) })
+      : null;
     const blocksOf = await shipmentBlocksBulk(
       db,
       orders.map((o) => ({
         id: o.id, companyId: o.companyId, storeId: o.storeId, customerId: o.customerId, regionId: o.regionId,
         deliveryProviderId: providerOf(o), items: o.items, addOns: o.addOns,
       })),
-      { allowNegativeStock: country.allowNegativeStock, batchOrderIds: orders.map((o) => o.id) }
+      {
+        allowNegativeStock: country.allowNegativeStock,
+        batchOrderIds: orders.map((o) => o.id),
+        ...(place ? { warehouse: place } : {}),
+      }
     );
 
     const rows = [];
@@ -283,6 +304,7 @@ export async function GET(req: Request) {
       orders: rows,
     });
   } catch (error) {
+    if (error instanceof ShipmentPlaceRefused) return NextResponse.json(shipmentPlaceBody(error), { status: error.status });
     return apiErrorResponse(error);
   }
 }
@@ -303,7 +325,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { deliveryProviderId, orderIds, acknowledgedOrderIds, notes } = parsed.data;
+    const { deliveryProviderId, orderIds, acknowledgedOrderIds, notes, warehouseId } = parsed.data;
 
     const provider = await db.deliveryProvider.findFirst({ where: { id: deliveryProviderId, companyId } });
     if (!provider) return NextResponse.json({ error: 'شركة الشحن غير موجودة' }, { status: 404 });
@@ -312,6 +334,13 @@ export async function POST(req: Request) {
     if (await isBenchStore(db, { companyId, storeId })) {
       return NextResponse.json({ error: BENCH_STOPS_AR, code: BENCH_STOPS_CODE }, { status: 409 });
     }
+
+    /*
+     * ONE SHIPMENT, ONE WAREHOUSE (W4a). A store placed in warehouses names the warehouse this press leaves from — the
+     * person creating the shipment chooses it (the owner's decision 3, default) — and it must be one she reaches. `null`
+     * for a store that is not placed: nothing below changes for it.
+     */
+    const place = await shipmentPlace(db, { companyId, storeId, warehouseId, mayUse: (w) => reachesWarehouse(user, companyId, w) });
 
     const orders = await db.order.findMany({
       where: { id: { in: orderIds }, companyId, storeId },
@@ -346,7 +375,7 @@ export async function POST(req: Request) {
       const blocks = await shipmentBlocks(
         db,
         { id: order.id, companyId: order.companyId, storeId: order.storeId, customerId: order.customerId, regionId: order.regionId, deliveryProviderId },
-        { allowNegativeStock: country.allowNegativeStock, batchOrderIds: orderIds }
+        { allowNegativeStock: country.allowNegativeStock, batchOrderIds: orderIds, ...(place ? { warehouse: place } : {}) }
       );
       for (const block of blocks) {
         // Soft blocks pass only with an explicit acknowledgement for THIS order.
@@ -376,8 +405,10 @@ export async function POST(req: Request) {
       // second batch while the first is still being filled splits one
       // pickup into two lists, and the warehouse then has to remember
       // which of them the driver actually took.
+      // W4a: and one per WAREHOUSE of a placed store — a trolley never mixes warehouses, and an open trolley of the time
+      // before the placement (no warehouse) is not joined by a placed store's press.
       const open = await tx.shippingBatch.findFirst({
-        where: { companyId, storeId, deliveryProviderId, status: 'READY' },
+        where: { companyId, storeId, deliveryProviderId, status: 'READY', ...(place ? { warehouseId: place.id } : {}) },
         orderBy: { createdAt: 'desc' },
       });
 
@@ -393,6 +424,7 @@ export async function POST(req: Request) {
           createdById: user.id,
           notes: notes ?? null,
           status: 'READY',
+          ...(place ? { warehouseId: place.id } : {}),
         },
         }));
 
@@ -441,6 +473,8 @@ export async function POST(req: Request) {
               shippingStatus: 'READY_FOR_PICKUP',
               settlementStatus: 'PENDING_COLLECTION',
               ...(hold.clears ? { shipHoldUntil: null, shipHoldReason: null } : {}),
+              // W4a: the order leaves from the trolley's warehouse — stamped as it joins (`shipment-warehouse.ts`).
+              ...(place ? { sourceWarehouseId: place.id } : {}),
               version: { increment: 1 },
             },
           })
@@ -508,6 +542,7 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+    if (error instanceof ShipmentPlaceRefused) return NextResponse.json(shipmentPlaceBody(error), { status: error.status });
     return apiErrorResponse(error);
   }
 }

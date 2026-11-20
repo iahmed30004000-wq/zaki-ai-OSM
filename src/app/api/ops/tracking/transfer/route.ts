@@ -112,7 +112,15 @@ export async function POST(req: Request) {
     let openBatch: { id: string; batchNumber: string } | null = null;
     if (requiresOpenBatch(target)) {
       openBatch = await db.shippingBatch.findFirst({
-        where: { companyId, storeId, deliveryProviderId: to.id, status: 'READY' },
+        // W4a: a parcel that leaves from a warehouse goes onto the new courier's trolley OF THAT WAREHOUSE — a trolley never
+        // mixes warehouses. An order with no warehouse (every order of a store not placed) asks as before.
+        where: {
+          companyId,
+          storeId,
+          deliveryProviderId: to.id,
+          status: 'READY',
+          ...(order.sourceWarehouseId ? { warehouseId: order.sourceWarehouseId } : {}),
+        },
         select: { id: true, batchNumber: true },
         orderBy: { createdAt: 'desc' },
       });
