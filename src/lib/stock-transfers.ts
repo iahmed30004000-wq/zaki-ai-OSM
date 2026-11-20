@@ -8,7 +8,7 @@ import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { isAcross, needsOwnerApproval, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
 import { PENDING_EXIT } from './stock-exit-reasons';
 import { twinsIn } from './product-twins';
-import { arrivalCost, landedCostsField, normalizeLanded, type LandedCost } from './stock-transfer-cost';
+import { arrivalCost, landedCostsField, missingValue, normalizeLanded, type LandedCost } from './stock-transfer-cost';
 import {
   VARIANT_LINE_AR,
   VARIANT_LINE_STATUS,
@@ -1442,6 +1442,10 @@ export function shownTo<
                 landedCosts: storedLanded(l.landedCosts),
                 unitCostIn: l.unitCostIn ?? null,
                 costRemainder: l.costRemainder ?? null,
+                // The shortfall's value at the cost that left — a report figure, posted nowhere (decision 6).
+                ...(l.quantityReceived !== null && l.costOut != null && l.quantityReceived < l.quantitySent
+                  ? { missingValue: missingValue(l.costOut, l.quantitySent, l.quantityReceived) }
+                  : {}),
               }
             : {}),
         }

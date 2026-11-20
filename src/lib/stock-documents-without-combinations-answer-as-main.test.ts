@@ -24,6 +24,12 @@ import { EXIT_REASONS } from './stock-exit-reasons';
  * TO REGENERATE (only if main itself changes these files): copy main's three files next to their originals as
  * `stock-transfers.w8b-main.ts`, `stock-exits.w8b-main.ts` (its `./stock-transfers` import pointed at the copy) and
  * `warehouse-placement.w8b-main.ts`, run this file with `W8B_WRITE_GOLDEN=1`, delete the copies.
+ *
+ * 20/11 (W7b): ONE answer of the frozen file was changed by hand, on purpose, and nothing else: a send to a warehouse of
+ * another country with NO destination store named (7 sends over the 70 seeds). Old: 400 KIND_NOT_BUILT «لسا مش مبني» with
+ * `{ kind: 'BETWEEN_COUNTRIES' }`. New: 400 TO_OTHER_COUNTRY with its sentence and no extra — transfers across stores and
+ * countries are built, and such a warehouse holds none of this store's goods. Every other answer, row, write and lock of
+ * the frozen file is main's, untouched.
  */
 
 const H = vi.hoisted(() => ({ hex: 0 }));

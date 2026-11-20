@@ -34,12 +34,6 @@ import { resolveUnitCost } from './unit-cost';
 export const LANDED_KINDS = ['TRANSPORT', 'CUSTOMS', 'OTHER'] as const;
 export type LandedKind = (typeof LANDED_KINDS)[number];
 
-export const LANDED_KIND_AR: Record<LandedKind, string> = {
-  TRANSPORT: 'شحن ونقل',
-  CUSTOMS: 'جمرك',
-  OTHER: 'غيره',
-};
-
 export interface LandedCost {
   kind: LandedKind;
   amount: number;
