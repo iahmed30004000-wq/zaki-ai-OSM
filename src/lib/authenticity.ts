@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import { db } from '@/lib/db';
 
 /**
@@ -54,6 +55,28 @@ export function codeFromVerifyLink(text: string): string | null {
   }
   if (!VERIFY_PATH.test(url.pathname)) return null;
   return url.searchParams.get(VERIFY_CODE_PARAM);
+}
+
+/**
+ * What a piece's QR holds (20/11, owner: «يولد qr code خاص بيه»): the store's verify link with the code in it, so a
+ * phone's own camera opens the page and it checks by itself. A code that is already a link is its own QR text.
+ * `origin` is the app's public address, never empty-guessed by the caller.
+ */
+export function verifyLinkFor(origin: string, storeId: string, code: string): string {
+  if (/^https?:\/\//i.test(code)) return code;
+  return `${origin}/verify/${storeId}?${VERIFY_CODE_PARAM}=${encodeURIComponent(code)}`;
+}
+
+/** The same library and settings the waybill's QR uses (`waybill.ts`): error correction M, a four-module quiet zone. */
+const QR_OPTIONS = { errorCorrectionLevel: 'M', margin: 4 } as const;
+
+export function authenticityQrSvg(text: string): Promise<string> {
+  return QRCode.toString(text, { ...QR_OPTIONS, type: 'svg' });
+}
+
+/** 1024 px square: sharp on a printed label at any size a box carries. */
+export function authenticityQrPng(text: string): Promise<Buffer> {
+  return QRCode.toBuffer(text, { ...QR_OPTIONS, type: 'png', width: 1024 });
 }
 
 /**

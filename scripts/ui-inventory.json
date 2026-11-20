@@ -2386,12 +2386,12 @@
     "checkboxes": 1
   },
   "src/components/settings/AuthenticityCodesCard.tsx": {
-    "buttons": 4,
+    "buttons": 9,
     "inputs": 2,
     "columns": 0,
     "cards": 1,
-    "modals": 0,
-    "icons": 5,
+    "modals": 1,
+    "icons": 11,
     "links": 0,
     "tabs": 0
   },

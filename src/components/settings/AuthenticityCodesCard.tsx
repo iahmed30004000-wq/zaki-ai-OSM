@@ -9,7 +9,52 @@ import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Confirm';
 import { useCan } from '@/hooks/useCan';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
-import { RiAddCircleLine, RiDeleteBinLine, RiFileCopyLine, RiLoader4Line } from '@remixicon/react';
+import { Modal } from '@/components/ui/Modal';
+import {
+  RiAddCircleLine,
+  RiDeleteBinLine,
+  RiDownload2Line,
+  RiFileCopyLine,
+  RiLoader4Line,
+  RiPrinterLine,
+  RiQrScan2Line,
+} from '@remixicon/react';
+
+const QR_API = '/api/settings/authenticity-codes/qr';
+
+/** Text going into the print window's HTML, escaped: a code may hold any character now, «<» and «&» included. */
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * Prints a sheet of labels in a window of its own — no page of the app is added for it (a registry line rides in every
+ * staff screen's first load). Each label: the QR, the code under it, and the note when there is one.
+ */
+function printLabels(items: { code: string; note?: string | null; img: string }[]): boolean {
+  const w = window.open('', '_blank');
+  if (!w) return false;
+  const cells = items
+    .map(
+      (i) =>
+        `<figure><div class="q">${i.img}</div><figcaption dir="ltr">${esc(i.code)}</figcaption>${
+          i.note ? `<small>${esc(i.note)}</small>` : ''
+        }</figure>`
+    )
+    .join('');
+  w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>رموز الأصالة</title><style>
+@page{margin:10mm}body{margin:0;font-family:Tahoma,'Segoe UI',sans-serif;color:#000}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(44mm,1fr));gap:6mm}
+figure{margin:0;padding:3mm;border:1px dashed #999;text-align:center;break-inside:avoid}
+.q svg,.q img{width:100%;height:auto;display:block}
+figcaption{font:600 9pt monospace;word-break:break-all;margin-top:2mm}small{display:block;font-size:8pt;color:#444;margin-top:1mm}
+</style></head><body><main>${cells}</main></body></html>`);
+  w.document.close();
+  // Images inside are inline SVG or same-origin, so the sheet is whole a moment after it is written.
+  setTimeout(() => {
+    w.focus();
+    w.print();
+  }, 300);
+  return true;
+}
 
 /**
  * «رموز الأصالة» — THE OWNER'S OWN LIST, READ BY A PUBLIC SCAN AND BY NOBODY ELSE.
@@ -48,6 +93,9 @@ export function AuthenticityCodesCard() {
   const [draft, setDraft] = useState({ code: '', note: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The code whose QR window is open (20/11, owner: «يولد qr code خاص بيه»).
+  const [qrFor, setQrFor] = useState<Code | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -81,6 +129,36 @@ export function AuthenticityCodesCard() {
     const ok = await copyText(text);
     if (ok) toast.done('تم نسخ رابط الـQR — ضعه في مولّد QR واطبعه على القطعة');
     else toast.failed('تعذر النسخ — الرابط: ' + text);
+  };
+
+  /** A file from the QR door, saved with the name the server gives it. */
+  const download = (id: string, format: 'png' | 'svg') => {
+    const a = document.createElement('a');
+    a.href = `${QR_API}?id=${encodeURIComponent(id)}&format=${format}&download=1`;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const printOne = (c: Code) => {
+    const img = `<img alt="" src="${window.location.origin}${QR_API}?id=${encodeURIComponent(c.id)}&format=svg">`;
+    if (!printLabels([{ code: c.code, note: c.note, img }])) toast.failed('المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع');
+  };
+
+  const printAll = async () => {
+    setPrinting(true);
+    try {
+      const d = await apiJson<{ items: { code: string; note: string | null; svg: string }[] }>(`${QR_API}?all=1`);
+      if (!d.items.length) return;
+      if (!printLabels(d.items.map((i) => ({ code: i.code, note: i.note, img: i.svg })))) {
+        toast.failed('المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع');
+      }
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذر تجهيز الطباعة');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const add = async () => {
@@ -176,7 +254,15 @@ export function AuthenticityCodesCard() {
 
         {codes && (
           <div className="space-y-2">
-            <p className="text-note font-semibold text-[var(--sys-foreground)]">الرموز ({codes.length})</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-note font-semibold text-[var(--sys-foreground)]">الرموز ({codes.length})</p>
+              {codes.length > 0 && stores[0] && (
+                <Button variant="quiet" size="sm" onClick={() => void printAll()} disabled={printing}>
+                  {printing ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPrinterLine className="h-4 w-4" />}
+                  طباعة كل الرموز
+                </Button>
+              )}
+            </div>
             {codes.length === 0 && (
               <p className="rounded-lg border border-[var(--sys-border)] p-3 text-note text-[var(--sys-muted-foreground)]">
                 لا رموز بعد — كل فحص عام يُظهر «غير أصلي» إلى أن تضيف رموزاً هنا.
@@ -196,9 +282,14 @@ export function AuthenticityCodesCard() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {stores[0] && (
-                    <Button variant="quiet" size="sm" onClick={() => copyQr(stores[0].id, c.code)}>
-                      <RiFileCopyLine className="h-4 w-4" /> نسخ رابط QR
-                    </Button>
+                    <>
+                      <Button variant="quiet" size="sm" onClick={() => setQrFor(c)}>
+                        <RiQrScan2Line className="h-4 w-4" /> QR
+                      </Button>
+                      <Button variant="quiet" size="sm" onClick={() => copyQr(stores[0].id, c.code)}>
+                        <RiFileCopyLine className="h-4 w-4" /> نسخ رابط QR
+                      </Button>
+                    </>
                   )}
                   {canManage && (
                     <Button variant="danger" size="sm" onClick={() => remove(c.id, c.code)}>
@@ -211,6 +302,34 @@ export function AuthenticityCodesCard() {
           </div>
         )}
       </CardContent>
+
+      <Modal isOpen={!!qrFor} onClose={() => setQrFor(null)} title="QR للقطعة" subtitle="يصوّره الزبون بكاميرا موبايله فتنفتح صفحة التحقق وتتحقق وحدها." maxWidth="sm">
+        {qrFor && (
+          <div className="space-y-4 text-center">
+            {/* Drawn by the server (the same `qrcode` as the waybill); an <img> of our own door, nothing third-party. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${QR_API}?id=${encodeURIComponent(qrFor.id)}&format=svg`}
+              alt={`QR للرمز ${qrFor.code}`}
+              style={{ width: '100%', maxWidth: 280, aspectRatio: '1', margin: '0 auto', display: 'block', background: 'white' }}
+            />
+            <p className="font-mono font-semibold text-[var(--sys-foreground)]" dir="ltr" style={{ wordBreak: 'break-all' }}>
+              {qrFor.code}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="quiet" size="sm" onClick={() => download(qrFor.id, 'png')}>
+                <RiDownload2Line className="h-4 w-4" /> تنزيل PNG
+              </Button>
+              <Button variant="quiet" size="sm" onClick={() => download(qrFor.id, 'svg')}>
+                <RiDownload2Line className="h-4 w-4" /> تنزيل SVG
+              </Button>
+              <Button size="sm" onClick={() => printOne(qrFor)}>
+                <RiPrinterLine className="h-4 w-4" /> طباعة
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </Card>
   );
 }
