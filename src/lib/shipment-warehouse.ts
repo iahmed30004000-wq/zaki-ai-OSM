@@ -110,6 +110,39 @@ export async function shipmentPlace(
   return { id: warehouse.id, name: warehouse.name };
 }
 
+/**
+ * THE WAREHOUSES A PERSON MAY PICK ON THE SHIPPING SCREENS (W4c) — «التجهيز», «إنشاء شحنة» and «دفعات الشحن».
+ *
+ * `null` for a store that is not placed: the lists then answer without a `warehouses` field at all, and the screens draw
+ * no picker — today's screens, today's requests. For a PLACED store: the running warehouses of the store's country, in
+ * name order, that this person reaches (`reached` — the door passes `warehouses.warehousesReachedBy` for the session, the
+ * same rule `shipmentPlace` asks with `reachesWarehouse`), so a warehouse offered here is never one the door refuses.
+ * An empty list = placed, and she reaches none of them: the screen says so instead of offering nothing.
+ * One read for a store that is not placed (the same read `shipmentPlace` makes); two more for a placed one.
+ */
+export async function shipmentWarehouseChoices(
+  tx: Tx,
+  input: {
+    companyId: string;
+    storeId: string | null | undefined;
+    reached: (warehouses: WarehouseRef[]) => Promise<WarehouseRef[]>;
+  }
+): Promise<ShipmentWarehouse[] | null> {
+  if (!input.storeId) return null;
+  const store = await tx.store.findFirst({
+    where: { id: input.storeId, companyId: input.companyId },
+    select: { countryId: true, warehousePlacement: { select: { id: true } } },
+  });
+  if (!store?.warehousePlacement) return null;
+  const running = await tx.warehouse.findMany({
+    where: { companyId: input.companyId, countryId: store.countryId, isActive: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, companyId: true, countryId: true },
+  });
+  const ok = new Set((await input.reached(running.map(({ id, companyId, countryId }) => ({ id, companyId, countryId })))).map((w) => w.id));
+  return running.filter((w) => ok.has(w.id)).map((w) => ({ id: w.id, name: w.name }));
+}
+
 /* ───────────────────────────── the warehouse's shelf ───────────────────────────── */
 
 /**

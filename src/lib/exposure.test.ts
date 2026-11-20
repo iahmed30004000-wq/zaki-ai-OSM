@@ -171,6 +171,9 @@ describe('what the browser is allowed to remember', () => {
   const ALLOWED: Record<string, string> = {
     'ai/AiDock.tsx': 'the assistant conversation — aggregates only, session storage, gone on reload',
     'labels/LabelSize.tsx': 'the paper loaded in this device’s printer',
+    // 20/11 (W4c): the shipping screens' warehouse picker.
+    'ops/WarehousePicker.tsx':
+      'the last warehouse this person picked on the shipping screens — one warehouse id, one key per user id. A convenience only: it is chosen again only when the server still offers it, and nothing of a customer is in it',
     'shell/FirstRunTour.tsx': 'whether «تخطّي» was pressed on the first-run tour — a flag keyed by user id, session storage, gone with the tab',
     /*
      * THIS ENTRY LEFT ON THIS BRANCH AND CAME BACK, AND THAT IS THE RIGHT

@@ -6,8 +6,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { preparationGroups } from '@/lib/operations';
 import { isBenchStore } from '@/lib/bench-store';
 import { BENCH_LIST_EMPTY_AR } from '@/lib/test-store';
-import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody } from '@/lib/shipment-warehouse';
-import { reachesWarehouse } from '@/lib/warehouses';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody, shipmentWarehouseChoices } from '@/lib/shipment-warehouse';
+import { reachesWarehouse, warehousesReachedBy } from '@/lib/warehouses';
 
 /**
  * GET /api/ops/preparation — confirmed orders grouped BY PRODUCT with
@@ -39,8 +39,11 @@ export async function GET(req?: Request) {
       ? await shipmentPlace(db, { companyId, storeId, warehouseId: askedWarehouse, mayUse: (w) => reachesWarehouse(user, companyId, w) })
       : null;
     const groups = place ? await preparationGroups(db, { companyId, storeId }, { warehouse: place }) : await preparationGroups(db, { companyId, storeId });
+    // W4c: the warehouses the screen's picker offers — a placed store only; absent for any other, so its answer is today's.
+    const warehouses = await shipmentWarehouseChoices(db, { companyId, storeId, reached: (ws) => warehousesReachedBy(user, companyId, ws) });
 
     return NextResponse.json({
+      ...(warehouses ? { warehouses } : {}),
       allowNegativeStock: country.allowNegativeStock,
       totals: {
         products: groups.length,
