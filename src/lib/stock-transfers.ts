@@ -7,6 +7,29 @@ import { onHandTotal } from './receiving';
 import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { NOT_BUILT_AR, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
 import { PENDING_EXIT } from './stock-exit-reasons';
+import {
+  VARIANT_LINE_AR,
+  VARIANT_LINE_STATUS,
+  assertFreeVariants,
+  cancelVariants,
+  checkLineShapes,
+  checkMembership,
+  checkReceiptCounts,
+  combosOf,
+  differenceVariants,
+  namesVariants,
+  receiveVariants,
+  sameReceiptCounts,
+  sameVariants,
+  sendVariants,
+  transferVariantsOf,
+  variantCountsField,
+  variantLinesField,
+  withLineVariants,
+  writeTransferLineVariants,
+  type Fail,
+  type VariantLineRefusalCode,
+} from './variant-lines';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -48,6 +71,12 @@ type Tx = Prisma.TransactionClient | typeof prismaDb;
  *      (`warehouses.warehouseStopBlockers`), so a send and a stop cannot cross: whichever comes second sees the first.
  *
  * NO MONEY. This module reads no wallet, writes no expense and posts nothing to a profit (pinned by its test).
+ *
+ * 20/11 (W8b): COMBINATIONS. A line of a product with combinations (size/colour) names them (`lines[].variants`), and
+ * the line's quantity is their sum; the receipt counts them one by one. Their pieces move with the units — source →
+ * the transfer's road → destination (or back to the source on a cancel, or out of the store on an approved shortfall)
+ * — through `variant-lines.ts`, after the batch rows, by the one writer of a combination's count. A product without
+ * combinations moves exactly as before.
  */
 
 export type StockTransferStatus = 'SENT' | 'RECEIVED' | 'RECEIVED_WITH_DIFFERENCE' | 'CANCELLED';
@@ -85,9 +114,11 @@ export type StockTransferRefusalCode =
   | 'ALREADY_APPROVED'
   | 'NO_DIFFERENCE'
   | 'COUNTS_INVALID'
-  | 'COUNT_OVER_SENT';
+  | 'COUNT_OVER_SENT'
+  | VariantLineRefusalCode;
 
 const STATUS_OF: Record<StockTransferRefusalCode, number> = {
+  ...VARIANT_LINE_STATUS,
   INVALID: 400,
   SAME_WAREHOUSE: 400,
   PRODUCT_TWICE: 400,
@@ -116,6 +147,7 @@ const STATUS_OF: Record<StockTransferRefusalCode, number> = {
 };
 
 const AR: Partial<Record<StockTransferRefusalCode, string>> = {
+  ...VARIANT_LINE_AR,
   SAME_WAREHOUSE: 'المخزن اللي بتنقل منه هو نفسه اللي بتنقل عليه. اختار مخزن تاني.',
   PRODUCT_TWICE: 'نفس المنتج مكتوب بسطرين. اجمعهم بسطر واحد.',
   TRANSFER_EXISTS: 'هالنقل انسجّل من قبل بشكل تاني. حدّث الصفحة وراجع قبل ما تعيد.',
@@ -156,6 +188,11 @@ export function refusalBody(e: StockTransferRefused) {
   return { error: e.errorAr, errorAr: e.errorAr, code: e.code, ...e.extra };
 }
 
+/** How `variant-lines.ts` refuses inside a transfer: as the transfer refuses. */
+const fail: Fail = (code, errorAr, extra) => {
+  throw new StockTransferRefused(code, errorAr ?? VARIANT_LINE_AR[code], extra ?? {});
+};
+
 /* ───────────────────────────── the bodies ───────────────────────────── */
 
 const qty = z.number({ message: 'الكمية لازم تكون رقم' }).int('الكمية لازم تكون عدد صحيح');
@@ -183,7 +220,17 @@ export const sendSchema = z.object(
     expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES'], { message: 'نوع النقل مش معروف. حدّث الصفحة.' }).optional(),
     note: z.string({ message: 'الملاحظة لازم تكون كلام' }).trim().max(500, 'الملاحظة أطول من 500 حرف. اختصرها.').optional().nullable(),
     lines: z
-      .array(z.object({ productId: productIdField, quantity: qty.positive('الكمية لازم تكون أكبر من صفر') }, BODY_AR), {
+      .array(
+        z.object(
+          {
+            productId: productIdField,
+            quantity: qty.positive('الكمية لازم تكون أكبر من صفر'),
+            /** 20/11 (W8b): a product with combinations names them; their sum is `quantity`. */
+            variants: variantLinesField.optional(),
+          },
+          BODY_AR
+        ),
+        {
         message: 'زيد منتج واحد على الأقل',
       })
       .min(1, 'زيد منتج واحد على الأقل')
@@ -195,7 +242,18 @@ export const sendSchema = z.object(
 export const receiveSchema = z.object(
   {
     lines: z
-      .array(z.object({ productId: productIdField, quantity: qty.min(0, 'العدد ما بيكون أقل من صفر') }, BODY_AR), { message: 'اكتب العدد لكل منتج' })
+      .array(
+        z.object(
+          {
+            productId: productIdField,
+            quantity: qty.min(0, 'العدد ما بيكون أقل من صفر'),
+            /** 20/11 (W8b): a line sent with combinations is counted per combination; their sum is `quantity`. */
+            variants: variantCountsField.optional(),
+          },
+          BODY_AR
+        ),
+        { message: 'اكتب العدد لكل منتج' }
+      )
       .min(1, 'اكتب العدد لكل منتج'),
   },
   BODY_AR
@@ -328,10 +386,16 @@ const TRANSFER_SELECT = {
   lines: { select: { productId: true, quantitySent: true, quantityReceived: true }, orderBy: { productId: 'asc' as const } },
 } as const;
 
+/** 20/11 (W8b): a transfer with its lines' combinations — added only to a line that has them. */
+async function withVariants<T extends { id: string; lines: { productId: string; quantitySent: number; quantityReceived: number | null }[] }>(tx: Tx, t: T) {
+  const lines = withLineVariants(t.lines, await transferVariantsOf(tx, t.id));
+  return { ...(t as Omit<T, 'lines'>), lines };
+}
+
 async function readTransfer(tx: Tx, companyId: string, storeId: string, id: string) {
   const t = await tx.stockTransfer.findFirst({ where: { id, companyId, storeId }, select: TRANSFER_SELECT });
   if (!t) throw new StockTransferRefused('NOT_FOUND');
-  return t;
+  return withVariants(tx, t);
 }
 
 export type StockTransferRow = Awaited<ReturnType<typeof readTransfer>>;
@@ -383,11 +447,19 @@ export interface SendInput {
   mayUse: (w: WarehouseRef) => Promise<boolean>;
 }
 
-const sameLines = (a: readonly { productId: string; quantity: number }[], b: readonly { productId: string; quantitySent: number }[]) =>
+const sameLines = (
+  a: readonly { productId: string; quantity: number; variants?: readonly { variantId: string; quantity: number }[] }[],
+  b: readonly { productId: string; quantitySent: number; variants?: readonly { variantId: string; quantitySent: number }[] }[]
+) =>
   a.length === b.length &&
   [...a].sort((x, y) => x.productId.localeCompare(y.productId)).every((l, i) => {
     const s = [...b].sort((x, y) => x.productId.localeCompare(y.productId))[i];
-    return s.productId === l.productId && s.quantitySent === l.quantity;
+    return (
+      s.productId === l.productId &&
+      s.quantitySent === l.quantity &&
+      // 20/11 (W8b): the same combinations too (none on both sides for a product without them).
+      sameVariants(l.variants, s.variants?.map((v) => ({ variantId: v.variantId, quantity: v.quantitySent })))
+    );
   });
 
 /**
@@ -399,8 +471,9 @@ const sameLines = (a: readonly { productId: string; quantity: number }[], b: rea
 export async function replayOf(tx: Tx, input: Omit<SendInput, 'mayUse'>) {
   const id = input.body.id;
   if (!id) return null;
-  const row = await tx.stockTransfer.findUnique({ where: { id }, select: TRANSFER_SELECT });
-  if (!row) return null;
+  const found = await tx.stockTransfer.findUnique({ where: { id }, select: TRANSFER_SELECT });
+  if (!found) return null;
+  const row = await withVariants(tx, found);
   const same =
     row.companyId === input.companyId &&
     row.storeId === input.storeId &&
@@ -422,6 +495,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
     seen.add(l.productId);
   }
   if (body.fromWarehouseId === body.toWarehouseId) throw new StockTransferRefused('SAME_WAREHOUSE');
+  checkLineShapes(body.lines, fail);
 
   const replay = await replayOf(tx, input);
   if (replay) return { transfer: replay, replay: true, kind: replay.kind as StockTransferKind };
@@ -461,6 +535,9 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
   const products = await tx.product.findMany({ where: { id: { in: productIds }, companyId, storeId }, select: { id: true, name: true } });
   if (products.length !== productIds.length) throw new StockTransferRefused('PRODUCT_NOT_FOUND');
   const nameOf = new Map(products.map((p) => [p.id, p.name]));
+  // 20/11 (W8b): a product with active combinations names them; a product without any names none.
+  const combos = await combosOf(tx, companyId, productIds);
+  checkMembership(body.lines, combos, nameOf, fail, { required: true });
 
   const free = await freeStockOf(tx, { companyId, storeId, warehouseId: from.id, productIds });
   const short = body.lines
@@ -473,6 +550,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
       { short }
     );
   }
+  await assertFreeVariants(tx, { companyId, storeId, warehouseId: from.id, warehouseName: from.name, lines: body.lines, combos, nameOf }, fail);
 
   const created = await tx.stockTransfer.create({
     data: {
@@ -489,6 +567,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
     },
     select: { id: true },
   });
+  await writeTransferLineVariants(tx, created.id, body.lines);
 
   for (const line of body.lines) {
     let left = line.quantity;
@@ -517,14 +596,24 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
       createdById: input.sentById,
     });
   }
+  // The combinations' pieces take the same road — after the batch rows, as every stock door orders its locks.
+  await sendVariants(
+    tx,
+    { companyId, storeId, userId: input.sentById, referenceId: created.id },
+    { fromWarehouseId: from.id, lines: body.lines, reason: `نقل إلى ${to.name}` },
+    fail
+  );
 
   return { transfer: await readTransfer(tx, companyId, storeId, created.id), replay: false, kind: reading.kind };
 }
 
 /* ───────────────────────────── receive ───────────────────────────── */
 
-const countsMatch = (t: StockTransferRow, counts: readonly { productId: string; quantity: number }[]) =>
-  t.lines.length === counts.length && t.lines.every((l) => counts.find((c) => c.productId === l.productId)?.quantity === l.quantityReceived);
+const countsMatch = (t: StockTransferRow, counts: readonly { productId: string; quantity: number; variants?: { variantId: string; quantity: number }[] }[]) =>
+  t.lines.length === counts.length &&
+  t.lines.every((l) => counts.find((c) => c.productId === l.productId)?.quantity === l.quantityReceived) &&
+  // 20/11 (W8b): and each combination counted the same.
+  sameReceiptCounts(counts, new Map(t.lines.map((l) => [l.productId, l.variants ?? []])));
 
 export async function receiveTransfer(
   tx: Tx,
@@ -565,6 +654,9 @@ export async function receiveTransfer(
   }
   const over = counts.find((c) => c.quantity > (sentOf.get(c.productId) ?? 0));
   if (over) throw new StockTransferRefused('COUNT_OVER_SENT', 'العدد أكتر من اللي انبعت. عدّ كمان مرة، والزيادة بتنكتب من الجرد مش من هون.');
+  // 20/11 (W8b): a line sent with combinations is counted per combination.
+  const sentVariants = new Map(t.lines.map((l) => [l.productId, l.variants ?? []]));
+  checkReceiptCounts(counts, sentVariants, fail);
 
   await lockProductsStock(tx, companyId, [...sentOf.keys()]);
   let short = false;
@@ -585,7 +677,18 @@ export async function receiveTransfer(
       });
     }
     await tx.stockTransferLine.updateMany({ where: { transferId, productId: c.productId }, data: { quantityReceived: c.quantity } });
+    if (namesVariants(c)) {
+      for (const v of c.variants!) {
+        await tx.stockTransferLineVariant.updateMany({ where: { transferId, productId: c.productId, variantId: v.variantId }, data: { quantityReceived: v.quantity } });
+      }
+    }
   }
+  await receiveVariants(
+    tx,
+    { companyId, storeId, userId: input.receivedById, referenceId: transferId },
+    { toWarehouseId: to.id, counts, reason: `استلام نقل على ${to.name}` },
+    fail
+  );
   await tx.stockTransfer.update({
     where: { id: transferId },
     data: { status: short ? 'RECEIVED_WITH_DIFFERENCE' : 'RECEIVED', receivedById: input.receivedById, receivedAt: new Date() },
@@ -638,6 +741,12 @@ export async function cancelTransfer(
       createdById: input.cancelledById,
     });
   }
+  await cancelVariants(
+    tx,
+    { companyId, storeId, userId: input.cancelledById, referenceId: transferId },
+    { fromWarehouseId: from.id, sent: new Map(t.lines.map((l) => [l.productId, l.variants ?? []])), reason: `إلغاء نقل — رجعت على ${from.name}` },
+    fail
+  );
   await tx.stockTransfer.update({
     where: { id: transferId },
     data: { status: 'CANCELLED', cancelledById: input.cancelledById, cancelledAt: new Date(), cancelReason: input.body.reason },
@@ -705,6 +814,12 @@ export async function approveDifference(
       createdById: input.approvedById,
     });
   }
+  await differenceVariants(
+    tx,
+    { companyId, storeId, userId: input.approvedById, referenceId: transferId },
+    { type: input.body.type, sent: new Map(t.lines.map((l) => [l.productId, l.variants ?? []])), reason: `فرق نقل (${words}): ${input.body.reason}` },
+    fail
+  );
   await tx.stockTransfer.update({
     where: { id: transferId },
     data: {
@@ -752,20 +867,28 @@ export async function transfersBlindTo(
  * it: the receiver types what she counted without being told what to expect (the count is blind, like the keeper's
  * count of W5). Once received, every line says sent, counted and the difference.
  */
-export function shownTo<T extends { status: string; sentById: string; lines: { productId: string; quantitySent: number; quantityReceived: number | null }[] }>(
-  t: T,
-  viewerId: string
-) {
+export function shownTo<
+  T extends {
+    status: string;
+    sentById: string;
+    lines: { productId: string; quantitySent: number; quantityReceived: number | null; variants?: { variantId: string; quantitySent: number; quantityReceived: number | null }[] }[];
+  },
+>(t: T, viewerId: string) {
   const blind = t.status === 'SENT' && t.sentById !== viewerId;
+  const shown = <L extends { quantitySent: number; quantityReceived: number | null }>(l: L) => ({
+    quantitySent: blind ? null : l.quantitySent,
+    quantityReceived: l.quantityReceived,
+    difference: l.quantityReceived === null ? null : l.quantitySent - l.quantityReceived,
+  });
   return {
     ...t,
     statusAr: STATUS_AR[t.status as StockTransferStatus] ?? t.status,
     blind,
     lines: t.lines.map((l) => ({
       productId: l.productId,
-      quantitySent: blind ? null : l.quantitySent,
-      quantityReceived: l.quantityReceived,
-      difference: l.quantityReceived === null ? null : l.quantitySent - l.quantityReceived,
+      ...shown(l),
+      // 20/11 (W8b): the combinations, blind exactly as their line — WHICH were sent, never how many, until received.
+      ...(l.variants && l.variants.length > 0 ? { variants: l.variants.map((v) => ({ variantId: v.variantId, ...shown(v) })) } : {}),
     })),
   };
 }

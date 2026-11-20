@@ -62,6 +62,21 @@ export const VARIANT_MOVE = {
   COUNT: 'COUNT',
   SALE: 'SALE',
   RETURN: 'RETURN',
+  // 20/11 (W8b): the stock documents move combinations too (`variant-lines.ts`) — through `changeVariants` below, so
+  // `writePlaces` stays the one writer of `onHand`.
+  /** The opening placement: pieces leave «بلا مكان» for the warehouse they were counted in. */
+  PLACEMENT: 'PLACEMENT',
+  /** A transfer sent: the source warehouse −n, the transfer's road +n (the total does not move). */
+  TRANSFER_OUT: 'TRANSFER_OUT',
+  /** A transfer received: the road −counted, the destination +counted. */
+  TRANSFER_IN: 'TRANSFER_IN',
+  /** A transfer cancelled before receipt: the road −n, the source +n. */
+  TRANSFER_BACK: 'TRANSFER_BACK',
+  /** A transfer's approved shortfall: the road −missing — the pieces leave the store (the total falls). */
+  LOSS: 'LOSS',
+  DAMAGE: 'DAMAGE',
+  /** An approved exit: the warehouse −n — the pieces leave the store (the total falls). */
+  EXIT: 'EXIT',
 } as const;
 export type VariantMoveType = (typeof VARIANT_MOVE)[keyof typeof VARIANT_MOVE];
 
@@ -144,10 +159,34 @@ export async function variantsArePlaced(tx: Tx, storeId: string | null | undefin
   return (await intake()).storeIsPlaced(storeId, tx);
 }
 
-interface PlaceRow {
+/**
+ * 20/11 (W8b): a place is a warehouse, «بلا مكان» (no warehouse, no road), or the ROAD of one transfer — no warehouse and
+ * `inTransitTransferId` set, exactly as a batch twin on the road (the design page). Pieces on a road belong to the store
+ * (they are in `onHand`) but to no shelf: a delivery never draws them and a count never takes them as «بلا مكان».
+ */
+export interface PlaceRow {
   id: string;
   warehouseId: string | null;
   onHand: number;
+  inTransitTransferId?: string | null;
+}
+
+/** Which place a move names: a warehouse, «بلا مكان» (null), or a transfer's road (`road` set, `warehouseId` null). */
+export interface PlaceMove {
+  warehouseId: string | null;
+  road?: string | null;
+  delta: number;
+}
+
+const roadOf = (p: { inTransitTransferId?: string | null }) => p.inTransitTransferId ?? null;
+const samePlace = (row: PlaceRow, m: { warehouseId: string | null; road?: string | null }) =>
+  row.warehouseId === m.warehouseId && roadOf(row) === (m.road ?? null);
+/** A shelf place: a warehouse or «بلا مكان» — never a road. */
+const offRoad = <T extends { inTransitTransferId?: string | null }>(p: T) => !roadOf(p);
+
+/** What a place holds now (0 for a place with no row yet). */
+export function placeHolds(places: readonly PlaceRow[], m: { warehouseId: string | null; road?: string | null }): number {
+  return places.find((p) => samePlace(p, m))?.onHand ?? 0;
 }
 
 interface Who {
@@ -155,6 +194,8 @@ interface Who {
   storeId: string | null;
   userId?: string | null;
   orderId?: string | null;
+  /** 20/11 (W8b): the document a line belongs to — a transfer, an exit or a placement. */
+  referenceId?: string | null;
 }
 
 /** The combination rows, FOR UPDATE, in id order: every change of one combination waits for the one before it. */
@@ -174,10 +215,10 @@ async function placesOf(tx: Tx, who: Who, variantId: string): Promise<{ productI
     select: { productId: true, onHand: true },
   });
   if (!variant) return null;
-  const places = await tx.productVariantStock.findMany({
+  const places: PlaceRow[] = await tx.productVariantStock.findMany({
     where: { variantId },
     orderBy: { id: 'asc' },
-    select: { id: true, warehouseId: true, onHand: true },
+    select: { id: true, warehouseId: true, onHand: true, inTransitTransferId: true },
   });
   if (places.length === 0 && variant.onHand !== 0) {
     const row = await tx.productVariantStock.create({
@@ -218,26 +259,30 @@ async function writePlaces(
     variantId: string;
     places: PlaceRow[];
     type: VariantMoveType;
-    moves: { warehouseId: string | null; delta: number }[];
+    moves: PlaceMove[];
     reason: string | null;
   }
 ): Promise<number | null> {
   const moves = p.moves.filter((m) => m.delta !== 0);
   if (moves.length === 0) return null;
-  const lines: { warehouseId: string | null; quantity: number; placeAfter: number }[] = [];
+  const lines: { warehouseId: string | null; road: string | null; quantity: number; placeAfter: number }[] = [];
   for (const m of moves) {
-    let row = p.places.find((x) => x.warehouseId === m.warehouseId);
+    // 20/11 (W8b): a road is named only without a warehouse (it IS the place with none) — a caller's slip, not a refusal.
+    if (m.road && m.warehouseId !== null) throw new Error('variant-stock: a road has no warehouse');
+    const road = m.road ?? null;
+    let row = p.places.find((x) => samePlace(x, m));
     if (!row) {
-      row = await tx.productVariantStock.create({
-        data: { companyId: who.companyId, variantId: p.variantId, warehouseId: m.warehouseId, onHand: 0 },
-        select: { id: true, warehouseId: true, onHand: true },
-      });
+      row = (await tx.productVariantStock.create({
+        // The road's id is written only on a road row, so a shelf row is created exactly as W8a created it.
+        data: { companyId: who.companyId, variantId: p.variantId, warehouseId: m.warehouseId, onHand: 0, ...(road ? { inTransitTransferId: road } : {}) },
+        select: { id: true, warehouseId: true, onHand: true, ...(road ? { inTransitTransferId: true } : {}) },
+      })) as PlaceRow;
       p.places.push(row);
     }
     const after = row.onHand + m.delta;
     await tx.productVariantStock.update({ where: { id: row.id }, data: { onHand: after } });
     row.onHand = after;
-    lines.push({ warehouseId: m.warehouseId, quantity: m.delta, placeAfter: after });
+    lines.push({ warehouseId: m.warehouseId, road, quantity: m.delta, placeAfter: after });
   }
   const sum = await tx.productVariantStock.aggregate({ where: { variantId: p.variantId }, _sum: { onHand: true } });
   const total = sum._sum?.onHand ?? 0;
@@ -257,6 +302,9 @@ async function writePlaces(
         reason: p.reason,
         orderId: who.orderId ?? null,
         createdById: who.userId ?? null,
+        // 20/11 (W8b): written only when set, so a W8a line (a count, a sale, a return) is the row it always was.
+        ...(l.road ? { inTransitTransferId: l.road } : {}),
+        ...(who.referenceId ? { referenceId: who.referenceId } : {}),
       },
     });
   }
@@ -265,12 +313,14 @@ async function writePlaces(
 
 /** Which places a delivery empties, and how much of each — pure: the order's warehouse, «بلا مكان», then the fullest. */
 export function drawPlan(
-  places: readonly { warehouseId: string | null; onHand: number }[],
+  places: readonly { warehouseId: string | null; onHand: number; inTransitTransferId?: string | null }[],
   quantity: number,
   sourceWarehouseId: string | null
 ): { warehouseId: string | null; delta: number }[] {
   const rank = (w: string | null) => (sourceWarehouseId && w === sourceWarehouseId ? 0 : w === null ? 1 : 2);
-  const order = [...places].sort(
+  // 20/11 (W8b): pieces on a transfer's road are on no shelf — a delivery never draws them (as `drawDownStock` never
+  // takes a batch twin on the road).
+  const order = places.filter(offRoad).sort(
     (a, b) =>
       rank(a.warehouseId) - rank(b.warehouseId) ||
       b.onHand - a.onHand ||
@@ -291,14 +341,15 @@ export function drawPlan(
 
 /** What a count of one warehouse moves — pure: up takes from «بلا مكان» first, the rest is a surplus; down is a shortage. */
 export function countPlan(
-  places: readonly { warehouseId: string | null; onHand: number }[],
+  places: readonly { warehouseId: string | null; onHand: number; inTransitTransferId?: string | null }[],
   warehouseId: string,
   counted: number
 ): { warehouseId: string | null; delta: number }[] {
   const here = places.find((p) => p.warehouseId === warehouseId)?.onHand ?? 0;
   const d = counted - here;
   if (d <= 0) return d === 0 ? [] : [{ warehouseId, delta: d }];
-  const unplaced = Math.max(0, places.find((p) => p.warehouseId === null)?.onHand ?? 0);
+  // 20/11 (W8b): «بلا مكان» is the place with no warehouse AND no road — pieces on a road are not there to be counted.
+  const unplaced = Math.max(0, places.find((p) => p.warehouseId === null && offRoad(p))?.onHand ?? 0);
   const fromUnplaced = Math.min(d, unplaced);
   return fromUnplaced > 0 ? [{ warehouseId, delta: d }, { warehouseId: null, delta: -fromUnplaced }] : [{ warehouseId, delta: d }];
 }
@@ -382,17 +433,67 @@ export async function countPlacedVariants(
 export async function placesOfVariants(
   client: Tx,
   variants: readonly { id: string; onHand: number }[]
-): Promise<Map<string, { warehouseId: string | null; onHand: number }[]>> {
-  const out = new Map<string, { warehouseId: string | null; onHand: number }[]>();
+): Promise<Map<string, { warehouseId: string | null; onHand: number; inTransit?: true }[]>> {
+  const out = new Map<string, { warehouseId: string | null; onHand: number; inTransit?: true }[]>();
   if (variants.length === 0) return out;
-  const rows = await client.productVariantStock.findMany({
-    where: { variantId: { in: variants.map((v) => v.id) } },
-    orderBy: { id: 'asc' },
-    select: { variantId: true, warehouseId: true, onHand: true },
-  });
+  const rows: { variantId: string; warehouseId: string | null; onHand: number; inTransitTransferId?: string | null }[] =
+    await client.productVariantStock.findMany({
+      where: { variantId: { in: variants.map((v) => v.id) } },
+      orderBy: { id: 'asc' },
+      select: { variantId: true, warehouseId: true, onHand: true, inTransitTransferId: true },
+    });
   for (const v of variants) {
-    const mine = rows.filter((r) => r.variantId === v.id).map((r) => ({ warehouseId: r.warehouseId, onHand: r.onHand }));
-    out.set(v.id, mine.length > 0 ? mine : v.onHand !== 0 ? [{ warehouseId: null, onHand: v.onHand }] : []);
+    const all = rows.filter((r) => r.variantId === v.id);
+    const mine: { warehouseId: string | null; onHand: number; inTransit?: true }[] = all
+      .filter(offRoad)
+      .map((r) => ({ warehouseId: r.warehouseId, onHand: r.onHand }));
+    /*
+     * 20/11 (W8b): the pieces on the road, as ONE figure for all of this combination's open transfers — the way the
+     * balances screen says «بالطريق» for a product (`stock-places.ts`), never per transfer: a receiver's count stays blind.
+     */
+    const onRoad = all.filter((r) => !offRoad(r)).reduce((s, r) => s + r.onHand, 0);
+    if (onRoad !== 0) mine.push({ warehouseId: null, onHand: onRoad, inTransit: true });
+    out.set(v.id, all.length > 0 ? mine : v.onHand !== 0 ? [{ warehouseId: null, onHand: v.onHand }] : []);
   }
   return out;
+}
+
+/* ───────────────────────── 20/11 (W8b): the stock documents ───────────────────────── */
+
+/** One combination's change, planned from its places as they are once its row is locked. */
+export interface VariantChange {
+  variantId: string;
+  type: VariantMoveType;
+  reason: string | null;
+  /** The moves, given the combination's places (locked). May throw — the caller's refusal — before anything is written. */
+  plan: (places: readonly PlaceRow[]) => PlaceMove[];
+}
+
+/**
+ * THE STOCK DOCUMENTS' DOOR TO THE ONE WRITER — a transfer, an exit, the opening placement (`variant-lines.ts`). Every
+ * combination named is locked FIRST, all of them in ONE sorted statement (`lockVariants`), and only then is any place
+ * read or written — so two documents naming the same combinations in a different order wait for each other in line, never
+ * in a circle (the trap of a lock taken per row as a loop reaches it). Then each combination, in id order: its places
+ * (with its «بلا مكان» OPENING the first time), the plan, and `writePlaces` — which writes the ledger and the total.
+ *
+ * Callers take it AFTER their batch rows are written (product lock → batch rows → combination rows: the order the
+ * delivery and the split keep). A combination named twice is a caller's slip, refused before any lock.
+ */
+export async function changeVariants(tx: Tx, who: Who, changes: readonly VariantChange[]): Promise<void> {
+  if (changes.length === 0) return;
+  const ids = changes.map((c) => c.variantId);
+  if (new Set(ids).size !== ids.length) throw new Error('variant-stock: a combination named twice in one change');
+  await lockVariants(tx, ids);
+  for (const c of [...changes].sort((a, b) => (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0))) {
+    const found = await placesOf(tx, who, c.variantId);
+    if (!found) throw new Error('variant-stock: a combination of another company');
+    await writePlaces(tx, who, {
+      productId: found.productId,
+      variantId: c.variantId,
+      places: found.places,
+      type: c.type,
+      moves: c.plan(found.places),
+      reason: c.reason,
+    });
+  }
 }
