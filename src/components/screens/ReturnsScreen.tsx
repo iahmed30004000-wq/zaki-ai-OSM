@@ -3,7 +3,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
@@ -148,6 +148,34 @@ interface Extra {
   mayChargeFee: boolean;
   /** «استلام الكل»'s own key (`ops.returns_receive_all`). Only a server that says yes draws the button. */
   mayReceiveAll: boolean;
+}
+
+/** A warehouse a parcel may be received into (W2b). Names are unique within a country, so the source is found by name. */
+interface ReceiveWarehouse {
+  id: string;
+  name: string;
+}
+
+/**
+ * W2b: WHERE A PARCEL MAY BE RECEIVED — asked of its own door when a receipt dialog OPENS (the list itself asks nothing
+ * new). Undefined for a store that is not placed, while the answer is on its way, or when it did not come: the dialog
+ * then asks nothing new and sends nothing new — and the door still decides (the single receipt falls back to the
+ * warehouse the parcel left from; «استلام الكل» refuses without one, in a sentence).
+ */
+function useReceiveWarehouses(): ReceiveWarehouse[] | undefined {
+  const [into, setInto] = useState<ReceiveWarehouse[] | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    apiJson<{ placed?: boolean; warehouses?: ReceiveWarehouse[] }>('/api/ops/returns/warehouses')
+      .then((a) => {
+        if (live && a?.placed === true && Array.isArray(a.warehouses)) setInto(a.warehouses);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return into;
 }
 
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
@@ -549,8 +577,11 @@ function ReceiveAllDialog({
   onClose: () => void;
   onDone: (line: string) => void;
 }) {
+  /** W2b: a placed store — the press names ONE warehouse for every parcel. */
+  const warehouses = useReceiveWarehouses();
   const toast = useToast();
   const [acknowledged, setAcknowledged] = useState(false);
+  const [into, setInto] = useState('');
   const [running, setRunning] = useState(false);
   const [totals, setTotals] = useState<ReceiveAllTotals>(emptyTotals());
   const stop = useRef(false);
@@ -576,7 +607,7 @@ function ReceiveAllDialog({
         const answer: ReceiveAllAnswer = await apiJson<ReceiveAllAnswer>('/api/ops/returns/receive-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...filters, countedAndInspected: true, cursor }),
+          body: JSON.stringify({ ...filters, countedAndInspected: true, cursor, ...(warehouses ? { warehouseId: into } : {}) }),
         });
         t = addAnswer(t, answer);
         setTotals(t);
@@ -606,7 +637,7 @@ function ReceiveAllDialog({
             </Button>
           ) : (
             <>
-              <Button key="yes" size="md" className="flex-1" disabled={!acknowledged} onClick={() => void run()}>
+              <Button key="yes" size="md" className="flex-1" disabled={!acknowledged || (!!warehouses && !into)} onClick={() => void run()}>
                 نعم، استلم الكل
               </Button>
               <Button key="cancel" size="md" variant="secondary" onClick={onClose}>
@@ -632,12 +663,20 @@ function ReceiveAllDialog({
           <p className="font-medium text-[var(--sys-heading)]">رح أستلم {total} مرتجع، كل اللي بالقائمة بالفلاتر الحالية — مش بس هالصفحة.</p>
           <ul className="space-y-1">
             <li>كل طرد بينستلم كامل وسليم: لا تالف ولا ناقص.</li>
-            <li>البضاعة بترجع على الرف.</li>
+            <li>{warehouses ? 'البضاعة بترجع على المخزن اللي بتختاره تحت، كلها على نفس المخزن.' : 'البضاعة بترجع على الرف.'}</li>
             <li>عمولة الطلب بتنعكس.</li>
             <li>بلا أجرة إرجاع على شركة الشحن.</li>
             <li>التوصيل الجزئي بينترك، بينستلم من نافذته لحاله.</li>
           </ul>
           <p className="font-medium text-[var(--sys-destructive)]">ما في تراجع بعد الضغطة.</p>
+          {warehouses && (
+            <Select
+              label="استلمتها بمخزن"
+              value={into}
+              onChange={(e) => setInto(e.target.value)}
+              options={[{ value: '', label: 'اختار المخزن' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
+            />
+          )}
           <div className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2">
             <Checkbox id="returns-receive-all-ack" checked={acknowledged} onChange={setAcknowledged} label="أقرّ إني عددت وفحصت المرتجعات" />
           </div>
@@ -658,6 +697,13 @@ function ReceiveDialog({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  /** W2b: a placed store — where the parcel is received; the warehouse it left from comes chosen. */
+  const warehouses = useReceiveWarehouses();
+  /** The warehouse it left from, when this person may receive into it (names are unique within a country). */
+  const fromSource = warehouses?.find((w) => w.name === order.sourceWarehouseName);
+  const [picked, setInto] = useState<string | null>(null);
+  /** Until the person picks, the warehouse it left from is the choice. */
+  const into = picked ?? fromSource?.id ?? '';
   const toast = useToast();
   const phone = useIsPhone();
   const formId = useId();
@@ -690,7 +736,12 @@ function ReceiveDialog({
   const actionRow = (
     <div className="flex gap-2 pt-1">
       {!gated && (
-        <Button type="submit" form={phone ? formId : undefined} disabled={busy || !acknowledged} className={phone ? 'flex-1' : undefined}>
+        <Button
+          type="submit"
+          form={phone ? formId : undefined}
+          disabled={busy || !acknowledged || (!!warehouses && !into)}
+          className={phone ? 'flex-1' : undefined}
+        >
           {busy ? 'جارٍ الحفظ…' : 'تأكيد الاستلام'}
         </Button>
       )}
@@ -714,6 +765,8 @@ function ReceiveDialog({
           countedAndInspected: acknowledged,
           chargeCourierFee: courierFee,
           note: note || undefined,
+          // W2b: a placed store's receipt names its warehouse. Absent otherwise — today's body.
+          ...(warehouses ? { warehouseId: into } : {}),
         }),
       });
       onDone(
@@ -792,6 +845,18 @@ function ReceiveDialog({
           <p className="text-note text-[var(--sys-muted-foreground)]">
             طلع من مخزن {order.sourceWarehouseName} — رجّعه عليه.
           </p>
+        )}
+        {/* W2b: WHERE IT IS RECEIVED — a placed store only. The warehouse it left from comes chosen; another may be picked. */}
+        {warehouses && (
+          <Select
+            label="استلمته بمخزن"
+            value={into}
+            onChange={(e) => setInto(e.target.value)}
+            options={[
+              { value: '', label: 'اختار المخزن' },
+              ...warehouses.map((w) => ({ value: w.id, label: w.id === fromSource?.id ? `${w.name} (طلع منه)` : w.name })),
+            ]}
+          />
         )}
 
         {/*
