@@ -57,7 +57,7 @@ function row(over: Partial<ConfirmationRuleRow> & Pick<ConfirmationRuleRow, 'kin
 const ctx = (rules: ConfirmationRuleRow[], base: ConfirmationRuleNumbers = CONFIRMATION_RULE_DEFAULT, timezone = 'UTC'): RuleContext => ({ companyId: COMPANY, base, timezone, rules });
 const AMAL: RulePerson = { id: 'u-a', storeId: 's-1' };
 const BASMA: RulePerson = { id: 'u-b', storeId: 's-1' };
-const order = (over: Partial<RuleOrder> = {}): RuleOrder => ({ storeId: 's-1', productIds: ['p-1'], channelKind: 'FACEBOOK', phase: 'NEW', ...over });
+const order = (over: Partial<RuleOrder> = {}): RuleOrder => ({ storeId: 's-1', productIds: ['prod-1'], channelKind: 'FACEBOOK', phase: 'NEW', ...over });
 const valid = (r: ConfirmationRuleRow): ValidRule => {
   const c = validateConfirmationRuleRow(r);
   if (!c.ok) throw new Error(c.errorAr);
@@ -110,7 +110,7 @@ function randomAsk(r: () => number): { person: RulePerson; order: RuleOrder | nu
         ? null
         : {
             storeId: pick(['s-1', 's-2', null]),
-            productIds: ['p-1', 'p-2', 'p-3'].filter(() => r() < 0.5),
+            productIds: ['prod-1', 'prod-2', 'prod-3'].filter(() => r() < 0.5),
             channelKind: pick([...CHANNEL_KINDS, null]),
             phase: pick(['NEW', 'RETRY', null] as const),
           },
@@ -154,11 +154,11 @@ describe('zero rules ≡ the base rule, for any person and order', () => {
       row({ kind: 'EMPLOYEE_NUMBERS', payload: { idleMinutes: 30 }, hoursFrom: '17:00', hoursTo: '23:00' }),
       row({ kind: 'EMPLOYEE_NUMBERS', payload: { hand: 1 }, userIds: ['u-z'] }),
       row({ kind: 'EMPLOYEE_NUMBERS', payload: { hand: 1 }, storeId: 's-9' }),
-      row({ kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, productId: 'p-9' }),
+      row({ kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, productId: 'prod-9' }),
       row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, channelKind: 'TIKTOK' }),
       row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, storeId: 's-9' }),
       row({ kind: 'PRIORITY', payload: { first: true }, phase: 'RETRY' }),
-      row({ kind: 'ROUTING', payload: { toUserIds: ['u-b'] }, productId: 'p-9' }),
+      row({ kind: 'ROUTING', payload: { toUserIds: ['u-b'] }, productId: 'prod-9' }),
     ];
     expectBase(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx(rules)), CONFIRMATION_RULE_DEFAULT);
   });
@@ -200,16 +200,16 @@ describe('most specific wins: named employee → product or channel → store �
   it('order numbers: product beats store beats company; channel stands level with product', () => {
     const c = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 60 } });
     const s = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, storeId: 's-1' });
-    const p = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 45 }, productId: 'p-1' });
+    const p = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 45 }, productId: 'prod-1' });
     expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([c])).proofSeconds.value).toBe(60);
     expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([c, s])).proofSeconds.value).toBe(20);
     expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([c, s, p])).proofSeconds).toMatchObject({ value: 45, source: { ruleId: p.id, level: 2 } });
-    expect(ruleFor({ person: AMAL, order: order({ productIds: ['p-2'] }), now: T0 }, ctx([c, s, p])).proofSeconds.value).toBe(20);
+    expect(ruleFor({ person: AMAL, order: order({ productIds: ['prod-2'] }), now: T0 }, ctx([c, s, p])).proofSeconds.value).toBe(20);
   });
 
   it('each number on its own: a product rule on the postpone limit leaves the proof seconds to the store rule', () => {
     const s = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, storeId: 's-1' });
-    const p = row({ kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, productId: 'p-1' });
+    const p = row({ kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, productId: 'prod-1' });
     const eff = ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([s, p]));
     expect(eff.proofSeconds).toMatchObject({ value: 20, source: { ruleId: s.id } });
     expect(eff.postponeMax).toMatchObject({ value: 1, source: { ruleId: p.id } });
@@ -222,7 +222,7 @@ describe('most specific wins: named employee → product or channel → store �
 
   it('the schedule moves as one: steps and their days from the same rule', () => {
     const tpl = CONFIRMATION_RULE_TEMPLATES.find((t) => t.key === 'expensive-product-attempts')!;
-    const p = row({ kind: 'ORDER_NUMBERS', payload: tpl.payload, productId: 'p-1' });
+    const p = row({ kind: 'ORDER_NUMBERS', payload: tpl.payload, productId: 'prod-1' });
     const eff = ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([p]));
     expect(eff.schedule.value.steps).toHaveLength(6);
     expect(eff.numbers.steps.length + 1).toBe(7);
@@ -230,17 +230,26 @@ describe('most specific wins: named employee → product or channel → store �
   });
 
   it('within one level: more conditions win, then the later start, the later creation, the smaller id — whatever order the rows come in', () => {
-    const plain = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 40 }, productId: 'p-1' });
-    const withStore = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 50 }, productId: 'p-1', storeId: 's-1' });
+    const plain = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 40 }, productId: 'prod-1' });
+    const withStore = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 50 }, productId: 'prod-1', storeId: 's-1' });
     const laterChannel = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 35 }, channelKind: 'FACEBOOK', effectiveFrom: new Date('2026-11-10T00:00:00Z') });
     const r = rng(7);
     for (let i = 0; i < 50; i++) {
       const rows = [plain, withStore, laterChannel].sort(() => r() - 0.5);
       expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx(rows)).proofSeconds.value).toBe(50);
     }
-    const twins = [row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 40 }, productId: 'p-1' }), laterChannel];
+    const twins = [row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 40 }, productId: 'prod-1' }), laterChannel];
     expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx(twins)).proofSeconds.value).toBe(35);
     expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([...twins].reverse())).proofSeconds.value).toBe(35);
+  });
+
+  it('a full tie (same level, conditions, start and creation) goes to the smaller id, in either order', () => {
+    const at = { effectiveFrom: new Date('2026-11-05T00:00:00Z'), createdAt: new Date('2026-11-05T00:00:00Z') };
+    const small = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 25 }, productId: 'prod-1', ...at, id: 'r-aaa' });
+    const big = row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 55 }, channelKind: 'FACEBOOK', ...at, id: 'r-zzz' });
+    for (const rows of [[small, big], [big, small]]) {
+      expect(ruleFor({ person: AMAL, order: order(), now: T0 }, ctx(rows)).proofSeconds).toMatchObject({ value: 25, source: { ruleId: 'r-aaa' } });
+    }
   });
 
   it('hours are the store\'s clock and may run through midnight', () => {
@@ -261,7 +270,7 @@ describe('most specific wins: named employee → product or channel → store �
   });
 
   it('priority and routing: the order is first, and only the named people may take it', () => {
-    const first = row({ kind: 'PRIORITY', payload: { first: true }, productId: 'p-1' });
+    const first = row({ kind: 'PRIORITY', payload: { first: true }, productId: 'prod-1' });
     const route = row({ kind: 'ROUTING', payload: { toUserIds: ['u-a', 'u-b'] }, storeId: 's-1' });
     const eff = ruleFor({ person: AMAL, order: order(), now: T0 }, ctx([first, route]));
     expect(eff.first).toMatchObject({ value: true, source: { ruleId: first.id } });
@@ -343,7 +352,7 @@ describe('every kind has a validator, held to the base rule\'s ranges', () => {
     ['an empty list of people', { kind: 'EMPLOYEE_NUMBERS', payload: { hand: 2 }, userIds: [] }, 'RULE_PEOPLE'],
     ['people on an order rule', { kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, userIds: ['u-a'] }, 'RULE_SCOPE'],
     ['people on a routing rule', { kind: 'ROUTING', payload: { toUserIds: ['u-a'] }, userIds: ['u-a'] }, 'RULE_SCOPE'],
-    ['a product on an employee rule', { kind: 'EMPLOYEE_NUMBERS', payload: { hand: 2 }, productId: 'p-1' }, 'RULE_SCOPE'],
+    ['a product on an employee rule', { kind: 'EMPLOYEE_NUMBERS', payload: { hand: 2 }, productId: 'prod-1' }, 'RULE_SCOPE'],
     ['a phase on an order rule', { kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, phase: 'NEW' }, 'RULE_SCOPE'],
     ['hours on an order rule', { kind: 'ORDER_NUMBERS', payload: { postponeMax: 1 }, hoursFrom: '17:00', hoursTo: '23:00' }, 'RULE_HOURS'],
     ['an unknown channel', { kind: 'PRIORITY', payload: { first: true }, channelKind: 'PIGEON' }, 'RULE_CHANNEL'],
@@ -361,7 +370,7 @@ describe('every kind has a validator, held to the base rule\'s ranges', () => {
 });
 
 describe('two active rules on the same level, number and target are refused at save — and only those', () => {
-  const base = () => row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, productId: 'p-1', name: 'المنتج الغالي' });
+  const base = () => row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, productId: 'prod-1', name: 'المنتج الغالي' });
 
   it('the same number for the same product → RULE_OVERLAP naming the other rule', () => {
     const other = base();
@@ -378,7 +387,7 @@ describe('two active rules on the same level, number and target are refused at s
 
   it.each([
     ['a different number', { payload: { postponeMax: 1 } }],
-    ['another product', { productId: 'p-2' }],
+    ['another product', { productId: 'prod-2' }],
     ['a different level (store, not product)', { productId: null, storeId: 's-1' }],
     ['the channel instead of the product', { productId: null, channelKind: 'FACEBOOK' }],
     ['another store beside the product', { storeId: 's-1' }],
@@ -386,8 +395,8 @@ describe('two active rules on the same level, number and target are refused at s
     ['another company', { companyId: 'co-other' }],
     ['dates that do not meet', { effectiveFrom: new Date('2026-12-01T00:00:00Z') }],
   ] as [string, Partial<ConfirmationRuleRow>][])('allowed: %s', (_t, over) => {
-    const candidate = valid(row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, productId: 'p-1', effectiveTo: new Date('2026-11-25T00:00:00Z') }));
-    expect(overlapRefusal(candidate, [row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 30 }, productId: 'p-1', ...over })])).toBeNull();
+    const candidate = valid(row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, productId: 'prod-1', effectiveTo: new Date('2026-11-25T00:00:00Z') }));
+    expect(overlapRefusal(candidate, [row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 30 }, productId: 'prod-1', ...over })])).toBeNull();
   });
 
   it('allowed: no person in common, hours that do not meet, a stopped candidate, the rule compared with itself', () => {
@@ -409,7 +418,7 @@ describe('two active rules on the same level, number and target are refused at s
 });
 
 describe('the eight ready templates: data, OFF, and valid once their blanks are filled', () => {
-  const FILL = { userIds: ['u-a'], productId: 'p-1', storeId: 's-1', toUserIds: ['u-a', 'u-b'] };
+  const FILL = { userIds: ['u-a'], productId: 'prod-1', storeId: 's-1', toUserIds: ['u-a', 'u-b'] };
 
   it('eight of them, one key each, covering the four kinds', () => {
     expect(CONFIRMATION_RULE_TEMPLATES).toHaveLength(8);
