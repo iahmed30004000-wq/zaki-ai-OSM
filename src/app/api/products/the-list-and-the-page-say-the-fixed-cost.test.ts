@@ -20,6 +20,8 @@ const { db, requireContext, getPermissionScope, maySeeCost, productCosts, author
     product: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
     productFixedCost: { findMany: vi.fn(async (_args?: unknown): Promise<unknown[]> => []) },
     orderItem: { groupBy: vi.fn() },
+    // 19/11 (W2c): the product page reads the rows split off its runs; this store was never placed, so there are none.
+    productionBatch: { findMany: vi.fn(async (): Promise<unknown[]> => []) },
   },
   requireContext: vi.fn(),
   getPermissionScope: vi.fn(),

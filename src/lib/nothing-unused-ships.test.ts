@@ -525,8 +525,6 @@ const NO_CALLER_FOUND: Record<string, string> = {
     'يقرأ أرقامَه من الحاسبة المشتركة ولا يكرّرها — لكنه يَعرض أداءَ الموظف لنفسه ولا شاشةَ تسأله بعد',
   '/api/finance/summary': 'يُلخّص المالَ عبر محرّكِ التحليلاتِ الواحد، ولا شاشةَ تستدعيه — له اختبارُه فقط',
   '/api/public/stores/[store]/search': 'صفحةُ المتجر تبحث على الخادم بـsearchProducts مباشرةً؛ لا حقلَ اقتراحاتٍ يستدعي الطريق',
-  // 19/11 (request Q3a of the rules plan): the door of «أرقام القاعدة» is built ahead of its editor. Request Q3c (the numbers editor) calls it and removes this line.
-  '/api/settings/confirmation-rule': 'باب «أرقام القاعدة» (حفظ وعرض ورجوع) انبنى قبل محرّره — بطاقة المحرّر (Q3c) هي اللي بتستدعيه وبتشيل هالسطر',
   '/api/orders/[id]/change-requests/preview':
     'معاينةُ طلبِ التعديلِ متعدّدِ الحقول (المرحلة ٢) — قراءةٌ صرفة بُنيت قبل واجهتِها؛ شاشةُ «تعديل الطلب» (المرحلة ٦) هي من تستدعيها',
 

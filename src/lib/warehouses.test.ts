@@ -205,6 +205,14 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',
+    // 19/11, W2c (the stock screens show places): the balances and the ledger read where units are; the runs list and the
+    // product page fold a split row into its run; the receive dialog sends the receive door's own `warehouseId` field.
+    'src/app/api/inventory/movements/route.ts',
+    'src/app/api/products/[id]/route.ts',
+    'src/components/inventory/ReceiveDialog.tsx',
+    'src/components/screens/InventoryBalancesScreen.tsx',
+    'src/lib/batch-grade.ts',
+    'src/lib/stock-places.ts',
     // 20/11, W3a (the transfer inside one store): the transfer lib and its door helper, the four doors (send + list,
     // receive, cancel, difference), and the kind file that holds the stop door's «open transfer» question.
     'src/lib/stock-transfers.ts',

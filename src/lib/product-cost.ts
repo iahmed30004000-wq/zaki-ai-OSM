@@ -40,7 +40,7 @@ export interface ProductCost {
   stockValue: number;
   /** The cost of the batch the next sale will draw from, oldest first. */
   nextOut: number;
-  /** Batches still holding units. */
+  /** Batches (runs) still holding units — a row split off a run when goods changed place is the same run (W2c). */
   batchCount: number;
 }
 
@@ -57,7 +57,7 @@ export async function productCost(tx: Tx, companyId: string, productId: string):
   const batches = await tx.productionBatch.findMany({
     where: { companyId, productId, quantityRemaining: { gt: 0 } },
     orderBy: { productionDate: 'asc' },
-    select: { id: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true },
+    select: { id: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true, inTransitTransferId: true },
   });
   if (batches.length === 0) return ZERO;
 
@@ -72,8 +72,8 @@ export async function productCost(tx: Tx, companyId: string, productId: string):
     onHand,
     stockValue: round(stockValue),
     average: onHand > 0 ? round(stockValue / onHand) : 0,
-    nextOut: batches[0].costPerUnit,
-    batchCount: batches.length,
+    nextOut: nextOutCost(batches),
+    batchCount: new Set(batches.map(familyOf)).size,
   };
 }
 
@@ -89,19 +89,20 @@ export async function productCosts(
   const batches = await tx.productionBatch.findMany({
     where: { companyId, productId: { in: productIds }, quantityRemaining: { gt: 0 } },
     orderBy: { productionDate: 'asc' },
-    select: { id: true, productId: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true },
+    select: { id: true, productId: true, quantityRemaining: true, costPerUnit: true, splitFromBatchId: true, inTransitTransferId: true },
   });
 
   for (const id of productIds) out.set(id, ZERO);
 
   // One run's units are costed once, however many places they sit in (`batch-family.ts`).
   const familyOf = await familyRootOf(tx, companyId, productIds, batches);
-  const grouped = new Map<string, { qty: number; value: FamilyCost; first: number; count: number }>();
+  const grouped = new Map<string, { qty: number; value: FamilyCost; rows: (typeof batches)[number][]; runs: Set<string> }>();
   for (const b of batches) {
-    const g = grouped.get(b.productId) ?? { qty: 0, value: new FamilyCost(), first: b.costPerUnit, count: 0 };
+    const g = grouped.get(b.productId) ?? { qty: 0, value: new FamilyCost(), rows: [], runs: new Set<string>() };
     g.qty += b.quantityRemaining;
     g.value.add(familyOf(b), b.quantityRemaining, b.costPerUnit);
-    g.count += 1;
+    g.rows.push(b);
+    g.runs.add(familyOf(b));
     grouped.set(b.productId, g);
   }
 
@@ -111,11 +112,23 @@ export async function productCosts(
       onHand: g.qty,
       stockValue: round(value),
       average: g.qty > 0 ? round(value / g.qty) : 0,
-      nextOut: g.first,
-      batchCount: g.count,
+      nextOut: nextOutCost(g.rows),
+      batchCount: g.runs.size,
     });
   }
   return out;
+}
+
+/**
+ * THE COST OF THE ROW THE NEXT SALE DRAWS FROM — the oldest row a draw may take (W2c).
+ *
+ * The draw-down never takes units on the road between two warehouses (`receiving.drawDownStock` reads only rows with no
+ * `inTransitTransferId`), so the «next out» is the oldest row NOT on the road. Display only: the average and the stock value above still
+ * count every unit the store owns, the road included. With no row on the road (every store before the transfers) this is
+ * the first row, as it always was; with every row on the road, the first row still answers rather than nothing.
+ */
+function nextOutCost(rows: readonly { costPerUnit: number; inTransitTransferId?: string | null }[]): number {
+  return (rows.find((r) => !r.inTransitTransferId) ?? rows[0]).costPerUnit;
 }
 
 /**

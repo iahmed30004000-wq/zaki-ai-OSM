@@ -15,7 +15,11 @@ import { reservedElsewhere, reservedForProducts } from '@/lib/reservation';
 import { MAX_WINDOW_DAYS, stockHealth, summariseStock, type StockFacts } from '@/lib/stock-health';
 import { DAY_MS, deliveredPerProduct, ledgerDepthDays } from '@/lib/stock-ledger';
 import { IntakePlaceRefused, intakeRefusalBody, storeIsPlaced } from '@/lib/warehouse-intake';
-import { reachesWarehouse } from '@/lib/warehouses';
+import { reachesWarehouse, warehousesOfStore, warehousesReachedBy } from '@/lib/warehouses';
+import { unitsWithCourier } from '@/lib/warehouse-placement';
+import { countRuns } from '@/lib/batch-grade';
+import { placesOf, shownPlaces } from '@/lib/stock-places';
+import type { SessionUser } from '@/types/auth';
 
 export async function GET() {
   try {
@@ -31,6 +35,13 @@ export async function GET() {
       where: inStore(companyId, storeId),
       include: {
         batches: {
+          /*
+           * OLDEST FIRST, BY THE DRAW-DOWN'S OWN ORDER (19/11, W2c). There was no order here, and `lastUnitCost` below is
+           * «the last costed row of this list» — so it was whichever row Postgres happened to return last, which moves
+           * when a row is updated, and after a split a twin (born later, carrying an older run's cost) could be it. With
+           * the order said, «the last» is the newest by production date, as the receive door's own carry-forward reads it.
+           */
+          orderBy: [{ productionDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
             batchNumber: true,
@@ -43,6 +54,10 @@ export async function GET() {
             // they have not been offered, and charging them for it sends
             // somebody to clear a shelf that only just arrived.
             productionDate: true,
+            // The warehouse plan (W2c): which run a row belongs to, and where it is. Read, never sent as they are.
+            splitFromBatchId: true,
+            warehouseId: true,
+            inTransitTransferId: true,
           },
         },
       },
@@ -89,6 +104,11 @@ export async function GET() {
     // and the screen asks twice instead of 228 times.
     const reserved = await reservedForProducts(db, { companyId, storeId, productIds: products.map((p) => p.id) });
 
+    // WHERE THE UNITS ARE — only for a store placed in warehouses (W2c). A store that is not placed answers exactly as before.
+    const places = (await storeIsPlaced(storeId))
+      ? await storePlaces(user, companyId, storeId, products.map((p) => p.id))
+      : null;
+
     const stockSummary = products.map((p) => {
       const produced = p.batches.reduce((sum, b) => sum + b.quantityProduced, 0);
       const sold = p.batches.reduce((sum, b) => sum + b.quantitySold, 0);
@@ -109,7 +129,8 @@ export async function GET() {
         // from the batches already in hand rather than asked for again.
         onHand: remaining,
         reserved: reserved.get(p.id) ?? 0,
-        batchCount: p.batches.length,
+        // Runs, not rows: a row split off when goods changed place is the same run (`batch-grade.countRuns`).
+        batchCount: countRuns(p.batches),
         deliveredUnits: sales?.units ?? 0,
         deliveredLines: sales?.lines ?? 0,
         ledgerDays,
@@ -141,17 +162,25 @@ export async function GET() {
          * tile on every card.
          */
         reserved: reserved.get(p.id) ?? 0,
-        batchesCount: p.batches.length,
+        batchesCount: countRuns(p.batches),
         // Omitted, not zeroed or nulled, for a caller without `costs.view`: a null says «never costed» and a zero «cost nothing».
         ...(showCost
           ? {
               lastUnitCost,
-              /** Batches whose cost is zero — every unit out of them reads as pure profit. */
-              zeroCostBatches: p.batches.filter((b) => b.costPerUnit === 0 && b.quantityRemaining > 0).length,
+              /** Batches (runs) whose cost is zero — every unit out of them reads as pure profit. */
+              zeroCostBatches: countRuns(
+                p.batches,
+                p.batches.filter((b) => b.costPerUnit === 0 && b.quantityRemaining > 0)
+              ),
             }
           : {}),
         /** The verdict, its reason, its score and the bands behind it. */
         health: stockHealth(facts, MAX_WINDOW_DAYS),
+        /**
+         * Placed store only (W2c): the same units, by place — per warehouse, «بالطريق», with no place — and the units of
+         * this store's orders that are out with the courier. Absent for a store that is not placed.
+         */
+        ...(places ? { places: shownPlaces(placesOf(p.batches, places.order), places.withCourier.get(p.id) ?? 0) } : {}),
       };
     });
 
@@ -166,6 +195,11 @@ export async function GET() {
       /** How deep the delivery record is — every rate on the screen rests on it. */
       ledgerDays: Math.round(ledgerDays * 10) / 10,
       ...summary,
+      /**
+       * Placed store only (W2c): its warehouses, by name, for the filter and the chips — and, on each, whether THIS person
+       * may receive goods into it (`reachesWarehouse`, the rule the receive door asks). Absent for a store not placed.
+       */
+      ...(places ? { warehouses: places.warehouses } : {}),
     });
   } catch (error: any) {
     if (error instanceof UncostedSurplus) {
@@ -175,6 +209,37 @@ export async function GET() {
   }
 }
 
+/**
+ * A PLACED STORE'S WAREHOUSES, AND THE UNITS OUT WITH THE COURIER (W2c) — three reads, whatever the number of products.
+ *
+ *   warehouses   the running warehouses of the store's country (`warehousesOfStore`, name order), then any other warehouse
+ *                a batch of the store names (a stopped one cannot hold units — the stop door refuses — but a name is
+ *                never left as a bare id). `mayReceive` = this person reaches it (`warehouses.reachesWarehouse`, the very
+ *                rule the receive door asks) and it is running.
+ *   withCourier  units of this store's orders that have left and still hold their reservation — the placement's own
+ *                figure (`warehouse-placement.unitsWithCourier`), so the two screens cannot disagree.
+ */
+async function storePlaces(user: SessionUser, companyId: string, storeId: string, productIds: string[]) {
+  const [own, withCourier, named] = await Promise.all([
+    warehousesOfStore(companyId, storeId),
+    unitsWithCourier(db, { companyId, storeId, productIds }),
+    db.productionBatch.groupBy({
+      by: ['warehouseId'],
+      where: { ...inStore(companyId, storeId), warehouseId: { not: null } },
+    }),
+  ]);
+  const ownIds = new Set(own.map((w) => w.id));
+  const others = named.map((n) => n.warehouseId).filter((id): id is string => !!id && !ownIds.has(id));
+  const stopped = others.length
+    ? await db.warehouse.findMany({ where: { companyId, id: { in: others } }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
+    : [];
+  const reached = new Set((await warehousesReachedBy(user, companyId, own.map((w) => ({ ...w, companyId })))).map((w) => w.id));
+  const warehouses = [
+    ...own.map((w) => ({ id: w.id, name: w.name, mayReceive: reached.has(w.id) })),
+    ...stopped.map((w) => ({ id: w.id, name: w.name, mayReceive: false })),
+  ];
+  return { warehouses, order: warehouses.map((w) => w.id), withCourier };
+}
 
 /** The unit cost of this product's newest costed stock in this store, if any. */
 async function previousUnitCost(companyId: string, storeId: string | null, productId: string) {

@@ -5,6 +5,7 @@ import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Select } from '@/components/ui/Input';
 import { ORIGIN } from '@/lib/batch-grade';
 
 /**
@@ -39,15 +40,32 @@ export interface ReceiveProduct {
   lastUnitCost?: number | null;
 }
 
+/**
+ * WHERE THE GOODS LANDED — for a store placed in warehouses only (the warehouse plan, W2c).
+ *
+ * The receive door REQUIRES a warehouse for a placed store (`warehouse-intake.intakePlace`, 400 `WAREHOUSE_REQUIRED`), so
+ * the dialog asks for one: the warehouses the server says this person may receive into (`mayReceive` — the same reach
+ * rule the door checks). One of them is chosen for her when there is only one. None at all: the dialog says why and does
+ * not send. ABSENT (undefined) for a store that is not placed — the dialog and the body it posts are today's, byte for byte.
+ */
+export interface ReceiveWarehouse {
+  id: string;
+  name: string;
+}
+
 export function ReceiveDialog({
   product,
   onClose,
   onSaved,
+  warehouses,
 }: {
   product: ReceiveProduct;
   onClose: () => void;
   onSaved: (message: string) => void;
+  warehouses?: readonly ReceiveWarehouse[];
 }) {
+  const [warehouseId, setWarehouseId] = useState(warehouses?.length === 1 ? warehouses[0].id : '');
+  const noWarehouse = warehouses !== undefined && warehouses.length === 0;
   const [quantity, setQuantity] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [zeroReason, setZeroReason] = useState('');
@@ -77,6 +95,7 @@ export function ReceiveDialog({
                 unitCost: unitCost === '' ? undefined : Number(unitCost),
                 zeroCostReason: zeroReason.trim() || null,
                 note: note.trim() || null,
+                ...(warehouses ? { warehouseId } : {}),
               }),
             });
             onSaved(`أُضيفت ${quantity} وحدة إلى ${product.name}`);
@@ -93,6 +112,24 @@ export function ReceiveDialog({
           الرصيد الحالي: <b>{product.remaining}</b> وحدة
         </p>
         </Card>
+
+        {warehouses &&
+          (noWarehouse ? (
+            <p className="text-sm text-[var(--sys-destructive)]">
+              هالمتجر موزّع على مخازن، وما إلك وصول على ولا مخزن منها. الاستلام بيعمله أمين المخزن اللي دخلت عليه البضاعة.
+            </p>
+          ) : (
+            <Select
+              label="المخزن اللي دخلت عليه البضاعة"
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+              required
+              options={[
+                ...(warehouses.length === 1 ? [] : [{ value: '', label: 'اختار المخزن' }]),
+                ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+              ]}
+            />
+          ))}
 
         <label className="block">
           <span className="block text-note font-medium text-[var(--sys-foreground)] mb-1">الكمية المستلمة</span>
@@ -184,7 +221,7 @@ export function ReceiveDialog({
           <Button type="button" variant="secondary" onClick={onClose}>
             إلغاء
           </Button>
-          <Button type="submit" disabled={saving}>
+          <Button type="submit" disabled={saving || noWarehouse || (warehouses !== undefined && !warehouseId)}>
             {saving ? 'جارٍ الاستلام…' : 'استلام'}
           </Button>
         </div>

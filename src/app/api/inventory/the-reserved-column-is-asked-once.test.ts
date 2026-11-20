@@ -13,7 +13,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, reservedForProducts, reservedElsewhere } = vi.hoisted(() => ({
-  db: { product: { findMany: vi.fn() }, inventoryMovement: { findMany: vi.fn() } },
+  db: {
+    product: { findMany: vi.fn() },
+    inventoryMovement: { findMany: vi.fn() },
+    // 19/11 (W2c): the door asks whether the store is placed in warehouses; this store is not (today's answer).
+    warehousePlacement: { findUnique: vi.fn(async () => null) },
+  },
   requireContext: vi.fn(),
   reservedForProducts: vi.fn(),
   reservedElsewhere: vi.fn(),

@@ -24,6 +24,8 @@ const { db, requireContext, getPermissionScope, maySeeCost, productCosts, author
     // no product has a fixed cost in these tests: the costs are the batches', as they were
     productFixedCost: { findMany: vi.fn(async (): Promise<unknown[]> => []) },
     orderItem: { groupBy: vi.fn() },
+    // 19/11 (W2c): the product page reads the rows split off its runs; this store was never placed, so there are none.
+    productionBatch: { findMany: vi.fn(async (): Promise<unknown[]> => []) },
   },
   requireContext: vi.fn(),
   getPermissionScope: vi.fn(),
