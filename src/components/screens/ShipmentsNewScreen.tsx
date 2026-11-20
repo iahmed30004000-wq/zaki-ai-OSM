@@ -37,6 +37,7 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { NextStepButton, MissionDone } from '@/components/ui/NextStep';
 import { printLabelsStep } from '@/lib/next-step';
+import { TransferLink, WarehousePicker, useOpsWarehouse, type OpsWarehouse } from '@/components/ops/WarehousePicker';
 
 /**
  * /ops/shipments/new — pick a courier, filter, review each row's COD and its
@@ -180,6 +181,15 @@ export function ShipmentsNewScreen() {
   const [exporting, setExporting] = useState(false);
   /** What the last file held and what it left out, said under the tabs until the next file. */
   const [fileNote, setFileNote] = useState<string | null>(null);
+  /*
+   * ONE SHIPMENT, ONE WAREHOUSE (W4c, on the door of W4a). A store placed in warehouses: the list names the warehouses she
+   * may ship from, the blocks are the chosen one's (`?warehouse=`), and the press carries it (`warehouseId`). A store
+   * that is not placed sends no list: no picker, and the same requests as before.
+   */
+  const { warehouses, place, heard, choose } = useOpsWarehouse(currentUser?.id);
+  const mayTransfer = userCan(currentUser, 'inventory.transfer');
+  /** A placed store and no warehouse chosen yet: the press waits for it (the door would refuse `WAREHOUSE_REQUIRED`). */
+  const needsWarehouse = warehouses !== null && !place;
 
   useEffect(() => {
     apiJson<{ providers: { id: string; name: string }[]; regions: { id: string; name: string }[] }>(
@@ -377,18 +387,26 @@ export function ShipmentsNewScreen() {
     const q = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => v && q.set(k, v));
     if (view === 'held') q.set('held', 'only');
+    if (place) q.set('warehouse', place);
     try {
-      const data = await apiJson<{ orders: Row[]; heldCount?: number; benchNote?: string }>(`/api/ops/shipments?${q}`);
+      const data = await apiJson<{ orders: Row[]; heldCount?: number; benchNote?: string; warehouses?: OpsWarehouse[] }>(`/api/ops/shipments?${q}`);
       if (mine !== loadSeq.current) return;
       setRows(data.orders);
       setHeldCount(data.heldCount ?? 0);
       setBenchNote(data.benchNote ?? null);
       setSelected({});
+      heard(data.warehouses);
     } catch (e) {
       if (mine !== loadSeq.current) return;
+      // A warehouse stopped or taken from her since the pick: none chosen, and the list is asked again.
+      const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
+      if (place && typeof code === 'string' && code.startsWith('WAREHOUSE_')) {
+        choose('');
+        return;
+      }
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, [filters, view]);
+  }, [filters, view, place, heard, choose]);
 
   /**
    * ── A QUARTER-SECOND, AND NOT FOR SMOOTHNESS ──
@@ -441,6 +459,10 @@ export function ShipmentsNewScreen() {
       toast.failed('اختر شركة الشحن وطلباً واحداً على الأقل');
       return;
     }
+    if (needsWarehouse) {
+      toast.failed('اختار المخزن اللي طالعة منه الشحنة');
+      return;
+    }
     /**
      * ASKED BEFORE, BECAUSE THERE IS NO AFTER.
      *
@@ -458,8 +480,9 @@ export function ShipmentsNewScreen() {
      * متأكّد» is a question nobody reads.
      */
     const courierName = providers.find((c) => c.id === filters.courier)?.name ?? 'شركة الشحن';
+    const warehouseName = warehouses?.find((w) => w.id === place)?.name;
     const ok = await confirm({
-      title: `شحن ${orderIds.length} طلباً مع ${courierName}؟`,
+      title: `شحن ${orderIds.length} طلباً مع ${courierName}${warehouseName ? ` من مخزن «${warehouseName}»` : ''}؟`,
       body: 'تُحجز لدى الشركة وتُحمَّل أجورُها، ولا تراجع بعدها — الإلغاء حركةٌ منفصلة.',
       confirmLabel: 'أنشئ الشحنة',
     });
@@ -481,6 +504,8 @@ export function ShipmentsNewScreen() {
             deliveryProviderId: filters.courier,
             orderIds,
             acknowledgedOrderIds: orderIds.filter((id) => acknowledged[id]),
+            // A placed store only: the warehouse the shipment leaves from. Absent for any other — the body it always sent.
+            ...(warehouses ? { warehouseId: place } : {}),
           }),
         }
       );
@@ -670,6 +695,13 @@ export function ShipmentsNewScreen() {
           >
             <RiAlertLine className="w-4 h-4" /> {b.message}
             {b.hint && <span className="text-[var(--sys-muted-foreground)]"> — {b.hint}</span>}
+            {/* A shortage in the chosen warehouse (W4c): the sentence names where the units are; this is the way to move them. */}
+            {b.code === 'STOCK_SHORTAGE' && place && mayTransfer && (
+              <>
+                {' — '}
+                <TransferLink />
+              </>
+            )}
           </span>
         ))}
         {/* No `id` and no `name`: `Rows` draws this cell twice (the table and the card, both in the page), so a row's id
@@ -720,6 +752,10 @@ export function ShipmentsNewScreen() {
           value={filters.q}
           onChange={(v) => setFilters({ ...filters, q: v })}
         />
+        {/* A store placed in warehouses only (W4c): its own row, so the five cells below keep their places. */}
+        {warehouses && (
+          <WarehousePicker warehouses={warehouses} value={place} onChange={choose} label="المخزن اللي طالعة منه الشحنة" noneLabel="اختار المخزن" />
+        )}
         <div className="grid gap-3 md:grid-cols-5">
         <div data-courier-pick>
           <Select label="شركة الشحن (للشحنة)" value={filters.courier} onChange={(v) => setFilters({ ...filters, courier: v })} options={providers.map((p) => ({ value: p.id, label: p.name }))} />
@@ -744,7 +780,7 @@ export function ShipmentsNewScreen() {
         <div className="self-end">
           <Button
             onClick={() => { void create(); }}
-            disabled={busy || selectedCount === 0}
+            disabled={busy || selectedCount === 0 || needsWarehouse}
             className="w-full"
           >
             {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
@@ -771,9 +807,12 @@ export function ShipmentsNewScreen() {
         {!filters.courier && (
           <span className="w-full text-note text-[var(--sys-muted-foreground)]">اختر شركة الشحن من الأعلى أولاً.</span>
         )}
+        {needsWarehouse && (
+          <span className="w-full text-note text-[var(--sys-muted-foreground)]">اختار المخزن من فوق أولاً.</span>
+        )}
         <Button
           onClick={() => { void create(); }}
-          disabled={busy || selectedCount === 0}
+          disabled={busy || selectedCount === 0 || needsWarehouse}
           className="flex-1 md:flex-none"
         >
           {busy ? 'جارٍ الإنشاء…' : `إنشاء شحنة (${selectedCount})`}
@@ -831,6 +870,12 @@ export function ShipmentsNewScreen() {
               </li>
             ))}
           </ul>
+          {/* A placed store (W4c): a shortage among these reasons is moved by a transfer between the warehouses. */}
+          {place && mayTransfer && (
+            <p className="text-note text-[var(--sys-muted-foreground)]">
+              نقص بالمخزن؟ <TransferLink />
+            </p>
+          )}
         </Card>
       )}
 
