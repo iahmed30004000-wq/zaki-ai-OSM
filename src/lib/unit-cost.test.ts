@@ -151,8 +151,10 @@ describe('and the screen tells the truth about the field', () => {
     // IN THE ROW, not merely computed above it. `lastUnitCost` is also the
     // name of the local that derives it, so looking for the word passed with
     // the property deleted from the object the screen actually reads.
+    // 19/11 (W2c): was `batchesCount: p.batches.length,` — the count is of runs now (`countRuns`), so a row split off a
+    // run when goods changed place is not a second batch. The pin is the same: the cost rides the row the screen reads.
     expect(inventory(), 'القائمة لا ترسل الكلفة السابقة في الصفّ').toMatch(
-      /batchesCount: p\.batches\.length,[\s\S]{0,400}\.\.\.\(showCost\s*\?\s*\{\s*lastUnitCost,/
+      /batchesCount: countRuns\(p\.batches\),[\s\S]{0,400}\.\.\.\(showCost\s*\?\s*\{\s*lastUnitCost,/
     );
   });
 

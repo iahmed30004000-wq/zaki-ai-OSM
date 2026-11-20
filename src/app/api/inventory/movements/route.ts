@@ -6,6 +6,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { inStore } from '@/lib/store-filter';
 import { typed } from '@/lib/text-search';
+import { storeIsPlaced } from '@/lib/warehouse-intake';
 
 /**
  * GET /api/inventory/movements — the stock ledger.
@@ -35,8 +36,17 @@ export async function GET(req: Request) {
     const limit = readLimit(q, 100, 300);
     const before = q.get('before');
 
+    /*
+     * WHICH WAREHOUSE (the warehouse plan, W2c) — only for a store placed in warehouses. Its lines name the shelf they
+     * moved (`InventoryMovement.warehouseId`); `?warehouse=<id>` keeps one warehouse's lines. A store that is not placed
+     * has no such line: the parameter is not read and the answer is the very answer it was.
+     */
+    const placed = await storeIsPlaced(storeId);
+    const warehouseId = placed ? q.get('warehouse')?.trim() || null : null;
+
     const where = {
       ...inStore(companyId, storeId),
+      ...(warehouseId ? { warehouseId } : {}),
       ...(productId ? { productId } : {}),
       ...(type && type !== 'all' ? { type } : {}),
       ...(before ? { createdAt: { lt: new Date(before) } } : {}),
@@ -57,6 +67,7 @@ export async function GET(req: Request) {
       include: {
         product: { select: { id: true, name: true, sku: true } },
         batch: { select: { batchNumber: true } },
+        ...(placed ? { warehouse: { select: { name: true } } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -89,11 +100,26 @@ export async function GET(req: Request) {
         product: m.product,
         batchNumber: m.batch?.batchNumber ?? null,
         createdByName: m.createdById ? nameOf.get(m.createdById) ?? null : null,
+        // Placed store only: the warehouse whose shelf moved, by name — null for a line of the whole store.
+        ...(placed ? { warehouseName: (m as { warehouse?: { name: string } | null }).warehouse?.name ?? null } : {}),
       })),
       types: types.map((t) => ({ type: t.type, count: t._count.type })),
       hasMore: movements.length === limit,
+      // Placed store only: the warehouses its lines name, for the filter.
+      ...(placed ? { warehouses: await warehousesNamed(companyId, storeId) } : {}),
     });
   } catch (error) {
     return apiErrorResponse(error);
   }
+}
+
+/** The warehouses this store's ledger names, by name — one grouped read and one read of their names. */
+async function warehousesNamed(companyId: string, storeId: string | null) {
+  const named = await db.inventoryMovement.groupBy({
+    by: ['warehouseId'],
+    where: { ...inStore(companyId, storeId), warehouseId: { not: null } },
+  });
+  const ids = named.map((n) => n.warehouseId).filter((id): id is string => !!id);
+  if (ids.length === 0) return [];
+  return db.warehouse.findMany({ where: { companyId, id: { in: ids } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 }

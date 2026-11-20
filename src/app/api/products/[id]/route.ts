@@ -8,6 +8,7 @@ import { deleteStoredFile } from '@/lib/storage';
 import { logAudit } from '@/lib/audit';
 import { parseCategoryAttributes, parseProductAttributes } from '@/lib/product-attributes';
 import { productCosts } from '@/lib/product-cost';
+import { foldSplitRows } from '@/lib/batch-grade';
 import { fixedCostsOf } from '@/lib/product-fixed-cost';
 import { deliveredUnitsByProduct } from '@/lib/product-sold';
 import { maySeeCost, withoutCost } from '@/lib/cost-visibility';
@@ -48,6 +49,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
          * same missing key.
          */
         batches: {
+          // Runs only: a row split off a run when goods changed place is folded into it below (W2c).
+          where: { splitFromBatchId: null },
           orderBy: { productionDate: 'desc' },
           take: 20,
           select: {
@@ -96,6 +99,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      * and «this cost nothing» is a false one.
      */
     const showCost = maySeeCost(user);
+    /*
+     * THE ROWS SPLIT OFF THESE RUNS (the warehouse plan, W2c): units that changed place sit in twin rows, and each run
+     * shows what it and its twins still hold and sold (`batch-grade.foldSplitRows`). A store never placed has none.
+     */
+    const twins = await db.productionBatch.findMany({
+      where: { ...inStore(companyId, storeId), productId: product.id, splitFromBatchId: { not: null } },
+      select: { id: true, splitFromBatchId: true, quantitySold: true, quantityRemaining: true },
+    });
+    product.batches = foldSplitRows(product.batches, twins);
     const totalProduced = product.batches.reduce((s, b) => s + b.quantityProduced, 0);
     // What the customers took (RV87), from the one function the list and the stats door use — not the batch counter.
     const totalSold = (await deliveredUnitsByProduct(db, { companyId, storeId, productIds: [product.id] })).get(product.id) ?? 0;
