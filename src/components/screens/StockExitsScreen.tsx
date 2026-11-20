@@ -405,13 +405,13 @@ function MonthReport() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <IconButton label="الشهر اللي قبله" onClick={() => go(answer.prev)}>
-          <RiArrowRightSLine className="h-4 w-4" />
+          <RiArrowLeftSLine className="icon-mirror h-4 w-4" />
         </IconButton>
         <span className="text-sm font-bold text-[var(--sys-heading)]" data-month={answer.month}>
           {answer.monthAr}
         </span>
         <IconButton label="الشهر اللي بعده" onClick={() => answer.next && go(answer.next)} disabled={!answer.next}>
-          <RiArrowLeftSLine className="h-4 w-4" />
+          <RiArrowRightSLine className="icon-mirror h-4 w-4" />
         </IconButton>
       </div>
 
