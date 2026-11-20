@@ -108,8 +108,41 @@ export const countsSchema = z
 /** The one sentence a count that disagrees with the book gets: the recount door first, then the placement. */
 export const RECOUNT_FIRST_AR = 'اجرد هالمنتجات من «جرد المتاح» أول، وبعدين وزّع';
 
-/** A product with combinations (size/colour) is placed as a product; its combinations' counts stay the store's until the variants request. */
-export const VARIANTS_STAY_STORE_LEVEL_AR = 'المنتج بيتوزّع ككل. عدّ الخيارات (المقاس واللون) بيضل على مستوى المتجر لهلق.';
+/**
+ * A product with combinations (size/colour): the sheet asks, beside its count per warehouse, how many of each combination
+ * that warehouse holds (W8b's optional `variants` of a line). 20/11 (W8c) — was «المنتج بيتوزّع ككل. عدّ الخيارات (المقاس
+ * واللون) بيضل على مستوى المتجر لهلق.», true until W8b let the placement carry combinations; now a combination counted here
+ * gets its warehouse, and one left blank stays «بلا مكان» (W8a) until it is counted in its warehouse.
+ */
+export const VARIANTS_IN_PLACEMENT_AR =
+  'المنتج اللي إله خيارات (مقاس/لون): اكتب عدده بكل مخزن، وتحته كم قطعة من كل خيار. مجموع الخيارات لازم يساوي عدد المنتج. الخيار اللي بتتركه فاضي بيضل «بلا مكان» لحد ما ينعدّ بمخزنه.';
+
+/** One combination as the sheet draws it: its label and its store-level count (`ProductVariant.onHand`), the server's. */
+export interface PlacementCombination {
+  variantId: string;
+  label: string;
+  onHand: number;
+}
+
+/**
+ * 20/11 (W8c): the ACTIVE combinations of the products that have them, by product, in the seller's order — what the
+ * sheet draws its boxes from. ONE read, and none at all when no product of the page has combinations.
+ */
+export async function placementCombinations(
+  tx: Tx,
+  companyId: string,
+  productIds: readonly string[]
+): Promise<Record<string, PlacementCombination[]>> {
+  const out: Record<string, PlacementCombination[]> = {};
+  if (productIds.length === 0) return out;
+  const rows = await tx.productVariant.findMany({
+    where: { companyId, productId: { in: [...new Set(productIds)] }, status: 'ACTIVE' },
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    select: { id: true, productId: true, label: true, onHand: true },
+  });
+  for (const r of rows) (out[r.productId] ??= []).push({ variantId: r.id, label: r.label, onHand: r.onHand });
+  return out;
+}
 
 export interface PlacementCount {
   warehouseId: string;

@@ -298,3 +298,40 @@ describe('the stop door sees a pending exit (W0a left this line to W6a)', () => 
     expect((await stop('wA')).body.blockers.map((b: Row) => b.code)).toEqual(['HOLDS_UNITS']);
   });
 });
+
+describe('20/11 (W8c): the list names each line’s combinations', () => {
+  it('a line of a product with combinations carries them with their labels; a line without answers exactly as before', async () => {
+    const d = S.m.data;
+    d.product.push({ id: 'p3', companyId: C1, storeId: 's1', name: 'قميص', variantOptions: '[]' });
+    d.productionBatch.push({
+      id: 'b3', companyId: C1, storeId: 's1', productId: 'p3', batchNumber: 'RCV-3', quantityProduced: 6, quantitySold: 0, quantityRemaining: 6,
+      quantityMovedIn: 0, quantityMovedOut: 0, costPerUnit: 2, productionDate: new Date('2026-10-01'), createdAt: new Date('2026-10-01'),
+      status: 'COMPLETED', notes: null, warehouseId: 'wA', inTransitTransferId: null, splitFromBatchId: null,
+    });
+    d.productVariant.push(
+      { id: 'v1', companyId: C1, productId: 'p3', label: 'أسود · L', status: 'ACTIVE', sortOrder: 0, onHand: 4 },
+      { id: 'v2', companyId: C1, productId: 'p3', label: 'كحلي · M', status: 'ACTIVE', sortOrder: 1, onHand: 2 }
+    );
+    for (const [id, variantId, onHand] of [['pv1', 'v1', 4], ['pv2', 'v2', 2]] as const) {
+      d.productVariantStock.push({ id, companyId: C1, variantId, warehouseId: 'wA', onHand });
+      d.variantStockMovement.push({
+        id: `l-${id}`, companyId: C1, storeId: 's1', productId: 'p3', variantId, warehouseId: 'wA', type: 'COUNT', quantity: onHand, placeAfter: onHand, onHandAfter: onHand, reason: 'عدّ',
+      });
+    }
+    await as('u-asker');
+    const a = await ask({ lines: [{ productId: 'p3', quantity: 3, variants: [{ variantId: 'v1', quantity: 2 }, { variantId: 'v2', quantity: 1 }] }, { productId: 'p1', quantity: 2 }] });
+    expect(a.status).toBe(201);
+    await as('u-approver');
+    const body = (await list.GET().then(json)).body;
+    const lines = body.exits[0].lines as Row[];
+    expect(lines.find((l) => l.productId === 'p3')).toEqual({
+      productId: 'p3', quantity: 3, productName: 'قميص',
+      variants: [
+        { variantId: 'v1', quantity: 2, label: 'أسود · L' },
+        { variantId: 'v2', quantity: 1, label: 'كحلي · M' },
+      ],
+    });
+    // NEGATIVE: the line without combinations — no «variants», the keys of before.
+    expect(Object.keys(lines.find((l) => l.productId === 'p1')!)).toEqual(['productId', 'quantity', 'productName']);
+  });
+});

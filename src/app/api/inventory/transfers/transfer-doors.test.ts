@@ -451,3 +451,76 @@ describe('the stop door sees an open transfer (W0a left this line to W3a)', () =
     expect((await stop('wB')).status).toBe(200);
   });
 });
+
+describe('20/11 (W8c): the list names each line’s combinations — blind exactly as the line', () => {
+  /** p3 has two combinations, all six pieces in wA (v1 ×4, v2 ×2), batch and ledger agreeing from the start. */
+  const withCombinations = () => {
+    const d = S.m.data;
+    d.product.push({ id: 'p3', companyId: C1, storeId: 's1', name: 'قميص', variantOptions: '[]' });
+    d.productionBatch.push({
+      id: 'b3', companyId: C1, storeId: 's1', productId: 'p3', batchNumber: 'RCV-3', quantityProduced: 6, quantitySold: 0, quantityRemaining: 6,
+      quantityMovedIn: 0, quantityMovedOut: 0, costPerUnit: 2, productionDate: new Date('2026-10-01'), createdAt: new Date('2026-10-01'),
+      status: 'COMPLETED', notes: null, warehouseId: 'wA', inTransitTransferId: null, splitFromBatchId: null,
+    });
+    d.productVariant.push(
+      { id: 'v1', companyId: C1, productId: 'p3', label: 'أسود · L', status: 'ACTIVE', sortOrder: 0, onHand: 4 },
+      { id: 'v2', companyId: C1, productId: 'p3', label: 'كحلي · M', status: 'ACTIVE', sortOrder: 1, onHand: 2 }
+    );
+    for (const [id, variantId, onHand] of [['pv1', 'v1', 4], ['pv2', 'v2', 2]] as const) {
+      d.productVariantStock.push({ id, companyId: C1, variantId, warehouseId: 'wA', onHand });
+      d.variantStockMovement.push({
+        id: `l-${id}`, companyId: C1, storeId: 's1', productId: 'p3', variantId, warehouseId: 'wA', type: 'COUNT', quantity: onHand, placeAfter: onHand, onHandAfter: onHand, reason: 'عدّ',
+      });
+    }
+  };
+
+  it('NEGATIVE: the receiver reads WHICH combinations came, with their labels, and no sent figure at any depth; after the count, every figure', async () => {
+    withCombinations();
+    await as('u-sender');
+    const sent = await send({ lines: [{ productId: 'p3', quantity: 5, variants: [{ variantId: 'v1', quantity: 3 }, { variantId: 'v2', quantity: 2 }] }] });
+    expect(sent.status).toBe(201);
+    await as('u-receiver');
+    const hers = (await list.GET().then(json)).body;
+    expect(hers.transfers[0].lines).toEqual([
+      {
+        productId: 'p3', quantitySent: null, quantityReceived: null, difference: null, productName: 'قميص',
+        variants: [
+          { variantId: 'v1', quantitySent: null, quantityReceived: null, difference: null, label: 'أسود · L' },
+          { variantId: 'v2', quantitySent: null, quantityReceived: null, difference: null, label: 'كحلي · M' },
+        ],
+      },
+    ]);
+    // 5, 3 — the sent figures — nowhere; (2 is also a shelf figure elsewhere, so only the ones no other field may hold.)
+    expect(numbersIn(hers)).not.toContain(5);
+    expect(numbersIn(hers)).not.toContain(3);
+    // The sender sees her own figures per combination.
+    await as('u-sender');
+    const mine = (await list.GET().then(json)).body;
+    expect(mine.transfers[0].lines[0].variants.map((v: Row) => [v.label, v.quantitySent])).toEqual([['أسود · L', 3], ['كحلي · M', 2]]);
+    // Counted: the figures, the server's difference per combination.
+    await as('u-receiver');
+    const r = await receive(hers.transfers[0].id, [{ productId: 'p3', quantity: 4, variants: [{ variantId: 'v1', quantity: 3 }, { variantId: 'v2', quantity: 1 }] }]);
+    expect(r.status).toBe(200);
+    const after = (await list.GET().then(json)).body;
+    expect(after.transfers[0].lines[0].variants).toEqual([
+      { variantId: 'v1', quantitySent: 3, quantityReceived: 3, difference: 0, label: 'أسود · L' },
+      { variantId: 'v2', quantitySent: 2, quantityReceived: 1, difference: 1, label: 'كحلي · M' },
+    ]);
+  });
+
+  it('NEGATIVE: a transfer without combinations answers exactly as before — no «variants», and no label read', async () => {
+    await as('u-sender');
+    await send({ lines: [{ productId: 'p1', quantity: 2 }] });
+    const reads: string[] = [];
+    const real = S.m.db.productVariant as Row;
+    S.m.db.productVariant = { ...real, findMany: async (a: Row) => (reads.push('label'), real.findMany(a)) };
+    try {
+      const body = (await list.GET().then(json)).body;
+      expect(body.transfers[0].lines).toEqual([{ productId: 'p1', quantitySent: 2, quantityReceived: null, difference: null, productName: 'منتج ١' }]);
+      expect(Object.keys(body.transfers[0].lines[0])).toEqual(['productId', 'quantitySent', 'quantityReceived', 'difference', 'productName']);
+      expect(reads).toEqual([]);
+    } finally {
+      S.m.db.productVariant = real;
+    }
+  });
+});

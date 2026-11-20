@@ -25,6 +25,15 @@ import { arDateTime } from '@/lib/format';
 import { NOT_BUILT_AR, readStockTransfer, stockTransferRefusal } from '@/lib/stock-transfer-kind';
 // A client-made id, made once when the form opens: the same press sent twice is one transfer at the door.
 import { newId } from '@/lib/client-id';
+import {
+  CombinationBoxes,
+  PickedCombinations,
+  badBox,
+  mayHaveCombinations,
+  shelfHint,
+  typedCombinations,
+  useProductCombinations,
+} from '@/components/inventory/CombinationBoxes';
 
 /**
  * /inventory/transfers — «نقل البضاعة» (the warehouse plan, request W3b): moving units between two warehouses of ONE store.
@@ -48,6 +57,15 @@ interface Warehouse {
   countryId: string;
 }
 
+/** 20/11 (W8c): one combination of a line, blind exactly as its line, with its label. */
+interface LineVariant {
+  variantId: string;
+  label: string | null;
+  quantitySent: number | null;
+  quantityReceived: number | null;
+  difference: number | null;
+}
+
 interface Line {
   productId: string;
   productName: string | null;
@@ -55,6 +73,8 @@ interface Line {
   quantitySent: number | null;
   quantityReceived: number | null;
   difference: number | null;
+  /** Present only on a line of a product with combinations. */
+  variants?: LineVariant[];
 }
 
 export interface StockTransferItem {
@@ -116,8 +136,28 @@ function Refusal({ text }: { text: string | null }) {
 /** What a line says in the list: the sent figure only when the door told it, then what was counted and what is short. */
 function LineText({ l }: { l: Line }) {
   return (
-    <span className="block text-sm">
-      {nameOf(l)}:{' '}
+    <>
+      <Figures name={nameOf(l)} f={l} />
+      {/* 20/11 (W8c): its combinations under it, each as blind as the line. */}
+      {(l.variants ?? []).map((v) => (
+        <Figures key={v.variantId} name={v.label ?? 'خيار'} f={v} className="block ps-3 text-note" />
+      ))}
+    </>
+  );
+}
+
+function Figures({
+  name,
+  f: l,
+  className = 'block text-sm',
+}: {
+  name: string;
+  f: { quantitySent: number | null; quantityReceived: number | null; difference: number | null };
+  className?: string;
+}) {
+  return (
+    <span className={className}>
+      {name}:{' '}
       {l.quantitySent === null ? (
         <span className="text-[var(--sys-muted-foreground)]">العدد مخفي لحد ما ينعدّ</span>
       ) : (
@@ -358,17 +398,30 @@ interface DraftLine {
   key: number;
   productId: string;
   quantity: string;
+  /** 20/11 (W8c): the combination boxes as typed, by combination id (a product without combinations: always empty). */
+  combos: Record<string, string>;
 }
 
 function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; onClose: () => void; onDone: () => void }) {
   const { products } = useProducts();
+  const combinations = useProductCombinations();
   const [id] = useState(newId);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [note, setNote] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, productId: '', quantity: '' }]);
+  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, productId: '', quantity: '', combos: {} }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** The active combinations of a line's product — none for a product without options (it is never asked about). */
+  const combosOf = (productId: string) => {
+    const k = combinations.known[productId];
+    return Array.isArray(k) ? k : [];
+  };
+  const pick = (key: number, productId: string) => {
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, productId, combos: {} } : l)));
+    if (mayHaveCombinations(products.find((p) => p.id === productId) as { variantOptions?: string | null } | undefined)) combinations.ask(productId);
+  };
 
   const fromW = warehouses.find((w) => w.id === from);
   const toW = warehouses.find((w) => w.id === to);
@@ -377,8 +430,9 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
   const reading = fromW && toW && !pairRefusal ? readStockTransfer(end(fromW), end(toW)) : null;
 
   const badQty = lines.some((l) => l.quantity.trim() !== '' && (!WHOLE.test(l.quantity.trim()) || Number(l.quantity) <= 0));
+  const badCombo = lines.some((l) => Object.values(l.combos).some(badBox));
   const linesReady = lines.every((l) => l.productId !== '' && WHOLE.test(l.quantity.trim()) && Number(l.quantity) > 0);
-  const ready = !!reading && reading.built && linesReady && !busy;
+  const ready = !!reading && reading.built && linesReady && !badCombo && !busy;
 
   const setLine = (key: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -398,7 +452,11 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
           toWarehouseId: to,
           expectKind: reading.kind,
           note: note.trim() || null,
-          lines: lines.map((l) => ({ productId: l.productId, quantity: Number(l.quantity.trim()) })),
+          lines: lines.map((l) => {
+            // 20/11 (W8c): the combinations sent, as typed — a line without any goes out exactly as before.
+            const variants = typedCombinations(combosOf(l.productId), l.combos, { dropZero: true });
+            return { productId: l.productId, quantity: Number(l.quantity.trim()), ...(variants.length > 0 ? { variants } : {}) };
+          }),
         }),
         timeoutMs: 60_000,
       });
@@ -458,26 +516,30 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
 
         <div className="space-y-2">
           {lines.map((l, i) => (
-            <div key={l.key} className="flex flex-wrap items-end gap-2">
-              <ProductPicker
-                products={products}
-                value={l.productId}
-                onChange={(productId) => setLine(l.key, { productId })}
-                className="flex-1"
+            <div key={l.key} className="space-y-1.5">
+              <div className="flex flex-wrap items-end gap-2">
+                <ProductPicker products={products} value={l.productId} onChange={(productId) => pick(l.key, productId)} className="flex-1" />
+                <Input
+                  aria-label={`كمية السطر ${i + 1}`}
+                  inputMode="numeric"
+                  dir="ltr"
+                  placeholder="الكمية"
+                  value={l.quantity}
+                  onChange={(e) => setLine(l.key, { quantity: e.target.value })}
+                />
+                {lines.length > 1 && (
+                  <IconButton label={`شيل السطر ${i + 1}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>
+                    <RiCloseLine className="h-4 w-4" />
+                  </IconButton>
+                )}
+              </div>
+              <PickedCombinations
+                state={combinations.known[l.productId]}
+                combos={combosOf(l.productId).map((c) => ({ variantId: c.variantId, label: c.label, hint: shelfHint(c, fromW) }))}
+                values={l.combos}
+                onChange={(variantId, value) => setLine(l.key, { combos: { ...l.combos, [variantId]: value } })}
+                line={i + 1}
               />
-              <Input
-                aria-label={`كمية السطر ${i + 1}`}
-                inputMode="numeric"
-                dir="ltr"
-                placeholder="الكمية"
-                value={l.quantity}
-                onChange={(e) => setLine(l.key, { quantity: e.target.value })}
-              />
-              {lines.length > 1 && (
-                <IconButton label={`شيل السطر ${i + 1}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}>
-                  <RiCloseLine className="h-4 w-4" />
-                </IconButton>
-              )}
             </div>
           ))}
           {badQty && <p className="text-note text-[var(--sys-destructive)]">الكمية لازم تكون رقم صحيح أكبر من صفر.</p>}
@@ -485,7 +547,7 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
             type="button"
             variant="secondary"
             size="sm"
-            onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, productId: '', quantity: '' }])}
+            onClick={() => setLines((ls) => [...ls, { key: Math.max(...ls.map((x) => x.key)) + 1, productId: '', quantity: '', combos: {} }])}
           >
             <RiAddLine className="h-4 w-4" /> زيد منتج
           </Button>
@@ -500,21 +562,35 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
 
 /* ───────────────────────────── receive (blind) ───────────────────────────── */
 
+type Shown = { quantitySent: number | null; quantityReceived: number | null; difference: number | null };
+
 interface Answer {
-  transfer: { status: string; statusAr: string; lines: { productId: string; quantitySent: number | null; quantityReceived: number | null; difference: number | null }[] };
+  transfer: { status: string; statusAr: string; lines: (Shown & { productId: string; variants?: (Shown & { variantId: string })[] })[] };
 }
 
 export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTransferItem; onClose: () => void; onDone: () => void }) {
-  // Only the product of each line is read here before the press — NEVER its sent quantity.
-  const products = transfer.lines.map((l) => ({ productId: l.productId, name: nameOf(l) }));
+  // Only the product of each line — and the NAMES of its combinations — are read here before the press, NEVER a sent quantity.
+  const products = transfer.lines.map((l) => ({
+    productId: l.productId,
+    name: nameOf(l),
+    combos: (l.variants ?? []).map((v) => ({ variantId: v.variantId, label: v.label ?? 'خيار' })),
+  }));
   const [counts, setCounts] = useState<Record<string, string>>({});
+  /** 20/11 (W8c): the combination boxes, by product then combination. */
+  const [comboCounts, setComboCounts] = useState<Record<string, Record<string, string>>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<Answer['transfer'] | null>(null);
 
   const box = (id: string) => (counts[id] ?? '').trim();
-  const bad = products.some((p) => box(p.productId) !== '' && !WHOLE.test(box(p.productId)));
-  const ready = products.every((p) => WHOLE.test(box(p.productId))) && !busy;
+  const comboBox = (productId: string, variantId: string) => (comboCounts[productId]?.[variantId] ?? '').trim();
+  const bad =
+    products.some((p) => box(p.productId) !== '' && !WHOLE.test(box(p.productId))) ||
+    products.some((p) => p.combos.some((c) => badBox(comboBox(p.productId, c.variantId))));
+  // Every combination that was sent is counted — a zero is a count; a blank is not.
+  const ready =
+    products.every((p) => WHOLE.test(box(p.productId)) && p.combos.every((c) => WHOLE.test(comboBox(p.productId, c.variantId)))) && !busy;
+  const labelOf = new Map(products.flatMap((p) => p.combos.map((c) => [c.variantId, c.label] as const)));
 
   async function submit() {
     setBusy(true);
@@ -523,7 +599,12 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
       const out = await apiJson<Answer>(`/api/inventory/transfers/${transfer.id}/receive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lines: products.map((p) => ({ productId: p.productId, quantity: Number(box(p.productId)) })) }),
+        body: JSON.stringify({
+          lines: products.map((p) => {
+            const variants = typedCombinations(p.combos, comboCounts[p.productId] ?? {}, { dropZero: false });
+            return { productId: p.productId, quantity: Number(box(p.productId)), ...(p.combos.length > 0 ? { variants } : {}) };
+          }),
+        }),
         timeoutMs: 60_000,
       });
       setAnswer(out.transfer);
@@ -561,6 +642,13 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
                 <span className="tabular-nums font-bold" dir="ltr">{l.quantityReceived ?? '—'}</span> · الفرق{' '}
                 <span className="tabular-nums font-bold" dir="ltr">{l.difference ?? '—'}</span>
               </span>
+              {(l.variants ?? []).map((v) => (
+                <span key={v.variantId} className="block ps-3 text-note" data-figures={v.variantId}>
+                  {labelOf.get(v.variantId) ?? 'خيار'}: انبعت <span className="tabular-nums font-bold" dir="ltr">{v.quantitySent ?? '—'}</span> ·
+                  انعدّ <span className="tabular-nums font-bold" dir="ltr">{v.quantityReceived ?? '—'}</span> · الفرق{' '}
+                  <span className="tabular-nums font-bold" dir="ltr">{v.difference ?? '—'}</span>
+                </span>
+              ))}
             </Card>
           ))}
           {answer.status === 'RECEIVED_WITH_DIFFERENCE' && (
@@ -596,15 +684,23 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
           عدّ اللي وصل فعلاً من كل منتج واكتبه. الكمية المبعوتة بتبين بعد ما تضغط «استلمت». إذا ما وصل شي من منتج اكتب صفر.
         </p>
         {products.map((p) => (
-          <Input
-            key={p.productId}
-            label={p.name}
-            aria-label={`عدد «${p.name}» اللي وصل`}
-            inputMode="numeric"
-            dir="ltr"
-            value={counts[p.productId] ?? ''}
-            onChange={(e) => setCounts((c) => ({ ...c, [p.productId]: e.target.value }))}
-          />
+          <div key={p.productId} className="space-y-1.5">
+            <Input
+              label={p.name}
+              aria-label={`عدد «${p.name}» اللي وصل`}
+              inputMode="numeric"
+              dir="ltr"
+              value={counts[p.productId] ?? ''}
+              onChange={(e) => setCounts((c) => ({ ...c, [p.productId]: e.target.value }))}
+            />
+            <CombinationBoxes
+              title="وكم وصل من كل خيار؟ اكتب صفر للخيار اللي ما وصل منه شي. المجموع لازم يساوي عدد المنتج."
+              combos={p.combos}
+              values={comboCounts[p.productId] ?? {}}
+              onChange={(variantId, value) => setComboCounts((c) => ({ ...c, [p.productId]: { ...c[p.productId], [variantId]: value } }))}
+              ariaOf={(label) => `عدد «${p.name}» «${label}» اللي وصل`}
+            />
+          </div>
         ))}
         {bad && <p className="text-note text-[var(--sys-destructive)]">العدد لازم يكون رقم صحيح من صفر وطالع.</p>}
         <Refusal text={error} />

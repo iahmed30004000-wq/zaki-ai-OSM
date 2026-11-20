@@ -10,6 +10,7 @@ import { warehousesOfStore } from '@/lib/warehouses';
 import { exitReplayOf, exitShown, requestExit, requestSchema } from '@/lib/stock-exits';
 import { EXIT_REASON_AR, EXIT_REASONS } from '@/lib/stock-exit-reasons';
 import { exitRefusalOf } from '@/lib/stock-exit-door';
+import { exitsVariantsOf, labelLineVariants, variantLabelsOf, withLineVariants } from '@/lib/variant-lines';
 import { reachFor, refuse, TX_OPTIONS } from '@/lib/stock-transfer-door';
 
 /**
@@ -58,6 +59,9 @@ export async function GET() {
     const who = new Map(people.map((p) => [p.id, p.name]));
     const where = new Map(places.map((w) => [w.id, w.name]));
     const seesCost = maySeeCost(user);
+    // 20/11 (W8c): the lines' combinations, each with its label — a line without combinations answers what it always did.
+    const combos = await exitsVariantsOf(db, rows.map((r) => r.id));
+    const labels = await variantLabelsOf(db, companyId, [...combos.values()].flatMap((m) => [...m.values()].flat().map((v) => v.variantId)));
 
     return NextResponse.json({
       warehouses: warehouses.map((w) => ({ id: w.id, name: w.name })),
@@ -65,7 +69,7 @@ export async function GET() {
       exits: rows.map((r) => {
         const names = new Map(r.lines.map((l) => [l.productId, l.product.name]));
         const shown = exitShown(
-          { ...r, lines: r.lines.map(({ productId, quantity, valueAtCost }) => ({ productId, quantity, valueAtCost })) },
+          { ...r, lines: withLineVariants(r.lines.map(({ productId, quantity, valueAtCost }) => ({ productId, quantity, valueAtCost })), combos.get(r.id) ?? new Map()) },
           seesCost
         );
         return {
@@ -73,7 +77,7 @@ export async function GET() {
           warehouseName: where.get(r.warehouseId) ?? null,
           requestedByName: who.get(r.requestedById) ?? null,
           decidedByName: r.decidedById ? who.get(r.decidedById) ?? null : null,
-          lines: shown.lines.map((l) => ({ ...l, productName: names.get(l.productId) ?? null })),
+          lines: shown.lines.map((l) => labelLineVariants({ ...l, productName: names.get(l.productId) ?? null }, labels)),
         };
       }),
     });

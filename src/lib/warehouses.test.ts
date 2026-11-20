@@ -269,6 +269,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 20/11, W8b (combinations in the stock documents): the module that moves a combination's pieces with a transfer, an
     // exit and the opening placement — it reads a combination's place in a warehouse (`warehouseId`) and on a road.
     'src/lib/variant-lines.ts',
+    // 20/11, W8c (the combination grid in the stock screens): READ ONLY — it reads the variants door's own answer
+    // (`places[].warehouseId`, W8a) to print one combination's shelf figure in the form's source warehouse. No column, no write.
+    'src/components/inventory/CombinationBoxes.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

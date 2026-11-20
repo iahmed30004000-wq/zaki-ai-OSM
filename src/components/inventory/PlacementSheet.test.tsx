@@ -349,8 +349,133 @@ describe('a store of three hundred products on a phone', () => {
 });
 
 describe('a product with options', () => {
-  it('is placed as a product, and the sheet says so on it and once on top', async () => {
+  /*
+   * 20/11 (W8c): was «is placed as a product, and the sheet says so on it and once on top» (the sentence twice). W8b let
+   * the placement carry combinations, so the card of such a product now carries its grid instead of the sentence, and the
+   * door's sentence (VARIANTS_IN_PLACEMENT_AR) is said once, on top.
+   */
+  it('the door’s sentence about combinations is said once, on top', async () => {
     await openSheet();
-    await waitFor(() => expect(screen.getAllByText(VARIANTS)).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText(VARIANTS)).toHaveLength(1));
+  });
+});
+
+describe('20/11 (W8c): the combination grid', () => {
+  const COMBOS = {
+    B: [
+      { variantId: 'v1', label: 'أسود · L', onHand: 11 },
+      { variantId: 'v2', label: 'كحلي · M', onHand: 4 },
+    ],
+  };
+  const vbox = (label: string, warehouse: string) => screen.getByLabelText(`عدد «منتج B» «${label}» بـ${warehouse}`) as HTMLInputElement;
+
+  beforeEach(() => {
+    gate = { ...(gate as Record<string, unknown>), combinations: COMBOS };
+  });
+
+  it('draws a grid per warehouse for a product with combinations — none for one without — with the server’s store-level figure', async () => {
+    await openSheet();
+    await screen.findByText(/العدّ مش مطابق للدفتر/);
+    const grids = document.querySelectorAll('[data-combinations]');
+    expect(grids).toHaveLength(2); // B × two warehouses; A has none
+    expect(grids[0].textContent).toContain('مخزن الشمال: كم قطعة من كل خيار؟');
+    expect(grids[1].textContent).toContain('مخزن الجنوب: كم قطعة من كل خيار؟');
+    expect(grids[0].textContent).toContain('بالمتجر كله 11');
+    expect(grids[0].textContent).toContain('بالمتجر كله 4');
+    expect(vbox('أسود · L', 'مخزن الشمال')).toBeTruthy();
+    expect(screen.queryByLabelText(/عدد «منتج A» «/)).toBeNull();
+    // Wraps on a phone: two boxes a row.
+    expect(grids[0].querySelector('.grid')!.className).toMatch(/\bgrid-cols-2\b/);
+  });
+
+  it('the boxes ride on their warehouse’s line as typed — a zero is a count, a blank is not sent', async () => {
+    await openSheet();
+    await waitFor(() => expect(previewCalls()).toHaveLength(1));
+    fireEvent.change(box('B', 'مخزن الشمال'), { target: { value: '6' } });
+    fireEvent.change(vbox('أسود · L', 'مخزن الشمال'), { target: { value: '6' } });
+    fireEvent.change(vbox('كحلي · M', 'مخزن الشمال'), { target: { value: '0' } });
+    fireEvent.change(box('A', 'مخزن الجنوب'), { target: { value: '3' } });
+    await waitFor(() =>
+      expect(lastPreviewBody().counts).toEqual([
+        { warehouseId: 'wA', lines: [{ productId: 'B', quantity: 6, variants: [{ variantId: 'v1', quantity: 6 }, { variantId: 'v2', quantity: 0 }] }] },
+        // NEGATIVE: a product without combinations carries no «variants» — its line is today's.
+        { warehouseId: 'wB', lines: [{ productId: 'A', quantity: 3 }] },
+      ])
+    );
+  });
+
+  it('NEGATIVE: combinations typed under a blank product box ask nothing and say so; the press stays shut', async () => {
+    await openSheet();
+    await waitFor(() => expect(previewCalls()).toHaveLength(1));
+    fireEvent.change(vbox('أسود · L', 'مخزن الجنوب'), { target: { value: '2' } });
+    expect(await screen.findByText(/كتبت عدد خياراته بمخزن وما كتبت عدده هو/)).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 450));
+    expect(previewCalls()).toHaveLength(1);
+    expect(press().disabled).toBe(true);
+    fireEvent.change(box('B', 'مخزن الجنوب'), { target: { value: '2' } });
+    await waitFor(() => expect(previewCalls()).toHaveLength(2));
+    expect(lastPreviewBody().counts[1].lines).toEqual([{ productId: 'B', quantity: 2, variants: [{ variantId: 'v1', quantity: 2 }] }]);
+  });
+
+  it('NEGATIVE: a combination box that is not a whole number is said under it — not under the product’s — and nothing is asked', async () => {
+    await openSheet();
+    await waitFor(() => expect(previewCalls()).toHaveLength(1));
+    fireEvent.change(box('B', 'مخزن الشمال'), { target: { value: '2' } });
+    fireEvent.change(vbox('كحلي · M', 'مخزن الشمال'), { target: { value: '1.5' } });
+    expect(await screen.findByText(/في خانة مش رقم صحيح/)).toBeTruthy();
+    expect(screen.getAllByText('رقم صحيح من صفر وطالع')).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 450));
+    expect(previewCalls()).toHaveLength(1);
+    expect(press().disabled).toBe(true);
+  });
+
+  it('the sum and the store-level ceiling are the door’s: its refusal is printed as it came, and the press stays shut', async () => {
+    const sentence = 'مجموع الخيارات (5) مش قد كمية المنتج بسطره (6). خلّيهم متساويين.';
+    onPreview = () => {
+      throw new Error(sentence);
+    };
+    await openSheet();
+    fireEvent.change(box('B', 'مخزن الشمال'), { target: { value: '6' } });
+    fireEvent.change(vbox('أسود · L', 'مخزن الشمال'), { target: { value: '5' } });
+    expect(await screen.findByText(sentence)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('مين عدّ *'), { target: { value: 'أمين المخزن' } });
+    expect(press().disabled).toBe(true);
+  });
+
+  it('the press posts the very counts — combinations included — that the exact check was about', async () => {
+    onPreview = () => ({ exact: true, rows: [prow('A', { difference: 0 }), prow('B', { hasVariants: true, difference: 0 })], differing: [], totals: { wA: 6, wB: 0 } });
+    const onPlaced = await openSheet();
+    fireEvent.change(box('B', 'مخزن الشمال'), { target: { value: '6' } });
+    fireEvent.change(vbox('أسود · L', 'مخزن الشمال'), { target: { value: '4' } });
+    fireEvent.change(vbox('كحلي · M', 'مخزن الشمال'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('مين عدّ *'), { target: { value: 'أمين المخزن' } });
+    await waitFor(() => expect(press().disabled).toBe(false));
+    fireEvent.click(press());
+    await waitFor(() => expect(onPlaced).toHaveBeenCalled());
+    const placed = api.mock.calls.find(([u, init]) => u === '/api/inventory/placement' && (init as RequestInit | undefined)?.method === 'POST')!;
+    const body = JSON.parse((placed[1] as RequestInit).body as string);
+    expect(body.counts[0].lines).toEqual([{ productId: 'B', quantity: 6, variants: [{ variantId: 'v1', quantity: 4 }, { variantId: 'v2', quantity: 2 }] }]);
+    expect(body.counts).toEqual(lastPreviewBody().counts);
+  });
+
+  it('NEGATIVE: a store whose door sends no combinations draws no grid (today’s sheet)', async () => {
+    gate = { placed: false, warehouses: W, rows: [prow('A'), prow('B', { hasVariants: true })], variantsNote: VARIANTS };
+    await openSheet();
+    await screen.findByText(/العدّ مش مطابق للدفتر/);
+    expect(document.querySelectorAll('[data-combinations]')).toHaveLength(0);
+  });
+
+  it('three hundred products with combinations: still a page of thirty cards, and nothing wider than a phone', async () => {
+    const many = Array.from({ length: 300 }, (_, i) => prow(`P${String(i).padStart(3, '0')}`, { hasVariants: true }));
+    const combos = Object.fromEntries(many.map((r) => [r.productId, Array.from({ length: 6 }, (_, k) => ({ variantId: `${r.productId}-v${k}`, label: `خيار ${k}`, onHand: k }))]));
+    gate = { placed: false, warehouses: W, rows: many, variantsNote: VARIANTS, combinations: combos };
+    onPreview = () => ({ exact: false, rows: many, differing: many, totals: { wA: 0, wB: 0 }, messageAr: 'العدّ مش مطابق.' });
+    await openSheet();
+    await screen.findByText('العدّ مش مطابق.');
+    expect(screen.getAllByText(/^منتج P\d{3}$/)).toHaveLength(30);
+    expect(document.querySelectorAll('[data-combinations]')).toHaveLength(60);
+    const tokens = [...document.body.querySelectorAll('[class]')].flatMap((e) => (e.getAttribute('class') ?? '').split(/\s+/));
+    expect(tokens.filter((t) => /^(min-w|w)-\[(\d+)px\]$/.test(t))).toEqual([]);
+    expect(tokens).not.toContain('whitespace-nowrap');
   });
 });
