@@ -9,6 +9,8 @@ import { warehousesOfStore } from '@/lib/warehouses';
 import { replayOf, sendSchema, sendTransfer, shownTo } from '@/lib/stock-transfers';
 import { STOCK_TRANSFER_KIND_LABEL, type StockTransferKind } from '@/lib/stock-transfer-kind';
 import { arabicIssue, reachFor, refusalOf, refuse, TX_OPTIONS } from '@/lib/stock-transfer-door';
+import { afterResponse } from '@/lib/notify';
+import { announceTransferSent } from '@/lib/stock-transfer-alerts';
 
 /**
  * GET  /api/inventory/transfers (inventory.view)     — the store's transfers, newest first, and its warehouses
@@ -120,6 +122,10 @@ export async function POST(req: Request) {
             by: user.name,
           },
         });
+        // 20/11 (W3c): the destination's receivers hear it is coming — the source and the NUMBER of products, never a
+        // unit (the receipt is blind). After the answer; a failed notice never fails the send. A replay tells nobody again.
+        const sent = out.transfer;
+        afterResponse(() => announceTransferSent(companyId, sent));
       }
       return NextResponse.json({ transfer: shownTo(out.transfer, user.id), replay: out.replay }, { status: out.replay ? 200 : 201 });
     } catch (e) {

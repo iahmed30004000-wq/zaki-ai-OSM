@@ -65,6 +65,7 @@ export const MISSION_COPY: Readonly<Record<WorkKey, MissionCopy>> = {
   ISSUES_OPEN: { noun: 'إشكال بستنى تصحيح', cta: 'صحّح الإشكالات' },
   POSTPONED_DUE: { noun: 'طلب مؤجَّل حان موعده', cta: 'اتصل بهم' },
   STATEMENTS_OPEN: { noun: 'كشف مطابقته مفتوحة', cta: 'راجع الكشوف' },
+  TRANSFERS_STUCK: { noun: 'نقل بضاعة عالق', cta: 'افتح النقل' },
   /**
    * No door by design (`workKind('MY_UNCONFIRMED').href === null`), so this
    * copy is never read on a mission card. It exists so the map is total and

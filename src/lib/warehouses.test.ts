@@ -242,6 +242,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/orders/[id]/route.ts',
     'src/app/api/ops/tracking/route.ts',
     'src/app/api/ops/returns/route.ts',
+    // 20/11, W3c («بالطريق» where it matters): the notice of a sent transfer reads the two ends' names and the
+    // destination's keeper rows (`userWarehouseAccess`) to tell the keepers who may receive — no stock column, no unit.
+    'src/lib/stock-transfer-alerts.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
