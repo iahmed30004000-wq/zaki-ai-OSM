@@ -567,7 +567,6 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
     },
     select: { id: true },
   });
-  await writeTransferLineVariants(tx, created.id, body.lines);
 
   for (const line of body.lines) {
     let left = line.quantity;
@@ -596,7 +595,12 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
       createdById: input.sentById,
     });
   }
-  // The combinations' pieces take the same road — after the batch rows, as every stock door orders its locks.
+  /*
+   * The combinations: their document rows, then their pieces on the road — AFTER the batch rows. Inserting a combination
+   * row takes a key-share lock on its `product_variants` row (the foreign key) until commit; a delivery writes batch rows
+   * and then locks the same combination rows. Written before the batches, the two could wait for each other in a circle.
+   */
+  await writeTransferLineVariants(tx, created.id, body.lines);
   await sendVariants(
     tx,
     { companyId, storeId, userId: input.sentById, referenceId: created.id },

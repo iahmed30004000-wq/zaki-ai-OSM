@@ -693,3 +693,51 @@ describe('the doors’ bodies carry the combinations, in Arabic', () => {
     ]);
   });
 });
+
+/* ───────────── review round 1 (20/11): the order of a send's writes, two holes the breaks found ───────────── */
+
+describe('review: a send writes its combination rows only after every batch row', () => {
+  it('the combination document rows and the pieces come after the last batch write (a delivery locks batch rows, then combination rows)', async () => {
+    const m = world();
+    await send(m, [L1(4, 3), { productId: 'p2', quantity: 2 }]);
+    const lastBatch = Math.max(
+      m.touched.lastIndexOf('productionBatch.update'),
+      m.touched.lastIndexOf('productionBatch.create'),
+      m.touched.lastIndexOf('productionBatch.updateMany')
+    );
+    const firstLineVariant = m.touched.indexOf('stockTransferLineVariant.create');
+    const firstPiece = m.touched.findIndex((t) => t.startsWith('productVariantStock.') || t.startsWith('productVariant.') || t.startsWith('variantStockMovement.'));
+    expect(lastBatch).toBeGreaterThan(-1);
+    expect(firstLineVariant).toBeGreaterThan(lastBatch);
+    expect(firstPiece).toBeGreaterThan(lastBatch);
+    // And the combinations' row lock is taken after the last batch write too: no lock statement and no combination
+    // write happens in between the batch writes.
+    expect(m.touched.slice(0, lastBatch + 1).filter((t) => /Variant/.test(t))).toEqual([]);
+  });
+});
+
+describe('review: holds are per warehouse, and an exit replay compares the combinations', () => {
+  it('a pending exit from ANOTHER warehouse holds none of this warehouse’s pieces', async () => {
+    const m = world();
+    // wB holds v1 ×2; an exit from wB holds both.
+    await askExit(m, [L1(2, 0)], { warehouseId: 'wB' });
+    // wA still has all 9 of v1 free: a send of 9 from wA goes.
+    const { transfer } = await send(m, [L1(9, 0)]);
+    expect(at(m, 'v1', null, transfer.id)).toBe(9);
+    // …while from wB nothing of v1 is free now.
+    await refused(send(m, [L1(1, 0)], { fromWarehouseId: 'wB', toWarehouseId: 'wA' }), StockTransferRefused, 'VARIANTS_NOT_ENOUGH_FREE');
+    expect(broken(m)).toEqual([]);
+  });
+
+  it('the same exit id with other combinations is EXIT_EXISTS; with the same ones (any order) it is the replay', async () => {
+    const m = world();
+    const id = '00000000-0000-4000-a000-000000000077';
+    await askExit(m, [L1(2, 1)], { id });
+    const was = frozen(m);
+    const again = await askExit(m, [{ ...L1(2, 1), variants: [{ variantId: 'v2', quantity: 1 }, { variantId: 'v1', quantity: 2 }] }], { id });
+    expect(again.replay).toBe(true);
+    expect(frozen(m)).toBe(was);
+    await refused(askExit(m, [L1(1, 2)], { id }), StockExitRefused, 'EXIT_EXISTS');
+    expect(frozen(m)).toBe(was);
+  });
+});
