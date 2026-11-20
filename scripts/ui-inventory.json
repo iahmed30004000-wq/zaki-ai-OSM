@@ -1136,12 +1136,12 @@
     "tabs": 0
   },
   "src/components/screens/AiSettingsScreen.tsx": {
-    "buttons": 7,
+    "buttons": 8,
     "inputs": 6,
     "columns": 0,
     "cards": 5,
     "modals": 0,
-    "icons": 11,
+    "icons": 13,
     "links": 0,
     "tabs": 0
   },

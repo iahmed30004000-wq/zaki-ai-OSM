@@ -145,7 +145,8 @@ const tally = (root: HTMLElement) => ({
 describe('«الذكاء الاصطناعي والنصوص» keeps every control (measured on main before the kit)', () => {
   it('the provider tab, every key of the screen, the installation accounts open', async () => {
     const { container } = await draw();
-    expect(tally(container)).toEqual({ buttons: 22, ticks: 0, fields: 9, secrets: 3, folds: 0, h1: 1 });
+    // 20/11 (A1): buttons 22 → 23 — «اختبار خادمك» under the local server's address, one new control, nothing removed.
+    expect(tally(container)).toEqual({ buttons: 23, ticks: 0, fields: 9, secrets: 3, folds: 0, h1: 1 });
     // Nothing of a saved key is drawn back: every key box is empty after the load.
     const boxes = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="password"]'));
     expect(boxes.every((b) => b.value === '')).toBe(true);
@@ -157,14 +158,16 @@ describe('«الذكاء الاصطناعي والنصوص» keeps every control
     fireEvent.click(screen.getByRole('button', { name: /الملخّص اليومي/ }));
     fireEvent.click(screen.getByRole('button', { name: /^التأكيد/ }));
     await screen.findByText('النسخ السابقة (1)');
-    expect(tally(container)).toEqual({ buttons: 31, ticks: 2, fields: 20, secrets: 3, folds: 1, h1: 1 });
+    // 20/11 (A1): buttons 31 → 32 — «اختبار خادمك» (the provider card stays drawn, hidden).
+    expect(tally(container)).toEqual({ buttons: 32, ticks: 2, fields: 20, secrets: 3, folds: 1, h1: 1 });
   });
 
   it('the assistants tab', async () => {
     const { container } = await draw();
     fireEvent.click(screen.getByRole(screen.queryAllByRole('radio').length ? 'radio' : 'button', { name: 'المساعدون' }));
     await screen.findByText('ما يقرؤه مركز الذكاء');
-    expect(tally(container)).toEqual({ buttons: 22, ticks: 5, fields: 29, secrets: 3, folds: 0, h1: 1 });
+    // 20/11 (A1): buttons 22 → 23 — «اختبار خادمك» (the provider card stays drawn, hidden).
+    expect(tally(container)).toEqual({ buttons: 23, ticks: 5, fields: 29, secrets: 3, folds: 0, h1: 1 });
   });
 
   it('a person who may only look: no save, the installation accounts refused and not drawn', async () => {
