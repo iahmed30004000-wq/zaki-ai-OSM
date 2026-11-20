@@ -15,6 +15,23 @@ import {
   type ExitReason,
   type StockExitStatus,
 } from './stock-exit-reasons';
+import {
+  VARIANT_LINE_AR,
+  VARIANT_LINE_STATUS,
+  assertFreeVariants,
+  assertVariantsOnShelf,
+  checkLineShapes,
+  checkMembership,
+  combosOf,
+  exitVariants,
+  exitVariantsOf,
+  sameVariants,
+  variantLinesField,
+  withLineVariants,
+  writeExitLineVariants,
+  type Fail,
+  type VariantLineRefusalCode,
+} from './variant-lines';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -65,9 +82,11 @@ export type StockExitRefusalCode =
   | 'NOT_FOUND'
   | 'REQUESTER_CANNOT_DECIDE'
   | 'ALREADY_APPROVED'
-  | 'ALREADY_REJECTED';
+  | 'ALREADY_REJECTED'
+  | VariantLineRefusalCode;
 
 const STATUS_OF: Record<StockExitRefusalCode, number> = {
+  ...VARIANT_LINE_STATUS,
   INVALID: 400,
   PRODUCT_TWICE: 400,
   EXIT_EXISTS: 409,
@@ -87,6 +106,7 @@ const STATUS_OF: Record<StockExitRefusalCode, number> = {
 };
 
 const AR: Record<StockExitRefusalCode, string> = {
+  ...VARIANT_LINE_AR,
   INVALID: 'البيانات ناقصة.',
   PRODUCT_TWICE: 'نفس المنتج مكتوب بسطرين. اجمعهم بسطر واحد.',
   EXIT_EXISTS: 'طلب الإخراج هاد انسجّل من قبل بشكل تاني. حدّث الصفحة وراجع قبل ما تعيد.',
@@ -123,6 +143,11 @@ export function exitRefusalBody(e: StockExitRefused) {
   return { error: e.errorAr, errorAr: e.errorAr, code: e.code, ...e.extra };
 }
 
+/** How `variant-lines.ts` refuses inside an exit: as the exit refuses. */
+const fail: Fail = (code, errorAr, extra) => {
+  throw new StockExitRefused(code, errorAr ?? AR[code], extra ?? {});
+};
+
 /* ───────────────────────────── the bodies (every message Arabic) ───────────────────────────── */
 
 const qty = z
@@ -141,7 +166,12 @@ export const requestSchema = z
       lines: z
         .array(
           z.object(
-            { productId: z.string({ message: 'اختار المنتج' }).min(1, 'اختار المنتج'), quantity: qty },
+            {
+              productId: z.string({ message: 'اختار المنتج' }).min(1, 'اختار المنتج'),
+              quantity: qty,
+              /** 20/11 (W8b): a product with combinations names them; their sum is `quantity`. */
+              variants: variantLinesField.optional(),
+            },
             { message: 'سطر المنتج مش مفهوم' }
           ),
           { message: 'زيد منتج واحد على الأقل' }
@@ -183,10 +213,16 @@ const EXIT_SELECT = {
   lines: { select: { productId: true, quantity: true, valueAtCost: true }, orderBy: { productId: 'asc' as const } },
 } as const;
 
+/** 20/11 (W8b): an exit with its lines' combinations — added only to a line that has them. */
+async function withVariants<T extends { id: string; lines: { productId: string; quantity: number; valueAtCost: number | null }[] }>(tx: Tx, e: T) {
+  const lines = withLineVariants(e.lines, await exitVariantsOf(tx, e.id));
+  return { ...(e as Omit<T, 'lines'>), lines };
+}
+
 async function readExit(tx: Tx, companyId: string, storeId: string, id: string) {
   const e = await tx.stockExit.findFirst({ where: { id, companyId, storeId }, select: EXIT_SELECT });
   if (!e) throw new StockExitRefused('NOT_FOUND');
-  return e;
+  return withVariants(tx, e);
 }
 
 export type StockExitRow = Awaited<ReturnType<typeof readExit>>;
@@ -198,10 +234,12 @@ async function lockExit(tx: Tx, id: string): Promise<void> {
 
 const cleanNote = (n: string | null | undefined) => n?.trim() || null;
 
-const sameLines = (a: readonly { productId: string; quantity: number }[], b: readonly { productId: string; quantity: number }[]) => {
+type VQ = { variantId: string; quantity: number };
+const sameLines = (a: readonly { productId: string; quantity: number; variants?: VQ[] }[], b: readonly { productId: string; quantity: number; variants?: VQ[] }[]) => {
   if (a.length !== b.length) return false;
-  const want = new Map(a.map((l) => [l.productId, l.quantity]));
-  return b.every((l) => want.get(l.productId) === l.quantity);
+  const want = new Map(a.map((l) => [l.productId, l]));
+  // 20/11 (W8b): the same combinations too (none on both sides for a product without them).
+  return b.every((l) => want.get(l.productId)?.quantity === l.quantity && sameVariants(want.get(l.productId)?.variants, l.variants));
 };
 
 /* ───────────────────────────── request ───────────────────────────── */
@@ -223,8 +261,9 @@ export interface RequestInput {
 export async function exitReplayOf(tx: Tx, input: Omit<RequestInput, 'mayUse'>) {
   const id = input.body.id;
   if (!id) return null;
-  const row = await tx.stockExit.findUnique({ where: { id }, select: EXIT_SELECT });
-  if (!row) return null;
+  const found = await tx.stockExit.findUnique({ where: { id }, select: EXIT_SELECT });
+  if (!found) return null;
+  const row = await withVariants(tx, found);
   const same =
     row.companyId === input.companyId &&
     row.storeId === input.storeId &&
@@ -245,6 +284,7 @@ export async function requestExit(tx: Tx, input: RequestInput): Promise<{ exit: 
     if (seen.has(l.productId)) throw new StockExitRefused('PRODUCT_TWICE');
     seen.add(l.productId);
   }
+  checkLineShapes(body.lines, fail);
 
   const replay = await exitReplayOf(tx, input);
   if (replay) return { exit: replay, replay: true };
@@ -267,6 +307,9 @@ export async function requestExit(tx: Tx, input: RequestInput): Promise<{ exit: 
   const products = await tx.product.findMany({ where: { id: { in: productIds }, companyId, storeId }, select: { id: true, name: true } });
   if (products.length !== productIds.length) throw new StockExitRefused('PRODUCT_NOT_FOUND');
   const nameOf = new Map(products.map((p) => [p.id, p.name]));
+  // 20/11 (W8b): a product with active combinations names them; a product without any names none.
+  const combos = await combosOf(tx, companyId, productIds);
+  checkMembership(body.lines, combos, nameOf, fail, { required: true });
 
   const free = await freeStockOf(tx, { companyId, storeId, warehouseId: wh.id, productIds });
   const short = body.lines
@@ -279,6 +322,7 @@ export async function requestExit(tx: Tx, input: RequestInput): Promise<{ exit: 
       { short }
     );
   }
+  await assertFreeVariants(tx, { companyId, storeId, warehouseId: wh.id, warehouseName: wh.name, lines: body.lines, combos, nameOf }, fail);
 
   const created = await tx.stockExit.create({
     data: {
@@ -294,6 +338,8 @@ export async function requestExit(tx: Tx, input: RequestInput): Promise<{ exit: 
     },
     select: { id: true },
   });
+  // The combinations' pieces are held from now on (`variant-lines.freeVariantsOf` subtracts a pending exit's rows).
+  await writeExitLineVariants(tx, created.id, body.lines);
   return { exit: await readExit(tx, companyId, storeId, created.id), replay: false };
 }
 
@@ -333,6 +379,9 @@ export async function approveExit(tx: Tx, input: DecideInput): Promise<{ exit: S
   const minorUnit = store?.country?.minorUnit ?? 2;
   const reason = e.reason as ExitReason;
   const words = EXIT_REASON_AR[reason] ?? e.reason;
+  // 20/11 (W8b): the combinations' pieces must be on THAT warehouse's shelf too — refused whole, nothing written.
+  const byProduct = new Map(e.lines.filter((l) => (l.variants?.length ?? 0) > 0).map((l) => [l.productId, l.variants!]));
+  await assertVariantsOnShelf(tx, { warehouseId: e.warehouseId, byProduct }, fail);
 
   for (const l of e.lines) {
     /*
@@ -385,6 +434,12 @@ export async function approveExit(tx: Tx, input: DecideInput): Promise<{ exit: S
       },
     });
   }
+  await exitVariants(
+    tx,
+    { companyId, storeId, userId: input.decidedById, referenceId: exitId },
+    { warehouseId: e.warehouseId, byProduct, reason: e.note ? `إخراج (${words}): ${e.note}` : `إخراج (${words})` },
+    fail
+  );
 
   await tx.stockExit.update({
     where: { id: exitId },

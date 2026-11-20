@@ -2673,6 +2673,8 @@ model StockTransfer {
   toWarehouse   Warehouse           @relation("StockTransferTo", fields: [toWarehouseId], references: [id], onDelete: NoAction)
   lines         StockTransferLine[]
   batches       ProductionBatch[]
+  /// 20/11 (W8b): the combinations' pieces on this transfer's road.
+  variantRoad   ProductVariantStock[]
 
   @@index([companyId, storeId, createdAt(sort: Desc)])
   @@index([fromWarehouseId, status])
@@ -2692,10 +2694,37 @@ model StockTransferLine {
 
   transfer StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
   product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// 20/11 (W8b): the line's combinations, for a product that has them. `quantitySent` = Σ of theirs (and, once received,
+  /// `quantityReceived` = Σ of theirs) — checked by the door (`variant-lines.ts`). A product without combinations: none.
+  variants StockTransferLineVariant[]
 
   @@unique([transferId, productId])
   @@index([productId])
   @@map("stock_transfer_lines")
+}
+
+/// ONE COMBINATION OF A TRANSFER LINE (the warehouse plan, W8b) — «أسود · L ×3» of the product line above it.
+/// The product line stays ONE row per product (its unique pair is unchanged, so every reader of product lines reads what
+/// it always read); its combinations are these rows, and their quantities sum to the line's. `transferId` and `productId`
+/// are copies of the line's, for the reads of a whole transfer.
+/// Held by a CHECK in the migration, which this file cannot express:
+///   stock_transfer_line_variants_quantity_check (sent > 0; 0 ≤ received ≤ sent).
+model StockTransferLineVariant {
+  id               String @id @default(uuid())
+  lineId           String
+  transferId       String
+  productId        String
+  variantId        String
+  quantitySent     Int
+  quantityReceived Int?
+
+  line    StockTransferLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([transferId])
+  @@index([variantId])
+  @@map("stock_transfer_line_variants")
 }
 
 /// A STOCK EXIT — goods that leave a warehouse for good, not by a sale (the warehouse plan, W6a; `src/lib/stock-exits.ts`).
@@ -2751,10 +2780,32 @@ model StockExitLine {
 
   exit    StockExit @relation(fields: [exitId], references: [id], onDelete: Cascade)
   product Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// 20/11 (W8b): the line's combinations, for a product that has them; `quantity` = Σ of theirs (`variant-lines.ts`).
+  variants StockExitLineVariant[]
 
   @@unique([exitId, productId])
   @@index([productId])
   @@map("stock_exit_lines")
+}
+
+/// ONE COMBINATION OF AN EXIT LINE (the warehouse plan, W8b). While the exit is PENDING these pieces are held: they are
+/// out of the combination's free pieces in that warehouse (`variant-lines.freeVariantsOf`). `exitId` and `productId` are
+/// copies of the line's. Held by a CHECK in the migration: stock_exit_line_variants_quantity_check (quantity > 0).
+model StockExitLineVariant {
+  id        String @id @default(uuid())
+  lineId    String
+  exitId    String
+  productId String
+  variantId String
+  quantity  Int
+
+  line    StockExitLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([exitId])
+  @@index([variantId])
+  @@map("stock_exit_line_variants")
 }
 
 // ─── ORDER LINES (Stage 3) ───
@@ -2822,6 +2873,9 @@ model ProductVariant {
   /// 19/11 (W8a): a PLACED store's count of this combination, per warehouse (`variant-stock.ts`). `onHand` is their sum.
   places         ProductVariantStock[]
   stockMovements VariantStockMovement[]
+  /// 20/11 (W8b): the stock documents that name this combination.
+  transferLines  StockTransferLineVariant[]
+  exitLines      StockExitLineVariant[]
 
   @@index([companyId, productId])
   @@map("product_variants")
@@ -2839,21 +2893,29 @@ model ProductVariant {
 /// Constraints the schema cannot say, in the migration `20261119210000_variant_stock`:
 ///   `product_variant_stock_one_unplaced` — ONE «بلا مكان» row per combination (a partial unique index on
 ///   `variantId` WHERE `warehouseId` IS NULL; the unique pair below lets two NULL rows through, as Postgres does).
+///   20/11 (W8b, `20261120140000_variant_lines`): narrowed to WHERE `warehouseId` IS NULL AND `inTransitTransferId` IS
+///   NULL — a road row has no warehouse either, and is not «بلا مكان».
+///   `product_variant_stock_one_road` — ONE road row per (combination, transfer): a partial unique index on
+///   (`variantId`, `inTransitTransferId`) WHERE `inTransitTransferId` IS NOT NULL.
 model ProductVariantStock {
   id          String   @id @default(uuid())
   companyId   String
   variantId   String
-  /// NULL = «بلا مكان» (see above).
+  /// NULL = «بلا مكان» (see above) — or, with `inTransitTransferId`, the road of that transfer.
   warehouseId String?
   onHand      Int      @default(0)
+  /// 20/11 (W8b): set = these pieces are on this transfer's road (no warehouse), like a batch twin on the road.
+  inTransitTransferId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  inTransitTransfer StockTransfer? @relation(fields: [inTransitTransferId], references: [id], onDelete: NoAction)
 
   @@unique([variantId, warehouseId])
   @@index([companyId, warehouseId])
+  @@index([inTransitTransferId])
   @@map("product_variant_stock")
 }
 
@@ -2881,6 +2943,10 @@ model VariantStockMovement {
   /// The order of a SALE or a RETURN.
   orderId     String?
   createdById String?
+  /// 20/11 (W8b): set = the place this line moved is that transfer's road (with `warehouseId` NULL).
+  inTransitTransferId String?
+  /// 20/11 (W8b): the document of the change — a transfer, an exit or a placement (NULL for a count, a sale, a return).
+  referenceId String?
   createdAt   DateTime @default(now())
 
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)

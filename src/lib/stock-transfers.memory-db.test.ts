@@ -28,6 +28,15 @@ const TABLES = [
   // 20/11 (W6a): the exits — their pending lines are part of the free stock, and the exit tests stand on this file too.
   'stockExit',
   'stockExitLine',
+  // 20/11 (W8b): the combinations — a document asks whether its products have any (none: nothing else is read), and the
+  // combination tests stand on this file too: the counts per place, their ledger, the documents' combination rows, and
+  // the pieces of open orders.
+  'productVariant',
+  'productVariantStock',
+  'variantStockMovement',
+  'stockTransferLineVariant',
+  'stockExitLineVariant',
+  'orderItemVariant',
   'order',
   'orderItem',
   'orderAddOn',
@@ -138,6 +147,18 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       return r ? pick(name, r, select) : null;
     },
     count: async ({ where }: Row = {}) => data[name].filter((r) => matches(name, r, where)).length,
+    // 20/11 (W8b): the placement's «units with the courier» read (one grouped sum per product) — so the placement can stand
+    // on this database in the differential against main.
+    groupBy: async ({ by, where, _sum }: Row) => {
+      const groups = new Map<string, Row>();
+      for (const r of data[name].filter((x) => matches(name, x, where))) {
+        const key = (by as string[]).map((b) => r[b]).join('|');
+        const g = groups.get(key) ?? { ...Object.fromEntries((by as string[]).map((b) => [b, r[b]])), _sum: Object.fromEntries(Object.keys(_sum ?? {}).map((k) => [k, 0])) };
+        for (const k of Object.keys(_sum ?? {})) g._sum[k] += r[k] ?? 0;
+        groups.set(key, g);
+      }
+      return [...groups.values()];
+    },
     aggregate: async ({ where, _sum }: Row) => {
       const rows = data[name].filter((r) => matches(name, r, where));
       const sum: Row = {};
@@ -197,6 +218,8 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       const w = data.warehouse.find((x) => x.id === values[0]);
       return w ? [{ id: w.id, companyId: w.companyId, countryId: w.countryId, isActive: w.isActive, name: w.name }] : [];
     }
+    // 20/11 (W8b): the combinations' row lock (`variant-stock.lockVariants`) — recorded above, no rows to answer.
+    if (/FROM "product_variants"/.test(sql)) return [];
     throw new Error(`memoryDb: unexpected raw query ${sql}`);
   };
   /** The transaction client: the same tables, no `$transaction`, and nothing outside the list. */

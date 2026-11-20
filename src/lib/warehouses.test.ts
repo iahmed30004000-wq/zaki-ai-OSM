@@ -266,6 +266,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 20/11, W3c («بالطريق» where it matters): the notice of a sent transfer reads the two ends' names and the
     // destination's keeper rows (`userWarehouseAccess`) to tell the keepers who may receive — no stock column, no unit.
     'src/lib/stock-transfer-alerts.ts',
+    // 20/11, W8b (combinations in the stock documents): the module that moves a combination's pieces with a transfer, an
+    // exit and the opening placement — it reads a combination's place in a warehouse (`warehouseId`) and on a road.
+    'src/lib/variant-lines.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
