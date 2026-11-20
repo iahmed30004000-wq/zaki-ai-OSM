@@ -114,6 +114,10 @@ units still live only in batches. Extend `src/lib/warehouses.ts`; never add a se
 (20/11, W3a) A transfer between two warehouses of ONE store: `StockTransfer` + `StockTransferLine` and
 `src/lib/stock-transfers.ts` (send = split into twins on the road, receive by count, a shortfall approved by a third person,
 cancel before receipt; kind read by `stock-transfer-kind.ts`). Between stores / countries is NOT built (refused by the door).
+(20/11, W6a) Goods out of a warehouse for good (not a sale): `StockExit` + `StockExitLine` and `src/lib/stock-exits.ts`
+(request with one reason of `stock-exit-reasons.ts` → held in the free stock → a DIFFERENT person approves through
+`receiving.drawDownStock` with `warehouseId`, or rejects). The free stock of a warehouse is ONE function: `stock-transfers.freeStockOf`.
+Nothing posted to a profit, a wallet or an expense.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

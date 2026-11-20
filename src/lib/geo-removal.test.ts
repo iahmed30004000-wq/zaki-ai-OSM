@@ -243,7 +243,9 @@ describe('asking about many stores at once', () => {
     // store whose stock was divided between warehouses has a history.
     // 20/11 (W3a): 34 → 35 — the stock transfers between a store's warehouses (`stock_transfers`) are a stopper too: a
     // document of goods that moved, never deleted.
-    expect(one.asked.length).toBe(35);
+    // 20/11 (W6a): 35 → 36 — the exits of goods from a store's warehouses (`stock_exits`) are a stopper too: a document of
+    // goods that left, never deleted.
+    expect(one.asked.length).toBe(36);
   });
 
   it('and no stores asks nothing at all', async () => {

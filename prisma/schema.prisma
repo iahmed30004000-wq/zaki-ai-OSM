@@ -57,6 +57,7 @@ model Company {
   countries             Country[]
   warehouses            Warehouse[]
   stockTransfers        StockTransfer[]
+  stockExits            StockExit[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -467,6 +468,7 @@ model Product {
   batches            ProductionBatch[]
   inventoryMovements InventoryMovement[]
   stockTransferLines StockTransferLine[]
+  stockExitLines     StockExitLine[]
   offers             Offer[]
   orders             Order[]
   orderItems         OrderItem[]
@@ -2430,6 +2432,8 @@ model Store {
   warehousePlacement WarehousePlacement?
   /// Stock transfers between this store's warehouses (`stock_transfers`).
   stockTransfers    StockTransfer[]
+  /// Goods that left this store's warehouses for good (`stock_exits`).
+  stockExits        StockExit[]
   pages             StorePage[]
   menus             StoreMenu[]
   redirects         StoreRedirect[]
@@ -2590,6 +2594,7 @@ model Warehouse {
   sourcedOrders   Order[]
   transfersOut    StockTransfer[]       @relation("StockTransferFrom")
   transfersIn     StockTransfer[]       @relation("StockTransferTo")
+  stockExits      StockExit[]
 
   // One name per country — two countries may each have «المخزن الرئيسي».
   @@unique([companyId, countryId, name])
@@ -2689,6 +2694,65 @@ model StockTransferLine {
   @@unique([transferId, productId])
   @@index([productId])
   @@map("stock_transfer_lines")
+}
+
+/// A STOCK EXIT — goods that leave a warehouse for good, not by a sale (the warehouse plan, W6a; `src/lib/stock-exits.ts`).
+///
+/// A request names ONE warehouse of the store, its lines and ONE reason (`stock-exit-reasons.ts`): تالف · منتهي ·
+/// عيّنات وهدايا · مرتجع للمورّد · بيع برّا النظام · سحب شريك · أخرى (with a sentence). While PENDING its units are held
+/// (subtracted from the warehouse's free stock — `stock-transfers.freeStockOf` — and the warehouse may not stop). A
+/// DIFFERENT person approves (the units are drawn oldest first in that warehouse — `receiving.drawDownStock` — and each
+/// line keeps the value at cost of what left) or rejects (the hold is released, nothing else moves). Nothing is ever
+/// deleted, and no money is written: no wallet, no expense, no profit (the owner's default for decision 6: a report only).
+///
+/// status: PENDING · APPROVED · REJECTED.
+/// Held by CHECKs in the migration, which this file cannot express:
+///   stock_exits_reason_check (the seven reasons), stock_exits_status_check,
+///   stock_exits_other_needs_note_check («أخرى» carries a sentence),
+///   stock_exit_lines_quantity_check (quantity > 0; value at cost null or ≥ 0).
+model StockExit {
+  /// May be made by the client: the replay guard (same id + same request = the same exit).
+  id            String    @id @default(uuid())
+  companyId     String
+  /// Whose goods.
+  storeId       String
+  warehouseId   String
+  reason        String
+  note          String?
+  status        String    @default("PENDING")
+  requestedById String
+  requestedAt   DateTime  @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  rejectReason  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  lines     StockExitLine[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([warehouseId, status])
+  @@map("stock_exits")
+}
+
+/// One product of an exit. One line per product (unique). `valueAtCost` is what the units that left cost, at their
+/// batches' cost (oldest first, rounded once to the store currency's minor unit) — null until the exit is approved.
+model StockExitLine {
+  id          String @id @default(uuid())
+  exitId      String
+  productId   String
+  quantity    Int
+  valueAtCost Float?
+
+  exit    StockExit @relation(fields: [exitId], references: [id], onDelete: Cascade)
+  product Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([exitId, productId])
+  @@index([productId])
+  @@map("stock_exit_lines")
 }
 
 // ─── ORDER LINES (Stage 3) ───

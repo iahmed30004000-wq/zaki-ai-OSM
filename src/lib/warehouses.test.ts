@@ -125,11 +125,20 @@ describe('the warehouses a store may place its goods in', () => {
 
 describe('why a warehouse may not stop', () => {
   // 20/11 (W3a): the client answers the open-transfer question too (old: only `productionBatch.count`); 0 open = today.
-  const client = (n: number, open = 0) => {
+  // 20/11 (W6a): …and the pending-exit question (old: batches + transfers); 0 pending = the answer before W6a.
+  const client = (n: number, open = 0, pending = 0) => {
     const count = vi.fn().mockResolvedValue(n);
     const transfers = vi.fn().mockResolvedValue(open);
-    return { client: { productionBatch: { count }, stockTransfer: { count: transfers } } as never, count, transfers };
+    const exits = vi.fn().mockResolvedValue(pending);
+    return { client: { productionBatch: { count }, stockTransfer: { count: transfers }, stockExit: { count: exits } } as never, count, transfers, exits };
   };
+
+  it('NEGATIVE (W6a): a pending exit from it is a blocker — its units are held for an approval in this warehouse', async () => {
+    const { client: c, exits } = client(0, 0, 1);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'PENDING_EXIT', count: 1, ar: expect.stringContaining('إخراج') }]);
+    // THIS company, THIS warehouse, only the PENDING ones (an approved or rejected exit holds nothing).
+    expect(exits).toHaveBeenCalledWith({ where: { companyId: 'c1', warehouseId: 'w1', status: 'PENDING' } });
+  });
 
   it('NEGATIVE (W3a): an open transfer from or to it is a blocker — units on the road have no warehouse', async () => {
     const { client: c, transfers } = client(0, 2);
@@ -205,6 +214,13 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/transfers/[id]/receive/route.ts',
     'src/app/api/inventory/transfers/[id]/cancel/route.ts',
     'src/app/api/inventory/transfers/[id]/difference/route.ts',
+    // 20/11, W6a (goods out of a warehouse for good): the exit lib, its door helper and its three doors (request + list,
+    // approve, reject). They name the exit's own `warehouseId` and draw from it (`receiving.drawDownStock`).
+    'src/lib/stock-exits.ts',
+    'src/lib/stock-exit-door.ts',
+    'src/app/api/inventory/exits/route.ts',
+    'src/app/api/inventory/exits/[id]/approve/route.ts',
+    'src/app/api/inventory/exits/[id]/reject/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

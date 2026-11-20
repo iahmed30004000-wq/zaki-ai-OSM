@@ -25,6 +25,9 @@ const TABLES = [
   'warehousePlacement',
   'stockTransfer',
   'stockTransferLine',
+  // 20/11 (W6a): the exits — their pending lines are part of the free stock, and the exit tests stand on this file too.
+  'stockExit',
+  'stockExitLine',
   'order',
   'orderItem',
   'orderAddOn',
@@ -67,6 +70,10 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
         const o = data.order.find((x) => x.id === r.orderId);
         return !!o && matches('order', o, c as Row);
       }
+      if (k === 'exit' && table === 'stockExitLine') {
+        const e = data.stockExit.find((x) => x.id === r.exitId);
+        return !!e && matches('stockExit', e, c as Row);
+      }
       return scalar(r[k], c);
     });
   const sortBy = (rows: Row[], orderBy?: Row | Row[]) => {
@@ -90,6 +97,12 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       else if (k === 'lines' && table === 'stockTransfer') {
         const lines = sortBy(data.stockTransferLine.filter((l) => l.transferId === r.id), (v as Row).orderBy);
         out.lines = lines.map((l) => pick('stockTransferLine', l, (v as Row).select));
+      } else if (k === 'lines' && table === 'stockExit') {
+        const lines = sortBy(data.stockExitLine.filter((l) => l.exitId === r.id), (v as Row).orderBy);
+        out.lines = lines.map((l) => pick('stockExitLine', l, (v as Row).select));
+      } else if (k === 'country' && v && typeof v === 'object' && table === 'store') {
+        const c = data.country.find((x) => x.id === r.countryId);
+        out.country = c ? pick('country', c, (v as Row).select) : null;
       } else if (k === 'product' && v && typeof v === 'object') {
         const p = data.product.find((x) => x.id === r.productId);
         out.product = p ? pick('product', p, (v as Row).select) : null;
@@ -137,11 +150,18 @@ export function memoryDb(seed: Partial<Record<(typeof TABLES)[number], Row[]>> =
       if (data[name].some((x) => x.id === row.id)) throw known('P2002');
       if (name === 'stockTransfer') row.status ??= 'SENT';
       if (name === 'stockTransfer') row.sentAt ??= new Date();
+      if (name === 'stockExit') row.requestedAt ??= new Date();
       data[name].push(row);
-      if (lines?.create) {
+      if (lines?.create && name === 'stockTransfer') {
         for (const l of lines.create as Row[]) {
           if (data.stockTransferLine.some((x) => x.transferId === row.id && x.productId === l.productId)) throw known('P2002');
           data.stockTransferLine.push({ id: `line-${++seq}`, transferId: row.id, quantityReceived: null, ...l });
+        }
+      }
+      if (lines?.create && name === 'stockExit') {
+        for (const l of lines.create as Row[]) {
+          if (data.stockExitLine.some((x) => x.exitId === row.id && x.productId === l.productId)) throw known('P2002');
+          data.stockExitLine.push({ id: `xline-${++seq}`, exitId: row.id, valueAtCost: null, ...l });
         }
       }
       return pick(name, row, select);

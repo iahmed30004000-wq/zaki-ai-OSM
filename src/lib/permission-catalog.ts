@@ -159,6 +159,14 @@ export const PERMISSION_MODULES: CatalogModule[] = [
       { key: 'inventory.transfer', requires: 'inventory.view', ar: 'نقل بضاعة بين المخازن (إرسال وإلغاء قبل الاستلام)', en: 'Send stock between warehouses (and cancel before receipt)' },
       { key: 'inventory.transfer_receive', requires: 'inventory.view', ar: 'استلام نقل بضاعة بالعدّ', en: 'Receive a stock transfer by count' },
       { key: 'inventory.difference_approve', requires: 'inventory.view', ar: 'اعتماد فرق نقل البضاعة (ضايع أو تالف)', en: 'Approve a stock transfer shortfall (lost or damaged)' },
+      /*
+       * 20/11 (warehouse plan W6a): the two hands of goods that leave a warehouse for good (damaged, expired, samples, back
+       * to the supplier, sold outside the system, a partner's draw, other) — who asks, and who approves or rejects. Two boxes,
+       * because the requester never decides her own request. Granted by no migration: nobody holds them until the owner
+       * ticks them; his full access holds them. Neither opens any money: nothing is posted to a profit, a wallet or an expense.
+       */
+      { key: 'inventory.exit', requires: 'inventory.view', ar: 'طلب إخراج بضاعة من المخزن (تالف، منتهي، عيّنات…)', en: 'Request goods out of a warehouse for good (damaged, expired, samples…)' },
+      { key: 'inventory.exit_approve', requires: 'inventory.view', ar: 'اعتماد أو رفض إخراج بضاعة من المخزن', en: 'Approve or reject goods out of a warehouse' },
     ],
   },
   {

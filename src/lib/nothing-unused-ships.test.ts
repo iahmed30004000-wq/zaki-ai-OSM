@@ -499,6 +499,10 @@ const NO_CALLER_FOUND: Record<string, string> = {
   '/api/inventory/transfers/[id]/receive': 'W3a (20/11): استلام النقل بالعدّ — نافذة الاستلام بشاشة «نقل البضاعة» (W3b)',
   '/api/inventory/transfers/[id]/cancel': 'W3a (20/11): إلغاء النقل قبل الاستلام — زر الإلغاء بشاشة «نقل البضاعة» (W3b)',
   '/api/inventory/transfers/[id]/difference': 'W3a (20/11): اعتماد فرق النقل — نافذة الاعتماد بشاشة «نقل البضاعة» (W3b)',
+  // 20/11 (W6a): the stock-exit doors are built ahead of their screen «إخراج بضاعة» (W6b), which calls all three. Each line leaves with it.
+  '/api/inventory/exits': 'W6a (20/11): قائمة الإخراج وباب الطلب — شاشة «إخراج بضاعة» (W6b) هي اللي بتستدعيه',
+  '/api/inventory/exits/[id]/approve': 'W6a (20/11): اعتماد الإخراج — زر الاعتماد بشاشة «إخراج بضاعة» (W6b)',
+  '/api/inventory/exits/[id]/reject': 'W6a (20/11): رفض الإخراج — زر الرفض بشاشة «إخراج بضاعة» (W6b)',
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',

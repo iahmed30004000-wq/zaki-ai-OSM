@@ -101,6 +101,8 @@ const ACTION_AR: Record<string, string> = {
   // The stock transfers between a store's warehouses (`/api/inventory/transfers/**`, W3a).
   STOCK_TRANSFER_SENT: 'إرسال نقل بضاعة', STOCK_TRANSFER_RECEIVED: 'استلام نقل بضاعة', STOCK_TRANSFER_CANCELLED: 'إلغاء نقل بضاعة',
   STOCK_TRANSFER_DIFFERENCE_APPROVED: 'اعتماد فرق نقل بضاعة',
+  // Goods out of a warehouse for good (`/api/inventory/exits/**`, W6a).
+  STOCK_EXIT_REQUESTED: 'طلب إخراج بضاعة', STOCK_EXIT_APPROVED: 'اعتماد إخراج بضاعة', STOCK_EXIT_REJECTED: 'رفض إخراج بضاعة',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
   SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',

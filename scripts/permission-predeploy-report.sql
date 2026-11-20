@@ -128,7 +128,10 @@ WITH req(action, needs) AS (VALUES
   -- 20/11 (warehouse plan W3a): the three hands of a stock transfer — «نقل بضاعة بين المخازن», «استلام نقل بضاعة بالعدّ», «اعتماد فرق نقل البضاعة». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
   ('inventory.transfer','inventory.view'),
   ('inventory.transfer_receive','inventory.view'),
-  ('inventory.difference_approve','inventory.view')
+  ('inventory.difference_approve','inventory.view'),
+  -- 20/11 (warehouse plan W6a): the two hands of goods leaving a warehouse for good — «طلب إخراج بضاعة من المخزن», «اعتماد أو رفض إخراج بضاعة من المخزن». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
+  ('inventory.exit','inventory.view'),
+  ('inventory.exit_approve','inventory.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp
