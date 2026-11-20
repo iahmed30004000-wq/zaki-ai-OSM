@@ -2405,6 +2405,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/settings/ConfirmationRuleEditor.tsx": {
+    "buttons": 4,
+    "inputs": 5,
+    "columns": 0,
+    "cards": 2,
+    "modals": 0,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3
+  },
   "src/components/settings/CourierCredentials.tsx": {
     "buttons": 4,
     "inputs": 9,

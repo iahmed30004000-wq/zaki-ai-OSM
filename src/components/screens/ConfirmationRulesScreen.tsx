@@ -11,6 +11,7 @@ import { WinbackV2Card } from '@/components/settings/WinbackV2Card';
 import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
 import { QueueModesCard } from '@/components/settings/QueueModesCard';
 import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';
+import { ConfirmationRuleEditor } from '@/components/settings/ConfirmationRuleEditor';
 
 /**
  * «قواعد مركز التأكيد» — THE ONE PAGE OF THE CONFIRMATION RULES (the owner's plan of 17/11, request C1).
@@ -24,6 +25,9 @@ import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';
  * Their doors keep GET and refuse every write (409 `RULE_RETIRED`); their stored values are not touched; their engine code leaves later (C4).
  *
  * «مين مربوطة بالقواعد» (request Q1b, 19/11) stands under the box: who is at the desk, bound or not and by which key, and «افحص موظفة» — read from the server, decided nowhere here.
+ *
+ * «أرقام القاعدة» (request Q3c, 20/11) stands under that section: the owner edits the rule's numbers there; the server checks every one, and the box is read
+ * again after a save (`router.refresh`).
  *
  * `lines` is the box's text, written on the server from the constants and the switches the engine reads (`confirmation-rule-summary.ts`) — this screen decides nothing and types no number.
  */
@@ -49,6 +53,8 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
         </Card>
 
         <DeskPeopleTable />
+
+        <ConfirmationRuleEditor />
 
         <CallProofCard />
         <QueuePriorityCard />
