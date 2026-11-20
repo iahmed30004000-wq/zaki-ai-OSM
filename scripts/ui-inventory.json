@@ -327,7 +327,7 @@
   },
   "src/components/inventory/ReceiveDialog.tsx": {
     "buttons": 2,
-    "inputs": 4,
+    "inputs": 5,
     "columns": 0,
     "cards": 1,
     "modals": 1,
@@ -1381,7 +1381,7 @@
   },
   "src/components/screens/InventoryBalancesScreen.tsx": {
     "buttons": 9,
-    "inputs": 4,
+    "inputs": 5,
     "columns": 0,
     "cards": 5,
     "modals": 1,
@@ -1391,7 +1391,7 @@
   },
   "src/components/screens/InventoryMovementsScreen.tsx": {
     "buttons": 1,
-    "inputs": 2,
+    "inputs": 3,
     "columns": 8,
     "cards": 2,
     "modals": 0,
@@ -2386,12 +2386,12 @@
     "checkboxes": 1
   },
   "src/components/settings/AuthenticityCodesCard.tsx": {
-    "buttons": 3,
+    "buttons": 4,
     "inputs": 2,
     "columns": 0,
     "cards": 1,
     "modals": 0,
-    "icons": 4,
+    "icons": 5,
     "links": 0,
     "tabs": 0
   },
@@ -2404,6 +2404,17 @@
     "icons": 0,
     "links": 0,
     "tabs": 0
+  },
+  "src/components/settings/ConfirmationRuleEditor.tsx": {
+    "buttons": 4,
+    "inputs": 5,
+    "columns": 0,
+    "cards": 2,
+    "modals": 0,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3
   },
   "src/components/settings/CourierCredentials.tsx": {
     "buttons": 4,

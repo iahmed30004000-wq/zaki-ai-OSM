@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
 import { batchTotal, batchUnitCost } from '@/lib/product-cost';
+import { foldSplitRows } from '@/lib/batch-grade';
 import { onHandTotal } from '@/lib/receiving';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
@@ -37,11 +38,19 @@ export async function GET(req: Request) {
       orderBy: { productionDate: 'desc' },
     });
 
+    /*
+     * A ROW SPLIT OFF A RUN IS NOT A RUN (the warehouse plan, W2c). When goods change place a twin row holds them
+     * (`batch-split.ts`, quantity produced 0): it is listed under its run, not beside it — the run shows what it and every
+     * row split from it still hold and what was sold out of them (`batch-grade.foldSplitRows`). A store that was never
+     * placed has no twin, and the list is the very list it was.
+     */
+    const runs = foldSplitRows(batches);
+
     // The country's own currency. The screen printed "$" beside every
     // production cost in a system that runs pounds and dinars side by side,
     // so a batch costing 12,000 Syrian pounds read as twelve thousand
     // dollars.
-    return NextResponse.json({ batches, currency: country.currencyCode });
+    return NextResponse.json({ batches: runs, currency: country.currencyCode });
   } catch (error: any) {
     return apiErrorResponse(error);
   }
