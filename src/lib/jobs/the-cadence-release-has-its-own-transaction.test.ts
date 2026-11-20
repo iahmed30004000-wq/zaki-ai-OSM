@@ -49,7 +49,9 @@ describe('the release job with the cadence', () => {
     expect(queue.releaseNoAnswerRounds).toHaveBeenCalledTimes(1);
     // UPDATED 2026-11-19 (request Q3b): was exactly `{ rounds, returns }` — the pass now also carries the rule in force, asked ONCE for the store (`rule`, a getter), so the
     // idle cut and the notice's figure are the same reading. The same getter is the one handed to `readReturnsMode`.
-    expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value, returns: { marker: 'the-cadence-mode' }, rule: expect.any(Function) });
+    // UPDATED 2026-11-21 (request Q4b): was `{ rounds, returns, rule }` — the pass also carries the owner's own rules (`rules`, a getter read once before the
+    // transaction), so the idle release judges each holder by her own minutes.
+    expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value, returns: { marker: 'the-cadence-mode' }, rule: expect.any(Function), rules: expect.any(Function) });
     expect((queue.releaseNoAnswerRounds.mock.calls[0][4] as { rule: unknown }).rule).toBe((queue.readReturnsMode.mock.calls[0][2] as { rule: unknown }).rule);
     expect(out.processed).toBe(5);
   });
@@ -77,7 +79,9 @@ describe('the release job with the cadence', () => {
     expect(queue.releaseNoAnswerRounds).toHaveBeenCalledTimes(1);
     // UPDATED 2026-11-19 (request Q3b): was exactly `{ rounds, returns }` — the pass now also carries the rule in force, asked ONCE for the store (`rule`, a getter), so the
     // idle cut and the notice's figure are the same reading. The same getter is the one handed to `readReturnsMode`.
-    expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value, returns: { marker: 'the-cadence-mode' }, rule: expect.any(Function) });
+    // UPDATED 2026-11-21 (request Q4b): was `{ rounds, returns, rule }` — the pass also carries the owner's own rules (`rules`, a getter read once before the
+    // transaction), so the idle release judges each holder by her own minutes.
+    expect(queue.releaseNoAnswerRounds.mock.calls[0][4]).toEqual({ rounds: sw.value, returns: { marker: 'the-cadence-mode' }, rule: expect.any(Function), rules: expect.any(Function) });
     expect((queue.releaseNoAnswerRounds.mock.calls[0][4] as { rule: unknown }).rule).toBe((queue.readReturnsMode.mock.calls[0][2] as { rule: unknown }).rule);
     expect(cad.asked).toBe(1);
   });

@@ -16,14 +16,16 @@ import { hhmmToMinutes } from './work-hours';
  * orders, for some time: the table `confirmation_rules` (model `ConfirmationRule`, shaped like `PenaltyRule` / `CommissionRule`) holds them, and `ruleFor` says, for one
  * person and (when given) one order at one moment, which number is in force and which rule it came from.
  *
- * ── NOTHING CALLS `ruleFor` YET (NO_CALLER_FOUND, 20/11) ──
- * Q4b makes the employee numbers act at the pull, Q4d the order numbers at the order's doors, Q4c writes rows from the screen. Until then the table is empty and read by
- * nobody, and `confirmation-rules.test.ts` fails the day a file outside this module imports it without that request removing the pin. The confirmation desk's bundle
- * («طلباتي») is at its ceiling: the desk never imports this file — its words and numbers reach it from the server's answer.
+ * ── WHO CALLS `ruleFor` (21/11, request Q4b) ──
+ * The EMPLOYEE numbers act: `employee-numbers.ts` reads the rows (one cached read per request or job) and resolves them for one person — the pull (hand, pace, the idle
+ * release inside it), the claim by number, «الزبون على الخط», the returning-customer hold, the idle release job (each holder's own minutes), the queue door and «افحص
+ * موظفة». The ORDER numbers (Q4d), the priority and the routing (Q5) are read by nobody yet; Q4c writes rows from the screen. The confirmation desk's bundle («طلباتي»)
+ * is at its ceiling: the desk never imports this file — its words and numbers reach it from the server's answer.
  *
  * ── THE KINDS (the catalogue; a kind not here is a development request, never a free «if/then») ──
- *   EMPLOYEE_NUMBERS  the hand limit and the idle minutes of the people it names (or everyone). Resolved WITHOUT an order (`ruleFor({ person })`), so it names no product,
- *                     channel or phase; it may name a store (the store she works in) and hours of the day.
+ *   EMPLOYEE_NUMBERS  the hand limit, the idle minutes and the pull pace (`pullPerHour`, request Q4b) of the people it names (or everyone). Resolved WITHOUT an order
+ *                     (`ruleFor({ person })`), so it names no product, channel or phase; it may name a store (the store she works in) and hours of the day. The pace has
+ *                     no number in the base rule: its base is `PULL_PACE.perHour`, and its range `PULL_PACE_RANGE` lives here.
  *   ORDER_NUMBERS     the schedule of attempts (steps + their different days, as ONE number: they are validated together), the proof seconds and the postpone limit of
  *                     an ORDER — by its product, channel or store. It names nobody (an order's numbers do not change with who presses) and no hours (an order's cycle
  *                     would change under it at a clock line).
@@ -70,9 +72,18 @@ export const CONFIRMATION_RULE_KIND_AR: Record<ConfirmationRuleKind, string> = {
 export const ORDER_PHASES = ['NEW', 'RETRY'] as const;
 export type OrderPhase = (typeof ORDER_PHASES)[number];
 
+/**
+ * THE PACE OF THE PULL (the owner, 8/11): at most `perHour` pulls in any rolling `windowMinutes` — see `pullPaceRefusal` in `confirmation-queue.ts`, which re-exports
+ * this object so every importer is unchanged. It lives here since request Q4b (21/11): an EMPLOYEE_NUMBERS rule may change one person's `perHour` (the window stays),
+ * and the resolver needs its base without importing the queue.
+ */
+export const PULL_PACE = { perHour: 40, windowMinutes: 60 } as const;
+/** The safe range of one person's pace, inclusive — the base's 40 sits inside it. */
+export const PULL_PACE_RANGE = Object.freeze({ min: 10, max: 80 });
+
 /** Every number a rule may set, by the kind that sets it. `schedule` = the steps and their different days, one number. */
 export const NUMBERS_OF_KIND = {
-  EMPLOYEE_NUMBERS: ['hand', 'idleMinutes'],
+  EMPLOYEE_NUMBERS: ['hand', 'idleMinutes', 'pullPerHour'],
   ORDER_NUMBERS: ['schedule', 'proofSeconds', 'postponeMax'],
   PRIORITY: ['first'],
   ROUTING: ['onlyFor'],
@@ -83,6 +94,8 @@ export type RuleNumber = (typeof NUMBERS_OF_KIND)[ConfirmationRuleKind][number];
 export interface RulePayload {
   hand?: number;
   idleMinutes?: number;
+  /** Pulls in any rolling hour (request Q4b); the base is `PULL_PACE.perHour`. */
+  pullPerHour?: number;
   steps?: RuleStep[];
   minDays?: number;
   proofSeconds?: number;
@@ -140,7 +153,7 @@ export function validateRulePayload(kind: ConfirmationRuleKind, raw: unknown): {
   const fail = (field: string, errorAr: string) => ({ ok: false as const, field: `payload.${field}`, errorAr });
   if (!isObject(raw)) return fail('payload', 'القاعدة لازم تقول شو بتغيّر.');
   const allowed: Record<ConfirmationRuleKind, readonly string[]> = {
-    EMPLOYEE_NUMBERS: ['hand', 'idleMinutes'],
+    EMPLOYEE_NUMBERS: ['hand', 'idleMinutes', 'pullPerHour'],
     ORDER_NUMBERS: ['steps', 'minDays', 'proofSeconds', 'postponeMax'],
     PRIORITY: ['first'],
     ROUTING: ['toUserIds'],
@@ -162,11 +175,19 @@ export function validateRulePayload(kind: ConfirmationRuleKind, raw: unknown): {
   if (kind === 'ORDER_NUMBERS' && ('steps' in raw) !== ('minDays' in raw)) {
     return fail('steps', 'جدول المحاولات بينكتب كامل: الخطوات وعلى كم يوم مختلف سوا.');
   }
+  // The pace (Q4b) has no number in the base rule, so the base validator does not know it: its own range, then the rest as below.
+  const { pullPerHour, ...baseKeys } = raw;
+  if ('pullPerHour' in raw) {
+    const R = PULL_PACE_RANGE;
+    if (typeof pullPerHour !== 'number' || !Number.isInteger(pullPerHour) || pullPerHour < R.min || pullPerHour > R.max) {
+      return fail('pullPerHour', `سرعة السحب لازم تكون رقم صحيح من ${R.min} لـ${R.max} طلب بالساعة.`);
+    }
+  }
   // The base rule's validator, on the default with this payload on top: one set of ranges for the base and for every rule.
-  const checked = validateConfirmationRule({ ...CONFIRMATION_RULE_DEFAULT, ...raw });
+  const checked = validateConfirmationRule({ ...CONFIRMATION_RULE_DEFAULT, ...baseKeys });
   if (!checked.ok) return fail(checked.field, checked.error);
   const payload: RulePayload = {};
-  for (const k of keys) (payload as Record<string, unknown>)[k] = (checked.rule as unknown as Record<string, unknown>)[k];
+  for (const k of keys) (payload as Record<string, unknown>)[k] = k === 'pullPerHour' ? pullPerHour : (checked.rule as unknown as Record<string, unknown>)[k];
   return { ok: true, payload };
 }
 
@@ -299,6 +320,7 @@ function setsNumber(rule: ValidRule, n: RuleNumber): boolean {
   switch (n) {
     case 'hand': return p.hand !== undefined;
     case 'idleMinutes': return p.idleMinutes !== undefined;
+    case 'pullPerHour': return p.pullPerHour !== undefined;
     case 'schedule': return p.steps !== undefined;
     case 'proofSeconds': return p.proofSeconds !== undefined;
     case 'postponeMax': return p.postponeMax !== undefined;
@@ -318,6 +340,8 @@ export interface Sourced<T> {
 export interface EffectiveRule {
   hand: Sourced<number>;
   idleMinutes: Sourced<number>;
+  /** Her pulls in any rolling hour (Q4b) — the base is `PULL_PACE.perHour`, not a number of the base rule, so it is not in `numbers`. */
+  pullPerHour: Sourced<number>;
   schedule: Sourced<{ steps: RuleStep[]; minDays: number }>;
   proofSeconds: Sourced<number>;
   postponeMax: Sourced<number>;
@@ -366,6 +390,7 @@ export function ruleFor(ask: { person: RulePerson; order?: RuleOrder | null; now
 
   const hand = pick('hand');
   const idle = pick('idleMinutes');
+  const pace = pick('pullPerHour');
   const schedule = pick('schedule');
   const proof = pick('proofSeconds');
   const postpone = pick('postponeMax');
@@ -375,6 +400,7 @@ export function ruleFor(ask: { person: RulePerson; order?: RuleOrder | null; now
   const out = {
     hand: { value: hand ? hand.payload.hand! : base.hand, source: source(hand) },
     idleMinutes: { value: idle ? idle.payload.idleMinutes! : base.idleMinutes, source: source(idle) },
+    pullPerHour: { value: pace ? pace.payload.pullPerHour! : PULL_PACE.perHour, source: source(pace) },
     schedule: {
       value: schedule ? { steps: schedule.payload.steps!, minDays: schedule.payload.minDays! } : { steps: base.steps, minDays: base.minDays },
       source: source(schedule),

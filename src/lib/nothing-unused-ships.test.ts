@@ -497,6 +497,7 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 20/11 (W3b): the four stock-transfer doors of W3a left — the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls the list, the send, the receive, the cancel and the difference.
   // 20/11 (W6b): the three stock-exit doors of W6a left — the screen «إخراج بضاعة» (`screens/StockExitsScreen.tsx`) calls the list, the request, the approval and the rejection; and its month's table calls the new '/api/inventory/exits/month'.
   // 20/11 (Q4a): NO_CALLER_FOUND for a LIBRARY, not a route — `src/lib/confirmation-rules.ts` (the owner's own rules and `ruleFor`) is read by nothing yet; no route is added, so nothing enters this list. Its own test pins «no importer» and Q4b removes that pin when the pull reads it.
+  // 21/11 (Q4b): that pin is gone — `employee-numbers.ts` reads the table and the pull, the claim, «الزبون على الخط», the hold, the release job, the queue door and «افحص موظفة» ask it. Still no route is added.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   // 20/11 (W7a): the two product-pair doors, built ahead of their screen — the pair picker inside the transfer form (W7c) calls them; they leave this list that day.
   '/api/inventory/pairs': 'ربطُ المنتج بتوأمه بمتجرٍ تاني (اقتراحٌ وحفظ) — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',

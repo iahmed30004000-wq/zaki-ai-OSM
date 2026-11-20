@@ -2,6 +2,8 @@ import { db } from './db';
 import { resolveAudience } from './notification-audience';
 import { agentForReturningCustomer, reservationCutoff, type PriorOrder } from './order-reservation';
 import { capRoom, ownedCounts, returnsLimits, returnsModeOn } from './confirmation-queue';
+import { confirmationRuleOnce } from './confirmation-rule-settings';
+import { confirmationRulesOnce } from './employee-numbers';
 
 /**
  * HOLD A RETURNING CUSTOMER'S NEW ORDER FOR THE AGENT WHO WORKED HIM LAST.
@@ -32,7 +34,8 @@ import { capRoom, ownedCounts, returnsLimits, returnsModeOn } from './confirmati
 export async function reserveReturningCustomers(
   scope: { companyId: string; storeId: string },
   now: Date = new Date(),
-  opts: { orderIds?: readonly string[] } = {}
+  /** `timezone`: the store's, for an owner's rule with hours (request Q4b) — left out, read only if such a rule exists. */
+  opts: { orderIds?: readonly string[]; timezone?: string | null } = {}
 ): Promise<number> {
   const candidates = await db.order.findMany({
     where: {
@@ -89,15 +92,21 @@ export async function reserveReturningCustomers(
   );
 
   // Her room under the cap, read the first time she is chosen in this run and spent as her holds are written.
-  // Where «الطلب يرجع للطابور فوراً» is on, the cap is its hand limit (`RETURNS_MODE.handLimit`) — asked once, the first time it is needed.
+  // Where «الطلب يرجع للطابور فوراً» is on, the cap is its hand limit (`RETURNS_MODE.handLimit`) — whether it is on is asked once, the first time it is needed.
+  // Request Q4b: the limit is HER hand limit — an owner's rule that names her changes her room alone. The base rule and the owner's rules are read once per run (cached).
   const room = new Map<string, number>();
-  let limit: number | undefined | null = null;
+  let modeOn: boolean | null = null;
+  const rule = confirmationRuleOnce(db, scope.companyId, now.getTime());
+  const rules = confirmationRulesOnce(db, scope.companyId, now.getTime());
   let held = 0;
   for (const candidate of candidates) {
     const agent = agentForReturningCustomer(priors.get(candidate.customerId) ?? [], eligible);
     if (!agent) continue;
     if (!room.has(agent)) {
-      if (limit === null) limit = (await returnsModeOn(db, scope.companyId)) ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
+      if (modeOn === null) modeOn = await returnsModeOn(db, scope.companyId);
+      const limit = modeOn
+        ? (await returnsLimits(db, scope.companyId, now.getTime(), rule, { userId: agent, storeId: scope.storeId, timezone: opts.timezone, rules })).handLimit
+        : undefined;
       room.set(agent, capRoom(await ownedCounts(db, scope, agent, now), limit));
     }
     if ((room.get(agent) ?? 0) <= 0) continue;
