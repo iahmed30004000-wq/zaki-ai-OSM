@@ -42,6 +42,9 @@ vi.mock('@/components/settings/QueueModesCard', () => ({ QueueModesCard: () => <
 vi.mock('@/components/settings/IntakeFilterCard', () => ({ IntakeFilterCard: () => <div data-card="IntakeFilterCard" /> }));
 vi.mock('@/components/settings/WinbackV2Card', () => ({ WinbackV2Card: () => <div data-card="WinbackV2Card" /> }));
 vi.mock('@/components/settings/LeadsV2Card', () => ({ LeadsV2Card: () => <div data-card="LeadsV2Card" /> }));
+// ADDED 2026-11-20 (request Q3c): the rules page gained «أرقام القاعدة», which asks the app router to read the box again after a save — this file mounts no router.
+// It never left «إعدادات النظام» (it is new), so it is a marker here; its own test pins what it says.
+vi.mock('@/components/settings/ConfirmationRuleEditor', () => ({ ConfirmationRuleEditor: () => <section data-rule-editor-section /> }));
 
 import { StaffRulesScreen } from './StaffRulesScreen';
 import { SystemSettingsScreen } from './SystemSettingsScreen';

@@ -341,6 +341,8 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       'app/api/confirmation/queue/route.ts',
       'app/api/orders/[id]/confirmation/route.ts',
       'app/api/orders/[id]/contact-attempts/route.ts',
+      // ADDED 2026-11-20 (request Q3c): the door of «مين بيقدر يعدّل» reads the stored document for the authors' ids of its versions — a door, not a screen.
+      'app/api/settings/confirmation-rule/editors/route.ts',
       'app/api/settings/confirmation-rule/route.ts',
       'lib/confirmation-queue.ts',
       'lib/confirmation-rule-summary.ts',
