@@ -236,6 +236,12 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 20/11, W4c (the shipping screens by warehouse): «إنشاء شحنة» sends the warehouse the press leaves from (`warehouseId`),
     // for a placed store only — the body W4a's door asks for.
     'src/components/screens/ShipmentsNewScreen.tsx',
+    // 20/11, W4d (the order says where it left from): READ ONLY — the name lookup, and the three doors that read the
+    // order's `sourceWarehouseId` to send the warehouse's name (order window, tracking row, returns desk). None writes it.
+    'src/lib/order-source-warehouse.ts',
+    'src/app/api/orders/[id]/route.ts',
+    'src/app/api/ops/tracking/route.ts',
+    'src/app/api/ops/returns/route.ts',
     // 20/11, W3c («بالطريق» where it matters): the notice of a sent transfer reads the two ends' names and the
     // destination's keeper rows (`userWarehouseAccess`) to tell the keepers who may receive — no stock column, no unit.
     'src/lib/stock-transfer-alerts.ts',

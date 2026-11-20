@@ -14,6 +14,7 @@ import { searchWhere, trackingFilters } from '@/lib/parcel-tracking/filters';
 import { readTrackingList } from '@/lib/parcel-tracking/list';
 import { readDifferenceRows } from '@/lib/parcel-tracking/difference';
 import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
+import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
 
 /**
  * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&said=&page=&limit=
@@ -191,6 +192,8 @@ export async function GET(req: Request) {
             deliveredAt: true, returnedAt: true,
             deliveryFailureReason: true, currency: true, regionId: true,
             deliveryProviderId: true,
+            // «طلع من مخزن كذا» (W4d): read to find the name, never sent on — the row gets the name, and only when there is one.
+            sourceWarehouseId: true,
             customer: { select: { fullName: true, phone: true, city: true } },
             region: { select: { id: true, name: true } },
             deliveryProvider: { select: { id: true, name: true, kind: true, apiEnabled: true, adapterCode: true } },
@@ -253,6 +256,8 @@ export async function GET(req: Request) {
       select: { deliveryProviderId: true, regionId: true, lateThresholdDays: true },
     });
     const thresholdOf = new Map(fees.map((f) => [`${f.deliveryProviderId}|${f.regionId}`, f.lateThresholdDays]));
+    // The warehouses these parcels left from, in one read — and no read at all for a page with none (an unplaced store).
+    const places = await sourceWarehouseNames(db, companyId, orders.map((o) => o.sourceWarehouseId));
 
     const built = orders.map((order) => {
       // The lines, the add-ons and the return receipt are what the
@@ -361,7 +366,8 @@ export async function GET(req: Request) {
         // «فيه فرق»: the company's line against our figure, or null — the courier's money, so only for whoever holds that sight.
         ...(sight.money ? { difference: differenceRows.get(o.id) ?? null } : {}),
       };
-    });
+    // The stamp's id leaves; the name joins only when the parcel has a source warehouse (W4d).
+    }).map((row) => withSourceWarehouseName(row, places));
     // The courier's figures leave with the permission: every row is built whole by the one rule above, then they are taken off.
     const rows = sight.money ? built : built.map((r) => withoutMoney(r));
 
