@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **57 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **58 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -123,6 +123,7 @@ agent's own postponed orders are a tab of طلباتي.
 أرصدة المخزون             /inventory/balances   («استلام بضاعة جاهزة» is a button on each product's card here)
 تشغيلات الإنتاج           /manufacturing
 حركات المخزون             /inventory/movements
+نقل البضاعة               /inventory/transfers  (20/11, W3b: between two warehouses of one store; inventory.view, each press its own key)
 ```
 
 **6. المال** (`finance`) — tabs. The first four are one errand: see what each courier holds, take it in
@@ -223,7 +224,7 @@ asks the same keys again.
 | `/confirmation/issues` | confirmation.issues |
 | `/confirmation/rules` | settings.view |
 | `/ops/preparation` · `/ops/shipments/new` · `/ops/batches` · `/ops/tracking` · `/ops/returns` | ops.prepare · ops.ship · ops.batches · ops.track · ops.returns |
-| `/inventory/balances` · `/inventory/movements` | inventory.view |
+| `/inventory/balances` · `/inventory/movements` · `/inventory/transfers` | inventory.view |
 | `/manufacturing` | production.view |
 | `/finance/agents` | settlement.view · settlement.review |
 | `/finance/collection` | settlement.upload · settlement.view |

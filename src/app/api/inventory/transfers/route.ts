@@ -8,7 +8,7 @@ import { logAudit } from '@/lib/audit';
 import { warehousesOfStore } from '@/lib/warehouses';
 import { replayOf, sendSchema, sendTransfer, shownTo } from '@/lib/stock-transfers';
 import { STOCK_TRANSFER_KIND_LABEL, type StockTransferKind } from '@/lib/stock-transfer-kind';
-import { reachFor, refusalOf, refuse, TX_OPTIONS } from '@/lib/stock-transfer-door';
+import { arabicIssue, reachFor, refusalOf, refuse, TX_OPTIONS } from '@/lib/stock-transfer-door';
 
 /**
  * GET  /api/inventory/transfers (inventory.view)     — the store's transfers, newest first, and its warehouses
@@ -68,7 +68,8 @@ export async function GET() {
     const where = new Map(places.map((w) => [w.id, w.name]));
 
     return NextResponse.json({
-      warehouses: warehouses.map((w) => ({ id: w.id, name: w.name })),
+      // The country rides along (20/11, W3b): the screen reads the kind from the two ends before the press (`readStockTransfer`).
+      warehouses: warehouses.map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
       transfers: rows.map((r) => {
         const names = new Map(r.lines.map((l) => [l.productId, l.product.name]));
         const shown = shownTo({ ...r, lines: r.lines.map(({ productId, quantitySent, quantityReceived }) => ({ productId, quantitySent, quantityReceived })) }, user.id);
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
     await requirePermission('inventory.transfer');
 
     const parsed = sendSchema.safeParse(await req.json().catch(() => null));
-    if (!parsed.success) return refuse(400, 'INVALID', parsed.error.issues[0]?.message ?? 'البيانات ناقصة');
+    if (!parsed.success) return refuse(400, 'INVALID', arabicIssue(parsed.error));
     const body = parsed.data;
 
     try {

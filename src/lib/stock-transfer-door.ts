@@ -18,6 +18,14 @@ import type { Prisma } from '@prisma/client';
 
 export const refuse = (status: number, code: string, ar: string) => NextResponse.json({ error: ar, errorAr: ar, code }, { status });
 
+const ARABIC_LETTER = /[؀-ۿ]/;
+/** The sentence of a body that did not parse; zod's own English never reaches the screen (20/11, W3b). */
+export const BAD_BODY_AR = 'البيانات ناقصة أو مش صحيحة. حدّث الصفحة وجرّب كمان مرة.';
+export function arabicIssue(error: z.ZodError): string {
+  const said = error.issues[0]?.message ?? '';
+  return ARABIC_LETTER.test(said) ? said : BAD_BODY_AR;
+}
+
 /**
  * A refusal of the lib — or of the split under it (a batch changed between the read and the write) — as the Arabic
  * answer; anything else is not a refusal and goes on to the generic error answer.
@@ -57,7 +65,7 @@ export async function transferAction<S extends z.ZodTypeAny>(
     await spec.gate();
 
     const parsed = spec.schema.safeParse(await req.json().catch(() => null));
-    if (!parsed.success) return refuse(400, 'INVALID', parsed.error.issues[0]?.message ?? 'البيانات ناقصة');
+    if (!parsed.success) return refuse(400, 'INVALID', arabicIssue(parsed.error));
 
     try {
       const out = await db.$transaction(

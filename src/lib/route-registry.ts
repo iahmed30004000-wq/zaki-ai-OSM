@@ -227,6 +227,9 @@ export const NAV: NavGroup[] = [
       r('/inventory/balances', 'أرصدة المخزون', 'Boxes', ['inventory.view']),
       r('/manufacturing', 'تشغيلات الإنتاج', 'Factory', ['production.view']),
       r('/inventory/movements', 'حركات المخزون', 'ArrowLeftRight', ['inventory.view']),
+      // «نقل البضاعة» (20/11, W3b): moving units between two warehouses of one store — send, on the road, received by count. Opens on
+      // `inventory.view` like its two neighbours; every press asks its own key (inventory.transfer · transfer_receive · difference_approve).
+      r('/inventory/transfers', 'نقل البضاعة', 'Repeat', ['inventory.view']),
     ],
   },
   {
