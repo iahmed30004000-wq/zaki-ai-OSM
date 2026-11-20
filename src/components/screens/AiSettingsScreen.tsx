@@ -164,6 +164,34 @@ export function AiSettingsScreen() {
     }
   }
 
+  /** «اختبار خادمك» — the saved local server's own answer (20/11, A1). */
+  const [localTesting, setLocalTesting] = useState(false);
+  const [localTest, setLocalTest] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function testLocal() {
+    setLocalTesting(true);
+    setLocalTest(null);
+    try {
+      const res = await fetch('/api/settings/ai/test', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        // Only which test — the address, key and model are the server's own.
+        body: JSON.stringify({ target: 'LOCAL' }),
+      });
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; reply?: string; model?: string };
+      setLocalTest(
+        r.ok
+          ? { ok: true, text: `خادمك ردّ${r.model ? ` (${r.model})` : ''}${r.reply ? `: «${r.reply}»` : ''}` }
+          : { ok: false, text: r.error ?? 'تعذّر الاتصال' }
+      );
+    } catch {
+      setLocalTest({ ok: false, text: 'تعذّر الاتصال' });
+    } finally {
+      setLocalTesting(false);
+    }
+  }
+
   const load = useCallback(async () => {
     const res = await fetch('/api/settings/ai');
     const json = await res.json();
@@ -567,6 +595,30 @@ export function AiSettingsScreen() {
                         على الخادم نفسه أو على شبكتك الداخلية فقط. عنوان على الإنترنت مرفوض — مزوّد على
                         الإنترنت يُضاف كـ«خادم متوافق مع OpenAI» بمفتاحه.
                       </p>
+                      {/* 20/11 (A1): asks the SAVED address itself one fixed
+                          question and repeats what really came back — the
+                          button below asks the default route, which is often
+                          a vendor and says nothing about this server. */}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => { void testLocal(); }}
+                          disabled={localTesting || !system.localBaseUrl || localUrl.trim() !== system.localBaseUrl}
+                        >
+                          {localTesting ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiPlugLine className="h-4 w-4" />}
+                          اختبار خادمك
+                        </Button>
+                        {(!system.localBaseUrl || localUrl.trim() !== system.localBaseUrl) && (
+                          <span className="text-note text-[var(--sys-muted)]">احفظ العنوان أولاً، بعدين جرّبه.</span>
+                        )}
+                        {localTest && (
+                          <span className={`text-note ${localTest.ok ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'}`}>
+                            {localTest.text}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )}
 

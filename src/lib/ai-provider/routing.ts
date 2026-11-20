@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { decryptSecret } from '../secrets';
 import { SYSTEM_AI, readSystemSetting } from '../system-settings';
-import { parseCompatEndpoint } from '../ai-endpoint';
+import { allowedHosts, parseCompatEndpoint, parseLocalEndpoint } from '../ai-endpoint';
 import { AI_PROVIDERS, liveModel, providerInfo, type AiProvider } from './catalogue';
 import { compatKeyBound, hostOf, readStored, type SystemAi } from './settings';
 
@@ -105,6 +105,17 @@ export async function routeFor(companyId: string, job?: string): Promise<AiRoute
    */
   const compatChecked = provider === 'OPENAI_COMPATIBLE' && sys.compat?.baseUrl ? parseCompatEndpoint(sys.compat.baseUrl) : null;
   const compatUrl = compatChecked && compatChecked.ok ? compatChecked.url : null;
+  /*
+   * AND THE OWNER'S OWN SERVER, JUDGED AGAIN AT THE CALL TOO (20/11, A1).
+   *
+   * The same rule the save applies — `parseLocalEndpoint` with the hosts the
+   * owner allowed in the environment — and nothing new about what «محلي»
+   * means. A stored address that no longer passes it (edited by hand, or a
+   * host taken out of AI_LOCAL_ALLOWED_HOSTS) is no address at all, so the
+   * call stops at `AiEndpointMissing` before anything is sent.
+   */
+  const localChecked = provider === 'LOCAL' && sys.localBaseUrl ? parseLocalEndpoint(sys.localBaseUrl, allowedHosts()) : null;
+  const localUrl = localChecked && localChecked.ok ? localChecked.url : null;
   // The installation's key for THIS vendor, then the company's own. The
   // compatible server has no company key and no legacy one.
   const fromSystem =
@@ -143,7 +154,7 @@ export async function routeFor(companyId: string, job?: string): Promise<AiRoute
     model,
     key,
     keyFrom,
-    baseUrl: provider === 'LOCAL' ? sys.localBaseUrl ?? null : compatUrl,
+    baseUrl: provider === 'LOCAL' ? localUrl : compatUrl,
   };
 }
 

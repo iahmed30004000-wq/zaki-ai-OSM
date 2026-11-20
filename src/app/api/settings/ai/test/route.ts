@@ -4,6 +4,8 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { aiChat, describeRoute } from '@/lib/ai-provider';
 import { explainAiError } from '@/lib/ai-error-message';
+import { tooManyAiCalls } from '@/lib/ai-rate';
+import { testSavedLocalServer } from '@/lib/ai-local-probe';
 
 /**
  * POST /api/settings/ai/test — does the key actually work?
@@ -20,11 +22,46 @@ import { explainAiError } from '@/lib/ai-error-message';
  */
 
 
-export async function POST() {
+export async function POST(req?: Request) {
   try {
-    const { companyId } = await requireCompanyTenant();
+    const { user, companyId } = await requireCompanyTenant();
     // Testing spends the company's own credit with their provider.
     await requirePermission('settings.manage');
+
+    /*
+     * ── «اختبار خادمك»: THE OWNER'S OWN SERVER, NOT THE DEFAULT ROUTE (20/11, A1) ──
+     *
+     * `{ target: 'LOCAL' }` asks the SAVED «نموذج على خادمك» address itself,
+     * whatever the default route is. Nothing in the body is dialled — only
+     * the word `target` is read; the address, the key and the model are the
+     * server's own (`testSavedLocalServer`). The address is the
+     * installation's, so the same narrowing as the system settings door
+     * applies, and a press is rate-limited: it makes this server dial.
+     */
+    const body = req ? await req.json().catch(() => null) : null;
+    if (body && typeof body === 'object' && (body as { target?: unknown }).target === 'LOCAL') {
+      if (user.role !== 'SUPER_ADMIN') {
+        const msg = 'إعدادات الذكاء على مستوى النظام يضبطها مدير النظام فقط.';
+        return NextResponse.json({ ok: false, error: msg, errorAr: msg, code: 'SUPER_ADMIN_ONLY' }, { status: 403 });
+      }
+      const limited = tooManyAiCalls('settings-test-local', companyId, user.id, 6);
+      if (limited) return limited;
+      const probe = await testSavedLocalServer(companyId);
+      return NextResponse.json(
+        probe.ok
+          ? { ok: true, provider: 'LOCAL', host: probe.host, model: probe.model, reply: probe.reply }
+          : {
+              ok: false,
+              provider: 'LOCAL',
+              code: probe.code,
+              error: probe.errorAr,
+              errorAr: probe.errorAr,
+              host: probe.host,
+              model: probe.model,
+              ...(probe.status !== undefined ? { status: probe.status } : {}),
+            }
+      );
+    }
 
     /**
      * ── IT REPORTS WHERE IT WENT, NOT WHAT THE COMPANY CHOSE ──
