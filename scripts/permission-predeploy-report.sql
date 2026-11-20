@@ -131,7 +131,9 @@ WITH req(action, needs) AS (VALUES
   ('inventory.difference_approve','inventory.view'),
   -- 20/11 (warehouse plan W6a): the two hands of goods leaving a warehouse for good — «طلب إخراج بضاعة من المخزن», «اعتماد أو رفض إخراج بضاعة من المخزن». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
   ('inventory.exit','inventory.view'),
-  ('inventory.exit_approve','inventory.view')
+  ('inventory.exit_approve','inventory.view'),
+  -- 20/11 (warehouse plan W7b): «نقل بضاعة لبلد تاني (بعد اعتماد المالك)». Granted by no migration — a pair here would be a person the owner ticked it for who lost the send key.
+  ('inventory.transfer_abroad','inventory.transfer')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp

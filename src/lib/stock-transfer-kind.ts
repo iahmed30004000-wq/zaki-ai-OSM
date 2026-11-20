@@ -9,9 +9,10 @@
  *   BETWEEN_STORES     two stores of one country: two products, two books — a draw-down here and a receipt there;
  *   BETWEEN_COUNTRIES  two countries: the same, plus a currency and a border.
  *
- * Only INTERNAL is built (W3a). The other two are read so the screen can say what was asked, and refused by the door
- * with «لسا مش مبني» — they wait for their own request and for the owner's word on crossing a border (the system's
- * contract still says «Cross-border transfer is refused by rule»; this file does not change it).
+ * INTERNAL was built first (W3a). 20/11 (W7b): the other two are built too — the owner's explicit word of 20/11 changed the contract line «Cross-border transfer is refused by rule» (invariants.md).
+ * Both need the product's twin in the other store (`product-pairs`); BETWEEN_COUNTRIES also needs the key
+ * `inventory.transfer_abroad` and the owner's approval press on the document before anything moves
+ * (`needsOwnerApproval`). Neither has a rate: the goods keep their cost (`stock-transfer-cost.ts`).
  *
  * The answer is stored on the transfer when it is sent: deriving it again later would let a warehouse that changed
  * hands rewrite what a past transfer meant.
@@ -38,7 +39,7 @@ export interface StockTransferReading {
   label: string;
   /** The one sentence that says what is about to happen, BEFORE the press. */
   detail: string;
-  /** Built in this release? Only INTERNAL. */
+  /** Built in this release? Every kind since W7b (20/11). */
   built: boolean;
 }
 
@@ -51,10 +52,27 @@ const LABELS: Record<StockTransferKind, string> = {
 export const STOCK_TRANSFER_KIND_LABEL = LABELS;
 
 /** The kinds this release builds. */
-export const BUILT_KINDS: readonly StockTransferKind[] = ['INTERNAL'];
+export const BUILT_KINDS: readonly StockTransferKind[] = ['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES'];
 
-/** The sentence a door answers for a kind that is not built yet. */
-export const NOT_BUILT_AR = 'هالنوع من النقل لسا مش مبني. هلّق بس النقل بين مخزنين لنفس المتجر.';
+/**
+ * 20/11 (W7b): the sentence the screen «نقل البضاعة» says for a kind its form cannot send YET. The doors send every
+ * kind; the form has no field for the destination store and the twin until W7c, so it says so instead of sending a
+ * transfer the door would refuse.
+ */
+export const NOT_BUILT_AR = 'النقل لمتجر تاني أو لبلد تاني بدّو اختيار المتجر والمنتج التوأم، وهالنموذج لسا ما فيه هالخانات. هلّق من هون بس النقل بين مخزنين لنفس المتجر.';
+
+/** 20/11 (W7b): the key a transfer to another country asks, on top of the send key. */
+export const ABROAD_KEY = 'inventory.transfer_abroad';
+
+/** 20/11 (W7b): a transfer to another country waits for the owner's press before anything moves. */
+export function needsOwnerApproval(kind: StockTransferKind): boolean {
+  return kind === 'BETWEEN_COUNTRIES';
+}
+
+/** 20/11 (W7b): a transfer between two stores (of one country or two) — two products, two books. */
+export function isAcross(kind: string): boolean {
+  return kind === 'BETWEEN_STORES' || kind === 'BETWEEN_COUNTRIES';
+}
 
 export function stockTransferKind(from: StockTransferEnd, to: StockTransferEnd): StockTransferKind {
   if (from.countryId !== to.countryId) return 'BETWEEN_COUNTRIES';
@@ -71,8 +89,8 @@ export function readStockTransfer(from: StockTransferEnd, to: StockTransferEnd):
     kind === 'INTERNAL'
       ? `داخل ${store(from)} — من ${place(from)} إلى ${place(to)}. نفس البضاعة ونفس الكلفة، بس المكان بيتغيّر.`
       : kind === 'BETWEEN_STORES'
-        ? `من ${store(from)} إلى ${store(to)} — دفترين مختلفين.`
-        : `من ${country(from)} إلى ${country(to)} — بلدين مختلفين.`;
+        ? `من ${store(from)} إلى ${store(to)} — دفترين مختلفين: بتطلع من المنتج هون وبتدخل على توأمه هناك بنفس كلفتها.`
+        : `من ${country(from)} إلى ${country(to)} — بلدين مختلفين: بتطلع بكلفتها وبتدخل بكلفتها مع مصاريف الشحن والجمرك، وبدها اعتماد المالك قبل ما تطلع.`;
   return { kind, label: LABELS[kind], detail, built: BUILT_KINDS.includes(kind) };
 }
 
@@ -81,7 +99,8 @@ export function readStockTransfer(from: StockTransferEnd, to: StockTransferEnd):
  * (`warehouses.warehouseStopBlockers`): an open transfer from or to a warehouse keeps it running.
  */
 export const OPEN_TRANSFER_WHERE = {
-  OR: [{ status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }],
+  // 20/11 (W7b): a transfer to another country waiting for the owner's press holds its units too.
+  OR: [{ status: 'AWAITING_APPROVAL' }, { status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }],
 };
 
 /** Reasons a pair of ends cannot be a transfer at all (Arabic), or null. */

@@ -83,8 +83,16 @@ Order age is time in the CURRENT state. `created_at` is for reporting only.
   READY_TO_SHIP in an exceptions list.
 - COURIER_CUSTODY is a real location. Goods with the courier are neither
   in the warehouse nor with the customer.
-- Warehouses belong to a country. Cross-border transfer is refused by
-  rule, not by warning.
+- Warehouses belong to a country. A transfer to another store or another
+  country goes through ONE special door (the owner's explicit word, 20/11): every product needs its twin in the other store
+  (a saved product pair); another country also needs the key
+  inventory.transfer_abroad and the owner's own approval press before
+  anything moves. The goods keep their cost (no exchange rate): the
+  destination unit cost = (received × cost that left ÷ sent + typed landed
+  costs) ÷ received, rounded to the destination's minor unit, the remainder
+  booked nowhere. A shortfall is a report only — no wallet, expense or
+  profit is ever written by a transfer. Products with combinations are
+  refused across stores until combinations can be paired.
 
 ## Settlement and collection — three sequential entities
 

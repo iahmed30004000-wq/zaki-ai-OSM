@@ -502,6 +502,8 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 20/11 (W7a): the two product-pair doors, built ahead of their screen — the pair picker inside the transfer form (W7c) calls them; they leave this list that day.
   '/api/inventory/pairs': 'ربطُ المنتج بتوأمه بمتجرٍ تاني (اقتراحٌ وحفظ) — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
   '/api/inventory/pairs/[id]': 'شيلُ ربطِ منتجٍ بتوأمه — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
+  // 20/11 (W7b): the owner's press on a transfer to another country, built ahead of its button — «اعتماد المالك» on the transfer screen (W7c) calls it; it leaves this list that day.
+  '/api/inventory/transfers/[id]/approve': 'زرُّ المالك «اعتمد وابعت» على نقلٍ لبلدٍ تاني — بُني قبل زرّه؛ شاشةُ النقل (W7c) هي من تستدعيه',
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',

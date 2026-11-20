@@ -432,7 +432,10 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
   const badQty = lines.some((l) => l.quantity.trim() !== '' && (!WHOLE.test(l.quantity.trim()) || Number(l.quantity) <= 0));
   const badCombo = lines.some((l) => Object.values(l.combos).some(badBox));
   const linesReady = lines.every((l) => l.productId !== '' && WHOLE.test(l.quantity.trim()) && Number(l.quantity) > 0);
-  const ready = !!reading && reading.built && linesReady && !badCombo && !busy;
+  // 20/11 (W7b): the doors send every kind; this form has no destination-store or twin field yet (W7c), so it sends
+  // only between two warehouses of this store and says so for the rest.
+  const onThisForm = !!reading && reading.kind === 'INTERNAL';
+  const ready = !!reading && onThisForm && linesReady && !badCombo && !busy;
 
   const setLine = (key: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -503,12 +506,12 @@ function SendDialog({ warehouses, onClose, onDone }: { warehouses: Warehouse[]; 
           <p
             data-kind={reading.kind}
             className={
-              reading.built
+              onThisForm
                 ? 'rounded-lg bg-[var(--sys-surface)] p-2.5 text-sm text-[var(--sys-foreground)]'
                 : 'rounded-lg border border-[var(--sys-warning)]/50 bg-[var(--sys-warning-soft)] p-2.5 text-sm text-[var(--sys-warning)]'
             }
           >
-            <span className="font-bold">{reading.label}:</span> {reading.built ? reading.detail : NOT_BUILT_AR}
+            <span className="font-bold">{reading.label}:</span> {onThisForm ? reading.detail : NOT_BUILT_AR}
           </p>
         ) : (
           <p className="text-note text-[var(--sys-muted-foreground)]">اختار المخزنين، والشاشة بتقلّك شو نوع هالنقل قبل ما تبعت.</p>

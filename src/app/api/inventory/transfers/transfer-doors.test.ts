@@ -263,11 +263,17 @@ describe('reach and tenancy at the doors', () => {
     expect((await cancel(body.transfer.id)).status).toBe(404);
   });
 
-  it('another country: «لسا مش مبني», with the kind it read', async () => {
+  /*
+   * 20/11 (W7b): transfers across stores and countries are built (their doors' tests: `across-doors.test.ts`). Before:
+   * this send answered 400 KIND_NOT_BUILT «لسا مش مبني». Now: a warehouse of another country with no destination store
+   * named holds none of this store's goods — 400 TO_OTHER_COUNTRY, in Arabic, and nothing written.
+   */
+  it('a warehouse of another country with no destination store: 400 TO_OTHER_COUNTRY (was KIND_NOT_BUILT)', async () => {
     await as('u-owner');
     const r = await send({ toWarehouseId: 'wJ', lines: [{ productId: 'p1', quantity: 1 }] });
-    expect([r.status, r.body.code, r.body.kind]).toEqual([400, 'KIND_NOT_BUILT', 'BETWEEN_COUNTRIES']);
-    expect(r.body.errorAr).toContain('لسا مش مبني');
+    expect([r.status, r.body.code]).toEqual([400, 'TO_OTHER_COUNTRY']);
+    expect(r.body.errorAr).toContain('بلد');
+    expect(S.m.data.stockTransfer).toEqual([]);
   });
 
   it('every refusal is an Arabic sentence with a stable code — a bad body too', async () => {

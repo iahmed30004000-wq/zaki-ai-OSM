@@ -491,16 +491,20 @@ describe('the edges of the row', () => {
   });
 });
 
-describe('only INTERNAL is built — the kind is read from the ends, and the others answer «لسا مش مبني»', () => {
-  it('another country: BETWEEN_COUNTRIES, not built', async () => {
-    const e = await refusedWith(send(world(), [{ productId: 'p1', quantity: 1 }], { toWarehouseId: 'wJ' }), 'KIND_NOT_BUILT');
-    expect(e.errorAr).toContain('لسا مش مبني');
-    expect(e.extra.kind).toBe('BETWEEN_COUNTRIES');
+/*
+ * 20/11 (W7b): the other two kinds are built (their own tests: `stock-transfer-across.test.ts`). Before: both sends below
+ * answered KIND_NOT_BUILT «لسا مش مبني». Now each is refused for what is true of it today: a warehouse of another country
+ * with NO destination store named holds none of this store's goods (TO_OTHER_COUNTRY), and another store that was never
+ * placed in warehouses cannot receive (TO_STORE_NOT_PLACED).
+ */
+describe('the kind is read from the ends; a send this store cannot make is refused for what it is', () => {
+  it('a warehouse of another country, no destination store named: TO_OTHER_COUNTRY (was KIND_NOT_BUILT)', async () => {
+    const e = await refusedWith(send(world(), [{ productId: 'p1', quantity: 1 }], { toWarehouseId: 'wJ' }), 'TO_OTHER_COUNTRY');
+    expect(e.errorAr).toContain('بلد');
   });
 
-  it('another store of the same country: BETWEEN_STORES, not built', async () => {
-    const e = await refusedWith(send(world(), [{ productId: 'p1', quantity: 1 }], { toStoreId: 's2' }), 'KIND_NOT_BUILT');
-    expect(e.extra.kind).toBe('BETWEEN_STORES');
+  it('another store of the same country, never placed: TO_STORE_NOT_PLACED (was KIND_NOT_BUILT)', async () => {
+    await refusedWith(send(world(), [{ productId: 'p1', quantity: 1 }], { toStoreId: 's2' }), 'TO_STORE_NOT_PLACED');
   });
 
   it('NEGATIVE: the screen expected another kind than the ends say (409 KIND_CHANGED)', async () => {
@@ -515,7 +519,8 @@ describe('only INTERNAL is built — the kind is read from the ends, and the oth
     expect(stockTransferKind(end('a', 's', 'k'), end('b', 's', 'j'))).toBe('BETWEEN_COUNTRIES');
     expect(stockTransferKind(end('a', 's', 'k'), end('b', 't', 'j'))).toBe('BETWEEN_COUNTRIES');
     expect(readStockTransfer(end('a', 's', 'k'), end('b', 's', 'k')).built).toBe(true);
-    expect(readStockTransfer(end('a', 's', 'k'), end('b', 't', 'k')).built).toBe(false);
+    // 20/11 (W7b): every kind is built (was: BETWEEN_STORES → false).
+    expect(readStockTransfer(end('a', 's', 'k'), end('b', 't', 'k')).built).toBe(true);
   });
 });
 
