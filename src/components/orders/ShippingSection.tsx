@@ -239,6 +239,8 @@ export function ShippingSection({ order, ar, isRtl, onRefreshOrder, canEdit = tr
         <Info label={ar ? 'شركة التوصيل' : 'Provider'} value={order.deliveryProvider?.name || (ar ? 'غير معيّنة' : 'None')} />
         <Info label={ar ? 'رقم التتبع' : 'Tracking #'} value={order.trackingNumber || '—'} mono />
         <Info label={ar ? 'دفعة الشحن' : 'Batch'} value={order.shippingBatch?.batchNumber || '—'} mono />
+        {/* «طلع من مخزن كذا» (W4d): the server's name, sent only when the order has a source warehouse — else nothing. */}
+        {order.sourceWarehouseName && <Info label="طلع من مخزن" value={order.sourceWarehouseName} />}
         <Info label={ar ? 'شُحن في' : 'Shipped At'} value={arDateShort(order.shippedAt)} />
         <Info label={ar ? 'خرج للتوصيل' : 'Out for Delivery'} value={arDateShort(order.outForDeliveryAt)} />
         <Info label={ar ? 'سُلّم في' : 'Delivered At'} value={arDateShort(order.deliveredAt)} />

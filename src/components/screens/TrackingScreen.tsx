@@ -109,6 +109,8 @@ interface Row {
    * is on the row only for whoever holds the money sight (`access.money`); an older server sends none, and nothing is drawn.
    */
   difference?: DifferenceOnTheRow | null;
+  /** «طلع من مخزن كذا» (W4d): the warehouse it left from — sent only when the order has one, so an unplaced store draws nothing new. */
+  sourceWarehouseName?: string;
 }
 
 interface Extra {
@@ -1068,19 +1070,26 @@ export function TrackingScreen() {
             {
               key: 'courier',
               label: 'جهة الشحن',
-              render: (o) =>
-                o.deliveryProvider ? (
-                  <span className="inline-flex items-center gap-1 text-[var(--sys-foreground)]">
-                    {o.deliveryProvider.kind === 'AGENT' ? (
-                      <RiEBike2Line className="h-4 w-4 text-[var(--sys-primary)]" />
-                    ) : (
-                      <RiTruckLine className="h-4 w-4 text-[var(--sys-muted)]" />
-                    )}
-                    {o.deliveryProvider.name}
-                  </span>
-                ) : (
-                  <span className="text-[var(--sys-muted)]">—</span>
-                ),
+              render: (o) => (
+                <>
+                  {o.deliveryProvider ? (
+                    <span className="inline-flex items-center gap-1 text-[var(--sys-foreground)]">
+                      {o.deliveryProvider.kind === 'AGENT' ? (
+                        <RiEBike2Line className="h-4 w-4 text-[var(--sys-primary)]" />
+                      ) : (
+                        <RiTruckLine className="h-4 w-4 text-[var(--sys-muted)]" />
+                      )}
+                      {o.deliveryProvider.name}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--sys-muted)]">—</span>
+                  )}
+                  {/* «طلع من مخزن كذا» (W4d): under the courier, only when the server named a warehouse. */}
+                  {o.sourceWarehouseName && (
+                    <span className="block text-note text-[var(--sys-muted-foreground)]">طلع من مخزن {o.sourceWarehouseName}</span>
+                  )}
+                </>
+              ),
             },
             {
               key: 'status',

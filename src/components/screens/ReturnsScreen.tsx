@@ -105,6 +105,11 @@ interface RowBase {
   customer: { fullName: string; phone?: string | null };
   region: { name: string } | null;
   deliveryProvider: { name: string } | null;
+  /**
+   * «طلع من مخزن كذا» (W4d): the warehouse the parcel left from — the desk's default receiver, SHOWN only (choosing
+   * where it is received is a later request). Sent only when the order has one, so an unplaced store draws nothing new.
+   */
+  sourceWarehouseName?: string;
 }
 
 /** A parcel waiting to be counted in. */
@@ -160,6 +165,17 @@ function ListFrame({ phone, children }: { phone: boolean; children: React.ReactN
 }
 
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
+
+/** The courier, and under it «طلع من مخزن كذا» when the server named one (W4d) — a row with none reads as it always did. */
+const courierCell = (r: RowBase) =>
+  r.sourceWarehouseName ? (
+    <>
+      {r.deliveryProvider?.name ?? '—'}
+      <span className="block text-note text-[var(--sys-muted-foreground)]">طلع من مخزن {r.sourceWarehouseName}</span>
+    </>
+  ) : (
+    r.deliveryProvider?.name ?? '—'
+  );
 
 export function ReturnsScreen() {
   const phone = useIsPhone();
@@ -373,7 +389,7 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    { key: 'courier', label: 'شركة الشحن', render: courierCell },
                     ...contactColumns,
                     { key: 'reason', label: 'السبب', render: (r) => returnReasonText(r.returnReason) },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
@@ -401,7 +417,7 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    { key: 'courier', label: 'شركة الشحن', render: courierCell },
                     ...contactColumns,
                     {
                       key: 'counted',
@@ -769,6 +785,14 @@ function ReceiveDialog({
             </div>
           ))}
         </div>
+
+        {/* THE DEFAULT RECEIVER (W4d), SAID ONLY: the warehouse the parcel left from. Nothing here picks a warehouse or
+            sends one — the receipt is written exactly as before. A parcel with no source warehouse draws nothing. */}
+        {order.sourceWarehouseName && (
+          <p className="text-note text-[var(--sys-muted-foreground)]">
+            طلع من مخزن {order.sourceWarehouseName} — رجّعه عليه.
+          </p>
+        )}
 
         {/*
           THE EXTRA ACTION.

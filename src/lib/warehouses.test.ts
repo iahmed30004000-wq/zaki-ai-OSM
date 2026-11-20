@@ -229,6 +229,12 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/ops/preparation/route.ts',
     'src/app/api/orders/[id]/shipping/route.ts',
     'src/app/api/ops/tracking/transfer/route.ts',
+    // 20/11, W4d (the order says where it left from): READ ONLY — the name lookup, and the three doors that read the
+    // order's `sourceWarehouseId` to send the warehouse's name (order window, tracking row, returns desk). None writes it.
+    'src/lib/order-source-warehouse.ts',
+    'src/app/api/orders/[id]/route.ts',
+    'src/app/api/ops/tracking/route.ts',
+    'src/app/api/ops/returns/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
