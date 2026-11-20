@@ -71,6 +71,8 @@ import { leavesTheShipment, leavesTheTrolley } from '@/lib/shipment-cancel';
 import { POST as createShipment } from './route';
 import { POST as openTrolley } from '@/app/api/shipping-batches/route';
 import { GET as preparation } from '@/app/api/ops/preparation/route';
+import { POST as transferDoor } from '@/app/api/ops/tracking/transfer/route';
+import { freeStockOf } from '@/lib/stock-transfers';
 
 const C1 = 'c1';
 const id = (n: number) => `00000000-0000-4000-9000-${String(n).padStart(12, '0')}`;
@@ -306,5 +308,58 @@ describe('off the trolley, the stamp goes; the doors that put an order on a trol
     const src = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
     expect(src('src/app/api/orders/[id]/shipping/route.ts')).toMatch(/updateData\.sourceWarehouseId = batch\.warehouseId \?\? null/);
     expect(src('src/app/api/ops/tracking/transfer/route.ts')).toMatch(/order\.sourceWarehouseId \? \{ warehouseId: order\.sourceWarehouseId \} : \{\}/);
+  });
+});
+
+describe('a parcel moved to another courier after the handover: the replacement leaves from the trolley’s warehouse', () => {
+  const C2 = id(901);
+  const transfer = (body: Row) =>
+    transferDoor(new Request('http://x/api/ops/tracking/transfer', { method: 'POST', body: JSON.stringify(body) })).then(json);
+
+  function handedOver() {
+    S.m.data.deliveryProvider.push({ id: C2, companyId: C1, name: 'شركة تانية', kind: 'COMPANY', isActive: true, apiEnabled: false });
+    S.m.data.deliveryProvider[0].kind = 'COMPANY';
+    // O3 left wA with the first courier: its trolley is closed and handed over.
+    S.m.data.shippingBatch.push(
+      { id: 'tShipped', companyId: C1, storeId: 's1', deliveryProviderId: DP, status: 'SHIPPED', warehouseId: 'wA', batchNumber: 'B-9', createdAt: new Date('2026-11-01') },
+      // The second courier's open trolley of the SAME warehouse, and one of B that must not be taken.
+      { id: 'tC2B', companyId: C1, storeId: 's1', deliveryProviderId: C2, status: 'READY', warehouseId: 'wB', batchNumber: 'B-10', createdAt: new Date('2026-11-03') },
+      { id: 'tC2A', companyId: C1, storeId: 's1', deliveryProviderId: C2, status: 'READY', warehouseId: 'wA', batchNumber: 'B-11', createdAt: new Date('2026-11-02') }
+    );
+    Object.assign(S.m.data.order.find((o) => o.id === O[2])!, {
+      deliveryProviderId: DP, shippingBatchId: 'tShipped', shippingStatus: 'SHIPPED', shippedAt: new Date('2026-11-01'), sourceWarehouseId: 'wA',
+    });
+  }
+
+  it('worked example: O3 stamped wA, moved to the second courier → the replacement rides wA’s trolley, stamped wA, and its hold is inside wA’s free stock', async () => {
+    S.rolePerms['r-ship'] = [...S.rolePerms['r-ship'], 'ops.transfer', 'ops.track'];
+    handedOver();
+    // Before: wA holds 3; O3 (one unit, with the courier, sourced wA) holds 1 → 2 free.
+    expect((await freeStockOf(S.m.db as never, { companyId: C1, storeId: 's1', warehouseId: 'wA', productIds: ['p1'] })).get('p1')).toBe(2);
+    await as('u-shipper');
+    const r = await transfer({ orderId: O[2], toProviderId: C2 });
+    expect(r.status, JSON.stringify(r.body)).toBeLessThan(300);
+    const replacement = S.m.data.order.find((o) => o.id !== O[2] && o.orderNumber !== undefined && !O.includes(o.id))!;
+    expect(replacement).toMatchObject({ shippingBatchId: 'tC2A', sourceWarehouseId: 'wA' });
+    // Its own hold now counts against wA, exactly as any order on a wA trolley.
+    const held = S.m.data.orderItem.filter((i) => i.orderId === replacement.id).reduce((s, i) => s + (i.reservedQty ?? 0), 0);
+    const sourcedHolds = S.m.data.order
+      .filter((o) => o.sourceWarehouseId === 'wA')
+      .flatMap((o) => S.m.data.orderItem.filter((i) => i.orderId === o.id && (o.confirmationStatus !== 'CANCELLED')))
+      .reduce((s, i) => s + (i.reservedQty ?? 0), 0);
+    expect(held).toBeGreaterThan(0);
+    expect((await freeStockOf(S.m.db as never, { companyId: C1, storeId: 's1', warehouseId: 'wA', productIds: ['p1'] })).get('p1')).toBe(3 - sourcedHolds);
+  });
+
+  it('NEGATIVE: a store that is not placed — the replacement is raised exactly as before, with no warehouse written', async () => {
+    S.m = world(false);
+    S.rolePerms['r-ship'] = [...S.rolePerms['r-ship'], 'ops.transfer', 'ops.track'];
+    handedOver();
+    S.m.data.shippingBatch.forEach((b) => (b.warehouseId = null));
+    S.m.data.order.find((o) => o.id === O[2])!.sourceWarehouseId = null;
+    await as('u-shipper');
+    const r = await transfer({ orderId: O[2], toProviderId: C2 });
+    expect(r.status, JSON.stringify(r.body)).toBeLessThan(300);
+    for (const u of written('order.update')) expect(u.data).not.toHaveProperty('sourceWarehouseId');
   });
 });

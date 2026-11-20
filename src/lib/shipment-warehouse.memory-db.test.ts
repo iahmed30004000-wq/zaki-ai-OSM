@@ -193,6 +193,11 @@ export function shipDb(seed: Record<string, Row[]> = {}) {
       return tables.get(prop);
     },
   });
+  // The transaction client: the same tables, and no `$transaction` on it (that is how the stock lock knows it is inside one).
+  const tx: Row = new Proxy(root, {
+    get: (_t, prop) => (prop === '$transaction' ? undefined : (db as Row)[prop as string]),
+    has: (_t, prop) => prop !== '$transaction',
+  });
   root.$executeRaw = async () => 1;
   root.$queryRaw = async () => [];
   root.$transaction = async (fn: unknown) => {
@@ -200,7 +205,7 @@ export function shipDb(seed: Record<string, Row[]> = {}) {
     const before = structuredClone(data);
     const seqBefore = seq;
     try {
-      return await (fn as (t: Row) => unknown)(db);
+      return await (fn as (t: Row) => unknown)(tx);
     } catch (e) {
       data = before;
       seq = seqBefore;
