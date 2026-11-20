@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { db, requireContext, can, courierCityGaps } = vi.hoisted(() => ({
-  db: { shippingBatch: { count: vi.fn(), findMany: vi.fn() }, order: { groupBy: vi.fn() } },
+  // 20/11 (W4c): `store.findFirst` is the list asking whether the store is placed in warehouses; unset, «no» — today's list.
+  db: { shippingBatch: { count: vi.fn(), findMany: vi.fn() }, order: { groupBy: vi.fn() }, store: { findFirst: vi.fn() } },
   requireContext: vi.fn(),
   can: vi.fn(),
   courierCityGaps: vi.fn(),

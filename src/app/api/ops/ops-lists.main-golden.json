@@ -1,0 +1,202 @@
+{
+  "preparation": {
+    "status": 200,
+    "body": {
+      "allowNegativeStock": false,
+      "totals": {
+        "products": 1,
+        "orders": 2,
+        "shortages": 0
+      },
+      "groups": [
+        {
+          "productId": "p1",
+          "productName": "مقشر",
+          "orders": 2,
+          "required": 3,
+          "available": 13,
+          "shortage": 0,
+          "lines": [
+            {
+              "orderId": "00000000-0000-4000-9000-000000000001",
+              "orderNumber": "ORD-01",
+              "customerName": "زبون",
+              "regionName": "محافظة",
+              "pendingChangeRequestId": null,
+              "quantity": 2,
+              "freeQuantity": 0,
+              "reservedQty": 2,
+              "variantSummary": null,
+              "confirmationStatus": "CONFIRMED",
+              "shippingStatus": "NOT_READY"
+            },
+            {
+              "orderId": "00000000-0000-4000-9000-000000000002",
+              "orderNumber": "ORD-02",
+              "customerName": "زبون",
+              "regionName": "محافظة",
+              "pendingChangeRequestId": null,
+              "quantity": 1,
+              "freeQuantity": 0,
+              "reservedQty": 1,
+              "variantSummary": null,
+              "confirmationStatus": "CONFIRMED",
+              "shippingStatus": "NOT_READY"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "shipments": {
+    "status": 200,
+    "body": {
+      "count": 2,
+      "heldCount": 0,
+      "allowNegativeStock": false,
+      "orders": [
+        {
+          "id": "00000000-0000-4000-9000-000000000001",
+          "orderNumber": "ORD-01",
+          "merchantRef": null,
+          "createdAt": "2026-11-01T08:00:00.000Z",
+          "customer": {
+            "id": "cu-1",
+            "fullName": "زبون",
+            "phone": "0790000000",
+            "city": "مدينة",
+            "totalOrders": 1
+          },
+          "previousOrders": 0,
+          "region": {
+            "id": "r1",
+            "name": "محافظة"
+          },
+          "address": null,
+          "items": [
+            {
+              "productName": "مقشر",
+              "quantity": 2,
+              "freeQuantity": 0
+            }
+          ],
+          "cod": {
+            "subtotal": 20,
+            "discount": 0,
+            "deliveryFee": 3,
+            "cod": 23,
+            "revenue": 20,
+            "addOns": 0,
+            "discountShares": [
+              0
+            ],
+            "lineTotals": [
+              20
+            ],
+            "currency": "SYP",
+            "feeSource": "TABLE"
+          },
+          "blocks": [],
+          "selectable": true,
+          "hardBlocked": false,
+          "standDownBlocked": null
+        },
+        {
+          "id": "00000000-0000-4000-9000-000000000002",
+          "orderNumber": "ORD-02",
+          "merchantRef": null,
+          "createdAt": "2026-11-01T08:00:00.000Z",
+          "customer": {
+            "id": "cu-2",
+            "fullName": "زبون",
+            "phone": "0790000000",
+            "city": "مدينة",
+            "totalOrders": 1
+          },
+          "previousOrders": 0,
+          "region": {
+            "id": "r1",
+            "name": "محافظة"
+          },
+          "address": null,
+          "items": [
+            {
+              "productName": "مقشر",
+              "quantity": 1,
+              "freeQuantity": 0
+            }
+          ],
+          "cod": {
+            "subtotal": 10,
+            "discount": 0,
+            "deliveryFee": 3,
+            "cod": 13,
+            "revenue": 10,
+            "addOns": 0,
+            "discountShares": [
+              0
+            ],
+            "lineTotals": [
+              10
+            ],
+            "currency": "SYP",
+            "feeSource": "TABLE"
+          },
+          "blocks": [],
+          "selectable": true,
+          "hardBlocked": false,
+          "standDownBlocked": null
+        }
+      ]
+    }
+  },
+  "batches": {
+    "status": 200,
+    "body": {
+      "batches": [
+        {
+          "id": "tA",
+          "companyId": "c1",
+          "storeId": "s1",
+          "deliveryProviderId": "00000000-0000-4000-9000-000000000900",
+          "status": "READY",
+          "warehouseId": null,
+          "batchNumber": "SB-1",
+          "createdAt": "2026-11-02T08:00:00.000Z",
+          "shippedAt": null,
+          "notes": null,
+          "createdById": "u-owner",
+          "provider": null,
+          "creator": null,
+          "_count": {},
+          "courierCityGap": null,
+          "shippedCount": 0
+        },
+        {
+          "id": "tB",
+          "companyId": "c1",
+          "storeId": "s1",
+          "deliveryProviderId": "00000000-0000-4000-9000-000000000900",
+          "status": "SHIPPED",
+          "warehouseId": null,
+          "batchNumber": "SB-2",
+          "createdAt": "2026-11-01T08:00:00.000Z",
+          "shippedAt": null,
+          "notes": null,
+          "createdById": "u-owner",
+          "provider": null,
+          "creator": null,
+          "_count": {},
+          "courierCityGap": null,
+          "shippedCount": 0
+        }
+      ],
+      "pagination": {
+        "total": 2,
+        "page": 1,
+        "limit": 100,
+        "totalPages": 1
+      }
+    }
+  }
+}

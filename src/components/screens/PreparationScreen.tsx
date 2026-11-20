@@ -22,6 +22,7 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
 import { userCan } from '@/lib/can';
 import { AI_ASSIST_KEY } from '@/lib/ai-assistants';
+import { TransferLink, WarehousePicker, useOpsWarehouse, type OpsWarehouse } from '@/components/ops/WarehousePicker';
 
 /**
  * /ops/preparation — grouped BY PRODUCT, collapsible. Orders, required,
@@ -53,7 +54,7 @@ interface Group {
 
 export function PreparationScreen() {
   const phone = useIsPhone();
-  const [data, setData] = useState<{ allowNegativeStock: boolean; totals: { products: number; orders: number; shortages: number }; groups: Group[]; benchNote?: string } | null>(null);
+  const [data, setData] = useState<{ allowNegativeStock: boolean; totals: { products: number; orders: number; shortages: number }; groups: Group[]; benchNote?: string; warehouses?: OpsWarehouse[] } | null>(null);
   // Groups start OPEN: the screen has no action of its own, so a group closed
   // by default was a click for nothing before the packer could read a line.
   // Only the ones the person closes are remembered.
@@ -119,15 +120,33 @@ export function PreparationScreen() {
     }
   };
 
+  /*
+   * A STORE PLACED IN WAREHOUSES (W4c): the list says which warehouses she may pick, and «متاح» is then the chosen
+   * warehouse's (`?warehouse=`). A store that is not placed sends no list, so `place` stays '' and the request is the
+   * one this screen always made.
+   */
+  const { warehouses, place, heard, choose } = useOpsWarehouse(currentUser?.id);
+  const mayTransfer = userCan(currentUser, 'inventory.transfer');
+
   const load = useCallback(async () => {
     try {
-      setData(await apiJson('/api/ops/preparation'));
+      const answer = await apiJson<NonNullable<typeof data>>(
+        place ? `/api/ops/preparation?warehouse=${encodeURIComponent(place)}` : '/api/ops/preparation'
+      );
+      setData(answer);
+      heard(answer.warehouses);
     } catch (e) {
+      // A warehouse that stopped or was taken from her since the pick: back to the store's shelf, and ask again.
+      const code = (e as { data?: { code?: unknown } } | null)?.data?.code;
+      if (place && typeof code === 'string' && code.startsWith('WAREHOUSE_')) {
+        choose('');
+        return;
+      }
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, []);
+  }, [place, heard, choose]);
 
-  useLiveRefresh(load);
+  useLiveRefresh(load, { key: place });
 
   if (error) return <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>;
   if (!data) {
@@ -151,6 +170,18 @@ export function PreparationScreen() {
           {data.allowNegativeStock ? 'المخزون السالب مسموح مع تنبيه' : 'المخزون السالب ممنوع — النقص يمنع الشحن'}
         </span>
       </div>
+
+      {/* A store placed in warehouses only (W4c): which warehouse she packs from. «كل المخازن» is the store's shelf. */}
+      {warehouses && (
+        <div className="space-y-2">
+          <WarehousePicker warehouses={warehouses} value={place} onChange={choose} label="المخزن اللي بتجهّز منه" noneLabel="كل المخازن" />
+          {place && data.totals.shortages > 0 && mayTransfer && (
+            <p className="text-note text-[var(--sys-muted-foreground)]">
+              في نقص بهالمخزن. <TransferLink />
+            </p>
+          )}
+        </div>
+      )}
 
       {data.groups.length > 0 && mayAskAssistant && <PickingAssistant />}
 

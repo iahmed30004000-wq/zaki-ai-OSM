@@ -7,8 +7,8 @@ import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { courierCityGaps } from '@/lib/couriers/city-gaps';
-import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody } from '@/lib/shipment-warehouse';
-import { reachesWarehouse } from '@/lib/warehouses';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody, shipmentWarehouseChoices } from '@/lib/shipment-warehouse';
+import { reachesWarehouse, warehousesReachedBy } from '@/lib/warehouses';
 
 /**
  * GET  /api/shipping-batches — company-scoped list (with order counts)
@@ -29,16 +29,27 @@ export async function GET(req: Request) {
     const page = readPage(searchParams);
     const limit = readLimit(searchParams, 50, 100);
 
+    /*
+     * W4c — A PLACED STORE ONLY: the warehouses the screen's picker offers, `?warehouse=` narrows the list to one of them,
+     * and every batch carries the name of the warehouse it leaves from. For a store that is not placed `warehouses` is
+     * null: the parameter is not read, the read below is the one it always was, and the answer has no new field.
+     */
+    const warehouses = await shipmentWarehouseChoices(db, { companyId, storeId, reached: (ws) => warehousesReachedBy(user, companyId, ws) });
+    const askedWarehouse = searchParams.get('warehouse');
+    const onlyWarehouse = warehouses && askedWarehouse && warehouses.some((w) => w.id === askedWarehouse) ? askedWarehouse : null;
+    const listWhere = { companyId, storeId, ...(onlyWarehouse ? { warehouseId: onlyWarehouse } : {}) };
+
     const [total, batches] = await Promise.all([
-      db.shippingBatch.count({ where: { companyId, storeId } }),
+      db.shippingBatch.count({ where: listWhere }),
       db.shippingBatch.findMany({
-        where: { companyId, storeId },
+        where: listWhere,
         include: {
           // `apiEnabled` decides whether "رحّل إلى الشركة" means anything
           // for this batch: a manual courier has no server to send to.
           provider: { select: { id: true, name: true, code: true, kind: true, apiEnabled: true, adapterCode: true } },
           creator: { select: { id: true, name: true } },
           _count: { select: { orders: true } },
+          ...(warehouses ? { warehouse: { select: { id: true, name: true } } } : {}),
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -68,6 +79,7 @@ export async function GET(req: Request) {
     const shippedCounts = new Map<string, number>(waiting.map((w) => [w.shippingBatchId as string, w._count._all]));
 
     return NextResponse.json({
+      ...(warehouses ? { warehouses } : {}),
       batches: batches.map((b) => ({ ...b, courierCityGap: gaps.get(b.id) ?? null, shippedCount: shippedCounts.get(b.id) ?? 0 })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });

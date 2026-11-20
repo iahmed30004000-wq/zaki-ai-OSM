@@ -29,6 +29,8 @@ const { db, requireContext, applyQueueFilter, assertOrderReadable, findCustomer 
     customer: { findFirst: vi.fn() },
     returnReceipt: { count: vi.fn() },
     shippingBatch: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
+    // 20/11 (W4c): the batch list asks whether the store is placed in warehouses (`shipment-warehouse.shipmentWarehouseChoices`); unset, «no» — today's list.
+    store: { findFirst: vi.fn() },
   },
   requireContext: vi.fn(),
   applyQueueFilter: vi.fn(),
