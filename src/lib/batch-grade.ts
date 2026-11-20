@@ -446,3 +446,74 @@ export function readBatches(grades: readonly BatchGrade[]): BatchReading {
     headline,
   };
 }
+
+/**
+ * A ROW SPLIT FROM A RUN IS NOT A RUN (the warehouse plan, W2c).
+ *
+ * When units of a batch change place, a twin row holds them (`batch-split.ts`): `quantityProduced` 0, the run's unit cost
+ * and date, `splitFromBatchId` = the run. It is the same goods at another address — so every LIST of runs and every
+ * COUNT of batches must see one run, not two: a twin listed as a run would grade as «الكمية صفر» (its `quantityProduced`
+ * is 0 by design), and a count would rise each time goods moved. These two functions are pure and read only the rows they
+ * are handed; a store that was never placed has no twin, and for it both return exactly what they were given.
+ */
+export interface SplitRow {
+  id: string;
+  splitFromBatchId?: string | null;
+}
+
+/** Each row's run: the top of its `splitFromBatchId` chain among the rows given (or the first id above them). */
+export function runOfRows(rows: readonly SplitRow[]): (row: SplitRow) => string {
+  const parent = new Map<string, string>();
+  for (const r of rows) if (r.splitFromBatchId) parent.set(r.id, r.splitFromBatchId);
+  if (parent.size === 0) return (row) => row.id;
+  return (row) => {
+    let id = row.id;
+    if (row.splitFromBatchId && !parent.has(id)) id = row.splitFromBatchId;
+    const seen = new Set<string>();
+    while (parent.has(id) && !seen.has(id)) {
+      seen.add(id);
+      id = parent.get(id)!;
+    }
+    return id;
+  };
+}
+
+/** How many runs these rows belong to — `which` (default: all of them), resolved against `all`. */
+export function countRuns(all: readonly SplitRow[], which: readonly SplitRow[] = all): number {
+  const runOf = runOfRows(all);
+  return new Set(which.map(runOf)).size;
+}
+
+/**
+ * The runs among these rows, each carrying the units its twins hold: `quantitySold` and `quantityRemaining` are the run's
+ * own plus every row split from it (at any depth). «أُنتج» stays the run's own — a twin produced nothing. A twin whose run
+ * is not among the rows (the run was deleted) stands as its own row. With no twin the rows come back untouched, the same
+ * objects in the same order.
+ */
+export function foldSplitRows<R extends SplitRow & { quantitySold: number; quantityRemaining: number }>(
+  rows: readonly R[],
+  twins: readonly (SplitRow & { quantitySold: number; quantityRemaining: number })[] = []
+): R[] {
+  const all: (SplitRow & { quantitySold: number; quantityRemaining: number })[] = [...rows, ...twins];
+  if (!all.some((r) => r.splitFromBatchId)) return [...rows];
+  const runOf = runOfRows(all);
+  const listed = new Set(rows.map((r) => r.id));
+  const extra = new Map<string, { sold: number; remaining: number }>();
+  const seenTwin = new Set<string>();
+  for (const t of all) {
+    if (!t.splitFromBatchId || seenTwin.has(t.id)) continue;
+    seenTwin.add(t.id);
+    const run = runOf(t);
+    if (!listed.has(run)) continue;
+    const e = extra.get(run) ?? { sold: 0, remaining: 0 };
+    e.sold += t.quantitySold;
+    e.remaining += t.quantityRemaining;
+    extra.set(run, e);
+  }
+  return rows
+    .filter((r) => !r.splitFromBatchId || !listed.has(runOf(r)))
+    .map((r) => {
+      const e = extra.get(r.id);
+      return e ? { ...r, quantitySold: r.quantitySold + e.sold, quantityRemaining: r.quantityRemaining + e.remaining } : r;
+    });
+}

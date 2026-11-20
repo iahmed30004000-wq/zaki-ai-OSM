@@ -31,6 +31,8 @@ interface Movement {
   product: { id: string; name: string; sku: string | null } | null;
   batchNumber: string | null;
   createdByName: string | null;
+  /** A store placed in warehouses only: the warehouse whose shelf moved (null = a line of the whole store). */
+  warehouseName?: string | null;
 }
 
 const TYPE_AR: Record<string, string> = {
@@ -46,9 +48,16 @@ const TYPE_AR: Record<string, string> = {
 };
 
 export function InventoryMovementsScreen() {
-  const [data, setData] = useState<{ movements: Movement[]; types: { type: string; count: number }[]; hasMore: boolean } | null>(null);
+  const [data, setData] = useState<{
+    movements: Movement[];
+    types: { type: string; count: number }[];
+    hasMore: boolean;
+    /** A store placed in warehouses only (W2c): the warehouses its ledger names. Absent = today's screen. */
+    warehouses?: { id: string; name: string }[];
+  } | null>(null);
   const [term, setTerm] = useState('');
   const [type, setType] = useState('all');
+  const [warehouse, setWarehouse] = useState('all');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -56,14 +65,18 @@ export function InventoryMovementsScreen() {
     const q = new URLSearchParams();
     if (term.trim()) q.set('q', term.trim());
     if (type !== 'all') q.set('type', type);
+    if (warehouse !== 'all') q.set('warehouse', warehouse);
     try {
       setData(await apiJson(`/api/inventory/movements?${q}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, [term, type]);
+  }, [term, type, warehouse]);
 
-  useLiveRefresh(load, { key: `${term}·${type}` });
+  useLiveRefresh(load, { key: `${term}·${type}·${warehouse}` });
+
+  /** The warehouse column and filter exist only for a store placed in warehouses — the server says so by sending the list. */
+  const places = data?.warehouses;
 
   return (
     <PageShell
@@ -105,6 +118,23 @@ export function InventoryMovementsScreen() {
             ))}
           </select>
         </label>
+        {places && (
+          <label>
+            <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">المخزن</span>
+            <select
+              value={warehouse}
+              onChange={(e) => setWarehouse(e.target.value)}
+              className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
+            >
+              <option value="all">كل المخازن</option>
+              {places.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <Button type="submit">بحث</Button>
       </form>
       </Card>
@@ -154,6 +184,9 @@ export function InventoryMovementsScreen() {
                 render: (m) => (m.balanceAfter) },
               { key: 'c5', label: "الدفعة",
                 render: (m) => (m.batchNumber ?? '—') },
+              ...(places
+                ? [{ key: 'cw', label: 'المخزن', render: (m: Movement) => m.warehouseName ?? 'المتجر كله' }]
+                : []),
               { key: 'c6', label: "السبب",
                 render: (m) => (m.reason ?? '—') },
               { key: 'c7', label: "سجّلها",
