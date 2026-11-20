@@ -16,6 +16,7 @@ import { PENDING_ORDER_BY, RECEIVED_ORDER_BY, daysWaitedOf, returnsFilters, sinc
 import { returnsFacts } from '@/lib/returns-list';
 import { receiveReturn } from '@/lib/return-receipt';
 import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
+import { reachesWarehouse } from '@/lib/warehouses';
 
 /**
  * Return receiving.
@@ -44,6 +45,12 @@ const receiveSchema = z.object({
   countedAndInspected: z.literal(true, { message: 'يلزم إقرار العد والفحص قبل الاستلام' }),
   chargeCourierFee: z.boolean().default(false),
   note: z.string().trim().max(500).optional(),
+  /**
+   * The warehouse that received the parcel (the warehouse plan, W2b). Read only for a store placed in warehouses; absent
+   * there = the warehouse the order left from. `.catch` because the old schema stripped any such field: a body the old
+   * door accepted is never refused for it.
+   */
+  warehouseId: z.string().max(64).optional().nullable().catch(undefined),
 });
 
 /**
@@ -245,13 +252,14 @@ export async function POST(req: Request) {
      * exact body and status this door has always answered.
      */
     const result = await receiveReturn(
-      { user, companyId, storeId, minorUnit: country.minorUnit },
+      { user, companyId, storeId, minorUnit: country.minorUnit, mayUse: (w) => reachesWarehouse(user, companyId, w) },
       {
         orderId: input.orderId,
         receivedQty: input.receivedQty,
         damagedQty: input.damagedQty,
         chargeCourierFee: input.chargeCourierFee,
         note: input.note,
+        ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
       }
     );
     if (!result.ok) return NextResponse.json(result.body, { status: result.status });

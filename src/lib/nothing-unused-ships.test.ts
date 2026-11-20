@@ -496,7 +496,11 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
   // 20/11 (W3b): the four stock-transfer doors of W3a left — the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls the list, the send, the receive, the cancel and the difference.
   // 20/11 (W6b): the three stock-exit doors of W6a left — the screen «إخراج بضاعة» (`screens/StockExitsScreen.tsx`) calls the list, the request, the approval and the rejection; and its month's table calls the new '/api/inventory/exits/month'.
+  // 20/11 (Q4a): NO_CALLER_FOUND for a LIBRARY, not a route — `src/lib/confirmation-rules.ts` (the owner's own rules and `ruleFor`) is read by nothing yet; no route is added, so nothing enters this list. Its own test pins «no importer» and Q4b removes that pin when the pull reads it.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
+  // 20/11 (W7a): the two product-pair doors, built ahead of their screen — the pair picker inside the transfer form (W7c) calls them; they leave this list that day.
+  '/api/inventory/pairs': 'ربطُ المنتج بتوأمه بمتجرٍ تاني (اقتراحٌ وحفظ) — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
+  '/api/inventory/pairs/[id]': 'شيلُ ربطِ منتجٍ بتوأمه — بُني قبل شاشته؛ منتقي التوأم بنموذج النقل (W7c) هو من يستدعيه',
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
@@ -681,6 +685,9 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
   // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
   // 19/11 (W1a): 'src/lib/warehouses.ts:storeIsPlaced' and ':warehousesOfStore' left — the placement door (`/api/inventory/placement`) reads both.
+  // 20/11, rules plan Q4a: the owner's own rules are an inert table and resolver — the save door and the rules screen (Q4c) are their first readers. Each line leaves with it.
+  'src/lib/confirmation-rules.ts:overlapRefusal': 'Q4a (20/11): رفض قاعدتين بنفس المستوى والرقم والهدف — باب حفظ القواعد (Q4c) أول من يسأله',
+  'src/lib/confirmation-rules.ts:CONFIRMATION_RULE_TEMPLATES': 'Q4a (20/11): القوالب الجاهزة الثمانية، مطفية — شاشة القواعد (Q4c) أول من يعرضها',
   // 19/11 (W2a): 'src/lib/warehouses.ts:reachesWarehouse' left — the receiving and production doors ask it for the warehouse a placed store's units land in.
 };
 

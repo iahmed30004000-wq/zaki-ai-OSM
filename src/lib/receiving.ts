@@ -162,10 +162,18 @@ export async function drawDownStock(
      * Ignored when `warehouseId` is given (that draw already names its one place).
      */
     prefer?: string | null;
+    /**
+     * «BLA MAKAN» FIRST (the warehouse plan, W2b — read by the returns desk's broken and missing units of a parcel that
+     * left its store before the store was placed, and nobody else). Such a parcel's units stayed with no warehouse at the
+     * placement (they were with the courier), so they leave from there first; then the warehouses, oldest first. The same
+     * rows as without it, in another order. Ignored when `warehouseId` or `prefer` is given. Absent: nothing changes.
+     */
+    unplacedFirst?: boolean;
   }
 ): Promise<{ taken: number; short: number; cost: number; places?: DrawnPlace[] }> {
   if (input.quantity <= 0) return { taken: 0, short: 0, cost: 0 };
   const prefer = input.warehouseId ? null : input.prefer || null;
+  const unplacedFirst = !input.warehouseId && !prefer && input.unplacedFirst === true;
 
   const read = () =>
     tx.productionBatch.findMany({
@@ -193,8 +201,11 @@ export async function drawDownStock(
       // taken when the order was written instead.
       // `splitFromBatchId`: rows split from one run are costed as that run (`batch-family.ts`).
       // `warehouseId` is read only for a preferring draw: every other draw asks exactly the question it always asked.
-      select: { id: true, quantityRemaining: true, quantitySold: true, costPerUnit: true, splitFromBatchId: true, ...(prefer ? { warehouseId: true } : {}) },
-    }).then((rows) => (prefer ? preferring(rows, prefer) : rows));
+      select: {
+        id: true, quantityRemaining: true, quantitySold: true, costPerUnit: true, splitFromBatchId: true,
+        ...(prefer || unplacedFirst ? { warehouseId: true } : {}),
+      },
+    }).then((rows) => (prefer ? preferring(rows, prefer) : unplacedFirst ? unplacedBeforePlaced(rows) : rows));
 
   let batches = await read();
   const available = batches.reduce((sum, b) => sum + b.quantityRemaining, 0);
@@ -302,6 +313,14 @@ function placeRank(warehouseId: string | null | undefined, prefer: string): numb
 export function preferring<T extends { warehouseId?: string | null }>(rows: readonly T[], prefer: string): T[] {
   return rows
     .map((row, i) => ({ row, i, rank: placeRank(row.warehouseId, prefer) }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((x) => x.row);
+}
+
+/** The rows with no warehouse first, then the others — a STABLE sort, so oldest first stands inside each (W2b). */
+export function unplacedBeforePlaced<T extends { warehouseId?: string | null }>(rows: readonly T[]): T[] {
+  return rows
+    .map((row, i) => ({ row, i, rank: row.warehouseId ? 1 : 0 }))
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
     .map((x) => x.row);
 }

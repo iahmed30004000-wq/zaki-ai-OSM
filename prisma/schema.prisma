@@ -58,6 +58,7 @@ model Company {
   warehouses            Warehouse[]
   stockTransfers        StockTransfer[]
   stockExits            StockExit[]
+  productPairs          ProductPair[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -66,6 +67,7 @@ model Company {
   adAccounts            AdAccount[]
   customConversions     CustomConversion[]
   penaltyRules          PenaltyRule[]
+  confirmationRules     ConfirmationRule[]
   payslips              Payslip[]
   penalties             Penalty[]
   productReviews        ProductReview[]
@@ -469,6 +471,9 @@ model Product {
   inventoryMovements InventoryMovement[]
   stockTransferLines StockTransferLine[]
   stockExitLines     StockExitLine[]
+  /// 20/11 (W7a): the same article in another store of the company — at most one twin per other store (`ProductPair`).
+  pairsAsA           ProductPair[]               @relation("ProductPairA")
+  pairsAsB           ProductPair[]               @relation("ProductPairB")
   offers             Offer[]
   orders             Order[]
   orderItems         OrderItem[]
@@ -2808,6 +2813,46 @@ model StockExitLineVariant {
   @@map("stock_exit_line_variants")
 }
 
+/// THE SAME ARTICLE IN TWO STORES (the warehouse plan, request W7a). Two `Product` rows of two stores of ONE company
+/// that a person said are the same goods — what a transfer between stores will read to know where the goods land
+/// (W7b). Chosen by a person (the door proposes equal sku first, then equal name), never made by the system.
+///
+/// One row per unordered couple, written in ONE direction: side A is the store whose id sorts first (byte order), so
+/// a product sits on the same side of every pair it has with a given store. That turns «one twin per product per
+/// other store» into two plain unique keys (`productAId + storeBId`, `productBId + storeAId`), and the couple itself
+/// into a third (`productAId + productBId`).
+///
+/// `storeAId` / `storeBId` are copies of the products' stores, written once by `product-pairs.savePair` (no door moves
+/// a product to another store). No foreign key to `stores`: a store with products cannot be deleted
+/// (`products.store_id` RESTRICT), and a pair goes with either of its products (CASCADE).
+/// `hint`: why the two were proposed — 'SKU', 'NAME', 'NAME_EN' — or null when a person picked them by hand.
+///
+/// Held by CHECKs in the migration, which this file cannot express:
+///   product_pairs_store_order_check («storeAId» < «storeBId», COLLATE "C" — also: two different stores),
+///   product_pairs_hint_check (null or one of the three hints).
+model ProductPair {
+  id          String   @id @default(uuid())
+  companyId   String
+  productAId  String
+  storeAId    String
+  productBId  String
+  storeBId    String
+  hint        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productA Product @relation("ProductPairA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("ProductPairB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId])
+  @@unique([productAId, storeBId])
+  @@unique([productBId, storeAId])
+  @@index([companyId, storeAId])
+  @@index([companyId, storeBId])
+  @@map("product_pairs")
+}
+
 // ─── ORDER LINES (Stage 3) ───
 // One row per product line. Reservation and discount live HERE, never on the
 // order: an order with a single unreserved line cannot reach READY_TO_SHIP,
@@ -3720,6 +3765,48 @@ model PenaltyRule {
   @@index([companyId, kind])
   @@index([companyId, isActive])
   @@map("penalty_rules")
+}
+
+/// «قاعدة خاصة» of the confirmation desk (request Q4a of the rules plan, 20/11) — a rule the OWNER writes on top of the one base rule
+/// (`Company.settings.confirmationRule`, `src/lib/confirmation-rule-settings.ts`). Shaped like `PenaltyRule` / `CommissionRule`: scoped, dated, stopped
+/// with `isActive`, NEVER deleted (no code path deletes a row; a company going takes its rules with it).
+///
+/// INERT IN THIS REQUEST: nothing reads the table yet. `ruleFor` in `src/lib/confirmation-rules.ts` resolves a person's and an order's numbers from
+/// these rows; zero active rows answers the base rule exactly. The kinds, what each one may name, and the payload of each are validated there.
+/// The amount of an order is NOT a condition (the owner, 20/11): a rule names a product, a store, a channel or employees — nothing else.
+/// No migration writes a row: the eight ready templates are data in the lib (`CONFIRMATION_RULE_TEMPLATES`), OFF until the owner turns one on.
+model ConfirmationRule {
+  id            String    @id @default(uuid())
+  companyId     String    @map("company_id")
+  /// Null = every store of the company. No foreign key (like `PenaltyRule`): a store that has rules is not empty (`geo-removal.ts`).
+  storeId       String?   @map("store_id")
+  name          String
+  /// EMPLOYEE_NUMBERS | ORDER_NUMBERS | PRIORITY | ROUTING — see CONFIRMATION_RULE_KINDS in src/lib/confirmation-rules.ts.
+  kind          String
+  /// Who it binds: null = every employee; otherwise a JSON array of user ids (named employees — only an EMPLOYEE_NUMBERS rule may name them).
+  userIds       Json?     @map("user_ids")
+  /// Which orders: one product, one channel kind (CHANNEL_KINDS), new orders or retries. Null = all.
+  productId     String?   @map("product_id")
+  channelKind   String?   @map("channel_kind")
+  /// NEW | RETRY.
+  phase         String?
+  /// Hours of the store's day, "HH:MM", both or neither; from > to wraps midnight.
+  hoursFrom     String?   @map("hours_from")
+  hoursTo       String?   @map("hours_to")
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isActive      Boolean   @default(true) @map("is_active")
+  /// What it changes — its shape depends on `kind` (validated in the lib, never stored unvalidated).
+  payload       Json
+  createdById   String    @map("created_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isActive])
+  @@index([companyId, storeId])
+  @@map("confirmation_rules")
 }
 
 /**

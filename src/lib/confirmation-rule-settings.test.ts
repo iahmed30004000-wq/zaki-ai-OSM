@@ -346,6 +346,9 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       'app/api/settings/confirmation-rule/route.ts',
       'lib/confirmation-queue.ts',
       'lib/confirmation-rule-summary.ts',
+      // ADDED 2026-11-20 (request Q4a): the owner's own rules (`confirmation-rules.ts`) hold every payload to the base rule's validator and fall back to its default —
+      // the engine's resolver (inert until Q4b), never a screen.
+      'lib/confirmation-rules.ts',
       'lib/jobs/definitions/release-stale-claims.ts',
       'lib/no-answer-cadence.ts',
       'lib/no-answer-watch.ts',

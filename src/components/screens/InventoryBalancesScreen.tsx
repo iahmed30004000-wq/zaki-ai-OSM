@@ -159,6 +159,8 @@ export function InventoryBalancesScreen() {
   const [reason, setReason] = useState('');
   const [modalLoading, setModalLoading] = useState(false);
   const [countError, setCountError] = useState<string | null>(null);
+  /** W2b: the warehouse a placed store's count is of — the person picks it; the door requires it. */
+  const [countPlace, setCountPlace] = useState('');
   const [term, setTerm] = useState('');
 
   /**
@@ -231,6 +233,8 @@ export function InventoryBalancesScreen() {
           productId,
           countedQuantity: onTheWire(countedTyped),
           reason,
+          // W2b: a placed store's count names its warehouse. Absent for a store that is not placed — today's body.
+          ...(warehouses ? { warehouseId: countPlace || undefined } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -321,6 +325,12 @@ export function InventoryBalancesScreen() {
   /** No arithmetic on a box that says nothing — `null`, not a zero. */
   const counted = typedNumber(countedTyped);
   const difference = typeof counted === 'number' ? counted - systemQty : null;
+  /**
+   * W2b: A PLACED STORE COUNTS ONE WAREHOUSE, BY WHAT IS PHYSICALLY THERE. The screen draws no figure to compare with —
+   * the store's AVAILABLE is not that warehouse's shelf, and the expected figure is the server's (`warehouse-count.ts`).
+   * The warehouses offered are the ones this person may use (`mayReceive`: reached and running).
+   */
+  const countWarehouses = warehouses ? warehouses.filter((w) => w.mayReceive) : null;
 
   return (
     <>
@@ -674,7 +684,11 @@ export function InventoryBalancesScreen() {
         isOpen={adjustModalOpen}
         onClose={() => setAdjustModalOpen(false)}
         title="جرد مخزون"
-        subtitle="عندما يختلف المتاح عن النظام — تُدخل ما عددته منه، والفرق يُحسب ويُسجَّل"
+        subtitle={
+          countWarehouses
+            ? 'عُدّ اللي موجود فعلياً بمخزن واحد — والنظام بيقارنه بدفتر هالمخزن'
+            : 'عندما يختلف المتاح عن النظام — تُدخل ما عددته منه، والفرق يُحسب ويُسجَّل'
+        }
       >
         <form onSubmit={handleAdjustStock} className="space-y-4">
           <div>
@@ -700,6 +714,30 @@ export function InventoryBalancesScreen() {
             />
           </div>
 
+          {countWarehouses ? (
+            <>
+              <Select
+                label="المخزن اللي عدّيته *"
+                value={countPlace}
+                onChange={(e) => setCountPlace(e.target.value)}
+                options={[{ value: '', label: 'اختار المخزن' }, ...countWarehouses.map((w) => ({ value: w.id, label: w.name }))]}
+              />
+              <Input
+                label="الكمية الموجودة فعلياً بالمخزن *"
+                type="number"
+                min="0"
+                dir="ltr"
+                value={countedTyped}
+                onChange={(e) => setCountedTyped(e.target.value)}
+                required
+              />
+              <p className="text-note text-[var(--sys-muted-foreground)]">
+                عُدّ كل اللي على رفّ هالمخزن، ومنه المحجوز لطلبات لسا ما طلعت. الطرود اللي طلعت مع شركة الشحن ما بتنعدّ.
+                إذا طلع فرق ما بينكتب شي: الفرق بدّو اعتماد شخص تاني.
+              </p>
+            </>
+          ) : (
+          <>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-note font-medium text-[var(--sys-heading)]">المتاح في النظام</label>
@@ -761,6 +799,8 @@ export function InventoryBalancesScreen() {
                   : 'ناقص عن النظام — يُخصم من أقدم دفعة.'}
             </p>
           </div>
+          </>
+          )}
 
           <Textarea
             label="سبب الفرق *"
@@ -783,7 +823,15 @@ export function InventoryBalancesScreen() {
             <Button type="button" variant="secondary" onClick={() => setAdjustModalOpen(false)}>
               {t.cancel}
             </Button>
-            <Button type="submit" loading={modalLoading} disabled={difference === null || difference === 0 || reason.trim().length < 3}>
+            <Button
+              type="submit"
+              loading={modalLoading}
+              disabled={
+                countWarehouses
+                  ? !countPlace || typeof counted !== 'number' || reason.trim().length < 3
+                  : difference === null || difference === 0 || reason.trim().length < 3
+              }
+            >
               سجّل الجرد
             </Button>
           </div>

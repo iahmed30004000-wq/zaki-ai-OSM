@@ -9,7 +9,7 @@ import type { SessionUser } from '@/types/auth';
  *     batch AND the movement carry it.
  *   - The production run's two writes are ONE transaction.
  *   - Every draw leaves units on the road (`inTransitTransferId`) alone.
- *   - The recount and the opening count of a placed store are refused by name (the count by warehouse is W2b).
+ *   - The opening count of a placed store is refused by name; its recount names a warehouse (20/11, W2b).
  *   - The stop of a warehouse and a receipt into it cannot cross; nor can the placement and a receipt.
  *
  * People are built the way a session builds them: `computeEffectiveGrants` over role rows, personal overrides and a
@@ -496,13 +496,21 @@ describe('«تشغيلة إنتاج» of a placed store names its warehouse, in 
 
 /* ───────────────────────── the counts of a placed store ───────────────────────── */
 
-describe('the counts of a placed store wait for the count by warehouse (marked, not removed)', () => {
-  it('NEGATIVE: the recount of a placed store is refused by name (409) and writes nothing — surplus or shortfall', async () => {
+/*
+ * 20/11 (W2b — the owner's decision 4, his «نفّذ» of 20/11): old «the recount of a placed store is refused by name (409
+ * PLACED_STORE_COUNT_WAITS) and writes nothing»; new «the recount of a placed store names its warehouse — without one it is
+ * refused (400 WAREHOUSE_REQUIRED, the receiving door's own sentence) — and still writes nothing to the stock, surplus or
+ * shortfall». The marker this file pinned was W2b's to replace; the count by warehouse itself (what is physically there,
+ * the second hand for a difference) is proven in `src/app/api/ops/returns-and-the-count-name-a-warehouse.test.ts`.
+ * Still asserted: a placed store's recount never writes for the store total.
+ */
+describe('the counts of a placed store name a warehouse (W2b) and never write for the store total', () => {
+  it('NEGATIVE: the recount of a placed store without a warehouse is refused (400) and writes nothing — surplus or shortfall', async () => {
     await as('u-admin');
     for (const countedQuantity of [100, 0]) {
       S.log = [];
       const res = await recount({ productId: BUY, countedQuantity, reason: 'جرد آخر الشهر' });
-      expect([res.status, res.body.code]).toEqual([409, 'PLACED_STORE_COUNT_WAITS']);
+      expect([res.status, res.body.code]).toEqual([400, 'WAREHOUSE_REQUIRED']);
       expect(res.body.errorAr).toMatch(/موزّع على مخازن/);
       expect(writes()).toEqual([]);
     }

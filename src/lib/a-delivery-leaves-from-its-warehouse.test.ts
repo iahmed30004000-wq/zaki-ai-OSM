@@ -686,11 +686,20 @@ describe('all six delivery doors take this one path', () => {
     });
   }
 
-  it('and only the delivery prefers a warehouse: no other caller of drawDownStock passes `prefer`', () => {
+  /*
+   * 20/11 (W2b — returns name a warehouse): old «no other caller of drawDownStock passes `prefer`»; new «only the delivery,
+   * and the returns desk's broken and missing units of a PLACED store's refused parcel». The row W2b says those units are
+   * «taken from the source warehouse first», which is exactly `prefer: source`; it is reached only when the desk named a
+   * receiving warehouse (a placed store), so every other draw still prefers nothing. Still asserted: the delivery prefers
+   * its source; the returns half prefers only behind `receiver`; nothing else in the file prefers.
+   */
+  it('and only the delivery — and a placed store’s returns desk — prefers a warehouse', () => {
     const src = stripComments(repoFile('src/lib/stock-consumption.ts'));
     const consume = src.slice(src.indexOf('export async function consumeOrderStock('), src.indexOf('export function absorbDamaged('));
-    const rest = src.replace(consume, '');
+    const takeOff = src.slice(src.indexOf('export async function takeOffUnreturned('), src.indexOf('async function moveReturnedUnits('));
+    const rest = src.replace(consume, '').replace(takeOff, '');
     expect(consume).toMatch(/prefer: source/);
+    expect(takeOff).toMatch(/receiver \? \(source \? \{ prefer: source \}/);
     expect(rest).not.toMatch(/prefer:/);
   });
 

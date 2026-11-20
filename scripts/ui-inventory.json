@@ -1401,7 +1401,7 @@
   },
   "src/components/screens/InventoryBalancesScreen.tsx": {
     "buttons": 9,
-    "inputs": 5,
+    "inputs": 7,
     "columns": 0,
     "cards": 5,
     "modals": 1,
@@ -1599,7 +1599,7 @@
   },
   "src/components/screens/ReturnsScreen.tsx": {
     "buttons": 10,
-    "inputs": 2,
+    "inputs": 4,
     "columns": 17,
     "cards": 2,
     "modals": 2,
