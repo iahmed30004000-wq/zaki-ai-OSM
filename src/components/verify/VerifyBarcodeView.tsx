@@ -20,6 +20,17 @@ import { apiJson } from '@/lib/api-client';
 
 type Phase = { at: 'start'; failed?: boolean } | { at: 'checking' } | { at: 'verdict'; genuine: boolean };
 
+/**
+ * What the camera may hand on. The scanner's own default (`cleanScan`) is the warehouse's: 3–40 letters, digits and
+ * dashes — it answered «هذا ليس مرجعاً نعرفه» to a printed QR holding a link. Here anything readable goes to the server,
+ * which judges it (`normalizeAuthenticityCode`); only empty text, control characters and absurd lengths stop here.
+ */
+function cleanAnyScan(raw: string): string | null {
+  const text = raw.trim();
+  if (!text || text.length > 1000 || /[\u0000-\u001F\u007F]/.test(text)) return null;
+  return text;
+}
+
 /** Long enough for the radar to read as a check rather than a flicker; the answer itself is usually faster. */
 const CHECK_MS = 1800;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -153,7 +164,7 @@ export function VerifyBarcodeView({ storeId, initialCode }: { storeId: string; i
             </p>
             <div className="vf-cta">
               <span className="vf-vwrap">
-                <ScanButton onScan={onScan} title="امسح الباركود على المنتج" label="تحقق الآن" continuous={false} className="vf-btn" />
+                <ScanButton onScan={onScan} title="امسح الباركود على المنتج" label="تحقق الآن" continuous={false} className="vf-btn" clean={cleanAnyScan} />
               </span>
               <a href="#how" className="vf-ghost">كيف يعمل؟</a>
             </div>
