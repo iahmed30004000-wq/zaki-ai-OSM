@@ -70,6 +70,23 @@ interface StockRow {
   /** The newest costed price, or null when this product has never been costed; absent without `costs.view`. */
   lastUnitCost?: number | null;
   health: StockHealth;
+  /**
+   * A store placed in warehouses only (W2c): the same units by place, every figure the server's. Absent = today's card.
+   * `unplaced` comes only when it is not the courier's figure (`stock-places.shownPlaces`).
+   */
+  places?: {
+    warehouses: { id: string; onHand: number }[];
+    inTransit: number;
+    withCourier: number;
+    unplaced?: number;
+  };
+}
+
+/** A placed store's warehouse, as the server names it — and whether this person may receive goods into it. */
+interface PlaceWarehouse {
+  id: string;
+  name: string;
+  mayReceive: boolean;
 }
 
 /** A measured number, or a dash — never a plausible-looking stand-in. */
@@ -109,6 +126,10 @@ export function InventoryBalancesScreen() {
   const [stockSummary, setStockSummary] = useState<StockRow[]>([]);
   const [alerts, setAlerts] = useState<StockAlert[]>([]);
   const [ledgerDays, setLedgerDays] = useState<number | null>(null);
+  /** A placed store's warehouses (W2c); null = the store is not placed, and nothing about places is drawn. */
+  const [warehouses, setWarehouses] = useState<PlaceWarehouse[] | null>(null);
+  /** The warehouse filter: products that hold units in this one warehouse. */
+  const [place, setPlace] = useState('all');
   const [loading, setLoading] = useState(true);
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
 
@@ -173,6 +194,7 @@ export function InventoryBalancesScreen() {
         setStockSummary(data.stockSummary || []);
         setAlerts(data.alerts || []);
         setLedgerDays(typeof data.ledgerDays === 'number' ? data.ledgerDays : null);
+        setWarehouses(Array.isArray(data.warehouses) ? data.warehouses : null);
         if (data.stockSummary?.length > 0 && !productId) {
           setProductId(data.stockSummary[0].id);
         }
@@ -231,7 +253,7 @@ export function InventoryBalancesScreen() {
    * somewhere below the fold with nothing marking it. The comparator lives in
    * `stock-health` so the API could sort the same way if it ever needs to.
    */
-  useEffect(() => setPages(1), [term, only]);
+  useEffect(() => setPages(1), [term, only, place]);
 
   const visible = useMemo(() => {
     const q = term.trim();
@@ -239,12 +261,15 @@ export function InventoryBalancesScreen() {
       .filter((s) => {
         if (only === 'restock' && !s.health.needsRestock) return false;
         if (only !== null && only !== 'restock' && s.health.state !== only) return false;
+        // The server's own per-warehouse figure decides: a product is in this warehouse when the server lists it there.
+        if (place !== 'all' && !s.places?.warehouses.some((w) => w.id === place)) return false;
         if (!q) return true;
         return s.name.includes(q) || (s.sku || '').toUpperCase().includes(q.toUpperCase());
       })
       .slice()
       .sort((a, b) => byUrgency(a.health, b.health));
-  }, [stockSummary, term, only]);
+  }, [stockSummary, term, only, place]);
+  const warehouseName = useMemo(() => new Map((warehouses ?? []).map((w) => [w.id, w.name])), [warehouses]);
 
   /**
    * THE WINDOW'S SENTENCE, drawn once. A desk prints it under the alerts on every visit; a phone folds it behind
@@ -390,6 +415,17 @@ export function InventoryBalancesScreen() {
             placeholder="ابحث باسم المنتج أو رمزه…"
             className="w-full min-w-0 h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
+          {/* A placed store only (W2c): one warehouse's products. The figures stay the store's; the filter only narrows the list. */}
+          {warehouses && warehouses.length > 0 && (
+            <div className="mt-2.5">
+              <Select
+                label="المخزن"
+                value={place}
+                onChange={(e) => setPlace(e.target.value)}
+                options={[{ value: 'all', label: 'كل المخازن' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
+              />
+            </div>
+          )}
           <p className="mt-1.5 text-note text-[var(--sys-muted-foreground)]">
             {visible.length} من {stockSummary.length} منتج — الأسوأ أوّلاً
           </p>
@@ -506,6 +542,38 @@ export function InventoryBalancesScreen() {
                     </div>
                   )}
 
+                  {/*
+                    WHERE THE UNITS ARE — a placed store only (W2c). Each chip is a figure the server sent: the units in
+                    each warehouse, on the road between two of them, and with the courier. Nothing is added up here.
+                  */}
+                  {s.places && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {s.places.warehouses.map((w) => (
+                        <span
+                          key={w.id}
+                          className={`inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)] ${place === w.id ? 'ring-2 ring-[var(--sys-primary)]' : ''}`}
+                        >
+                          {warehouseName.get(w.id) ?? 'مخزن'} · {w.onHand}
+                        </span>
+                      ))}
+                      {s.places.inTransit !== 0 && (
+                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="بضاعة طالعة من مخزن ولسا ما وصلت المخزن التاني.">
+                          بالطريق · {s.places.inTransit}
+                        </span>
+                      )}
+                      {s.places.withCourier !== 0 && (
+                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="قطع طلبات طلعت مع شركة الشحن ولسا ما تسلّمت ولا رجعت.">
+                          مع الشحن · {s.places.withCourier}
+                        </span>
+                      )}
+                      {s.places.unplaced !== undefined && s.places.unplaced !== 0 && (
+                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="قطع بالدفتر ما إلها مخزن: كانت مع الشحن وقت التوزيع.">
+                          بلا مكان · {s.places.unplaced}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <div className={phone ? 'flex flex-wrap items-center justify-between gap-2 pt-1' : 'flex items-center justify-between gap-2 pt-1'}>
                     <span className="text-note text-[var(--sys-muted)]">
                       دخل {s.produced} · خرج {s.sold}
@@ -584,6 +652,8 @@ export function InventoryBalancesScreen() {
       {receiveFor && (
         <ReceiveDialog
           product={receiveFor}
+          // A placed store only: the warehouses this person may receive into (the door requires one). Absent = today.
+          warehouses={warehouses ? warehouses.filter((w) => w.mayReceive) : undefined}
           onClose={() => {
             setReceiving(null);
             // A closed dialog stays closed, even with `?product=` still in the address.
