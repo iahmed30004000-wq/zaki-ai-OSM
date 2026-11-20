@@ -38,10 +38,10 @@ function remembered(userId: string | null | undefined): string | null {
   }
 }
 
-function remember(userId: string | null | undefined, warehouseId: string) {
+function remember(userId: string | null | undefined, chosenId: string) {
   if (!userId) return;
   try {
-    if (warehouseId) window.localStorage.setItem(KEY + userId, warehouseId);
+    if (chosenId) window.localStorage.setItem(KEY + userId, chosenId);
     else window.localStorage.removeItem(KEY + userId);
   } catch {
     /* storage refused: the choice still holds for this visit */
@@ -75,9 +75,9 @@ export function useOpsWarehouse(userId: string | null | undefined) {
   );
 
   const choose = useCallback(
-    (warehouseId: string) => {
-      setPlace(warehouseId);
-      remember(userId, warehouseId);
+    (chosenId: string) => {
+      setPlace(chosenId);
+      remember(userId, chosenId);
     },
     [userId]
   );
@@ -97,7 +97,7 @@ export function WarehousePicker({
 }: {
   warehouses: readonly OpsWarehouse[];
   value: string;
-  onChange: (warehouseId: string) => void;
+  onChange: (chosenId: string) => void;
   label: string;
   /** The empty option's words («اختار المخزن», «كل المخازن»). Not drawn when only one warehouse is offered. */
   noneLabel: string;

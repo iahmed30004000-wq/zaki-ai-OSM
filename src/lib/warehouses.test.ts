@@ -229,6 +229,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/ops/preparation/route.ts',
     'src/app/api/orders/[id]/shipping/route.ts',
     'src/app/api/ops/tracking/transfer/route.ts',
+    // 20/11, W4c (the shipping screens by warehouse): «إنشاء شحنة» sends the warehouse the press leaves from (`warehouseId`),
+    // for a placed store only — the body W4a's door asks for.
+    'src/components/screens/ShipmentsNewScreen.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
