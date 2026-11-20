@@ -2592,6 +2592,8 @@ model Warehouse {
   movements       InventoryMovement[]
   shippingBatches ShippingBatch[]
   sourcedOrders   Order[]
+  variantStock    ProductVariantStock[]
+  variantMoves    VariantStockMovement[]
   transfersOut    StockTransfer[]       @relation("StockTransferFrom")
   transfersIn     StockTransfer[]       @relation("StockTransferTo")
   stockExits      StockExit[]
@@ -2817,9 +2819,77 @@ model ProductVariant {
 
   product    Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderUnits OrderItemVariant[]
+  /// 19/11 (W8a): a PLACED store's count of this combination, per warehouse (`variant-stock.ts`). `onHand` is their sum.
+  places         ProductVariantStock[]
+  stockMovements VariantStockMovement[]
 
   @@index([companyId, productId])
   @@map("product_variants")
+}
+
+/// A COMBINATION'S COUNT IN ONE PLACE — only for a store that is PLACED in warehouses (the warehouse plan, W8a).
+///
+/// A store that is not placed has no row here: its combinations keep `ProductVariant.onHand` as they always did. Once the
+/// store is placed, every change of a combination's count goes through ONE function (`variant-stock.ts`), which moves
+/// these rows, writes one `VariantStockMovement` per row it moved, and then writes `ProductVariant.onHand` = Σ of them.
+/// So Σ `onHand` here = `ProductVariant.onHand`, always — the row with `warehouseId` NULL is «بلا مكان»: the count the
+/// combination had when the store was placed (the placement was at product level and did not divide it), and the
+/// pieces with the courier, until a keeper counts them into a warehouse.
+///
+/// Constraints the schema cannot say, in the migration `20261119210000_variant_stock`:
+///   `product_variant_stock_one_unplaced` — ONE «بلا مكان» row per combination (a partial unique index on
+///   `variantId` WHERE `warehouseId` IS NULL; the unique pair below lets two NULL rows through, as Postgres does).
+model ProductVariantStock {
+  id          String   @id @default(uuid())
+  companyId   String
+  variantId   String
+  /// NULL = «بلا مكان» (see above).
+  warehouseId String?
+  onHand      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+
+  @@unique([variantId, warehouseId])
+  @@index([companyId, warehouseId])
+  @@map("product_variant_stock")
+}
+
+/// THE LEDGER OF A COMBINATION'S COUNT in a placed store (W8a) — one line per place a change moved. Never edited, never
+/// deleted. Σ `quantity` of a combination's lines = its `onHand` (the first line, OPENING, carries the count it had).
+/// type: OPENING (the count before the first change, «بلا مكان») · COUNT (a keeper's count, with its reason) ·
+/// SALE (a delivery) · RETURN (a counted return).
+model VariantStockMovement {
+  id          String   @id @default(uuid())
+  companyId   String
+  /// The product's store — the store-removal list counts it (`geo-removal.ts`).
+  storeId     String?
+  productId   String
+  variantId   String
+  /// NULL = «بلا مكان».
+  warehouseId String?
+  type        String
+  /// Signed: what this place gained (+) or lost (−).
+  quantity    Int
+  /// The place's count after this line.
+  placeAfter  Int
+  /// The combination's total (`ProductVariant.onHand`) after the change this line belongs to.
+  onHandAfter Int
+  reason      String?
+  /// The order of a SALE or a RETURN.
+  orderId     String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+
+  @@index([companyId, variantId, createdAt])
+  @@index([companyId, warehouseId, createdAt(sort: Desc)])
+  @@index([companyId, storeId, createdAt])
+  @@map("variant_stock_movements")
 }
 
 /// THE PIECES OF ONE ORDER LINE, by combination: piece 1 «أسود · L», piece 2 «كحلي · M» are two rows of quantity 1.
