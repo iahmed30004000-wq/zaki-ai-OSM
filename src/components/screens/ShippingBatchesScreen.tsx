@@ -29,6 +29,8 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCan } from '@/hooks/useCan';
 import { useMayOpen } from '@/hooks/useMayOpen';
 import { MissionDone, NextStepButton } from '@/components/ui/NextStep';
+import { useApp } from '@/context/AppContext';
+import { WarehousePicker, useOpsWarehouse, type OpsWarehouse } from '@/components/ops/WarehousePicker';
 
 /**
  * /ops/batches — the handovers to the couriers.
@@ -61,6 +63,8 @@ interface Batch {
   courierCityGap?: CourierCityGap | null;
   /** Parcels of the batch still at «مشحون» — what «خرج للتوصيل لكل الدفعة» would move. The server counts them; 0 or absent = no button. */
   shippedCount?: number;
+  /** The warehouse the batch leaves from (W4c) — sent for a store placed in warehouses only; absent = nothing drawn. */
+  warehouse?: { id: string; name: string } | null;
 }
 
 /** What the server answers to «خرج للتوصيل لكل الدفعة»: the counts, and the parcels that did not move with the reason of each. */
@@ -170,19 +174,27 @@ export function ShippingBatchesScreen() {
   // The batch whose «لصق الباركودات» box is open.
   const [pasting, setPasting] = useState<Batch | null>(null);
 
+  /*
+   * A STORE PLACED IN WAREHOUSES (W4c): the list names the warehouses she may pick, and `?warehouse=` narrows it to one
+   * («كل المخازن» = every batch). A store that is not placed sends no list: no picker, and the request it always made.
+   */
+  const userId = useApp().currentUser?.id;
+  const { warehouses, place, heard, choose } = useOpsWarehouse(userId);
+
   const load = useCallback(async () => {
     try {
-      const res = await apiJson<{ batches: Batch[]; pagination: { total: number } }>(
-        '/api/shipping-batches?limit=100'
+      const res = await apiJson<{ batches: Batch[]; pagination: { total: number }; warehouses?: OpsWarehouse[] }>(
+        place ? `/api/shipping-batches?limit=100&warehouse=${encodeURIComponent(place)}` : '/api/shipping-batches?limit=100'
       );
       setBatches(res.batches);
       setTotal(res.pagination?.total ?? res.batches.length);
+      heard(res.warehouses);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, []);
+  }, [place, heard]);
 
-  useLiveRefresh(load);
+  useLiveRefresh(load, { key: place });
 
   /**
    * ON A PHONE THE HANDOVER ASKS FIRST.
@@ -673,6 +685,10 @@ export function ShippingBatchesScreen() {
             {/* The paper every «طباعة بوالص الدفعة» below will use. */}
             {!phone && <LabelSizePicker compact className="ms-auto flex items-center" />}
           </div>
+          {/* A store placed in warehouses only (W4c): the batches of one warehouse. */}
+          {warehouses && (
+            <WarehousePicker warehouses={warehouses} value={place} onChange={choose} label="المخزن" noneLabel="كل المخازن" />
+          )}
           {phone && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-note text-[var(--sys-muted-foreground)]">مقاس البوليصة</span>
@@ -919,6 +935,9 @@ export function ShippingBatchesScreen() {
                       {b.provider.name}
                     </span>
                   )}
+
+                  {/* Where the trolley leaves from (W4c): one batch, one warehouse. Only a placed store's batches carry it. */}
+                  {b.warehouse && <span className="text-note text-[var(--sys-muted-foreground)]">من مخزن {b.warehouse.name}</span>}
 
                   <span className="text-note text-[var(--sys-muted)] tabular-nums">
                     {b._count.orders} طلب

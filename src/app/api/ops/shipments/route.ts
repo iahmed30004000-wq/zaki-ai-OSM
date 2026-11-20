@@ -17,8 +17,8 @@ import { BATCHABLE_SHIPPING, HELD_PACKED_PARCEL, WAITING_FOR_A_TROLLEY, shipment
 import { SHIP_HOLD_RELEASED, holdEndsInBatch } from '@/lib/shipment-hold';
 import { isBenchStore } from '@/lib/bench-store';
 import { BENCH_LIST_EMPTY_AR, BENCH_STOPS_AR, BENCH_STOPS_CODE } from '@/lib/test-store';
-import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody } from '@/lib/shipment-warehouse';
-import { reachesWarehouse } from '@/lib/warehouses';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody, shipmentWarehouseChoices } from '@/lib/shipment-warehouse';
+import { reachesWarehouse, warehousesReachedBy } from '@/lib/warehouses';
 
 /**
  * Shipment creation.
@@ -297,7 +297,11 @@ export async function GET(req: Request) {
     // this screen's. See noteCustomersHandedOut.
     await noteCustomersHandedOut({ companyId, storeId, user, where: 'قائمة الشحنات', rows });
 
+    // W4c: the warehouses the screen's picker offers — a placed store only; absent for any other, so its answer is today's.
+    const warehouses = await shipmentWarehouseChoices(db, { companyId, storeId, reached: (ws) => warehousesReachedBy(user, companyId, ws) });
+
     return NextResponse.json({
+      ...(warehouses ? { warehouses } : {}),
       count: rows.length,
       heldCount,
       allowNegativeStock: country.allowNegativeStock,
