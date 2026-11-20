@@ -276,6 +276,14 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // function every delivery door shares reads the order's `sourceWarehouseId`, hands it to the draw as `prefer` and
     // writes it on the SALE line; the warehouse names of a «فرق مكان» come from `order-source-warehouse.ts`.
     'src/lib/stock-consumption.ts',
+    // 20/11, W2b (returns and the quick count name a warehouse — the owner's decision 4): the receipt reads the order's
+    // `sourceWarehouseId` (the desk's default receiver) and whether its store has a `warehousePlacement`; the receive-all
+    // door sends one `warehouseId` for the press; the quick count of one warehouse reads its rows and the orders that
+    // left it (`warehouse-count.ts`); the two screens send the warehouse the person picked.
+    'src/lib/return-receipt.ts',
+    'src/app/api/ops/returns/receive-all/route.ts',
+    'src/lib/warehouse-count.ts',
+    'src/components/screens/ReturnsScreen.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

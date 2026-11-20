@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { drawDownVariants, restoreVariants } from './product-variants';
+import { drawDownVariants, restoreVariants, RETURN_WAREHOUSE_REFUSED_AR } from './product-variants';
 import { countPlan, countPlacedVariants, countReason, drawPlan, placesOfVariants, VARIANT_MOVE } from './variant-stock';
 
 /**
@@ -114,6 +114,10 @@ const W3 = 'w-3';
 function placedStore(variants: { id: string; onHand: number }[], pieces: Row[] = [], sourceWarehouseId: string | null = null) {
   return memoryDb({
     warehousePlacement: [{ id: 'placing-1', storeId: 's-1' }],
+    // 20/11 (W2b): a return's warehouse is now checked by `restoreVariants` (of the order's company and its store's
+    // country), so the store and its country's warehouses are in the fixture. Nothing else in these tests reads them.
+    store: [{ id: 's-1', companyId: 'c-1', countryId: 'k-1' }],
+    warehouse: [W1, W2, W3].map((id) => ({ id, companyId: 'c-1', countryId: 'k-1', isActive: true })),
     order: [{ id: 'o-1', companyId: 'c-1', storeId: 's-1', sourceWarehouseId }],
     productVariant: variants.map((v) => ({ id: v.id, companyId: 'c-1', productId: 'p-1', onHand: v.onHand })),
     orderItemVariant: pieces.map((x, i) => ({ id: `oiv-${i}`, orderId: 'o-1', productId: 'p-1', createdAt: new Date(i), ...x })),
@@ -218,6 +222,22 @@ describe('a placed store: the first touch, a delivery, a return', () => {
     expect((await two.db.productVariant.findFirst({ where: { id: 'v-a' } })).onHand).toBe(6);
     const lines = await two.db.variantStockMovement.findMany({ where: { type: VARIANT_MOVE.RETURN } });
     expect(lines.map((l: Row) => [l.warehouseId, l.quantity, l.orderId])).toEqual([[W2, 2, 'o-1']]);
+  });
+
+  it('NEGATIVE (W2b): a return told to land in a warehouse of another country or company is refused, and no piece moves', async () => {
+    for (const bad of [
+      { id: 'w-abroad', companyId: 'c-1', countryId: 'k-2', isActive: true },
+      { id: 'w-theirs', companyId: 'c-2', countryId: 'k-1', isActive: true },
+      null,
+    ]) {
+      const { db, writes } = placedStore([{ id: 'v-a', onHand: 4 }], [{ variantId: 'v-a', quantity: 2, freeQuantity: 0 }]);
+      if (bad) await db.warehouse.create({ data: bad });
+      writes.length = 0;
+      const err = await restoreVariants(db as never, { orderId: 'o-1', productId: 'p-1', take: 2, warehouseId: bad?.id ?? 'w-nowhere' }).catch((e: Error) => e);
+      expect((err as Error).message).toBe(RETURN_WAREHOUSE_REFUSED_AR);
+      expect(writes).toEqual([]);
+      expect((await db.productVariant.findFirst({ where: { id: 'v-a' } })).onHand).toBe(4);
+    }
   });
 
   it('a partial return restores the first pieces of the line, as before — only the place is new', async () => {

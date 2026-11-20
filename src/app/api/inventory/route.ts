@@ -14,7 +14,8 @@ import { resolveUnitCost } from '@/lib/unit-cost';
 import { reservedElsewhere, reservedForProducts } from '@/lib/reservation';
 import { MAX_WINDOW_DAYS, stockHealth, summariseStock, type StockFacts } from '@/lib/stock-health';
 import { DAY_MS, deliveredPerProduct, ledgerDepthDays } from '@/lib/stock-ledger';
-import { IntakePlaceRefused, intakeRefusalBody, storeIsPlaced } from '@/lib/warehouse-intake';
+import { IntakePlaceRefused, intakePlace, intakeRefusalBody, storeIsPlaced } from '@/lib/warehouse-intake';
+import { COUNT_MATCHES_AR, differenceWaitsAr, expectedInWarehouse, quickCountVerdict } from '@/lib/warehouse-count';
 import { reachesWarehouse, warehousesOfStore, warehousesReachedBy } from '@/lib/warehouses';
 import { unitsWithCourier } from '@/lib/warehouse-placement';
 import { countRuns } from '@/lib/batch-grade';
@@ -251,9 +252,6 @@ async function previousUnitCost(companyId: string, storeId: string | null, produ
   return last?.costPerUnit ?? null;
 }
 
-const PLACED_RECOUNT_WAITS_AR =
-  'هالمتجر موزّع على مخازن، وجرد المتاح لسا على مستوى المتجر كله. الجرد بالمخزن جاي بالخطوة الجاية؛ لهلّق دخّل الزيادة من «استلام» باسم مخزنها.';
-
 /** A recount that found units of something never costed. Carried out of the transaction. */
 class UncostedSurplus extends Error {}
 
@@ -325,6 +323,11 @@ export async function POST(req: Request) {
           countedQuantity: count(1_000_000),
           /** Why the count and the system disagree. Never optional. */
           reason: z.string().min(3).max(200),
+          /**
+           * The warehouse that was counted (the warehouse plan, W2b). Read only for a store placed in warehouses, where it
+           * is required and the count is of what is PHYSICALLY there. `.catch`: a body the old door accepted is never refused for it.
+           */
+          warehouseId: z.string().max(64).optional().nullable().catch(undefined),
         }),
       ])
       .safeParse(body);
@@ -410,16 +413,57 @@ export async function POST(req: Request) {
     // ── recount ──
 
     /*
-     * A STORE PLACED IN WAREHOUSES IS NOT COUNTED HERE YET (the warehouse plan, W2a — marked, not removed).
+     * A STORE PLACED IN WAREHOUSES IS COUNTED BY WAREHOUSE (the warehouse plan, W2b — the owner's decision 4, 20/11).
      *
-     * This count is of the whole store, and its surplus enters as a new batch: in a placed store that batch would need a
-     * warehouse, and the count would have to say which warehouse was counted. That is the next request of the plan (the
-     * count by warehouse, W2b), waiting for the owner's word on what a count counts. Until then a placed store is told so,
-     * by name, and nothing is written. A store that is not placed counts exactly as before.
+     * 19/11 (W2a) refused it here by name (`PLACED_STORE_COUNT_WAITS`) until the owner said what a count counts. He has:
+     * what is PHYSICALLY in the warehouse — the parcels that left with the courier are not on the keeper's shelf, the
+     * confirmed orders still waiting there are. So the count names its warehouse (required, checked by the receiving
+     * door's own rule — `intakePlace`, under the product's stock lock), and is compared with
+     * `warehouse-count.expectedInWarehouse`. And his second rule: a difference is approved by ANOTHER person. This count
+     * has one hand, so it writes no difference at all — a match is recorded, a difference is recorded and refused (409)
+     * with what to do next. The store total is never written from here for a placed store. A store that is not placed
+     * counts exactly as before, below.
      */
     if (await storeIsPlaced(storeId)) {
+      const found = await db.$transaction(async (tx) => {
+        const warehouseId = await intakePlace(tx, {
+          companyId,
+          storeId,
+          productId: product.id,
+          warehouseId: input.warehouseId,
+          mayUse: (w) => reachesWarehouse(user, companyId, w),
+        });
+        // A placement is never undone, so a placed store stays placed; this only satisfies the type.
+        if (!warehouseId) throw new Error('placed store without a warehouse');
+        const facts = await expectedInWarehouse(tx, { companyId, storeId, productId: product.id, warehouseId });
+        const name = (await tx.warehouse.findFirst({ where: { id: warehouseId, companyId }, select: { name: true } }))?.name ?? '';
+        return { warehouseId, name, facts };
+      });
+      const verdict = quickCountVerdict(input.countedQuantity, found.facts);
+      await logAudit({
+        companyId,
+        userId: user.id,
+        action: 'STOCK_RECOUNTED',
+        entity: 'Product',
+        entityId: product.id,
+        previousData: { warehouseId: found.warehouseId, warehouseName: found.name, ...found.facts },
+        newData: {
+          counted: input.countedQuantity,
+          basis: 'PHYSICAL',
+          warehouseId: found.warehouseId,
+          warehouseName: found.name,
+          difference: verdict.difference,
+          // Nothing is written by this count: a match needs nothing, a difference waits for a second person.
+          written: false,
+          reason: input.reason,
+        },
+      });
+      if (verdict.matches) {
+        return NextResponse.json({ success: true, difference: 0, warehouseId: found.warehouseId, message: COUNT_MATCHES_AR(found.name) });
+      }
+      const ar = differenceWaitsAr(found.name, input.countedQuantity, verdict.difference);
       return NextResponse.json(
-        { error: PLACED_RECOUNT_WAITS_AR, errorAr: PLACED_RECOUNT_WAITS_AR, code: 'PLACED_STORE_COUNT_WAITS' },
+        { error: ar, errorAr: ar, code: 'COUNT_DIFFERENCE_NEEDS_SECOND_HAND', difference: verdict.difference, warehouseId: found.warehouseId },
         { status: 409 }
       );
     }

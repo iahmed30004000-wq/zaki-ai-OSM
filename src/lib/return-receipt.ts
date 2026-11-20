@@ -7,6 +7,7 @@ import { roundMinor } from '@/lib/money';
 import { reverseForOrder } from '@/lib/commission';
 import { completionOf, doorUnits, expectedBackTotal, needsExtraAction, type Completion } from '@/lib/partial-delivery';
 import { nothingCameBack, receiptNothingCameBackWhere } from '@/lib/written-off';
+import { IntakePlaceRefused, intakeRefusalBody, returnPlace, type IntakeRefusalCode, type WarehouseRef } from '@/lib/warehouse-intake';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -32,6 +33,18 @@ import { nothingCameBack, receiptNothingCameBackWhere } from '@/lib/written-off'
  *   · NEVER a partial delivery that asks «هل الطلب استلم؟» (`needsExtraAction`) — that question stays the dialog's;
  *   · NEVER an order with nothing expected back — a receipt of 0 would be a «nothing came back» receipt nobody wrote.
  * All four are decided on the order as read HERE, the same read the transaction acts on.
+ *
+ * ── WHERE IT IS RECEIVED (the warehouse plan, W2b) ──
+ *
+ * A store placed in warehouses receives every parcel INTO a warehouse: the one the desk named, or — the single door only —
+ * the warehouse the order left from (`Order.sourceWarehouseId`) when the desk named none. «استلام الكل» never falls back:
+ * the press names ONE warehouse for every parcel it walks. The warehouse is checked inside the transaction by the rule
+ * every stock door of a placed store asks (`warehouse-intake.returnPlace`: the parcel's stock locks, then of the company
+ * and the store's country, running, reached by the person); a refusal is returned like any other, nothing written.
+ * Then: a consumed parcel's `RET-` batch lands there; a refused parcel's broken and missing units leave from the warehouse
+ * it left, and its sound units are put in the receiving one (`stock-consumption.takeOffUnreturned`).
+ * A store that is not placed — read off the order's own store, so its receipt asks nothing more — is received exactly as
+ * before: the same reads, the same rows, the same calls.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -40,6 +53,8 @@ export interface ReceiptContext {
   companyId: string;
   storeId: string;
   minorUnit: number;
+  /** Does the person reach this warehouse? The doors pass `warehouses.reachesWarehouse` for the session (W2b). */
+  mayUse?: (warehouse: WarehouseRef) => Promise<boolean>;
 }
 
 export interface ReceiptInput {
@@ -49,6 +64,8 @@ export interface ReceiptInput {
   damagedQty: number;
   chargeCourierFee: boolean;
   note?: string;
+  /** The warehouse that received the parcel — read only for a store placed in warehouses (W2b). */
+  warehouseId?: string | null;
 }
 
 export type ReceiptRefusalCode =
@@ -57,7 +74,9 @@ export type ReceiptRefusalCode =
   | 'DELIVERED_AND_SETTLED'
   | 'OVER_RECEIVED'
   | 'NEEDS_THE_QUESTION'
-  | 'NOTHING_EXPECTED';
+  | 'NOTHING_EXPECTED'
+  // W2b: the receiving warehouse of a placed store was refused (`warehouse-intake`).
+  | IntakeRefusalCode;
 
 export type ReceiptResult =
   | {
@@ -93,6 +112,9 @@ export async function receiveReturn(
     select: {
       id: true, orderNumber: true, shippingStatus: true, settlementStatus: true,
       regionId: true, deliveryProviderId: true,
+      // W2b: the warehouse it left from (the desk's default receiver) and whether its store is placed in warehouses.
+      sourceWarehouseId: true,
+      store: { select: { warehousePlacement: { select: { id: true } } } },
       returnReceipt: { select: { id: true, receivedQty: true, damagedQty: true, missingQty: true, courierFeeCharged: true } },
       items: { select: { id: true, productId: true, productName: true, quantity: true, freeQuantity: true, deliveredQty: true } },
     },
@@ -215,7 +237,31 @@ export async function receiveReturn(
     courierFeeAmount = roundMinor(fee.returnFee, ctx.minorUnit);
   }
 
+  /*
+   * W2b: is the store placed, and which warehouse was asked? Read off the order above, so an unplaced store's receipt
+   * makes no new statement. The single door falls back to the warehouse the order left from; the bulk door never does.
+   */
+  const placed = !!order.store?.warehousePlacement;
+  const asked = (typeof input.warehouseId === 'string' && input.warehouseId.trim()) || (opts.bulk ? null : order.sourceWarehouseId ?? null);
+  // Written inside the transaction, read after it (W2b).
+  const at: { id: string | null; name: string | null; moved: number } = { id: null, name: null, moved: 0 };
+  const refused: { place?: IntakePlaceRefused } = {};
+
   const receipt = await db.$transaction(async (tx) => {
+    // W2b: the receiving warehouse, checked under the parcel's stock locks — null for a store that is not placed.
+    const receiver = placed
+      ? await returnPlace(tx, {
+          companyId,
+          storeId,
+          productIds: order.items.map((i) => i.productId),
+          warehouseId: asked,
+          mayUse: ctx.mayUse,
+        })
+      : null;
+    if (receiver) {
+      at.id = receiver;
+      at.name = (await tx.warehouse.findFirst({ where: { id: receiver, companyId }, select: { name: true } }))?.name ?? null;
+    }
     const counted = {
       expectedQty,
       receivedQty,
@@ -273,18 +319,21 @@ export async function receiveReturn(
       receivedQty,
       damagedQty: input.damagedQty,
       userId: user.id,
+      ...(receiver ? { warehouseId: receiver } : {}),
     });
 
     // A parcel refused at the door never left the shelf's books, so its broken and missing units are taken off here — before
     // the reservation is released, or they become stock the next customer is sold (takeOffUnreturned, 5/11).
-    await takeOffUnreturned(tx, {
+    const off = await takeOffUnreturned(tx, {
       orderId: order.id,
       companyId,
       receivedQty,
       damagedQty: input.damagedQty,
       missingQty,
       userId: user.id,
+      ...(receiver ? { warehouseId: receiver } : {}),
     });
+    at.moved = off?.moved ?? 0;
 
     await tx.orderItem.updateMany({ where: { orderId: order.id, reservedQty: { gt: 0 } }, data: { reservedQty: 0 } });
     await tx.order.update({
@@ -336,6 +385,8 @@ export async function receiveReturn(
           `استلام مرتجع: وصل ${receivedQty}، تالف ${input.damagedQty}، ناقص ${missingQty}` +
           (input.chargeCourierFee ? ` — أجرة إرجاع ${courierFeeAmount}` : '') +
           (input.note ? ` — ${input.note}` : '') +
+          // W2b: where it was received — only in a store placed in warehouses.
+          (at.name ? ` — استُلم بمخزن ${at.name}` : '') +
           // The note thread is where a person finds out the order is not
           // finished. Without this line the receipt reads as the end of
           // the order, and for a partial delivery it is half of it.
@@ -343,8 +394,19 @@ export async function receiveReturn(
       },
     });
     return created;
+  }).catch((e: unknown) => {
+    // W2b: the receiving warehouse refused — the transaction rolled back, nothing written; answered below.
+    if (e instanceof IntakePlaceRefused) {
+      refused.place = e;
+      return null;
+    }
+    throw e;
   });
 
+  if (refused.place) {
+    const e = refused.place;
+    return { ok: false, code: e.code, status: e.status, body: intakeRefusalBody(e) };
+  }
   if (!receipt) return ALREADY;
 
   await logAudit({
@@ -359,6 +421,8 @@ export async function receiveReturn(
       ...(completing ? { completesLossReceipt: true } : {}),
       // Received by «استلام الكل», not counted in the dialog.
       ...(opts.bulk ? { bulk: true } : {}),
+      // W2b: the warehouse that received it, and the sound units of a refused parcel moved into it.
+      ...(at.id ? { warehouseId: at.id, warehouseName: at.name, movedToWarehouse: at.moved } : {}),
     },
   });
 

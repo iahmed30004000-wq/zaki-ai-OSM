@@ -9,6 +9,8 @@ import { zodMessage } from '@/lib/zod-message';
 import { returnsFilters, viewScope } from '@/lib/returns-filters';
 import { isReceiptRace, receiveReturn } from '@/lib/return-receipt';
 import { RECEIVE_ALL_CHUNK, type ReceiveAllAnswer, type ReceiveAllSkip } from '@/lib/returns-receive-all';
+import { INTAKE_REFUSAL_CODES, type IntakeRefusalCode } from '@/lib/warehouse-intake';
+import { reachesWarehouse } from '@/lib/warehouses';
 
 /**
  * POST /api/ops/returns/receive-all — «استلام الكل».
@@ -29,6 +31,14 @@ import { RECEIVE_ALL_CHUNK, type ReceiveAllAnswer, type ReceiveAllSkip } from '@
  *
  * The gates come first, before anything is read: the context, the returns key, THIS door's own key (granted to nobody;
  * the owner's full access holds it), the body, the view.
+ *
+ * ── ONE WAREHOUSE FOR THE WHOLE PRESS (the warehouse plan, W2b) ──
+ *
+ * A store placed in warehouses receives every parcel of the press into the ONE warehouse the body names (`warehouseId`);
+ * no parcel falls back to the warehouse it left from (that is the single dialog's default, where a person holds the box).
+ * The warehouse is checked by each receipt (`return-receipt.receiveReturn`): a refusal of it is a refusal of the PRESS —
+ * the same for every parcel — so the walk stops at once and the door answers that sentence, with what was already
+ * received said beside it. A store that is not placed: the field is not read, and the walk is the one it always was.
  */
 
 const schema = z.object({
@@ -41,9 +51,13 @@ const schema = z.object({
   q: z.string().max(200).optional(),
   countedAndInspected: z.literal(true, { message: 'يلزم إقرار العد والفحص قبل الاستلام' }),
   cursor: z.string().uuid().nullish(),
+  /** W2b: the one warehouse every parcel of the press is received into — read only for a store placed in warehouses. */
+  warehouseId: z.string().max(64).optional().nullable().catch(undefined),
 });
 
 const FORBIDDEN_AR = 'استلام كل المرتجعات دفعة واحدة مش من صلاحياتك — اطلبها من المالك إذا كانت من شغلك.';
+
+const isPlaceRefusal = (code: string): code is IntakeRefusalCode => (INTAKE_REFUSAL_CODES as readonly string[]).includes(code);
 
 export async function POST(req: Request) {
   try {
@@ -89,15 +103,20 @@ export async function POST(req: Request) {
     };
     const note = user.name ? `استلام جماعي — ${user.name}` : 'استلام جماعي';
 
+    let placeRefused: { status: number; body: Record<string, unknown> } | null = null;
     for (const { id } of chunk) {
       try {
         const r = await receiveReturn(
-          { user, companyId, storeId, minorUnit: country.minorUnit },
-          { orderId: id, receivedQty: 'WHOLE', damagedQty: 0, chargeCourierFee: false, note },
+          { user, companyId, storeId, minorUnit: country.minorUnit, mayUse: (w) => reachesWarehouse(user, companyId, w) },
+          { orderId: id, receivedQty: 'WHOLE', damagedQty: 0, chargeCourierFee: false, note, ...(body.warehouseId ? { warehouseId: body.warehouseId } : {}) },
           { bulk: true }
         );
         if (r.ok) answer.received += 1;
-        else skip(r.code);
+        else if (isPlaceRefusal(r.code)) {
+          // W2b: the warehouse of the press was refused — the same for every parcel. Stop here, say it.
+          placeRefused = { status: r.status, body: r.body };
+          break;
+        } else skip(r.code);
       } catch (e) {
         // Two presses, or two people, at the same moment: the database kept one receipt and refused the other.
         if (isReceiptRace(e)) skip('ALREADY_RECEIVED');
@@ -107,7 +126,7 @@ export async function POST(req: Request) {
         }
       }
     }
-    answer.nextCursor = chunk.length === RECEIVE_ALL_CHUNK ? chunk[chunk.length - 1].id : null;
+    answer.nextCursor = placeRefused ? null : chunk.length === RECEIVE_ALL_CHUNK ? chunk[chunk.length - 1].id : null;
 
     // ONE line for the request; each received parcel also carries its own `RETURN_RECEIVED` row (with `bulk: true`).
     await logAudit({
@@ -120,9 +139,11 @@ export async function POST(req: Request) {
         received: answer.received,
         skipped: answer.skipped,
         nextCursor: answer.nextCursor,
+        ...(placeRefused ? { warehouseRefused: placeRefused.body.code } : {}),
       },
     });
 
+    if (placeRefused) return NextResponse.json({ ...placeRefused.body, ...answer }, { status: placeRefused.status });
     return NextResponse.json(answer);
   } catch (error) {
     return apiErrorResponse(error);
