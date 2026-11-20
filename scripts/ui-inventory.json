@@ -1629,6 +1629,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/StockExitsScreen.tsx": {
+    "buttons": 10,
+    "inputs": 4,
+    "columns": 11,
+    "cards": 4,
+    "modals": 3,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3
+  },
   "src/components/screens/StockTransfersScreen.tsx": {
     "buttons": 14,
     "inputs": 5,

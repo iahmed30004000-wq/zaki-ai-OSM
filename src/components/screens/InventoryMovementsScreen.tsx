@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { arDateTime } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { EXIT_MOVEMENT_TYPE, EXIT_REASON_AR, EXIT_REASONS } from '@/lib/stock-exit-reasons';
 
 /**
  * /inventory/movements — how the stock got to where it is.
@@ -46,6 +47,11 @@ const TYPE_AR: Record<string, string> = {
   TRANSFER: 'نقل',
   TRANSFER_OUT: 'نقل — طالع من مخزن',
   TRANSFER_IN: 'نقل — داخل على مخزن',
+  // 20/11 (W6b): an approved stock exit writes the type of its reason (W6a, `stock-exit-reasons.EXIT_MOVEMENT_TYPE`). The damaged
+  // write `DAMAGE` above; the other six are said here as «إخراج — <the reason's own word>», from the one list of words.
+  ...Object.fromEntries(
+    EXIT_REASONS.filter((r) => EXIT_MOVEMENT_TYPE[r] !== 'DAMAGE').map((r) => [EXIT_MOVEMENT_TYPE[r], `إخراج — ${EXIT_REASON_AR[r]}`])
+  ),
 };
 
 export function InventoryMovementsScreen() {

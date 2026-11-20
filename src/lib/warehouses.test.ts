@@ -238,6 +238,11 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // `stock-transfer-kind.readStockTransfer` the end's own field `warehouseId` (`StockTransferEnd`) to say the kind before
     // the press, which this sweep cannot tell from a column by its name.
     'src/components/screens/StockTransfersScreen.tsx',
+    // 20/11, W6b (the «إخراج بضاعة» screen and its month): the screen sends the request door's own body field `warehouseId`
+    // (W6a's `requestSchema`); the month's report reads each approved exit's `warehouseId` and its warehouse's NAME only
+    // (`db.warehouse.findMany` — id and name), to say where the units left from. Neither reads a stock column.
+    'src/components/screens/StockExitsScreen.tsx',
+    'src/lib/stock-exit-report.ts',
     // 20/11, W4a (a shipment is made in ONE warehouse): the shipment's place and the warehouse's shelf for the blocks; the
     // two doors that open a trolley and the preparation list that may be asked per warehouse; the two «off the trolley»
     // column lists that drop the order's source; the doors that put an order on an existing trolley (assign to a batch,
