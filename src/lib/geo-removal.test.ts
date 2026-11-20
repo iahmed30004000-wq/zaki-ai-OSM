@@ -247,7 +247,9 @@ describe('asking about many stores at once', () => {
     // has a storeId and no foreign key to the store, so it is a stopper too: a store with one has a stock history.
     // 20/11 (W6a): 36 → 37 — the exits of goods from a store's warehouses (`stock_exits`) are a stopper too: a document of
     // goods that left, never deleted.
-    expect(one.asked.length).toBe(37);
+    // 20/11 (Q4a): 37 → 38 — the owner's own confirmation rules (`confirmation_rules`) have a storeId and no foreign key to the
+    // store, so they are a stopper too: stopped, never deleted.
+    expect(one.asked.length).toBe(38);
   });
 
   it('and no stores asks nothing at all', async () => {

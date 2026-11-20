@@ -496,6 +496,7 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
   // 20/11 (W3b): the four stock-transfer doors of W3a left — the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls the list, the send, the receive, the cancel and the difference.
   // 20/11 (W6b): the three stock-exit doors of W6a left — the screen «إخراج بضاعة» (`screens/StockExitsScreen.tsx`) calls the list, the request, the approval and the rejection; and its month's table calls the new '/api/inventory/exits/month'.
+  // 20/11 (Q4a): NO_CALLER_FOUND for a LIBRARY, not a route — `src/lib/confirmation-rules.ts` (the owner's own rules and `ruleFor`) is read by nothing yet; no route is added, so nothing enters this list. Its own test pins «no importer» and Q4b removes that pin when the pull reads it.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
