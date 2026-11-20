@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Segmented } from '@/components/ui/Segmented';
 import { StatTile } from '@/components/ui/StatTile';
 import { ProductPicker } from '@/components/ui/ProductPicker';
+import { useConfirm } from '@/components/ui/Confirm';
 import { amount, plainNumber, type Currency } from '@/lib/format';
 
 /**
@@ -105,6 +106,7 @@ export function TwinPicker({
   pairs: PairsState;
   line: number;
 }) {
+  const confirm = useConfirm();
   const [chosen, setChosen] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +131,15 @@ export function TwinPicker({
     }
   }
 
-  async function unpair(pairId: string) {
+  async function unpair(pairId: string, twinName: string) {
+    // A pair is undone by saving it again, but it asks first, like every delete of the dashboard.
+    const ok = await confirm({
+      title: `فك ربط «${productName}» بـ«${twinName}»؟`,
+      body: `بعدها ما بينبعت لـ${storeName} لحد ما تربطه من جديد.`,
+      confirmLabel: 'فك الربط',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -150,7 +160,7 @@ export function TwinPicker({
         <span className="text-note text-[var(--sys-muted-foreground)]">
           بيدخل على توأمه بـ{storeName}: <span className="font-bold">{named(pair.twin)}</span>
         </span>
-        <Button type="button" size="sm" variant="secondary" onClick={() => void unpair(pair.pairId)} disabled={busy}>
+        <Button type="button" size="sm" variant="secondary" onClick={() => void unpair(pair.pairId, named(pair.twin))} disabled={busy}>
           فك الربط
         </Button>
         <Refusal text={error} />

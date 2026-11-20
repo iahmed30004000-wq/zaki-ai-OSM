@@ -91,6 +91,8 @@ const transfer = (over: T = {}): T => ({
 });
 
 let list: T;
+let confirmSays = true;
+let asked: string[] = [];
 let pairs: T;
 let onPost: (url: string, body: T) => unknown;
 const calls = (method: string) =>
@@ -105,6 +107,9 @@ const as = (...keys: string[]) => {
 beforeEach(() => {
   api.mockReset();
   as();
+  confirmSays = true;
+  asked = [];
+  vi.spyOn(window, 'confirm').mockImplementation((text?: string) => (asked.push(String(text)), confirmSays));
   list = { warehouses: W, here: HERE, destinations: DEST, mayAbroad: false, transfers: [], road: { onTheRoad: 0, internal: 0, across: 0, totals: null, heldBack: 0 } };
   pairs = {
     pairs: [],
@@ -248,8 +253,15 @@ describe('the twin picker', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'احفظ الربط' }));
     expect(await within(dialog).findByText('صابون تاني (S-9)')).toBeTruthy();
     expect(calls('POST')[0]).toEqual(['/api/inventory/pairs', { productId: 'p1', otherProductId: 'q2' }]);
+    // It asks first (the dashboard's rule for every delete): declined, nothing is sent.
+    confirmSays = false;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'فك الربط' }));
+    await waitFor(() => expect(asked).toHaveLength(1));
+    expect(calls('DELETE')).toEqual([]);
+    confirmSays = true;
     fireEvent.click(within(dialog).getByRole('button', { name: 'فك الربط' }));
     expect(await within(dialog).findByText(/ما إله توأم/)).toBeTruthy();
+    expect(asked[1]).toContain('فك ربط «كريم اليدين» بـ«صابون تاني (S-9)»؟');
     expect(calls('DELETE')).toEqual([['/api/inventory/pairs/pr9', null]]);
   });
 
