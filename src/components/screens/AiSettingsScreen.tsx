@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { Segmented } from '@/components/ui/Segmented';
 import { routeLabel } from '@/lib/route-registry';
 import { arDate } from '@/lib/format';
+import { apiFetch } from '@/lib/api-client';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { useCan } from '@/hooks/useCan';
 
@@ -172,12 +173,13 @@ export function AiSettingsScreen() {
     setLocalTesting(true);
     setLocalTest(null);
     try {
-      const res = await fetch('/api/settings/ai/test', {
+      const res = await apiFetch('/api/settings/ai/test', {
         method: 'POST',
-        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         // Only which test — the address, key and model are the server's own.
         body: JSON.stringify({ target: 'LOCAL' }),
+        // The server waits up to 15 s for the model; the screen waits a little longer.
+        timeoutMs: 20_000,
       });
       const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; reply?: string; model?: string };
       setLocalTest(
@@ -185,8 +187,8 @@ export function AiSettingsScreen() {
           ? { ok: true, text: `خادمك ردّ${r.model ? ` (${r.model})` : ''}${r.reply ? `: «${r.reply}»` : ''}` }
           : { ok: false, text: r.error ?? 'تعذّر الاتصال' }
       );
-    } catch {
-      setLocalTest({ ok: false, text: 'تعذّر الاتصال' });
+    } catch (e) {
+      setLocalTest({ ok: false, text: e instanceof Error && e.message ? e.message : 'تعذّر الاتصال' });
     } finally {
       setLocalTesting(false);
     }

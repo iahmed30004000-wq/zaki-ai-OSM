@@ -11,7 +11,15 @@ import React from 'react';
  */
 
 const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }));
-vi.mock('@/lib/api-client', () => ({ apiJson: async () => ({}) }));
+vi.mock('@/lib/api-client', () => ({
+  apiJson: async () => ({}),
+  // The real wrapper's call, minus its timeout and redirects: same url, same init.
+  apiFetch: (url: string, init?: Record<string, unknown>) => {
+    const rest = { ...(init ?? {}) };
+    delete rest.timeoutMs;
+    return fetchMock(url, rest);
+  },
+}));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/settings/ai',
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
