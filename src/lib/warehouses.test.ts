@@ -196,6 +196,11 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',
+    // 20/11, W8a (a combination's count per warehouse): the one writer and its ledger, the draw-down and the restock that
+    // hand a placed store's pieces to it (the draw reads the order's source warehouse), and the variants door's count.
+    'src/lib/variant-stock.ts',
+    'src/lib/product-variants.ts',
+    'src/app/api/products/[id]/variants/route.ts',
     // 19/11, W2c (the stock screens show places): the balances and the ledger read where units are; the runs list and the
     // product page fold a split row into its run; the receive dialog sends the receive door's own `warehouseId` field.
     'src/app/api/inventory/movements/route.ts',
