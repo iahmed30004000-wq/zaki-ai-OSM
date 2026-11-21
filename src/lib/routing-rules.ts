@@ -10,7 +10,6 @@ import {
   type OrderPhase,
   type ValidRule,
 } from './confirmation-rules';
-import type { RulesNow } from './employee-numbers';
 import { workClock } from './no-answer-rounds';
 
 /**
@@ -19,7 +18,9 @@ import { workClock } from './no-answer-rounds';
  *
  * A ROUTING rule (`confirmation-rules.ts`, kind `ROUTING`, payload `{ toUserIds, fallbackMinutes? }`) names some orders — by store, product, channel, phase (new /
  * retry) and hours — and says «only these people take them». This file turns the rules IN FORCE at one moment, for one store, into ONE filter on orders for ONE
- * puller (`routingWhereFor`). The pull (`pullNextOrder`) reads it before its transaction and `pickNextCandidate` ANDs it into every query of the pick.
+ * puller (`routingWhereFor`). The pull's door asks it (`routingWhereForPuller` in `routing-staff.ts`, server only) and hands the ready filter to `pullNextOrder`;
+ * `pickNextCandidate` ANDs it into every query of the pick. This file is PURE and imports nothing that reads people: `confirmation-queue.ts` (which client
+ * components reach for its words) imports it, so the roster must never be reachable from here — not even by a dynamic import (a bundler follows it).
  *
  * ── WHICH RULE GOVERNS AN ORDER ──
  * The resolver's own: of the rules in force that match the order, the most specific wins (`better`, exported by `confirmation-rules.ts` — never a second copy).
@@ -45,7 +46,7 @@ import { workClock } from './no-answer-rounds';
  *
  * ── ZERO RULES = TODAY ──
  * No ROUTING rule in force for the store, or every one in force names her: null — no filter, the pick's statements are main's, and no roster is read. The rules are the
- * pull's one cached read (`confirmationRulesOnce`): on a warm cache, no statement; the roster too is cached.
+ * pull's cached read (`confirmationRulesOnce`): on a warm cache, no statement; the roster too is cached.
  *
  * A clock that cannot be read (an unknown timezone) leaves out the rules WITH hours, never the pull — as `priority-rules.ts` does. Anything else that fails answers
  * null: the pull of today, which strands nobody.
@@ -203,29 +204,6 @@ export function routingNeedsStaff(inForce: readonly RoutingRuleInForce[], userId
 export function unstaffedWhere(inForce: readonly RoutingRuleInForce[], staff: ReadonlySet<string> | null): Where | null {
   const c = or(...inForce.map((r, i) => (isStaffed(r, staff) ? false : and(r.match, ...inForce.slice(0, i).map((above) => above.notMatch)))));
   return c === false ? null : c === true ? {} : c;
-}
-
-/**
- * THE PULL'S QUESTION: the filter for this puller now, from the pull's one cached read of the rules and (only when a rule in force leaves her out) the cached roster.
- * Any failure answers null — today's pull, which leaves no order unreachable.
- */
-export async function routingWhereForPuller(args: {
-  scope: { companyId: string; storeId: string };
-  userId: string;
-  cal: BusinessCalendar;
-  now: Date;
-  rules: RulesNow;
-}): Promise<Where | null> {
-  try {
-    const { scope, userId, cal, now } = args;
-    const inForce = routingRulesInForce(await args.rules(), { companyId: scope.companyId, storeId: scope.storeId, now, timezone: cal.timezone });
-    if (inForce.length === 0) return null;
-    // Loaded only here: the roster reads people and their grants, which nothing else of the pull needs.
-    const staff = routingNeedsStaff(inForce, userId) ? await (await import('./routing-staff')).readRoutingStaff(scope.companyId, scope.storeId, now.getTime()) : null;
-    return routingWhereFor(inForce, { userId, staff, cutOf: fallbackCut(now, cal) });
-  } catch {
-    return null;
-  }
 }
 
 /** The sentence of an empty pull when a routing rule kept some orders for colleagues (the code stays `QUEUE_EMPTY`). */

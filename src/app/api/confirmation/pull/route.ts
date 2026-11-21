@@ -5,6 +5,7 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { pullNextOrder } from '@/lib/confirmation-queue';
+import { routingWhereForPuller } from '@/lib/routing-staff';
 import { reserveReturningCustomers } from '@/lib/reserve-returning-customers';
 import { sweepIntakeForPull } from '@/lib/intake-filter';
 import { db } from '@/lib/db';
@@ -44,16 +45,17 @@ export async function POST() {
     // «فلتر الاستقبال» (step C1): flag a repeat or an oddly-shaped number on what has just arrived — the same best-effort, the same place; off for a company that did not turn it on.
     await sweepIntakeForPull({ companyId, storeId, countryCode: country.code }).catch(() => 0);
 
-    const result = await pullNextOrder(
-      { companyId, storeId },
-      { id: user.id, role: user.role },
-      {
-        workHoursStart: country.workHoursStart,
-        workHoursEnd: country.workHoursEnd,
-        weekendDays: country.weekendDays,
-        timezone: country.timezone,
-      }
-    );
+    const cal = {
+      workHoursStart: country.workHoursStart,
+      workHoursEnd: country.workHoursEnd,
+      weekendDays: country.weekendDays,
+      timezone: country.timezone,
+    };
+    const now = new Date();
+    // «هالطلبات بس لهالموظفات» (request Q5b): who may take which order, asked HERE (server only: it reads people and their grants) and handed to the pull.
+    // null — no routing rule in force, every one names her, or a read failed — and the pull is today's.
+    const routing = await routingWhereForPuller({ scope: { companyId, storeId }, userId: user.id, cal, now });
+    const result = await pullNextOrder({ companyId, storeId }, { id: user.id, role: user.role }, cal, now, routing ? { routing } : {});
 
     if (!result.ok) {
       const refusal = result.refusal;

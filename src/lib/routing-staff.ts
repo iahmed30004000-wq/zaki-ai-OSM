@@ -1,4 +1,9 @@
+import type { Prisma } from '@prisma/client';
+import type { BusinessCalendar } from './business-calendar';
 import { can, hasFullAccess } from './authorization';
+import { db } from './db';
+import { confirmationRulesOnce, type RulesNow } from './employee-numbers';
+import { fallbackCut, routingNeedsStaff, routingRulesInForce, routingWhereFor } from './routing-rules';
 import { deskReadiness } from './desk-readiness';
 import { resolveAudience } from './notification-audience';
 import type { SessionUser } from '@/types/auth';
@@ -14,7 +19,8 @@ import type { SessionUser } from '@/types/auth';
  * Cached thirty seconds per store (the pull is hot: on a warm cache, no statement). A person deactivated, moved or stripped of a key counts again at the next read —
  * within thirty seconds. A read that fails answers null («nobody can pull»: the rule's orders wait their fallback, then go to everyone) — never a stale «somebody».
  *
- * Loaded by the pull only when a rule in force leaves the puller out (a dynamic import), and by the supervisor's board. Reading only.
+ * SERVER ONLY: read by the pull's DOOR (`routingWhereForPuller`, which hands the ready filter to `pullNextOrder`) and by the supervisor's board — never by
+ * `confirmation-queue.ts`, which client components reach (the grants engine reads `next/headers`). Reading only.
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -45,3 +51,27 @@ export async function readRoutingStaff(companyId: string, storeId: string, nowMs
   return staff;
 }
 
+
+/**
+ * THE PULL'S QUESTION, asked by its door before `pullNextOrder`: the filter for this puller now, from the cached read of the rules (the same thirty-second cache the
+ * pull reads, so the pull asks it nothing more) and — only when a rule in force leaves her out — the cached roster. Any failure answers null: today's pull, which
+ * leaves no order unreachable.
+ */
+export async function routingWhereForPuller(args: {
+  scope: { companyId: string; storeId: string };
+  userId: string;
+  cal: BusinessCalendar;
+  now: Date;
+  rules?: RulesNow;
+}): Promise<Prisma.OrderWhereInput | null> {
+  try {
+    const { scope, userId, cal, now } = args;
+    const rows = await (args.rules ?? confirmationRulesOnce(db, scope.companyId, now.getTime()))();
+    const inForce = routingRulesInForce(rows, { companyId: scope.companyId, storeId: scope.storeId, now, timezone: cal.timezone });
+    if (inForce.length === 0) return null;
+    const staff = routingNeedsStaff(inForce, userId) ? await readRoutingStaff(scope.companyId, scope.storeId, now.getTime()) : null;
+    return routingWhereFor(inForce, { userId, staff, cutOf: fallbackCut(now, cal) });
+  } catch {
+    return null;
+  }
+}

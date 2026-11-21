@@ -145,12 +145,13 @@ vi.mock('./geo-context', () => ({
 }));
 
 import { RETURNS_MODE, duePostponedWhere, pickNextCandidate, readyToPullWhere, type PriorityPlan } from './confirmation-queue';
-import { ROUTING_FALLBACK, ruleFor, validateRulePayload, type ConfirmationRuleRow } from './confirmation-rules';
+import { CONFIRMATION_RULE_TEMPLATES, ROUTING_FALLBACK, ruleFor, validateRulePayload, type ConfirmationRuleRow } from './confirmation-rules';
+import { priorityBoostOf } from './priority-rules';
 import { CONFIRMATION_RULE_DEFAULT } from './confirmation-rule-settings';
 import { returnsMode } from './no-answer-returns';
 import { workClock } from './no-answer-rounds';
-import { fallbackCut, routingRulesInForce, routingWhereFor, routingWhereForPuller } from './routing-rules';
-import { readRoutingStaff } from './routing-staff';
+import { fallbackCut, routingRulesInForce, routingWhereFor } from './routing-rules';
+import { readRoutingStaff, routingWhereForPuller } from './routing-staff';
 import { readUnstaffedOrders } from './routing-health';
 import { forgetConfirmationRules } from './employee-numbers';
 import { attachGrants, can } from './authorization';
@@ -599,7 +600,11 @@ describe('4 · the pick: her routed pick is main\'s pick over the pool without w
     // The pull asks what is held for her with no routing, and hands the filter only to the pick.
     expect(src).toMatch(/const hers = await pickHeldForHer\(tx, scope, user\.id, now\);/);
     expect(src).toMatch(/pickNextCandidate\(tx, scope, now, user\.id, \{ heldForHerAsked: true, returns, priority, \.\.\.\(routing \? \{ routing \} : \{\}\) \}\)/);
-    expect(src).toMatch(/const routing = await routingWhereForPuller\(\{ scope, userId: user\.id, cal, now, rules \}\);/);
+    expect(src).toMatch(/const routing = opts\.routing \?\? null;/);
+    // The DOOR asks the filter (server only) and hands it to the pull.
+    const door = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'app', 'api', 'confirmation', 'pull', 'route.ts'), 'utf8');
+    expect(door).toMatch(/const routing = await routingWhereForPuller\(\{ scope: \{ companyId, storeId \}, userId: user\.id, cal, now \}\);/);
+    expect(door).toMatch(/pullNextOrder\(\{ companyId, storeId \}, \{ id: user\.id, role: user\.role \}, cal, now, routing \? \{ routing \} : \{\}\)/);
   });
 });
 
@@ -701,5 +706,81 @@ describe('6 · where routing does not act, and the desk', () => {
     const names = [...seen].map((f) => f.replace(/\\/g, '/').split('/src/lib/')[1]).filter(Boolean);
     expect(seen.size).toBeGreaterThan(50);
     for (const banned of ['routing-rules.ts', 'routing-staff.ts', 'routing-health.ts', 'confirmation-queue.ts', 'confirmation-rules.ts']) expect(names).not.toContain(banned);
+  });
+});
+
+describe('7 · routing beside a priority rule, the numbers pinned, and the client-reached file stays clean', () => {
+  it('a PRIORITY boost and a ROUTING rule together: every boosted query (new · retry · postponed) carries her filter — a boosted order kept from her is never dealt to her', async () => {
+    let checked = 0;
+    for (const seed of SEEDS) {
+      roster(seed);
+      await forgetStaff();
+      const list = rules(seed);
+      const truthStaff = await canPullNow();
+      const routing = routingWhereFor(routingRulesInForce(list, { ...scope, now: NOW, timezone: 'UTC' }), { userId: 'u1', staff: truthStaff, cutOf });
+      // Boost every product (each phase): the boosted queries are asked on every tier.
+      const boost = priorityBoostOf(
+        PRODUCTS.flatMap((p, i) => [rule(`b-${i}`, { kind: 'PRIORITY', productId: p, phase: 'NEW', payload: { first: true } }), rule(`r-${i}`, { kind: 'PRIORITY', productId: p, phase: 'RETRY', payload: { first: true } })]).slice(0, 4),
+        { ...scope, now: NOW, timezone: 'UTC' }
+      );
+      expect(boost?.NEW && boost?.RETRY && boost?.ANY, `seed ${seed}`).toBeTruthy();
+      for (const backlogTurn of [false, true]) {
+        const plan: PriorityPlan = { mode: 'NORMAL', backlogTurn, ...(boost ? { boost } : {}) };
+        const rows = pool(seed + 5000);
+        const allowed = rows.filter((o) => mayTake(o, 'u1', list, truthStaff, NOW));
+        const mine = await dealAll(rows, plan, routing);
+        for (const id of mine.ids) expect(allowed.some((o) => o.id === id), `seed ${seed}: ${id} dealt against the rule`).toBe(true);
+        expect(mine.ids, `seed ${seed}`).toEqual((await dealAll(allowed, plan, null)).ids);
+        checked += 1;
+      }
+    }
+    expect(checked).toBe(SEEDS.length * 2);
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'confirmation-queue.ts'), 'utf8');
+    expect(src).toMatch(/boost\.NEW, \.\.\.\(only \? \[only\] : \[\]\)/);
+    expect(src).toMatch(/pickRetryWithDue\(tx, scope, now, forUserId, returns, boost\.RETRY, only\)/);
+    expect(src).toMatch(/\[postponedWhere, boost\.ANY, \.\.\.\(only \? \[only\] : \[\]\)\]/);
+  });
+
+  it('the default wait is 30 working minutes (5–480), and the ready template carries it', () => {
+    expect(ROUTING_FALLBACK).toEqual({ defaultMinutes: 30, min: 5, max: 480 });
+    const t = CONFIRMATION_RULE_TEMPLATES.find((x) => x.kind === 'ROUTING')!;
+    expect(t.payload.fallbackMinutes).toBe(30);
+    const [r] = routingRulesInForce([rule('d', { payload: { toUserIds: ['u2'] } })], { ...scope, now: NOW, timezone: 'UTC' });
+    expect(r.fallbackMinutes).toBe(30);
+    // An order of 29 working minutes waits; one of 31 is everyone's.
+    const where = routingWhereFor([r], { userId: 'u1', staff: new Set(), cutOf })!;
+    const o = (age: number) => ({ ...pool(1)[0], createdAt: minutes(-age) });
+    expect(matches(o(29), where)).toBe(false);
+    expect(matches(o(31), where)).toBe(true);
+  });
+
+  it('confirmation-queue.ts (reached by client components) never reaches who-can-pull, statically or by a dynamic import', () => {
+    const libDir = dirname(fileURLToPath(import.meta.url));
+    const SPEC = /(?:^\s*(?:import|export)\s+(type\s+)?[^;]*?\s+from\s+|import\()\s*['"]([^'"]+)['"]/gm;
+    const resolveSpec = (from: string, spec: string): string | null => {
+      const root = resolve(libDir, '..', '..');
+      const base = spec.startsWith('@/') ? join(root, 'src', spec.slice(2)) : spec.startsWith('.') ? resolve(dirname(from), spec) : null;
+      if (!base) return null;
+      for (const ext of ['.ts', '.tsx', '/index.ts', '']) if (existsSync(base + ext) && /\.(tsx?)$/.test(base + ext)) return base + ext;
+      return null;
+    };
+    const start = join(libDir, 'routing-rules.ts');
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const f = queue.shift()!;
+      for (const m of readFileSync(f, 'utf8').matchAll(SPEC)) {
+        if (m[1]) continue;
+        const next = resolveSpec(f, m[2]);
+        if (next && !seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    const names = [...seen].map((f) => f.replace(/\\/g, '/').split('/src/lib/')[1]).filter(Boolean);
+    for (const banned of ['routing-staff.ts', 'notification-audience.ts', 'authorization.ts', 'auth.ts', 'geo-context.ts']) expect(names, banned).not.toContain(banned);
+    const q = readFileSync(join(libDir, 'confirmation-queue.ts'), 'utf8');
+    expect(q).not.toMatch(/['"][^'"]*(routing-staff|routing-health)['"]/);
   });
 });

@@ -45,7 +45,7 @@ import { RETURNS_MODE } from './returns-mode';
 export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 import { priorityBoostOf, type PriorityBoost } from './priority-rules';
-import { ROUTED_EMPTY_MESSAGE, routingWhereForPuller } from './routing-rules';
+import { ROUTED_EMPTY_MESSAGE } from './routing-rules';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -2087,7 +2087,12 @@ export async function pullNextOrder(
   scope: QueueScope,
   user: { id: string; role: string },
   cal: BusinessCalendar,
-  now = new Date()
+  now = new Date(),
+  /**
+   * «هالطلبات بس لهالموظفات» (request Q5b): the puller's routing filter, asked by the DOOR before the pull (`routingWhereForPuller` in `routing-staff.ts`, server only —
+   * this file is reached by client components, so it never imports what reads people). Absent or null = main's pick, statement for statement.
+   */
+  opts: { routing?: Prisma.OrderWhereInput | null } = {}
 ): Promise<PullResult> {
   // «نظام الجولات»: read before the transaction (a cached read), so the pull never waits on a second connection for it.
   const rounds = await roundsSwitch(db, scope.companyId);
@@ -2108,9 +2113,8 @@ export async function pullNextOrder(
   const perHour = (await pullPaceOf(db, scope.companyId, now.getTime(), her, rule)).value;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
   const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule, rules);
-  // «هالطلبات بس لهالموظفات» (request Q5b): which orders the owner's routing rules let HER take — from the same cached read of the rules, and (only when a rule in
-  // force leaves her out) the cached roster of who can pull. null (no rule in force, every rule names her, or a read failed) = main's pick, statement for statement.
-  const routing = await routingWhereForPuller({ scope, userId: user.id, cal, now, rules });
+  // «هالطلبات بس لهالموظفات» (request Q5b): which orders the owner's routing rules let HER take — handed in by the door. null = main's pick, statement for statement.
+  const routing = opts.routing ?? null;
   // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
     const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule, rules });
