@@ -234,6 +234,10 @@ export const NAV: NavGroup[] = [
       // rejection, and the month's table. Opens on `inventory.view` like its neighbours; the request asks `inventory.exit`,
       // the decision `inventory.exit_approve`, and the value at cost reaches `costs.view` holders only.
       r('/inventory/exits', 'إخراج بضاعة', 'PackagePlus', ['inventory.view']),
+      // «الجرد» (21/11, W5b): the count against the keeper — a sheet for one warehouse, counted BLIND, submitted, and approved by
+      // a second hand; and «كشف عهدة الأمين». Opens on `inventory.view` like its neighbours (a viewer is told only what was
+      // counted); counting asks `inventory.count`, approving and the statement `inventory.count_approve`, the value `costs.view`.
+      r('/inventory/counts', 'الجرد', 'ClipboardList', ['inventory.view']),
     ],
   },
   {

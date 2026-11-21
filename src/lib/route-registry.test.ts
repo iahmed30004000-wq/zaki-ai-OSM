@@ -104,8 +104,9 @@ describe('navigation contract', () => {
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
     // 20/11 (W3b): 58 with `/inventory/transfers` «نقل البضاعة» — moving units between two warehouses of one store, the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; each press asks its own key. Not one address moved.
     // 20/11 (W6b): 59 with `/inventory/exits` «إخراج بضاعة» — goods out of a warehouse for good (request, a second hand's approval, the month's table), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; the request and the decision each ask their own key. Not one address moved.
-    expect(paths).toHaveLength(59);
-    expect(new Set(paths).size).toBe(59);
+    // 21/11 (W5b): 60 with `/inventory/counts` «الجرد» — the count against the keeper (open a sheet, count blind, a second hand approves the difference, «كشف عهدة الأمين»), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; counting asks `inventory.count`, approving and the statement `inventory.count_approve`. Not one address moved.
+    expect(paths).toHaveLength(60);
+    expect(new Set(paths).size).toBe(60);
   });
 
   it('the store section is its own group, and reads as one', () => {

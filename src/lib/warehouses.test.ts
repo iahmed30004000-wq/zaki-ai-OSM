@@ -312,6 +312,13 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/inventory/counts/[id]/submit/route.ts',
     'src/app/api/inventory/counts/[id]/approve/route.ts',
     'src/app/api/inventory/counts/[id]/void/route.ts',
+    // 21/11, W5b (the «الجرد» screen and «كشف عهدة الأمين»): the screen sends the open door's own body field `warehouseId`
+    // (W5a's `openSchema`) and the statement's `?warehouseId=`; the statement door reads that one warehouse (id, country,
+    // name) to ask the count doors' reach rule; the statement reads the approved sheets OF that warehouse (their
+    // `warehouseId` filter) and its keepers' names (`userWarehouseAccess`). None reads or writes a stock column.
+    'src/components/screens/StockCountsScreen.tsx',
+    'src/app/api/inventory/counts/statement/route.ts',
+    'src/lib/keeper-statement.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

@@ -141,6 +141,13 @@ const DATED: Dated[] = [
     permissions: ['inventory.view'],
     sentence: 'إخراج بضاعة (W6b): صفحة جديدة آخر تبويب بالمخزون، بمفتاح inventory.view متل جاراتها — بتشوف الطلبات وتقرير الشهر بس؛ الطلب بيسأل inventory.exit، والاعتماد والرفض inventory.exit_approve، والقيمة بالكلفة لصاحب costs.view بس.',
   },
+  {
+    on: '2026-11-21',
+    path: '/inventory/counts',
+    change: 'added',
+    permissions: ['inventory.view'],
+    sentence: 'الجرد (W5b): صفحة جديدة آخر تبويب بالمخزون، بمفتاح inventory.view متل جاراتها — اللي ما إله غير هالمفتاح بيشوف أوراق الجرد واللي انعدّ بس، بلا ولا رقم دفتر؛ العدّ والتسليم بيسألوا inventory.count، والاعتماد وكشف عهدة الأمين inventory.count_approve، والقيمة بالكلفة لصاحب costs.view بس.',
+  },
 ];
 
 // ───────────────────────── the comparison ─────────────────────────
