@@ -41,6 +41,11 @@ export interface QueueHealth {
   /** Minutes since anybody pulled in this store — counted from the shift's start when that is later; null outside shift hours. */
   noPullMinutes: number | null;
   inShift: boolean;
+  /**
+   * «طلبات بلا موظفة» (request Q5b, 21/11): orders of the pool a routing rule gives to people none of whom can pull now (they wait the rule's fallback minutes, then go
+   * to everyone). Present only while a routing rule is in force for the store — absent, the board is as it was. Said on the board by request Q5c.
+   */
+  unstaffed?: number;
 }
 
 export interface HealthAlert {

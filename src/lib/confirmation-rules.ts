@@ -22,7 +22,9 @@ import { hhmmToMinutes } from './work-hours';
  * موظفة». The ORDER numbers act since request Q4d (21/11): `order-numbers.ts` resolves them for one order — its store, the products of its current lines, its channel —
  * at the contact door, the proof guard, the confirmation door, «طلباتي» and the timeline. The PRIORITY rules act since request Q5a (21/11):
  * `priority-rules.ts` turns those in force for a store into filters, and the pull's v2 pick (`pickByPriority`) puts the orders they name first INSIDE each tier
- * (never above the customer's promise or what is held for her). The routing (Q5b) is read by nobody yet; Q4c writes rows
+ * (never above the customer's promise or what is held for her). The ROUTING rules act since request Q5b (21/11): `routing-rules.ts` turns those in force for a store
+ * into one eligibility filter for the PULLER (an order a rule gives to named people is pulled only by them, and by everyone once nobody of them can pull for
+ * `fallbackMinutes` working minutes); `pickNextCandidate` ANDs it into every query of the pick. Q4c writes rows
  * from the screen. The confirmation desk's bundle («طلباتي»)
  * is at its ceiling: the desk never imports this file — its words and numbers reach it from the server's answer.
  *
@@ -34,7 +36,9 @@ import { hhmmToMinutes } from './work-hours';
  *                     an ORDER — by its product, channel or store. It names nobody (an order's numbers do not change with who presses) and no hours (an order's cycle
  *                     would change under it at a clock line).
  *   PRIORITY          «هالطلبات أول» — by product, channel, store, phase (new / retry) and hours. Names nobody.
- *   ROUTING           «هالطلبات بس لهالموظفات» — the people allowed are its payload, not its «who»; by product, channel, store, phase and hours.
+ *   ROUTING           «هالطلبات بس لهالموظفات» — the people allowed are its payload, not its «who»; by product, channel, store, phase and hours. Its payload
+ *                     also holds `fallbackMinutes` (request Q5b; absent = `ROUTING_FALLBACK.defaultMinutes`): when none of its people can pull, its orders go
+ *                     to everyone once they are that many WORKING minutes old — so no rule can leave an order nobody may take.
  * The amount of an order is NOT a condition (the owner, 20/11): there is no column for it, and a payload or a scope with any key not listed here is refused.
  *
  * ── MOST SPECIFIC WINS ──
@@ -85,6 +89,12 @@ export const PULL_PACE = { perHour: 40, windowMinutes: 60 } as const;
 /** The safe range of one person's pace, inclusive — the base's 40 sits inside it. */
 export const PULL_PACE_RANGE = Object.freeze({ min: 10, max: 80 });
 
+/**
+ * «طلبات بلا موظفة» (request Q5b, 21/11): an order a ROUTING rule gives to people none of whom can pull it now (none ACTIVE in the store with the pull key) waits
+ * this many WORKING minutes from its creation (the store's calendar), then anyone may pull it. A rule may set its own number inside the range.
+ */
+export const ROUTING_FALLBACK = Object.freeze({ defaultMinutes: 30, min: 5, max: 480 });
+
 /** Every number a rule may set, by the kind that sets it. `schedule` = the steps and their different days, one number. */
 export const NUMBERS_OF_KIND = {
   EMPLOYEE_NUMBERS: ['hand', 'idleMinutes', 'pullPerHour'],
@@ -106,6 +116,8 @@ export interface RulePayload {
   postponeMax?: number;
   first?: true;
   toUserIds?: string[];
+  /** ROUTING only (request Q5b): the working minutes before an order nobody named can pull goes to everyone. Absent = `ROUTING_FALLBACK.defaultMinutes`. */
+  fallbackMinutes?: number;
 }
 
 /** A row as the table stores it (the fields the resolver and the save check read). `payload` and `userIds` are JSON — validated here, never trusted. */
@@ -160,7 +172,7 @@ export function validateRulePayload(kind: ConfirmationRuleKind, raw: unknown): {
     EMPLOYEE_NUMBERS: ['hand', 'idleMinutes', 'pullPerHour'],
     ORDER_NUMBERS: ['steps', 'minDays', 'proofSeconds', 'postponeMax'],
     PRIORITY: ['first'],
-    ROUTING: ['toUserIds'],
+    ROUTING: ['toUserIds', 'fallbackMinutes'],
   };
   const keys = Object.keys(raw);
   if (keys.length === 0) return fail('payload', 'القاعدة لازم تغيّر رقم واحد على الأقل.');
@@ -174,7 +186,13 @@ export function validateRulePayload(kind: ConfirmationRuleKind, raw: unknown): {
   if (kind === 'ROUTING') {
     const people = peopleOf(raw.toUserIds, 'payload.toUserIds');
     if (!people.ok) return people;
-    return { ok: true, payload: { toUserIds: people.ids } };
+    if (!('fallbackMinutes' in raw)) return { ok: true, payload: { toUserIds: people.ids } };
+    const m = raw.fallbackMinutes;
+    const R = ROUTING_FALLBACK;
+    if (typeof m !== 'number' || !Number.isInteger(m) || m < R.min || m > R.max) {
+      return fail('fallbackMinutes', `مهلة «طلبات بلا موظفة» لازم تكون رقم صحيح من ${R.min} لـ${R.max} دقيقة دوام.`);
+    }
+    return { ok: true, payload: { toUserIds: people.ids, fallbackMinutes: m } };
   }
   if (kind === 'ORDER_NUMBERS' && ('steps' in raw) !== ('minDays' in raw)) {
     return fail('steps', 'جدول المحاولات بينكتب كامل: الخطوات وعلى كم يوم مختلف سوا.');
@@ -307,8 +325,11 @@ function appliesToOrder(rule: ValidRule, order: RuleOrder): boolean {
   return rule.phase === null || rule.phase === order.phase;
 }
 
-/** Which rule wins among those that set one number: higher level, then more conditions, later start, later creation, smaller id. */
-function better(a: ValidRule, b: ValidRule): ValidRule {
+/**
+ * Which rule wins among those that set one number: higher level, then more conditions, later start, later creation, smaller id. A total order — exported (request
+ * Q5b) so the routing filter ranks the rules in force exactly as this resolver does, never by a second copy of the rule.
+ */
+export function better(a: ValidRule, b: ValidRule): ValidRule {
   const keys: [number, number][] = [
     [ruleLevel(a), ruleLevel(b)],
     [conditionCount(a), conditionCount(b)],
@@ -495,5 +516,5 @@ export const CONFIRMATION_RULE_TEMPLATES: readonly RuleTemplate[] = Object.freez
   { key: 'store-proof', name: 'متجر: إثبات الاتصال 20 ثانية', kind: 'ORDER_NUMBERS', scope: {}, payload: { proofSeconds: 20 }, needs: ['storeId'], days: null },
   { key: 'product-postpone-once', name: 'منتج: تأجيل الزبون مرة وحدة', kind: 'ORDER_NUMBERS', scope: {}, payload: { postponeMax: 1 }, needs: ['productId'], days: null },
   { key: 'product-first', name: 'منتج: طلباته أول', kind: 'PRIORITY', scope: {}, payload: { first: true }, needs: ['productId'], days: null },
-  { key: 'store-to-its-team', name: 'متجر: طلباته بس لموظفاته', kind: 'ROUTING', scope: {}, payload: { toUserIds: [] }, needs: ['storeId', 'toUserIds'], days: null },
+  { key: 'store-to-its-team', name: 'متجر: طلباته بس لموظفاته', kind: 'ROUTING', scope: {}, payload: { toUserIds: [], fallbackMinutes: ROUTING_FALLBACK.defaultMinutes }, needs: ['storeId', 'toUserIds'], days: null },
 ] satisfies RuleTemplate[]);

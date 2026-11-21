@@ -45,6 +45,7 @@ import { RETURNS_MODE } from './returns-mode';
 export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
 import { priorityBoostOf, type PriorityBoost } from './priority-rules';
+import { ROUTED_EMPTY_MESSAGE, routingWhereForPuller } from './routing-rules';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -1753,13 +1754,16 @@ export async function pickPromiseArrived(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5b: only the orders the owner's routing rules let this puller take (`routing-rules.ts`). Absent = main's query byte for byte. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
   const rows = await tx.order.findMany({
     where: {
       AND: [
         { OR: [readyToPullWhere(scope, forUserId, now, returns), duePostponedWhere(scope, now, returns)] },
         { OR: [{ postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }] },
+        ...(only ? [only] : []),
       ],
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -1781,9 +1785,11 @@ export async function pickMostOverdueRetry(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5b: the routing filter of this puller; absent = main's. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
-  return (await pickRetryWithDue(tx, scope, now, forUserId, returns))?.id ?? null;
+  return (await pickRetryWithDue(tx, scope, now, forUserId, returns, undefined, only))?.id ?? null;
 }
 
 /** 4a with its due: the same read and the same rank as `pickMostOverdueRetry` (which is this, id only), for the aging rule of step D, which asks how long the retry has waited. */
@@ -1794,14 +1800,17 @@ export async function pickRetryWithDue(
   forUserId: string | undefined,
   returns: ReturnsMode,
   /** Request Q5a: only the orders an owner's «هالطلبات أول» rule names (`PriorityBoost.RETRY`). Absent = every ready retry, main's query byte for byte. */
-  boosted?: Prisma.OrderWhereInput
+  boosted?: Prisma.OrderWhereInput,
+  /** Request Q5b: only the orders the routing rules let this puller take. Absent = main's query byte for byte. */
+  only?: Prisma.OrderWhereInput
 ): Promise<{ id: string; due: number } | null> {
   const since = returns.cadence?.since;
   if (!since) return null;
   const lines = cadenceDueLineWhere(since);
   const ready = { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } };
+  const extra = [...(boosted ? [boosted] : []), ...(only ? [only] : [])];
   const rows = await tx.order.findMany({
-    where: boosted ? { AND: [ready, boosted] } : ready,
+    where: extra.length ? { AND: [ready, ...extra] } : ready,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: RETRY_SCAN_PAGE,
     select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
@@ -1891,23 +1900,26 @@ async function pickByPriority(
   forUserId: string | undefined,
   returns: ReturnsMode | undefined,
   plan: PriorityPlan,
-  memo: ScanMemo = {}
+  memo: ScanMemo = {},
+  /** Request Q5b: the routing filter of this puller (`routing-rules.ts`), ANDed into every query below. Absent = main's statements. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
   if (plan.mode !== 'NORMAL') return null;
+  const routed = <W extends object>(w: W) => (only ? { AND: [w, only] } : w);
   const neverRung = { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } };
   const oldestNew = async (extra: object = {}) =>
-    (await tx.order.findFirst({ where: { ...neverRung, ...extra }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
+    (await tx.order.findFirst({ where: routed({ ...neverRung, ...extra }), orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
   // «هالطلبات أول» (request Q5a): inside a tier, the boosted orders first — the tier's own query with the rule's filter beside it (`AND`, so no key of the
   // tier's predicate is replaced), then the tier as on main. No boost = never asked: the statements are main's.
   const boost = plan.boost;
   const oldestNewBoosted = async (extra: object = {}) =>
     boost?.NEW
-      ? (await tx.order.findFirst({ where: { AND: [{ ...neverRung, ...extra }, boost.NEW] }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null
+      ? (await tx.order.findFirst({ where: { AND: [{ ...neverRung, ...extra }, boost.NEW, ...(only ? [only] : [])] }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null
       : null;
 
   // The customer's promise is never boosted and never passed: its order is the customer's date.
   if (returns?.cadence) {
-    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns, only);
     memo.promise = promised;
     if (promised) return promised;
   }
@@ -1915,10 +1927,10 @@ async function pickByPriority(
   const fresh = (await oldestNewBoosted(freshWhere)) ?? (await oldestNew(freshWhere));
   if (fresh) return fresh;
 
-  const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
+  const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns, undefined, only) : null;
   if (returns?.cadence) memo.retry = retry;
   // The boosted retries are a part of the ready ones: with none ready there is none boosted, and their scan is not asked.
-  const boostedRetry = retry && boost?.RETRY && returns ? await pickRetryWithDue(tx, scope, now, forUserId, returns, boost.RETRY) : null;
+  const boostedRetry = retry && boost?.RETRY && returns ? await pickRetryWithDue(tx, scope, now, forUserId, returns, boost.RETRY, only) : null;
   // The aged tier: a boosted retry that is aged first. One that is not aged is not in this tier — it waits for the backlog's turn like any other retry.
   if (boostedRetry && isAged(boostedRetry.due, now)) return boostedRetry.id;
   if (retry && isAged(retry.due, now)) return retry.id;
@@ -1928,11 +1940,11 @@ async function pickByPriority(
     if (retry) return retry.id;
     const postponedWhere = returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now);
     const boostedPostponed = boost?.ANY
-      ? await tx.order.findFirst({ where: { AND: [postponedWhere, boost.ANY] }, orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }], select: { id: true } })
+      ? await tx.order.findFirst({ where: { AND: [postponedWhere, boost.ANY, ...(only ? [only] : [])] }, orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }], select: { id: true } })
       : null;
     if (boostedPostponed) return boostedPostponed.id;
     const postponed = await tx.order.findFirst({
-      where: postponedWhere,
+      where: routed(postponedWhere),
       orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
       select: { id: true },
     });
@@ -1966,9 +1978,20 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean; returns?: ReturnsMode | null; priority?: PriorityPlan | null } = {}
+  opts: {
+    heldForHerAsked?: boolean;
+    returns?: ReturnsMode | null;
+    priority?: PriorityPlan | null;
+    /**
+     * «هالطلبات بس لهالموظفات» (request Q5b): the puller's routing filter (`routingWhereForPuller`), ANDed into every query of the pick below — never into what is held
+     * for her. Absent or null = main's statements, byte for byte.
+     */
+    routing?: Prisma.OrderWhereInput | null;
+  } = {}
 ) {
   const returns = opts.returns ?? undefined;
+  const only = opts.routing ?? undefined;
+  const routed = <W extends object>(w: W) => (only ? { AND: [w, only] } : w);
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
     const mine = await pickHeldForHer(tx, scope, forUserId, now);
@@ -1979,13 +2002,13 @@ export async function pickNextCandidate(
   // through to the order below, which is also what the two time-of-day modes are.
   const memo: ScanMemo = {};
   if (opts.priority) {
-    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority, memo);
+    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority, memo, only);
     if (dealt) return dealt;
   }
 
   // A NEW ORDER BEFORE ANY OTHER: nobody has rung the customer yet. A due postponed order waits behind it.
   const neverRung = await tx.order.findFirst({
-    where: { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } },
+    where: routed({ ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } }),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -1995,7 +2018,7 @@ export async function pickNextCandidate(
   // whatever its status (POSTPONED, FOLLOW_UP_REQUIRED, a returned retry the customer asked about…): the pull-side face of the tag on the desk (`promiseArrived`). One read, only under the plan —
   // the legacy mode and OFF never reach it, so their four queries are the old ones. The POSTPONED orders it leaves (a line was logged after their date: they are retries now) are still step 3's, below.
   if (returns?.cadence) {
-    const promised = memo.promise !== undefined ? memo.promise : await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    const promised = memo.promise !== undefined ? memo.promise : await pickPromiseArrived(tx, scope, now, forUserId, returns, only);
     if (promised) return promised;
   }
 
@@ -2003,7 +2026,7 @@ export async function pickNextCandidate(
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
   const duePostponed = await tx.order.findFirst({
-    where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
+    where: routed(returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now)),
     orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
     select: { id: true },
   });
@@ -2012,12 +2035,12 @@ export async function pickNextCandidate(
   // THE RETRIES BY THEIR DUE (the planner's ruling 2) — with the cadence on, a ready retry is ranked by the instant its last counted press made it due, not by its age. A new order and a
   // promise still come before it; an order with no due on a line (legacy returns, an idle release) falls through to the oldest-first query below, exactly as before.
   if (returns?.cadence) {
-    const retry = memo.retry !== undefined ? memo.retry?.id ?? null : await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
+    const retry = memo.retry !== undefined ? memo.retry?.id ?? null : await pickMostOverdueRetry(tx, scope, now, forUserId, returns, only);
     if (retry) return retry;
   }
 
   const oldest = await tx.order.findFirst({
-    where: returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now),
+    where: routed(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -2085,6 +2108,9 @@ export async function pullNextOrder(
   const perHour = (await pullPaceOf(db, scope.companyId, now.getTime(), her, rule)).value;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
   const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule, rules);
+  // «هالطلبات بس لهالموظفات» (request Q5b): which orders the owner's routing rules let HER take — from the same cached read of the rules, and (only when a rule in
+  // force leaves her out) the cached roster of who can pull. null (no rule in force, every rule names her, or a read failed) = main's pick, statement for statement.
+  const routing = await routingWhereForPuller({ scope, userId: user.id, cal, now, rules });
   // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
     const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule, rules });
@@ -2106,7 +2132,7 @@ export async function pullNextOrder(
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns, priority }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns, priority, ...(routing ? { routing } : {}) }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
         if (atCap) return { ok: false, released, refusal: capRefusal(counts, false, hand)! };
@@ -2114,7 +2140,8 @@ export async function pullNextOrder(
           ok: false,
           released,
           waiting: 0,
-          refusal: { code: 'QUEUE_EMPTY', message: 'لا توجد طلبات بانتظار التأكيد الآن.' },
+          // A routing rule kept some orders for colleagues: the sentence says so (the code is the same).
+          refusal: { code: 'QUEUE_EMPTY', message: routing ? ROUTED_EMPTY_MESSAGE : 'لا توجد طلبات بانتظار التأكيد الآن.' },
         };
       }
 

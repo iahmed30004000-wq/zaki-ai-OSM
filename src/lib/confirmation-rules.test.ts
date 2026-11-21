@@ -516,6 +516,8 @@ describe('the table', () => {
       'src/lib/order-numbers.ts',
       // ADDED 2026-11-21 (request Q5a): the PRIORITY rules act — `priority-rules.ts` asks `ruleFor` whether each one is in force, and the pull's plan reads it.
       'src/lib/priority-rules.ts',
+      // ADDED 2026-11-21 (request Q5b): the ROUTING rules act — `routing-rules.ts` asks `ruleFor` whether each one is in force and ranks them by its `better`; the pull reads it.
+      'src/lib/routing-rules.ts',
     ]);
   });
 

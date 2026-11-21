@@ -8,6 +8,7 @@ import { readQueueHealth } from '@/lib/queue-health';
 import { HEALTH_RULE_AR, healthAlerts } from '@/lib/queue-health-words';
 import { readRecalibration } from '@/lib/queue-recalibration';
 import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
+import { readUnstaffedOrders } from '@/lib/routing-health';
 
 /**
  * GET /api/confirmation/health — THE SUPERVISOR'S BOARD OF THE QUEUE'S HEALTH (step D2 of Confirmation Center v2): the backlog, what is due now, the oldest wait, what entered and what
@@ -25,12 +26,16 @@ export async function GET() {
      * and the store — never the reader, never the clock. The switch above stays live. The job that raises the alerts (`jobs/definitions/queue-health.ts`)
      * runs in its own process and keeps reading fresh: this cache helps the door only.
      */
-    const [health, weekly] = await heavyOnce(['queue-health', companyId, storeId].join('|'), REPORT_TTL_MS, () => {
+    const [health, weekly] = await heavyOnce(['queue-health', companyId, storeId].join('|'), REPORT_TTL_MS, async () => {
       const now = new Date();
-      return Promise.all([
-        readQueueHealth(db, { companyId, storeId }, { workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone }, now),
+      const cal = { workHoursStart: country.workHoursStart, workHoursEnd: country.workHoursEnd, weekendDays: country.weekendDays, timezone: country.timezone };
+      const [h, w, unstaffed] = await Promise.all([
+        readQueueHealth(db, { companyId, storeId }, cal, now),
         readRecalibration(db, { companyId, storeId }, country.timezone, now),
+        // «طلبات بلا موظفة» (request Q5b, 21/11): only when a routing rule is in force for the store — otherwise the key is absent and the board is as before.
+        readUnstaffedOrders(db, { companyId, storeId }, cal, now),
       ]);
+      return [unstaffed === undefined ? h : { ...h, unstaffed }, w] as const;
     });
     // the weekly recalibration is a NOTE only (what moved over the last 14 days, and its rule): it changes nothing the pull uses
     return NextResponse.json({ enabled: true, health, alerts: healthAlerts(health), rule: HEALTH_RULE_AR, ...(weekly ? { weekly: weekly.note } : {}) });
