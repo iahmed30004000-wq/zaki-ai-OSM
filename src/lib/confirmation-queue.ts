@@ -44,6 +44,7 @@ import { RETURNS_MODE } from './returns-mode';
 // The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
 export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
+import { priorityBoostOf, type PriorityBoost } from './priority-rules';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -1791,13 +1792,16 @@ export async function pickRetryWithDue(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5a: only the orders an owner's «هالطلبات أول» rule names (`PriorityBoost.RETRY`). Absent = every ready retry, main's query byte for byte. */
+  boosted?: Prisma.OrderWhereInput
 ): Promise<{ id: string; due: number } | null> {
   const since = returns.cadence?.since;
   if (!since) return null;
   const lines = cadenceDueLineWhere(since);
+  const ready = { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } };
   const rows = await tx.order.findMany({
-    where: { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } },
+    where: boosted ? { AND: [ready, boosted] } : ready,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: RETRY_SCAN_PAGE,
     select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
@@ -1815,6 +1819,11 @@ export interface PriorityPlan {
   backlogTurn: boolean;
   /** «Fresh» is younger than this many minutes — the rule in force's (request Q3b), read with the plan before the transaction. Absent = the default 15. */
   freshMinutes?: number;
+  /**
+   * «هالطلبات أول» (request Q5a): the orders the owner's PRIORITY rules in force put first INSIDE each tier of the pick (`priority-rules.ts`), made from the pull's one
+   * cached read of the rules. Absent — no such rule in force, or one that names every order — and the pick is main's, statement for statement.
+   */
+  boost?: PriorityBoost;
 }
 
 /** Read the plan before the pull's transaction (cached reads). Any failure is «no plan»: the old pull. */
@@ -1825,7 +1834,9 @@ export async function priorityPlanFor(
   cal: BusinessCalendar,
   now: Date,
   /** The rule in force as the caller asks it (request Q3b) — left out, read here (cached). Asked only with the key on. */
-  rule?: RuleNow
+  rule?: RuleNow,
+  /** The owner's own rules as the caller already reads them (request Q5a: the pull's one cached read) — left out, read here (cached). Asked only in the ordinary mode. */
+  rules?: RulesNow
 ): Promise<PriorityPlan | null> {
   try {
     if (!(await queuePrioritySwitch(client, scope.companyId, now.getTime())).enabled) return null;
@@ -1837,8 +1848,20 @@ export async function priorityPlanFor(
     // The owner's hours for the two modes (step D2); the study's where none are saved.
     const mode = queueModeAt(local.hour * 60 + local.minute, modesInMinutes(await readQueueModes(client, scope.companyId, now.getTime())));
     if (mode !== 'NORMAL') return { mode, backlogTurn: false, ...fresh };
-    const [reading, recent] = await Promise.all([readBacklogShare(client, scope, now, OPEN_CONFIRMATION), recentPullLanes(client, userId)]);
-    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent), ...fresh };
+    const [reading, recent, ownRules] = await Promise.all([
+      readBacklogShare(client, scope, now, OPEN_CONFIRMATION),
+      recentPullLanes(client, userId),
+      (rules ?? confirmationRulesOnce(client, scope.companyId, now.getTime()))(),
+    ]);
+    // Request Q5a: carried only when a PRIORITY rule in force reorders something — otherwise the plan is main's object, key for key.
+    // A rule that cannot be read into a filter costs only itself: no boost, and the plan stands.
+    let boost: PriorityBoost | null = null;
+    try {
+      boost = priorityBoostOf(ownRules, { companyId: scope.companyId, storeId: scope.storeId, now, timezone: cal.timezone });
+    } catch {
+      boost = null;
+    }
+    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent), ...fresh, ...(boost ? { boost } : {}) };
   } catch {
     return null;
   }
@@ -1874,29 +1897,48 @@ async function pickByPriority(
   const neverRung = { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } };
   const oldestNew = async (extra: object = {}) =>
     (await tx.order.findFirst({ where: { ...neverRung, ...extra }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
+  // «هالطلبات أول» (request Q5a): inside a tier, the boosted orders first — the tier's own query with the rule's filter beside it (`AND`, so no key of the
+  // tier's predicate is replaced), then the tier as on main. No boost = never asked: the statements are main's.
+  const boost = plan.boost;
+  const oldestNewBoosted = async (extra: object = {}) =>
+    boost?.NEW
+      ? (await tx.order.findFirst({ where: { AND: [{ ...neverRung, ...extra }, boost.NEW] }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null
+      : null;
 
+  // The customer's promise is never boosted and never passed: its order is the customer's date.
   if (returns?.cadence) {
     const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
     memo.promise = promised;
     if (promised) return promised;
   }
-  const fresh = await oldestNew({ createdAt: { gt: freshSince(now, plan.freshMinutes) } });
+  const freshWhere = { createdAt: { gt: freshSince(now, plan.freshMinutes) } };
+  const fresh = (await oldestNewBoosted(freshWhere)) ?? (await oldestNew(freshWhere));
   if (fresh) return fresh;
 
   const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
   if (returns?.cadence) memo.retry = retry;
+  // The boosted retries are a part of the ready ones: with none ready there is none boosted, and their scan is not asked.
+  const boostedRetry = retry && boost?.RETRY && returns ? await pickRetryWithDue(tx, scope, now, forUserId, returns, boost.RETRY) : null;
+  // The aged tier: a boosted retry that is aged first. One that is not aged is not in this tier — it waits for the backlog's turn like any other retry.
+  if (boostedRetry && isAged(boostedRetry.due, now)) return boostedRetry.id;
   if (retry && isAged(retry.due, now)) return retry.id;
 
   if (plan.backlogTurn) {
+    if (boostedRetry) return boostedRetry.id;
     if (retry) return retry.id;
+    const postponedWhere = returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now);
+    const boostedPostponed = boost?.ANY
+      ? await tx.order.findFirst({ where: { AND: [postponedWhere, boost.ANY] }, orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }], select: { id: true } })
+      : null;
+    if (boostedPostponed) return boostedPostponed.id;
     const postponed = await tx.order.findFirst({
-      where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
+      where: postponedWhere,
       orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
       select: { id: true },
     });
     if (postponed) return postponed.id;
   }
-  return oldestNew();
+  return (await oldestNewBoosted()) ?? oldestNew();
 }
 
 /**
@@ -2042,7 +2084,7 @@ export async function pullNextOrder(
   // Her pace (Q4b): the base 40 unless a rule names another for her.
   const perHour = (await pullPaceOf(db, scope.companyId, now.getTime(), her, rule)).value;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
-  const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule);
+  const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule, rules);
   // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
     const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule, rules });
