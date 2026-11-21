@@ -12,6 +12,10 @@ import { arabicIssue, reachFor, refusalOf, refuse, shownOpts, storeReachFor, TX_
 import { labelLineVariants, transfersVariantsOf, variantLabelsOf, withLineVariants } from '@/lib/variant-lines';
 import { afterResponse } from '@/lib/notify';
 import { announceTransferSent } from '@/lib/stock-transfer-alerts';
+import { hasFullAccess } from '@/lib/authorization';
+import { maySeeCost } from '@/lib/cost-visibility';
+import { storesReachedBy } from '@/lib/product-pairs';
+import { roadReport, type RoadCurrency } from '@/lib/stock-transfer-road';
 
 /**
  * GET  /api/inventory/transfers (inventory.view)     — the store's transfers, newest first, and its warehouses
@@ -27,6 +31,17 @@ import { announceTransferSent } from '@/lib/stock-transfer-alerts';
  *
  * While a transfer is on the road its sent quantities are told only to its sender (`stock-transfers.shownTo`): the
  * receiver counts without being told what to expect.
+ *
+ * 21/11 (W7c): what the screen «نقل البضاعة» needs to send across stores, all decided here:
+ *   `here`          the store the caller stands in and its country (the kind sentence names them before the press);
+ *   `destinations`  for a holder of the send key, the OTHER stores she reaches, each with its country and the running
+ *                   warehouses of that country (a warehouse holds the goods of every store of its country);
+ *   `mayAbroad`     she holds `inventory.transfer_abroad` (the screen says so before a press the door would refuse);
+ *   per row across  `mayApprove` — the owner's press «اعتمد وابعت» is offered to the owner only, on a request waiting for
+ *                   it (the door asks again); and, to a holder of `costs.view`, the two stores' currencies;
+ *   `road`          «بضاعة بالطريق»: how many transfers are on the road and, to a holder of `costs.view`, what the ones
+ *                   across stores carry, per source store (`stock-transfer-road.roadReport` — the screen adds nothing).
+ * An INTERNAL row answers exactly what it answered.
  */
 
 export async function GET() {
@@ -82,22 +97,58 @@ export async function GET() {
       warehousesOfStore(companyId, storeId),
     ]);
 
+    // 21/11 (W7c): the stores she may send to (the send key only), and every transfer on the road for «بضاعة بالطريق».
+    const sends = can(user, 'inventory.transfer');
+    const [reached, onRoad] = await Promise.all([
+      sends ? storesReachedBy(db, user, companyId).then((all) => all.filter((s) => s.id !== storeId)) : [],
+      db.stockTransfer.findMany({
+        where: { companyId, status: 'SENT', OR: [{ storeId }, { toStoreId: storeId }] },
+        select: { id: true, kind: true, status: true, storeId: true, sentById: true, lines: { select: { costOut: true } } },
+      }),
+    ]);
+
     const peopleIds = [
       ...new Set(
         rows.flatMap((r) => [r.sentById, r.receivedById, r.cancelledById, r.differenceApprovedById, r.approvedById]).filter((x): x is string => !!x)
       ),
     ];
     const whIds = [...new Set(rows.flatMap((r) => [r.fromWarehouseId, r.toWarehouseId]))];
-    const storeIds = [...new Set(rows.flatMap((r) => (r.toStoreId ? [r.storeId, r.toStoreId] : [])))];
-    const [people, places, stores] = await Promise.all([
+    const storeIds = [
+      ...new Set([
+        storeId,
+        ...rows.flatMap((r) => (r.toStoreId ? [r.storeId, r.toStoreId] : [])),
+        ...onRoad.map((r) => r.storeId),
+        ...reached.map((s) => s.id),
+      ]),
+    ];
+    const reachedCountries = [...new Set(reached.map((s) => s.countryId))];
+    const [people, places, stores, theirWarehouses] = await Promise.all([
       peopleIds.length ? db.user.findMany({ where: { id: { in: peopleIds }, companyId }, select: { id: true, name: true } }) : [],
       whIds.length ? db.warehouse.findMany({ where: { id: { in: whIds }, companyId }, select: { id: true, name: true } }) : [],
-      storeIds.length ? db.store.findMany({ where: { id: { in: storeIds }, companyId }, select: { id: true, name: true } }) : [],
+      db.store.findMany({
+        where: { id: { in: storeIds }, companyId },
+        select: { id: true, name: true, countryId: true, country: { select: { name: true, currencyCode: true, minorUnit: true } } },
+      }),
+      reachedCountries.length
+        ? db.warehouse.findMany({
+            where: { companyId, countryId: { in: reachedCountries }, isActive: true },
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, countryId: true },
+          })
+        : [],
     ]);
     const who = new Map(people.map((p) => [p.id, p.name]));
     const where = new Map(places.map((w) => [w.id, w.name]));
     const storeName = new Map(stores.map((s) => [s.id, s.name]));
+    const storeRow = new Map(stores.map((s) => [s.id, s]));
+    const currencyOf = (id: string): RoadCurrency | null => {
+      const c = storeRow.get(id)?.country;
+      return c?.currencyCode ? { code: c.currencyCode, minorUnit: c.minorUnit ?? 2 } : null;
+    };
     const opts = shownOpts(user);
+    const owner = hasFullAccess(user);
+    const seesCost = maySeeCost(user);
+    const here = storeRow.get(storeId);
     // 20/11 (W8c): the lines' combinations, blind exactly as their line (`shownTo`), each with its label — a line without
     // combinations answers what it always answered.
     const combos = await transfersVariantsOf(db, rows.map((r) => r.id));
@@ -106,6 +157,20 @@ export async function GET() {
     return NextResponse.json({
       // The country rides along (20/11, W3b): the screen reads the kind from the two ends before the press (`readStockTransfer`).
       warehouses: warehouses.map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
+      // 21/11 (W7c): the store she stands in, the stores she may send to, and the abroad key — read before the press.
+      here: { id: storeId, name: here?.name ?? null, countryId: here?.countryId ?? null, countryName: here?.country?.name ?? null },
+      destinations: reached.map((s) => ({
+        storeId: s.id,
+        storeName: s.name,
+        countryId: s.countryId,
+        countryName: storeRow.get(s.id)?.country?.name ?? null,
+        warehouses: theirWarehouses.filter((w) => w.countryId === s.countryId).map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
+      })),
+      mayAbroad: can(user, ABROAD_KEY),
+      road: roadReport(onRoad, { id: user.id, seesCost, mayReceive: can(user, 'inventory.transfer_receive') }, (id) => ({
+        name: storeName.get(id) ?? null,
+        currency: currencyOf(id),
+      })),
       transfers: rows.map((r) => {
         const names = new Map(r.lines.map((l) => [l.productId, l.product.name]));
         const twinNames = new Map(r.lines.map((l) => [l.productId, l.toProduct?.name ?? null]));
@@ -132,6 +197,10 @@ export async function GET() {
                 fromStoreName: storeName.get(r.storeId) ?? null,
                 toStoreName: storeName.get(r.toStoreId) ?? null,
                 approvedByName: r.approvedById ? who.get(r.approvedById) ?? null : null,
+                // 21/11 (W7c): the owner's press is offered to the owner only, on a request still waiting for it.
+                mayApprove: owner && r.status === 'AWAITING_APPROVAL',
+                // 21/11 (W7c): the currencies the line costs are in — only to whom the costs are shown.
+                ...(seesCost ? { fromCurrency: currencyOf(r.storeId), toCurrency: currencyOf(r.toStoreId) } : {}),
               }
             : {}),
           lines: shown.lines.map((l) =>

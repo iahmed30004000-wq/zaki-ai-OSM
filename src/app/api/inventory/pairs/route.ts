@@ -27,6 +27,8 @@ import {
  * company, the store the caller stands in, her key, and the stores she reaches. The key is «نقل بضاعة بين المخازن»:
  * a pair only says where goods sent between stores land, and the people who send transfers are the ones who choose it.
  * Nothing reads the pairs yet (the transfer between stores, W7b, will). No stock and no money is touched.
+ *
+ * 21/11 (W7c): the caller is the twin picker of the transfer form «نقل البضاعة» (propose → choose → save → remove).
  */
 
 export async function GET(req: Request) {
@@ -74,6 +76,16 @@ export async function GET(req: Request) {
             product: shown(x.productId),
             candidates: x.candidateIds.map(shown),
           }))
+        : null,
+      /*
+       * 21/11 (W7c): for ONE other store named, its products that are not paired yet — the twin picker of the transfer
+       * form offers them when no proposal fits (a twin with another name or code). Null when no store is named.
+       */
+      otherProducts: between
+        ? (() => {
+            const taken = new Set(pairs.filter((p) => p.otherStoreId === otherStoreId).map((p) => p.otherProductId));
+            return between.theirs.filter((p) => !taken.has(p.id)).map((p) => ({ id: p.id, name: p.name, sku: p.sku }));
+          })()
         : null,
     });
   } catch (error) {

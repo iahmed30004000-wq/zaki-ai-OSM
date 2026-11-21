@@ -54,12 +54,10 @@ export const STOCK_TRANSFER_KIND_LABEL = LABELS;
 /** The kinds this release builds. */
 export const BUILT_KINDS: readonly StockTransferKind[] = ['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES'];
 
-/**
- * 20/11 (W7b): the sentence the screen «نقل البضاعة» says for a kind its form cannot send YET. The doors send every
- * kind; the form has no field for the destination store and the twin until W7c, so it says so instead of sending a
- * transfer the door would refuse.
+/*
+ * 21/11 (W7c): the sentence «هالنموذج لسا ما فيه هالخانات» (`NOT_BUILT_AR`, W7b) is gone — the form «نقل البضاعة» now
+ * names the destination store and the twin, and sends every kind.
  */
-export const NOT_BUILT_AR = 'النقل لمتجر تاني أو لبلد تاني بدّو اختيار المتجر والمنتج التوأم، وهالنموذج لسا ما فيه هالخانات. هلّق من هون بس النقل بين مخزنين لنفس المتجر.';
 
 /** 20/11 (W7b): the key a transfer to another country asks, on top of the send key. */
 export const ABROAD_KEY = 'inventory.transfer_abroad';

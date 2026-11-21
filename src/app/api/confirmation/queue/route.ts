@@ -23,6 +23,7 @@ import { heldFor } from '@/lib/order-reservation';
 import { offModeRule, planWords, returnsModeRule } from '@/lib/pull-plan-words';
 import type { ReturnsMode } from '@/lib/no-answer-returns';
 import { confirmationRuleOnce } from '@/lib/confirmation-rule-settings';
+import { confirmationRulesOnce, employeeNumbers, numbersAnswer } from '@/lib/employee-numbers';
 
 /**
  * GET /api/confirmation/queue
@@ -67,8 +68,16 @@ export async function GET() {
       rule,
     });
     // Step D2: the limits are 5 and 30 — or 3 and 20 with the queue-priority key on (`returnsLimits`); asked only where the mode is on.
+    // Request Q4b: the owner's rules, read once (cached). The HAND is hers — a rule that names her changes her panel alone; the idle minutes the sentence below says stay
+    // the store's (the base rule's), because the pool's words speak of everyone's orders.
+    const rules = confirmationRulesOnce(db, companyId, now.getTime());
+    const her = { userId: user.id, storeId, timezone: country?.timezone, rules };
+    const ruleRows = await rules();
     const limits = returns ? await returnsLimits(db, companyId, now.getTime(), rule) : null;
-    const hand = limits ? limits.handLimit : undefined;
+    // With no rule at all, her hand is the store's — the one call main made.
+    const hand = limits ? (ruleRows.length ? (await returnsLimits(db, companyId, now.getTime(), rule, her)).handLimit : limits.handLimit) : undefined;
+    // HER NUMBERS AND WHERE THEY CAME FROM (Q4b) — said only when the company has a rule at all: with none, the answer is main's, byte for byte.
+    const numbers = ruleRows.length ? numbersAnswer(await employeeNumbers(db, companyId, now.getTime(), await rule(), her)) : null;
     // «جدول المحاولات» on (ruling 24, key only): the counter is said in the plan's four. Off, and the older mode, are the three they always were.
     const planned = returns?.cadence ? (returns as ReturnsMode & { cadence: { since: Date } }) : null;
     const [pool, counts, waitingOnADate, heldForColleagues, openIssues] = await Promise.all([
@@ -146,6 +155,8 @@ export async function GET() {
       refusal,
       // Kept for the screen's shape: this read releases nothing now, the job and the pull do (4/11).
       autoReleased: 0,
+      // Her hand limit, idle minutes and pull pace, each with its source (Q4b) — only where the company has an owner's rule (see above).
+      ...(numbers ? { numbers } : {}),
       // Agents never see the list; supervisors see the same rows as data.
       orders: rows
         ? rows.map(({ assignee, claimedById, assignedToId, assignedAt, _count, ...row }) => ({

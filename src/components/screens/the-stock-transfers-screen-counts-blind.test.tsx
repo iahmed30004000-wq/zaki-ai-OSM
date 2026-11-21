@@ -18,7 +18,10 @@ import { join } from 'node:path';
  *  3. Each press asks its own key: send and cancel `inventory.transfer`, receive `inventory.transfer_receive`, the
  *     difference `inventory.difference_approve`; the sender is not offered the receipt, nor the sender or receiver the
  *     approval; a viewer (`inventory.view` only) sees the list and no press.
- *  4. The kind is said BEFORE the press, from the two ends (`readStockTransfer`); another country is «لسا مش مبني» and the
+ *  4. The kind is said BEFORE the press, from the two ends (`readStockTransfer`); the same warehouse twice is refused in
+ *     the door's own sentence. (21/11, W7c: «another country is لسا مش مبني and the press stays shut» was true until the
+ *     form could name the other store; it sends every kind now — `the-transfer-across-stores-screen.test.tsx` pins that.)
+ *     Was: another country is «لسا مش مبني» and the
  *     press stays shut; the same warehouse twice is refused in the door's own sentence.
  *  5. Every refusal is the door's Arabic sentence, printed as it came.
  */
@@ -48,7 +51,6 @@ vi.mock('@/hooks/useProducts', () => ({
 }));
 
 import { StockTransfersScreen } from './StockTransfersScreen';
-import { NOT_BUILT_AR } from '@/lib/stock-transfer-kind';
 import { findRoute, NAV } from '@/lib/route-registry';
 import { GUIDE_TEXTS } from '@/lib/route-guide-texts';
 import { GUIDED_PATHS } from '@/lib/route-guide';
@@ -361,16 +363,16 @@ describe('the send form: the kind before the press', () => {
   const pick = (dialog: HTMLElement, group: string, name: string) =>
     fireEvent.click(within(within(dialog).getByRole('radiogroup', { name: group })).getByRole('radio', { name }));
 
-  it('the same warehouse twice, another country, then two of this store: three sentences, one open press', async () => {
+  // 21/11 (W7c): was «the same warehouse twice, another country, then two of this store» — a warehouse of another country
+  // under THIS store said «لسا مش مبني» (NOT_BUILT_AR, now gone). The list door never offers one (`warehousesOfStore` keeps
+  // the store's country), and another country is reached by naming its store: `the-transfer-across-stores-screen.test.tsx`.
+  it('the same warehouse twice, then two of this store: two sentences, one open press', async () => {
     const dialog = await openForm();
     const press = within(dialog).getByRole('button', { name: 'أرسل' }) as HTMLButtonElement;
     expect(within(dialog).getByText(/الشاشة بتقلّك شو نوع هالنقل/)).toBeTruthy();
     pick(dialog, 'من مخزن', 'مخزن الشمال');
     pick(dialog, 'إلى مخزن', 'مخزن الشمال');
     expect(within(dialog).getByText('المخزن اللي بتنقل منه هو نفسه اللي بتنقل عليه. اختار مخزن تاني.')).toBeTruthy();
-    pick(dialog, 'إلى مخزن', 'مخزن عمّان');
-    expect(dialog.querySelector('[data-kind]')!.getAttribute('data-kind')).toBe('BETWEEN_COUNTRIES');
-    expect(dialog.textContent).toContain(NOT_BUILT_AR);
     pick(dialog, 'إلى مخزن', 'مخزن الجنوب');
     expect(dialog.querySelector('[data-kind]')!.getAttribute('data-kind')).toBe('INTERNAL');
     expect(dialog.textContent).toContain('من مخزن الشمال إلى مخزن الجنوب. نفس البضاعة ونفس الكلفة، بس المكان بيتغيّر.');
@@ -390,8 +392,10 @@ describe('the send form: the kind before the press', () => {
     fireEvent.change(qty, { target: { value: '6' } });
     const press = within(dialog).getByRole('button', { name: 'أرسل' }) as HTMLButtonElement;
     expect(press.disabled).toBe(false);
-    // NEGATIVE: the same lines toward another country — «لسا مش مبني», and the press shuts again.
-    pick(dialog, 'إلى مخزن', 'مخزن عمّان');
+    // 21/11 (W7c): was a NEGATIVE «the same lines toward another country — لسا مش مبني, and the press shuts again»; the
+    // form sends every kind now, and the across-stores test pins when its press stays shut (no twin, no abroad key).
+    // NEGATIVE: the same warehouse on both ends shuts it again.
+    pick(dialog, 'إلى مخزن', 'مخزن الشمال');
     expect(press.disabled).toBe(true);
     pick(dialog, 'إلى مخزن', 'مخزن الجنوب');
     expect(press.disabled).toBe(false);

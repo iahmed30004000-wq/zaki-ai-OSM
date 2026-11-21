@@ -345,6 +345,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/inventory/TransferAcross.tsx": {
+    "buttons": 4,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
   "src/components/labels/LabelSize.tsx": {
     "buttons": 0,
     "inputs": 5,
@@ -1651,11 +1662,11 @@
     "iconButtons": 3
   },
   "src/components/screens/StockTransfersScreen.tsx": {
-    "buttons": 14,
-    "inputs": 5,
+    "buttons": 18,
+    "inputs": 6,
     "columns": 6,
     "cards": 3,
-    "modals": 5,
+    "modals": 6,
     "icons": 3,
     "links": 0,
     "tabs": 0,

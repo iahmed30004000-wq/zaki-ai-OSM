@@ -339,6 +339,8 @@ describe('who reads the stored rule: the door and the engine — never a screen'
     expect(importers).toEqual([
       'app/api/confirmation/mine/route.ts',
       'app/api/confirmation/queue/route.ts',
+      // ADDED 2026-11-21 (request Q4b): «افحص موظفة» reads the rule in force once, to give her numbers over it — a door, not a screen.
+      'app/api/confirmation/rules/check/route.ts',
       'app/api/orders/[id]/confirmation/route.ts',
       'app/api/orders/[id]/contact-attempts/route.ts',
       // ADDED 2026-11-20 (request Q3c): the door of «مين بيقدر يعدّل» reads the stored document for the authors' ids of its versions — a door, not a screen.
@@ -349,10 +351,13 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       // ADDED 2026-11-20 (request Q4a): the owner's own rules (`confirmation-rules.ts`) hold every payload to the base rule's validator and fall back to its default —
       // the engine's resolver (inert until Q4b), never a screen.
       'lib/confirmation-rules.ts',
+      // ADDED 2026-11-21 (request Q4b): her numbers over the base rule (`employee-numbers.ts`, a type import) and the returning-customer hold, which now reads the rule once per run to give each agent her own hand.
+      'lib/employee-numbers.ts',
       'lib/jobs/definitions/release-stale-claims.ts',
       'lib/no-answer-cadence.ts',
       'lib/no-answer-watch.ts',
       'lib/order-timeline.ts',
+      'lib/reserve-returning-customers.ts',
     ]);
     // …and no screen at all: a component or a client file that read it would put the reader (and the database client behind it) into a bundle.
     expect(importers.filter((f) => f.startsWith('components/') || /^'use client'/m.test(readFileSync(join(root, f), 'utf8')))).toEqual([]);

@@ -39,7 +39,7 @@ export async function POST() {
 
     // A returning customer's order that has just arrived is held for the agent who worked him last BEFORE the pick — best-effort:
     // if the hold cannot be written the order is simply the shared queue's, as it was before holds existed.
-    await reserveReturningCustomers({ companyId, storeId }).catch(() => 0);
+    await reserveReturningCustomers({ companyId, storeId }, new Date(), { timezone: country?.timezone }).catch(() => 0);
 
     // «فلتر الاستقبال» (step C1): flag a repeat or an oddly-shaped number on what has just arrived — the same best-effort, the same place; off for a company that did not turn it on.
     await sweepIntakeForPull({ companyId, storeId, countryCode: country.code }).catch(() => 0);

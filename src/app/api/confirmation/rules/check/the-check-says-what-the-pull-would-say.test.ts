@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SessionUser } from '@/types/auth';
@@ -35,6 +35,8 @@ const { state, db, spies } = vi.hoisted(() => {
     hand: 3,
     workFirst: null as null | Record<string, unknown>,
     limited: false,
+    // Q4b: the owner's rules the door reads (through `employee-numbers.ts`, the real reader).
+    rules: [] as Record<string, unknown>[],
   };
   const pick = (where: Record<string, any>) =>
     state.people.filter(
@@ -74,6 +76,7 @@ const { state, db, spies } = vi.hoisted(() => {
       }),
     },
     orderClaimHistory: { findMany: spies.claimHistory },
+    confirmationRule: { findMany: vi.fn(async () => state.rules) },
   };
   return { state, db, spies };
 });
@@ -157,6 +160,7 @@ beforeEach(async () => {
   state.roles = { 'r-agent': AGENT, 'r-mod': MODERATOR };
   state.templates = { FOLLOW_UP_AGENT: FOLLOW_UP };
   state.overrides = [];
+  state.rules = [];
   state.people = [
     { id: 'sara', name: 'سارة', role: 'CONFIRMATION_AGENT', roleId: 'r-agent', status: 'ACTIVE', companyId: 'c1', stores: ['s1'] },
     { id: 'huda', name: 'هدى', role: 'CONFIRMATION_AGENT', roleId: 'r-agent', status: 'ACTIVE', companyId: 'c1', stores: ['s1'] },
@@ -312,10 +316,12 @@ describe('her keys are her session\'s', () => {
 });
 
 describe('the answer, and what the door never does', () => {
-  it('exactly person, hold, pace, pull — no customer, no order', async () => {
+  it('exactly person, hold, pace, pull, numbers — no customer, no order', async () => {
     state.counts = { total: 1, heldForHer: 0, withoutAttempt: 0, untouched: null };
     const { body } = await ask('sara');
-    expect(Object.keys(body).sort()).toEqual(['hold', 'pace', 'person', 'pull']);
+    // 21/11 (request Q4b): was ['hold', 'pace', 'person', 'pull']; now also 'numbers' — her hand limit, idle minutes and pull pace, each with its source
+    // («افحص موظفة» shows her numbers and the rule they came from: the row's Definition of Done). Still no customer and no order.
+    expect(Object.keys(body).sort()).toEqual(['hold', 'numbers', 'pace', 'person', 'pull']);
     expect(body.person).toEqual({ id: 'sara', name: 'سارة' });
     expect(JSON.stringify(body)).not.toMatch(/customer|phone|address|orderId/i);
   });
@@ -340,5 +346,59 @@ describe('the answer, and what the door never does', () => {
     expect([...mine].sort((a, b) => a - b)).toEqual(mine);
     // The pull's door asks the key first (requirePermission) — so does this answer.
     expect(source.indexOf("can(person, 'confirmation.pull')")).toBeLessThan(mine[0]);
+  });
+});
+
+/**
+ * REQUEST Q4b (21/11): «افحص موظفة» shows HER numbers and the rule each came from — and the pace the pull would judge her by is hers. The people are the ones above,
+ * built as a session builds them; the rule names them by id. The rules are read through their thirty-second cache, so each case moves the clock past it.
+ */
+describe('her numbers and their source (Q4b)', () => {
+  let tick = 0;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    tick += 1;
+    vi.setSystemTime(new Date(Date.UTC(2027, 0, 1) + tick * 120_000));
+  });
+  afterEach(() => vi.useRealTimers());
+  const named = (ids: string[], payload: Record<string, number>) =>
+    state.rules.push({
+      id: `r-${state.rules.length}`, companyId: 'c1', storeId: null, name: 'الجديدة', kind: 'EMPLOYEE_NUMBERS', userIds: ids, productId: null, channelKind: null,
+      phase: null, hoursFrom: null, hoursTo: null, effectiveFrom: new Date('2026-01-01T00:00:00Z'), effectiveTo: null, isActive: true, payload,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
+  it('no rule: every number «من القاعدة الأساسية», and the pace is the base 40', async () => {
+    const { body } = await ask('sara');
+    expect(body.numbers.pullPerHour).toEqual({ value: PULL_PACE.perHour, source: { from: 'BASE' }, from: 'من القاعدة الأساسية' });
+    expect(body.numbers.hand.from).toBe('من القاعدة الأساسية');
+    expect(body.pace.perHour).toBe(PULL_PACE.perHour);
+  });
+
+  it('a rule naming her: her numbers and the rule\'s name; a colleague in the same role keeps the base', async () => {
+    named(['sara'], { hand: 2, idleMinutes: 35, pullPerHour: 12 });
+    const sara = (await ask('sara')).body;
+    expect([sara.numbers.hand.value, sara.numbers.idleMinutes.value, sara.numbers.pullPerHour.value]).toEqual([2, 35, 12]);
+    expect(sara.numbers.pullPerHour.from).toBe('من قاعدة «الجديدة»');
+    expect(sara.pace.perHour).toBe(12);
+    const huda = (await ask('huda')).body;
+    expect(huda.numbers.pullPerHour).toMatchObject({ value: PULL_PACE.perHour, from: 'من القاعدة الأساسية' });
+  });
+
+  it('the pull she would be told is judged by HER pace: twelve pulls refuse her at «الحد 12», the colleague with twelve is open', async () => {
+    named(['sara'], { pullPerHour: 12 });
+    state.pulls = Array.from({ length: 12 }, (_, i) => new Date(Date.now() - (i + 1) * 60_000));
+    const sara = (await ask('sara')).body;
+    expect(sara.pull.code).toBe('PULL_TOO_FAST');
+    expect(sara.pull.sentence).toBe(pullPaceRefusal(state.pulls, new Date(), 12)!.message);
+    expect(sara.pull.sentence).toContain('الحد 12');
+    expect((await ask('huda')).body.pull.open).toBe(true);
+  });
+
+  it('a legacy account (no role row) named by a rule gets its numbers too — the rule is about the person, built as her session is', async () => {
+    named(['legacy'], { pullPerHour: 20 });
+    const { status, body } = await ask('legacy');
+    expect(status).toBe(200);
+    expect(body.numbers.pullPerHour.value).toBe(20);
   });
 });

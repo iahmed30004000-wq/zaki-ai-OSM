@@ -567,12 +567,17 @@ export async function takeOnTheLine(args: {
   now?: Date;
   /** «الطلب يرجع للطابور فوراً» on (`returnsModeOn`). Left out, it is asked here, before the transaction. */
   returned?: boolean;
+  /** The store's timezone, for an owner's rule with hours (request Q4b). Left out, read only if such a rule exists. */
+  timezone?: string | null;
 }): Promise<TakeOutcome> {
   const { scope, user, orderId } = args;
   const now = args.now ?? new Date();
   // The mode widens what counts as a returned order (see the header) and hands the take its hand limit; the pace is not asked here, ever.
   const returned = args.returned ?? (await returnsModeOn(db, scope.companyId));
-  const hand = returned ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
+  // Request Q4b: HER hand limit — an owner's rule that names her changes it for her alone; nobody else's take moves.
+  const hand = returned
+    ? (await returnsLimits(db, scope.companyId, now.getTime(), undefined, { userId: user.id, storeId: scope.storeId, timezone: args.timezone })).handLimit
+    : undefined;
   return db.$transaction(async (tx) => {
     // Who holds it, and since when, is read here too: a take from a colleague is a take of THAT claim (see below).
     const seen = await tx.order.findFirst({
