@@ -367,6 +367,8 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       // ADDED 2026-11-21 (request Q4d): an order's numbers over the base rule (`order-numbers.ts`, type imports only) — the doors' resolver for one order, never a screen.
       'lib/order-numbers.ts',
       'lib/order-timeline.ts',
+      // ADDED 2026-11-21 (request Q5a): the PRIORITY rules' filter asks `ruleFor` with the DEFAULT rule (its `first` answer never reads a number) — the engine, never a screen.
+      'lib/priority-rules.ts',
       'lib/reserve-returning-customers.ts',
     ]);
     // …and no screen at all: a component or a client file that read it would put the reader (and the database client behind it) into a bundle.

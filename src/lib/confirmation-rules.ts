@@ -20,7 +20,9 @@ import { hhmmToMinutes } from './work-hours';
  * The EMPLOYEE numbers act: `employee-numbers.ts` reads the rows (one cached read per request or job) and resolves them for one person — the pull (hand, pace, the idle
  * release inside it), the claim by number, «الزبون على الخط», the returning-customer hold, the idle release job (each holder's own minutes), the queue door and «افحص
  * موظفة». The ORDER numbers act since request Q4d (21/11): `order-numbers.ts` resolves them for one order — its store, the products of its current lines, its channel —
- * at the contact door, the proof guard, the confirmation door, «طلباتي» and the timeline. The priority and the routing (Q5) are read by nobody yet; Q4c writes rows
+ * at the contact door, the proof guard, the confirmation door, «طلباتي» and the timeline. The PRIORITY rules act since request Q5a (21/11):
+ * `priority-rules.ts` turns those in force for a store into filters, and the pull's v2 pick (`pickByPriority`) puts the orders they name first INSIDE each tier
+ * (never above the customer's promise or what is held for her). The routing (Q5b) is read by nobody yet; Q4c writes rows
  * from the screen. The confirmation desk's bundle («طلباتي»)
  * is at its ceiling: the desk never imports this file — its words and numbers reach it from the server's answer.
  *

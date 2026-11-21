@@ -514,6 +514,8 @@ describe('the table', () => {
       'src/lib/employee-numbers.ts',
       // ADDED 2026-11-21 (request Q4d): the order numbers act — `order-numbers.ts` resolves them for one order (the doors read it, never this file).
       'src/lib/order-numbers.ts',
+      // ADDED 2026-11-21 (request Q5a): the PRIORITY rules act — `priority-rules.ts` asks `ruleFor` whether each one is in force, and the pull's plan reads it.
+      'src/lib/priority-rules.ts',
     ]);
   });
 
