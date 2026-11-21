@@ -12,6 +12,8 @@
  *      with no line, a repeat customer) — and the share they give.
  *   5. Part 2 — the PICK: the same pool dealt by `pickNextCandidate` with a plan in each of its states — fresh first, an aged retry, the backlog's turn, not its turn,
  *      the two time-of-day modes (new first, oldest first) — and the key off (no plan: the old order).
+ *   5b. Part 3 (request Q5a, 21/11) — «هالطلبات أول»: two owner's PRIORITY rules (a product; a channel's kind, new orders only) turned into filters by the REAL
+ *      `priorityBoostOf` and dealt on real tables: with no rule the order is main's, with the rules the boosted come first INSIDE each tier and no tier moves.
  *   6. Exit code 0 when it ran to the end (and, with `--assert`, every case matched), 2 when a database/Prisma error stopped it, 3 when `--assert` found a mismatch.
  *
  *   node scripts/verify-on-postgres/queue-priority.mjs [--assert]
@@ -155,6 +157,69 @@ try {
         check('الترتيب: ما ضل جديد ومش دور المتأخر = القاعدة ما إلها شي والقديم بيسحب الإعادة', (await numberOf(await pickWith(plan()))) === 'P-RETRY');
         await claim(recentRetry.id);
         check('الترتيب: الطابور فاضي = لا شي', (await pickWith(plan())) === null);
+
+        // ── Part 3 (request Q5a, 21/11): «هالطلبات أول» — the owner's PRIORITY rules, through the REAL `priorityBoostOf`, on real tables (items, the channel's kind).
+        // Two rules: a product (any phase) and a channel (new orders only). The same pool is dealt twice: with no rule (main's order) and with the two rules.
+        const boostedProduct = await tx.product.create({
+          data: { companyId: company.id, storeId: store.id, name: 'منتج الحملة', sku: `KIT-QP-B-${stamp}`, basePrice: 20, status: 'ACTIVE' },
+        });
+        const channel = await tx.orderChannel.create({ data: { companyId: company.id, name: `KIT-QP-CH-${stamp}`, kind: 'WHATSAPP' } });
+        const { priorityBoostOf } = await import('../../src/lib/priority-rules.ts');
+        const ruleRow = (id, over) => ({
+          id, companyId: company.id, storeId: null, name: id, kind: 'PRIORITY', userIds: null, productId: null, channelKind: null, phase: null,
+          hoursFrom: null, hoursTo: null, effectiveFrom: ago(DAY), effectiveTo: null, isActive: true, payload: { first: true }, createdAt: ago(DAY), ...over,
+        });
+        const boost = priorityBoostOf([ruleRow('kit-product', { productId: boostedProduct.id }), ruleRow('kit-channel', { channelKind: 'WHATSAPP', phase: 'NEW' })], {
+          companyId: company.id, storeId: store.id, now, timezone: 'UTC',
+        });
+        check('الأولوية: القاعدتين بيعملوا فلتر (جديد · إعادة · مؤجّل)', !!(boost?.NEW && boost?.RETRY && boost?.ANY), JSON.stringify(boost));
+        /** A Part-3 order: like `order`, its line on `prod`, and its channel when `ch`. */
+        async function boostOrder(key, age, { prod = product, ch = null, lines = [], status = 'NEW' } = {}) {
+          const o = await order(key, age, { lines, status });
+          if (prod.id !== product.id) await tx.orderItem.updateMany({ where: { orderId: o.id }, data: { productId: prod.id, productName: prod.name } });
+          if (ch) await tx.order.update({ where: { id: o.id }, data: { channelId: ch.id } });
+          return o;
+        }
+        const pool = [
+          await boostOrder('B-FRESH-PLAIN', 10 * MIN),
+          await boostOrder('B-FRESH-BOOST', 5 * MIN, { prod: boostedProduct }),
+          await boostOrder('B-NEW-PLAIN', 3 * HOUR),
+          await boostOrder('B-NEW-BOOST', 2 * HOUR, { prod: boostedProduct }),
+          await boostOrder('B-NEW-CHANNEL', 4 * HOUR, { ch: channel }),
+          await boostOrder('B-AGED-PLAIN', 40 * HOUR, { status: 'IN_PROGRESS', lines: [{ ago: 8 * HOUR, due: -5 * HOUR }] }),
+          await boostOrder('B-AGED-BOOST', 30 * HOUR, { prod: boostedProduct, status: 'IN_PROGRESS', lines: [{ ago: 6 * HOUR, due: -3 * HOUR }] }),
+          await boostOrder('B-RETRY-BOOST', 20 * HOUR, { prod: boostedProduct, status: 'IN_PROGRESS', lines: [{ ago: 90 * MIN, due: -30 * MIN }] }),
+        ];
+        const unclaim = () => tx.order.updateMany({ where: { id: { in: pool.map((o) => o.id) } }, data: { claimedById: null, claimedAt: null, confirmationStatus: 'NEW', status: 'NEW' } });
+        const restoreRetries = () =>
+          tx.order.updateMany({ where: { id: { in: pool.map((o) => o.id) }, contactAttempts: { some: {} } }, data: { confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS' } });
+        async function dealAll(p) {
+          await unclaim();
+          await restoreRetries();
+          const out = [];
+          for (let i = 0; i < 12; i++) {
+            const id = await pickWith(p);
+            if (!id) break;
+            out.push(await numberOf(id));
+            await claim(id);
+          }
+          return out.join(' → ');
+        }
+        const MAIN = 'B-FRESH-PLAIN → B-FRESH-BOOST → B-AGED-PLAIN → B-AGED-BOOST → B-NEW-CHANNEL → B-NEW-PLAIN → B-NEW-BOOST → B-RETRY-BOOST';
+        const RULED = 'B-FRESH-BOOST → B-FRESH-PLAIN → B-AGED-BOOST → B-AGED-PLAIN → B-NEW-CHANNEL → B-NEW-BOOST → B-NEW-PLAIN → B-RETRY-BOOST';
+        const plain = await dealAll(plan());
+        check('الأولوية: بلا قاعدة = ترتيب main بالحرف', plain === MAIN, plain);
+        const ruled = await dealAll(plan({ boost }));
+        check('الأولوية: جوّا كل درجة المرفوع أول، والدرجات ما بتتبدّل (إعادة مرفوعة ما بتسبق جديد)', ruled === RULED, ruled);
+        const turn = await dealAll(plan({ boost, backlogTurn: true }));
+        check(
+          'الأولوية: دور المتأخر = الإعادة المرفوعة أول بعد الطازج والمتأخرة',
+          turn.startsWith('B-FRESH-BOOST → B-FRESH-PLAIN → B-AGED-BOOST → B-AGED-PLAIN → B-RETRY-BOOST'),
+          turn
+        );
+        const night = await dealAll(plan({ boost, mode: 'NIGHT_FIRST' }));
+        const nightMain = await dealAll(plan({ mode: 'NIGHT_FIRST' }));
+        check('الأولوية: وضع الصبح ما بيتغيّر بالقاعدة', night === nightMain, `${night} | ${nightMain}`);
 
         throw new Rollback();
       },
