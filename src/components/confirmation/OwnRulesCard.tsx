@@ -23,6 +23,10 @@ import { arDateTime } from '@/lib/format';
  * ORDER NUMBERS (request Q4d, 21/11): a rule that changes an order's attempts, proof seconds or postpone limit names no person and no hours — the dialog then asks «على أي
  * طلبات» (a store, a product, a channel) instead, with the lists the server sends.
  *
+ * PRIORITY AND ROUTING (request Q5c, 21/11): «هالطلبات أول» and «هالطلبات بس لهالموظفات» are chosen from the same list «شو بتغيّر», each with the server's side
+ * effect written under it. They name orders — store, product, channel, new / retry, and hours — never a person; a routing rule's people are ticked under question
+ * four, with the minutes of «طلبات بلا موظفة». The server's warnings (orders that may wait for nobody) stand above its preview.
+ *
  * It DECIDES NOTHING: every word about a rule, every range and every reason is the server's (`GET /api/confirmation/rules`); a refusal comes back as the server's
  * sentence beside the field that caused it, and what was typed stays. The order's amount is not a condition (the owner, 20/11): there is no such box.
  * Imported by the rules page only — never by the desk («طلباتي»), whose bundle sits at its ceiling. Nothing is imported from the rules' libraries.
@@ -54,25 +58,32 @@ export interface OwnRuleTemplate {
   acts: boolean;
   blockedAr: string | null;
   activeCount: number;
-  prefill: { name: string; kind: string; hoursFrom?: string; hoursTo?: string; channelKind?: string; payload: Record<string, unknown>; days: number | null };
+  prefill: { name: string; kind: string; hoursFrom?: string; hoursTo?: string; channelKind?: string; phase?: string; payload: Record<string, unknown>; days: number | null };
 }
 export interface OwnRuleNumber {
   key: string;
   kind: string;
   label: string;
   unit: string;
-  range: { min: number; max: number };
+  /** null = nothing is typed («هالطلبات أول»); for a routing rule, the minutes of «طلبات بلا موظفة» (Q5c). */
+  range: { min: number; max: number } | null;
+  defaultValue?: number;
+  /** What choosing it does, written under it (Q5c); `{minutes}` is the minutes typed (or the default). */
+  effectAr?: string;
 }
 export interface OwnRulesAnswer {
   rules: OwnRuleRow[];
   templates: OwnRuleTemplate[];
   numbers: OwnRuleNumber[];
-  notActingYetAr: string;
+  /** null = every kind acts (Q5c). */
+  notActingYetAr: string | null;
   days: { min: number; max: number };
   stores: { id: string; name: string }[];
   /** The company's products and the channel kinds — «على أي طلبات» of an order rule (Q4d). Absent from an older answer: no such lists. */
   products?: { id: string; name: string }[];
   channels?: { value: string; label: string }[];
+  /** «نوع الطلب» of a priority or routing rule (Q5c). */
+  phases?: { value: string; label: string }[];
   people: { id: string; name: string }[] | null;
   canEdit: boolean;
   editKeyLabel: string;
@@ -83,6 +94,8 @@ export interface OwnRulePreview {
   notBound: { id: string; name: string; reason: string }[];
   notes: string[];
   bindsNobody: boolean;
+  /** What may leave orders waiting for nobody (Q5c, routing) — the server's sentences. */
+  warnings?: string[];
 }
 
 interface Draft {
@@ -93,6 +106,10 @@ interface Draft {
   storeId: string;
   productId: string;
   channelKind: string;
+  /** '' = every order; NEW / RETRY (Q5c, the two order-wide kinds). */
+  phase: string;
+  /** The people a routing rule gives its orders to (Q5c). */
+  toUserIds: string[];
   timing: 'ALWAYS' | 'HOURS';
   hoursFrom: string;
   hoursTo: string;
@@ -112,12 +129,25 @@ export const BINDS_NOBODY_LINE = 'هالقاعدة ما بتمسك حدا هلق
 export const ORDER_RULE_NAMES_NOBODY = 'أرقام الطلب بتمشي على الطلب نفسه، مين ما كانت الموظفة اللي عم تتصل.';
 export const ORDER_RULE_HAS_NO_HOURS = 'أرقام الطلب ما بتتغيّر حسب الساعة — الطلب بيكمّل دورته على نفس الأرقام.';
 const ORDER_KIND = 'ORDER_NUMBERS';
+const PRIORITY_KIND = 'PRIORITY';
+const ROUTING_KIND = 'ROUTING';
+/** The kinds that name ORDERS, never a person: they ask «على أي طلبات» (Q4d, Q5c). */
+const ORDER_WIDE = [ORDER_KIND, PRIORITY_KIND, ROUTING_KIND];
+export const ORDER_WIDE_NAMES_NOBODY = 'بتمشي على الطلبات اللي بتختارها تحت، مش على موظفات.';
+export const ROUTING_PEOPLE_BELOW = 'مين بياخد طلباتها بتختارهن بالسؤال الرابع.';
 
 const isNumberLike = (v: string) => v.trim() !== '' && !Number.isNaN(Number(v));
 
+/** The side effect of a kind (the server's words), with the minutes typed — or the default — where it says `{minutes}`. */
+export function effectOf(n: OwnRuleNumber | undefined, value: string): string | null {
+  if (!n?.effectAr) return null;
+  const minutes = isNumberLike(value) ? String(Number(value)) : n.defaultValue !== undefined ? String(n.defaultValue) : '';
+  return n.effectAr.replace('{minutes}', minutes);
+}
+
 export function emptyDraft(numbers: OwnRuleNumber[]): Draft {
   return {
-    templateKey: null, name: '', who: 'ALL', userIds: [], storeId: '', productId: '', channelKind: '', timing: 'ALWAYS', hoursFrom: '', hoursTo: '',
+    templateKey: null, name: '', who: 'ALL', userIds: [], storeId: '', productId: '', channelKind: '', phase: '', toUserIds: [], timing: 'ALWAYS', hoursFrom: '', hoursTo: '',
     start: 'NEXT_WORK_START', days: '', number: numbers[0]?.key ?? '', value: '',
   };
 }
@@ -125,7 +155,8 @@ export function emptyDraft(numbers: OwnRuleNumber[]): Draft {
 /** A template, as the dialog opens it: its name, hours, number and length; its blanks (the people it names) left for the owner. */
 export function draftOfTemplate(t: OwnRuleTemplate, numbers: OwnRuleNumber[]): Draft {
   const number = Object.keys(t.prefill.payload).find((k) => numbers.some((n) => n.key === k)) ?? numbers[0]?.key ?? '';
-  const value = t.prefill.payload[number];
+  // A routing template (Q5c): its number is the people — left for the owner, a fresh empty list — and the box is its fallback minutes.
+  const value = number === 'toUserIds' ? t.prefill.payload.fallbackMinutes : t.prefill.payload[number];
   return {
     ...emptyDraft(numbers),
     templateKey: t.key,
@@ -135,6 +166,8 @@ export function draftOfTemplate(t: OwnRuleTemplate, numbers: OwnRuleNumber[]): D
     hoursFrom: t.prefill.hoursFrom ?? '',
     hoursTo: t.prefill.hoursTo ?? '',
     channelKind: t.prefill.channelKind ?? '',
+    phase: t.prefill.phase ?? '',
+    toUserIds: [],
     days: t.prefill.days === null ? '' : String(t.prefill.days),
     number,
     value: typeof value === 'number' ? String(value) : '',
@@ -146,17 +179,28 @@ export function bodyOf(d: Draft, numbers: OwnRuleNumber[]): Record<string, unkno
   const n = numbers.find((x) => x.key === d.number);
   // An order rule names no person and no hours, and a rule of a person no product or channel: what the dialog does not show is not sent.
   const ofOrders = n?.kind === ORDER_KIND;
+  // Q5c: priority and routing name orders too (store, product, channel, new / retry), and keep the hours.
+  const wide = !!n && ORDER_WIDE.includes(n.kind);
+  const typed = isNumberLike(d.value) ? Number(d.value) : d.value.trim() === '' ? undefined : d.value;
+  const payload = !n
+    ? {}
+    : n.kind === PRIORITY_KIND
+      ? { first: true }
+      : n.kind === ROUTING_KIND
+        ? { toUserIds: [...d.toUserIds], ...(typed === undefined ? {} : { fallbackMinutes: typed }) }
+        : { [n.key]: isNumberLike(d.value) ? Number(d.value) : null };
   return {
     kind: n?.kind ?? null,
     name: d.name,
-    userIds: !ofOrders && d.who === 'NAMED' ? d.userIds : null,
+    userIds: !wide && d.who === 'NAMED' ? d.userIds : null,
     storeId: d.storeId || null,
-    ...(ofOrders ? { productId: d.productId || null, channelKind: d.channelKind || null } : {}),
+    ...(wide ? { productId: d.productId || null, channelKind: d.channelKind || null } : {}),
+    ...(wide && !ofOrders ? { phase: d.phase || null } : {}),
     hoursFrom: !ofOrders && d.timing === 'HOURS' ? d.hoursFrom || null : null,
     hoursTo: !ofOrders && d.timing === 'HOURS' ? d.hoursTo || null : null,
     start: d.start,
     days: d.days.trim() === '' ? null : isNumberLike(d.days) ? Number(d.days) : d.days,
-    payload: n ? { [n.key]: isNumberLike(d.value) ? Number(d.value) : null } : {},
+    payload,
     templateKey: d.templateKey,
   };
 }
@@ -280,9 +324,11 @@ export function OwnRulesCard({ onChanged }: { onChanged?: () => void }) {
                 قاعدة جديدة
               </Button>
             )}
-            <p className="text-note text-[var(--sys-muted-foreground)]" data-not-acting-yet>
-              {answer.notActingYetAr}
-            </p>
+            {answer.notActingYetAr && (
+              <p className="text-note text-[var(--sys-muted-foreground)]" data-not-acting-yet>
+                {answer.notActingYetAr}
+              </p>
+            )}
           </section>
         </div>
 
@@ -364,7 +410,13 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
   };
   const number = answer.numbers.find((n) => n.key === d.number);
   const ofOrders = number?.kind === ORDER_KIND;
+  /** Q5c: priority or routing — orders by store, product, channel and new / retry, with hours. */
+  const wide = !!number && ORDER_WIDE.includes(number.kind);
+  const routing = number?.kind === ROUTING_KIND;
+  const priority = number?.kind === PRIORITY_KIND;
+  const effect = effectOf(number, d.value);
   const errorOf = (...fields: string[]) => (refusal && fields.some((f) => refusal.field === f || refusal.field.startsWith(`${f}.`)) ? refusal.message : undefined);
+  const errorAt = (field: string) => (refusal?.field === field ? refusal.message : undefined);
   const known = ['name', 'userIds', 'storeId', 'productId', 'channelKind', 'hoursFrom', 'hoursTo', 'start', 'days', 'payload', 'kind'];
   const topError = refusal && !known.some((f) => refusal.field === f || refusal.field.startsWith(`${f}.`)) ? refusal.message : null;
 
@@ -447,6 +499,10 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
             <p className="text-note text-[var(--sys-muted-foreground)]" data-order-names-nobody>
               {ORDER_RULE_NAMES_NOBODY}
             </p>
+          ) : wide ? (
+            <p className="text-note text-[var(--sys-muted-foreground)]" data-orders-wide>
+              {routing ? `${ORDER_WIDE_NAMES_NOBODY} ${ROUTING_PEOPLE_BELOW}` : ORDER_WIDE_NAMES_NOBODY}
+            </p>
           ) : (
             <Segmented
               size="sm"
@@ -459,7 +515,7 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
               ]}
             />
           )}
-          {!ofOrders && d.who === 'NAMED' &&
+          {!wide && d.who === 'NAMED' &&
             (answer.people === null ? (
               <p className="text-note text-[var(--sys-warning)]">الأسماء بدها صلاحية «عرض الموظفين».</p>
             ) : answer.people.length === 0 ? (
@@ -485,15 +541,15 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         </div>
 
         <div className="space-y-2" data-question="store">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">{ofOrders ? '2. على أي طلبات' : '2. بأي متجر'}</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">{wide ? '2. على أي طلبات' : '2. بأي متجر'}</p>
           <Select
             label="المتجر"
             value={d.storeId}
             onChange={(e) => set({ storeId: e.target.value })}
             options={[{ value: '', label: 'كل المتاجر' }, ...answer.stores.map((s) => ({ value: s.id, label: s.name }))]}
-            error={errorOf('storeId', ...(ofOrders ? [] : ['productId', 'channelKind']), 'phase')}
+            error={errorOf('storeId', ...(wide ? [] : ['productId', 'channelKind']), ...(wide && !ofOrders ? [] : ['phase']))}
           />
-          {ofOrders && (
+          {wide && (
             <>
               <Select
                 label="المنتج"
@@ -509,6 +565,15 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
                 options={[{ value: '', label: 'كل المصادر' }, ...(answer.channels ?? [])]}
                 error={errorOf('channelKind')}
               />
+              {!ofOrders && (
+                <Select
+                  label="نوع الطلب"
+                  value={d.phase}
+                  onChange={(e) => set({ phase: e.target.value })}
+                  options={[{ value: '', label: 'كل الطلبات' }, ...(answer.phases ?? [])]}
+                  error={errorOf('phase')}
+                />
+              )}
             </>
           )}
         </div>
@@ -570,16 +635,55 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
             options={answer.numbers.map((n) => ({ value: n.key, label: n.label }))}
             error={errorOf('kind')}
           />
-          <Input
-            label={number ? `${number.label} (${number.unit})` : 'القيمة'}
-            type="number"
-            inputMode="numeric"
-            value={d.value}
-            onChange={(e) => set({ value: e.target.value })}
-            helperText={number ? `من ${number.range.min} لـ${number.range.max}` : undefined}
-            error={errorOf('payload')}
-          />
-          <p className="text-note text-[var(--sys-muted-foreground)]">{answer.notActingYetAr}</p>
+          {routing && (
+            <div className="space-y-1" data-routing-people>
+              <p className="text-sm text-[var(--sys-foreground)]">لمين طلباتها</p>
+              {answer.people === null ? (
+                <p className="text-note text-[var(--sys-warning)]">الأسماء بدها صلاحية «عرض الموظفين».</p>
+              ) : answer.people.length === 0 ? (
+                <p className="text-note text-[var(--sys-muted-foreground)]">ما في حدا على مكتب التأكيد بهالمتجر.</p>
+              ) : (
+                <ul className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
+                  {answer.people.map((p) => (
+                    <li key={p.id}>
+                      <Checkbox
+                        label={p.name}
+                        checked={d.toUserIds.includes(p.id)}
+                        onChange={(on) => set({ toUserIds: on ? [...d.toUserIds, p.id] : d.toUserIds.filter((u) => u !== p.id) })}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {errorAt('payload.toUserIds') && (
+                <p className="text-sm text-[var(--sys-destructive)]" role="alert" data-refusal="toUserIds">
+                  {errorAt('payload.toUserIds')}
+                </p>
+              )}
+            </div>
+          )}
+          {!priority && (
+            <Input
+              label={routing ? `مهلة «طلبات بلا موظفة» (${number?.unit ?? ''})` : number ? `${number.label} (${number.unit})` : 'القيمة'}
+              type="number"
+              inputMode="numeric"
+              value={d.value}
+              onChange={(e) => set({ value: e.target.value })}
+              helperText={number?.range ? `من ${number.range.min} لـ${number.range.max}` : undefined}
+              error={routing ? errorAt('payload.fallbackMinutes') ?? errorAt('payload') : errorOf('payload')}
+            />
+          )}
+          {effect && (
+            <p className="text-note text-[var(--sys-warning)] break-words" data-effect>
+              {effect}
+            </p>
+          )}
+          {priority && errorOf('payload') && (
+            <p className="text-sm text-[var(--sys-destructive)]" role="alert" data-refusal="payload">
+              {errorOf('payload')}
+            </p>
+          )}
+          {answer.notActingYetAr && <p className="text-note text-[var(--sys-muted-foreground)]">{answer.notActingYetAr}</p>}
         </div>
 
         {(preview || overlap) && (
@@ -591,6 +695,13 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
             )}
             {preview && (
               <>
+                {preview.warnings && preview.warnings.length > 0 && (
+                  <ul className="space-y-0.5 text-sm text-[var(--sys-destructive)]" role="alert" data-preview-warnings>
+                    {preview.warnings.map((w) => (
+                      <li key={w} className="break-words">{w}</li>
+                    ))}
+                  </ul>
+                )}
                 {preview.notes.length > 0 && (
                   <ul className="space-y-0.5 text-note text-[var(--sys-warning)]" data-preview-notes>
                     {preview.notes.map((n) => (

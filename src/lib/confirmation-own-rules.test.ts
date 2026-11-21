@@ -9,6 +9,7 @@ import { CONFIRMATION_RULE_TEMPLATES, validateConfirmationRuleRow, type Confirma
 import {
   KINDS_THAT_ACT,
   NOT_ACTING_YET_AR,
+  notActingYetAnswer,
   candidateFromBody,
   endAfter,
   payloadWords,
@@ -89,13 +90,17 @@ const reasonOf = (p: Awaited<ReturnType<typeof look>>, id: string) => p.notBound
 describe('1 · a save is read whole', () => {
   // UPDATED 2026-11-21 (request Q4d): was «only the employee numbers act» with ['EMPLOYEE_NUMBERS'] and ORDER_NUMBERS refused; the order numbers act now
   // (`order-numbers.ts`), so the two kinds of Q5 are the ones still refused.
-  it('the employee and the order numbers act — the two other kinds are refused with a sentence, never saved to bind nobody', () => {
-    expect(KINDS_THAT_ACT).toEqual(['EMPLOYEE_NUMBERS', 'ORDER_NUMBERS']);
+  // UPDATED 2026-11-21 (request Q5c): was ['EMPLOYEE_NUMBERS', 'ORDER_NUMBERS'] with PRIORITY and ROUTING refused as RULE_KIND_NOT_ACTING; their engines act since
+  // Q5a / Q5b, so every kind of the catalogue is saved — each through its own payload (another kind's number is refused by the validator, never as «not acting»).
+  it('every kind of the catalogue acts — and each is held to its own payload', () => {
+    expect(KINDS_THAT_ACT).toEqual(['EMPLOYEE_NUMBERS', 'ORDER_NUMBERS', 'PRIORITY', 'ROUTING']);
     for (const kind of ['PRIORITY', 'ROUTING']) {
       const c = candidateFromBody({ kind, name: 'x', payload: { proofSeconds: 20 } }, ctx);
       expect(c.ok, kind).toBe(false);
-      if (!c.ok) expect([c.code, c.field]).toEqual(['RULE_KIND_NOT_ACTING', 'kind']);
+      if (!c.ok) expect([c.code, c.field]).toEqual(['RULE_PAYLOAD', 'payload.proofSeconds']);
     }
+    expect(candidateFromBody({ kind: 'PRIORITY', name: 'x', productId: 'p1', payload: { first: true } }, ctx).ok).toBe(true);
+    expect(candidateFromBody({ kind: 'ROUTING', name: 'x', storeId: 's1', payload: { toUserIds: ['sara'], fallbackMinutes: 45 } }, ctx).ok).toBe(true);
     const unknown = candidateFromBody({ kind: 'AMOUNT', name: 'x', payload: { hand: 2 } }, ctx);
     expect(unknown.ok || unknown.code).toBe('RULE_KIND');
   });
@@ -204,11 +209,15 @@ describe('2 · the preview reads each person as her session does', () => {
   });
 
   // UPDATED 2026-11-21 (request Q4d): the kind that does not act was ORDER_NUMBERS; it acts now (its preview: `order-numbers-act.test.ts`), PRIORITY does not yet.
-  it('a kind that does not act binds nobody, whatever the people', async () => {
+  // UPDATED 2026-11-21 (request Q5c): was «a PRIORITY rule binds nobody, with NOT_ACTING_YET_AR»; it acts now (its preview: `the-priority-and-routing-previews.test.ts`).
+  // No kind of the catalogue is left that does not act, so the screen's line is answered as null.
+  it('no kind of the catalogue is left that does not act — the «لسا ما بيشتغل» line of the screen is null', async () => {
+    expect(notActingYetAnswer()).toBeNull();
     const order = validateConfirmationRuleRow(row({ kind: 'PRIORITY', payload: { first: true }, storeId: 's1' }));
     if (!order.ok) throw new Error(order.errorAr);
     const p = await look(order.rule);
-    expect(p).toEqual({ bound: [], notBound: [], notes: [NOT_ACTING_YET_AR], bindsNobody: true });
+    expect(p.notes).not.toContain(NOT_ACTING_YET_AR);
+    expect(bound(p)).toEqual(['legacy', 'owner', 'sara']);
   });
 });
 
@@ -224,14 +233,15 @@ describe('3 · words and templates', () => {
 
   // UPDATED 2026-11-21 (request Q4d): was «only the employee kinds pressable» (two keys) and the copy was proved on the steps of template 2; the four order templates
   // are pressable now, and a schedule template opens as its ATTEMPTS (the dialog's one number) — the copy is proved on a payload the screen receives as it is.
-  it('eight templates, every one OFF (no rule from it), the employee and the order kinds pressable — and each a COPY', () => {
+  // UPDATED 2026-11-21 (request Q5c): was six pressable (the two of Q5 greyed with blockedAr); «منتج: طلباته أول» and «متجر: طلباته بس لموظفاته» act now — all eight.
+  it('eight templates, every one OFF (no rule from it), all eight pressable — and each a COPY', () => {
     const t = templatesAnswer(new Map());
     expect(t).toHaveLength(8);
     expect(t.every((x) => x.activeCount === 0)).toBe(true);
     expect(t.filter((x) => x.acts).map((x) => x.key).sort()).toEqual([
-      'evening-idle', 'expensive-product-attempts', 'new-employee-hand', 'page-leads-attempts', 'product-postpone-once', 'store-proof',
+      'evening-idle', 'expensive-product-attempts', 'new-employee-hand', 'page-leads-attempts', 'product-first', 'product-postpone-once', 'store-proof', 'store-to-its-team',
     ]);
-    expect(t.filter((x) => !x.acts).every((x) => x.blockedAr)).toBe(true);
+    expect(t.every((x) => x.blockedAr === null)).toBe(true);
     expect(t[2].prefill.payload).toEqual({ attempts: 7 });
     (t[0].prefill.payload as Record<string, unknown>).hand = 9;
     expect(CONFIRMATION_RULE_TEMPLATES[0].payload.hand).toBe(2);
@@ -242,7 +252,14 @@ describe('3 · words and templates', () => {
     for (const t of templatesAnswer(new Map()).filter((x) => x.acts)) {
       // UPDATED 2026-11-21 (request Q4d): the order templates need a product or a store — filled here as the owner fills them on the screen.
       const c = candidateFromBody(
-        { ...t.prefill, userIds: t.needs.includes('userIds') ? ['sara'] : null, productId: t.needs.includes('productId') ? 'p1' : null, storeId: t.needs.includes('storeId') ? 's1' : null },
+        {
+          ...t.prefill,
+          userIds: t.needs.includes('userIds') ? ['sara'] : null,
+          productId: t.needs.includes('productId') ? 'p1' : null,
+          storeId: t.needs.includes('storeId') ? 's1' : null,
+          // Q5c: the routing template's people, ticked on the screen.
+          ...(t.needs.includes('toUserIds') ? { payload: { ...t.prefill.payload, toUserIds: ['sara'] } } : {}),
+        },
         ctx
       );
       expect(c.ok, t.key).toBe(true);

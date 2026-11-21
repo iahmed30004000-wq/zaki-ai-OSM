@@ -5,7 +5,7 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
 import { readQueueHealth } from '@/lib/queue-health';
-import { HEALTH_RULE_AR, healthAlerts } from '@/lib/queue-health-words';
+import { HEALTH_RULE_AR, healthAlerts, unstaffedLine } from '@/lib/queue-health-words';
 import { readRecalibration } from '@/lib/queue-recalibration';
 import { REPORT_TTL_MS, heavyOnce } from '@/lib/heavy-lane';
 import { readUnstaffedOrders } from '@/lib/routing-health';
@@ -38,7 +38,9 @@ export async function GET() {
       return [unstaffed === undefined ? h : { ...h, unstaffed }, w] as const;
     });
     // the weekly recalibration is a NOTE only (what moved over the last 14 days, and its rule): it changes nothing the pull uses
-    return NextResponse.json({ enabled: true, health, alerts: healthAlerts(health), rule: HEALTH_RULE_AR, ...(weekly ? { weekly: weekly.note } : {}) });
+    // «طلبات بلا موظفة» (request Q5c): the board's line, in the server's words — only while a routing rule is in force (otherwise no key, as before).
+    const unstaffed = unstaffedLine(health.unstaffed);
+    return NextResponse.json({ enabled: true, health, alerts: healthAlerts(health), rule: HEALTH_RULE_AR, ...(weekly ? { weekly: weekly.note } : {}), ...(unstaffed ? { unstaffed } : {}) });
   } catch (error) {
     return apiErrorResponse(error);
   }

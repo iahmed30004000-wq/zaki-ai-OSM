@@ -9,13 +9,13 @@ import { resolveAudience } from '@/lib/notification-audience';
 import { catalogItem } from '@/lib/permission-catalog';
 import { DESK_KEYS } from '@/lib/desk-readiness';
 import { nextWorkStart } from '@/lib/confirmation-rule-settings';
-import { CONFIRMATION_RULE_KIND_AR, overlapRefusal, validateConfirmationRuleRow, type ConfirmationRuleKind, type ConfirmationRuleRow } from '@/lib/confirmation-rules';
+import { CONFIRMATION_RULE_KIND_AR, ORDER_PHASES, overlapRefusal, validateConfirmationRuleRow, type ConfirmationRuleKind, type ConfirmationRuleRow } from '@/lib/confirmation-rules';
 import { forgetConfirmationRules } from '@/lib/employee-numbers';
 import { CHANNEL_KINDS, CHANNEL_KIND_AR } from '@/lib/order-channel-kinds';
 import {
   BINDS_NOBODY_AR,
   KINDS_THAT_ACT,
-  NOT_ACTING_YET_AR,
+  notActingYetAnswer,
   OWN_RULE_NUMBERS,
   OWN_RULE_STATE_AR,
   RULE_DAYS,
@@ -131,11 +131,14 @@ export async function GET() {
       }),
       templates: templatesAnswer(fromTemplate),
       numbers: OWN_RULE_NUMBERS.filter((n) => KINDS_THAT_ACT.includes(n.kind)),
-      notActingYetAr: NOT_ACTING_YET_AR,
+      // Q5c: null — every kind acts; the line comes back only for a kind added before its engine.
+      notActingYetAr: notActingYetAnswer(),
       days: RULE_DAYS,
       stores,
       products: catalogue,
       channels: CHANNEL_KINDS.map((k) => ({ value: k, label: CHANNEL_KIND_AR[k] ?? k })),
+      // «نوع الطلب» of a priority or routing rule (Q5c).
+      phases: ORDER_PHASES.map((p) => ({ value: p, label: p === 'NEW' ? 'الطلبات الجديدة' : 'طلبات الإعادة' })),
       people: desk ? desk.map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name, 'ar')) : null,
       canEdit: can(viewer, EDIT_KEY),
       editKeyLabel: catalogItem(EDIT_KEY)?.ar ?? EDIT_KEY,
@@ -172,6 +175,11 @@ export async function POST(req: Request) {
     if (rule.userIds) {
       const found = await db.user.findMany({ where: { id: { in: rule.userIds }, companyId }, select: { id: true } });
       if (found.length !== rule.userIds.length) return refuse(400, 'RULE_PEOPLE', 'في موظفة بالقائمة مش من شركتك.', { field: 'userIds' });
+    }
+    // Q5c: the people a routing rule gives its orders to are this company's too.
+    if (rule.payload.toUserIds) {
+      const found = await db.user.findMany({ where: { id: { in: rule.payload.toUserIds }, companyId }, select: { id: true } });
+      if (found.length !== rule.payload.toUserIds.length) return refuse(400, 'RULE_PEOPLE', 'في موظفة بالقائمة مش من شركتك.', { field: 'payload.toUserIds' });
     }
 
     const others = await activeRowsFresh(db, companyId);

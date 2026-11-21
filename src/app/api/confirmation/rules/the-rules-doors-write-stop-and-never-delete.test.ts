@@ -223,7 +223,9 @@ describe('1 · create → preview → active → read at once', () => {
     expect(counts['new-employee-hand']).toBe(1);
     expect(Object.values(counts).filter((n) => n === 0)).toHaveLength(7);
     // UPDATED 2026-11-21 (request Q4d): was the three employee numbers only; the order numbers act now, so the dialog offers their three as well.
-    expect(body.numbers.map((n: any) => n.key)).toEqual(['hand', 'idleMinutes', 'pullPerHour', 'attempts', 'proofSeconds', 'postponeMax']);
+    // UPDATED 2026-11-21 (request Q5c): was those six; priority and routing act now (Q5a, Q5b), so the list ends with their two kinds.
+    expect(body.numbers.map((n: any) => n.key)).toEqual(['hand', 'idleMinutes', 'pullPerHour', 'attempts', 'proofSeconds', 'postponeMax', 'first', 'toUserIds']);
+    expect(body.notActingYetAr).toBeNull();
     expect(body.people.map((p: any) => p.id).sort()).toEqual(['huda', 'legacy', 'mod', 'sara']);
     expect(body.canEdit).toBe(true);
   });
@@ -291,10 +293,42 @@ describe('2c · whether a number acts now — the switches, read as the pull rea
   });
 });
 
+describe('2d · priority and routing save through the same doors (request Q5c)', () => {
+  it('a routing rule to sara saves with its people and minutes; its preview binds her and tells the other pullers the orders are not theirs', async () => {
+    const { status, body } = await create({ kind: 'ROUTING', name: 'فريق المتجر', storeId: 's1', start: 'NOW', payload: { toUserIds: ['sara'], fallbackMinutes: 45 } });
+    expect(status).toBe(201);
+    expect(state.rules[0]).toMatchObject({ kind: 'ROUTING', payload: { toUserIds: ['sara'], fallbackMinutes: 45 } });
+    expect(state.rules[0].userIds ?? null).toBeNull(); // the people are its payload, never its «who»
+    expect(body.preview.bound.map((b: any) => b.id)).toEqual(['sara']);
+    expect(body.preview.notBound.find((n: any) => n.id === 'legacy').reason).toMatch(/مش مكتوبة بالقاعدة/);
+    expect(body.preview.notes[0]).toMatch(/بعد 45 دقيقة دوام/);
+  });
+
+  it('NEGATIVE: a routing rule to huda alone (her personal «منع» of the pull) binds nobody — refused until confirmed, with the warning', async () => {
+    const { status, body } = await create({ kind: 'ROUTING', name: 'هدى بس', storeId: 's1', start: 'NOW', payload: { toUserIds: ['huda'] } });
+    expect([status, body.code]).toEqual([409, 'RULE_BINDS_NOBODY']);
+    expect(body.preview.warnings[0]).toMatch(/30 دقيقة دوام/);
+    expect(state.rules).toHaveLength(0);
+  });
+
+  it('a priority rule reaches the pullers only while «أولوية الطابور» is on — off, it binds nobody and is refused unconfirmed', async () => {
+    const off = await create({ kind: 'PRIORITY', name: 'أول', storeId: 's1', start: 'NOW', payload: { first: true } });
+    expect([off.status, off.body.code]).toEqual([409, 'RULE_BINDS_NOBODY']);
+    expect(off.body.preview.notes).toContain('ما بتشتغل هلق — «أولوية الطابور» مطفية، فالسحبة بترتيبها القديم.');
+    state.qpOn = true;
+    const on = await create({ kind: 'PRIORITY', name: 'أول', storeId: 's1', start: 'NOW', payload: { first: true } });
+    expect(on.status).toBe(201);
+    expect(on.body.preview.bound.map((b: any) => b.id).sort()).toEqual(['legacy', 'sara']);
+  });
+});
+
 describe('3 · refused saves write nothing', () => {
   it.each([
-    // UPDATED 2026-11-21 (request Q4d): the kind that does not act yet was ORDER_NUMBERS (it acts now); PRIORITY does not.
-    ['a kind that does not act yet', { kind: 'PRIORITY', name: 'x', storeId: 's1', payload: { first: true } }, 400, 'RULE_KIND_NOT_ACTING'],
+    // UPDATED 2026-11-21 (request Q5c): was «a kind that does not act yet» = PRIORITY → RULE_KIND_NOT_ACTING; every kind acts now (the refusal stays in the code for a kind added to the
+    // catalogue before its engine — none today). Its place: a routing rule giving its orders to a person of another company.
+    ['a routing rule to a person of another company', { kind: 'ROUTING', name: 'x', storeId: 's1', start: 'NOW', payload: { toUserIds: ['sara', 'other'] } }, 400, 'RULE_PEOPLE'],
+    ['a routing rule to nobody', { kind: 'ROUTING', name: 'x', storeId: 's1', start: 'NOW', payload: { toUserIds: [] } }, 400, 'RULE_PAYLOAD'],
+    ['a routing rule with fallback minutes outside 5–480', { kind: 'ROUTING', name: 'x', storeId: 's1', start: 'NOW', payload: { toUserIds: ['sara'], fallbackMinutes: 4 } }, 400, 'RULE_PAYLOAD'],
     ['a hand outside its range', handFor(null, 11), 400, 'RULE_PAYLOAD'],
     ['a person of another company', handFor(['other']), 400, 'RULE_PEOPLE'],
     ['a store of another company', handFor(null, 2, { storeId: 's9' }), 400, 'RULE_SCOPE'],
