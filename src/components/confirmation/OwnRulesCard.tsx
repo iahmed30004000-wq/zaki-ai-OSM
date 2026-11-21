@@ -20,6 +20,9 @@ import { arDateTime } from '@/lib/format';
  * from each person's real grants (`POST /api/confirmation/rules/preview`); a rule that binds nobody is saved only after a tick that says so. Under them, every rule
  * written, stopped ones too: a rule is stopped, renamed or re-dated — never deleted.
  *
+ * ORDER NUMBERS (request Q4d, 21/11): a rule that changes an order's attempts, proof seconds or postpone limit names no person and no hours — the dialog then asks «على أي
+ * طلبات» (a store, a product, a channel) instead, with the lists the server sends.
+ *
  * It DECIDES NOTHING: every word about a rule, every range and every reason is the server's (`GET /api/confirmation/rules`); a refusal comes back as the server's
  * sentence beside the field that caused it, and what was typed stays. The order's amount is not a condition (the owner, 20/11): there is no such box.
  * Imported by the rules page only — never by the desk («طلباتي»), whose bundle sits at its ceiling. Nothing is imported from the rules' libraries.
@@ -51,7 +54,7 @@ export interface OwnRuleTemplate {
   acts: boolean;
   blockedAr: string | null;
   activeCount: number;
-  prefill: { name: string; kind: string; hoursFrom?: string; hoursTo?: string; payload: Record<string, unknown>; days: number | null };
+  prefill: { name: string; kind: string; hoursFrom?: string; hoursTo?: string; channelKind?: string; payload: Record<string, unknown>; days: number | null };
 }
 export interface OwnRuleNumber {
   key: string;
@@ -67,6 +70,9 @@ export interface OwnRulesAnswer {
   notActingYetAr: string;
   days: { min: number; max: number };
   stores: { id: string; name: string }[];
+  /** The company's products and the channel kinds — «على أي طلبات» of an order rule (Q4d). Absent from an older answer: no such lists. */
+  products?: { id: string; name: string }[];
+  channels?: { value: string; label: string }[];
   people: { id: string; name: string }[] | null;
   canEdit: boolean;
   editKeyLabel: string;
@@ -85,6 +91,8 @@ interface Draft {
   who: 'ALL' | 'NAMED';
   userIds: string[];
   storeId: string;
+  productId: string;
+  channelKind: string;
   timing: 'ALWAYS' | 'HOURS';
   hoursFrom: string;
   hoursTo: string;
@@ -101,12 +109,15 @@ export const TEMPLATES_ARE_OFF = 'كلها مطفية لحد ما تشغّلها
 export const WRITE_YOUR_OWN = 'اختار: على مين، بأي متجر، إيمتى، وشو بتغيّر.';
 export const I_KNOW_IT_BINDS_NOBODY = 'بعرف إنها ما بتمسك حدا هلق — احفظها هيك';
 export const BINDS_NOBODY_LINE = 'هالقاعدة ما بتمسك حدا هلق.';
+export const ORDER_RULE_NAMES_NOBODY = 'أرقام الطلب بتمشي على الطلب نفسه، مين ما كانت الموظفة اللي عم تتصل.';
+export const ORDER_RULE_HAS_NO_HOURS = 'أرقام الطلب ما بتتغيّر حسب الساعة — الطلب بيكمّل دورته على نفس الأرقام.';
+const ORDER_KIND = 'ORDER_NUMBERS';
 
 const isNumberLike = (v: string) => v.trim() !== '' && !Number.isNaN(Number(v));
 
 export function emptyDraft(numbers: OwnRuleNumber[]): Draft {
   return {
-    templateKey: null, name: '', who: 'ALL', userIds: [], storeId: '', timing: 'ALWAYS', hoursFrom: '', hoursTo: '',
+    templateKey: null, name: '', who: 'ALL', userIds: [], storeId: '', productId: '', channelKind: '', timing: 'ALWAYS', hoursFrom: '', hoursTo: '',
     start: 'NEXT_WORK_START', days: '', number: numbers[0]?.key ?? '', value: '',
   };
 }
@@ -123,6 +134,7 @@ export function draftOfTemplate(t: OwnRuleTemplate, numbers: OwnRuleNumber[]): D
     timing: t.prefill.hoursFrom && t.prefill.hoursTo ? 'HOURS' : 'ALWAYS',
     hoursFrom: t.prefill.hoursFrom ?? '',
     hoursTo: t.prefill.hoursTo ?? '',
+    channelKind: t.prefill.channelKind ?? '',
     days: t.prefill.days === null ? '' : String(t.prefill.days),
     number,
     value: typeof value === 'number' ? String(value) : '',
@@ -132,13 +144,16 @@ export function draftOfTemplate(t: OwnRuleTemplate, numbers: OwnRuleNumber[]): D
 /** The draft as the door reads it. A box that is not a number goes as it is and the SERVER says why. */
 export function bodyOf(d: Draft, numbers: OwnRuleNumber[]): Record<string, unknown> {
   const n = numbers.find((x) => x.key === d.number);
+  // An order rule names no person and no hours, and a rule of a person no product or channel: what the dialog does not show is not sent.
+  const ofOrders = n?.kind === ORDER_KIND;
   return {
     kind: n?.kind ?? null,
     name: d.name,
-    userIds: d.who === 'NAMED' ? d.userIds : null,
+    userIds: !ofOrders && d.who === 'NAMED' ? d.userIds : null,
     storeId: d.storeId || null,
-    hoursFrom: d.timing === 'HOURS' ? d.hoursFrom || null : null,
-    hoursTo: d.timing === 'HOURS' ? d.hoursTo || null : null,
+    ...(ofOrders ? { productId: d.productId || null, channelKind: d.channelKind || null } : {}),
+    hoursFrom: !ofOrders && d.timing === 'HOURS' ? d.hoursFrom || null : null,
+    hoursTo: !ofOrders && d.timing === 'HOURS' ? d.hoursTo || null : null,
     start: d.start,
     days: d.days.trim() === '' ? null : isNumberLike(d.days) ? Number(d.days) : d.days,
     payload: n ? { [n.key]: isNumberLike(d.value) ? Number(d.value) : null } : {},
@@ -221,7 +236,7 @@ export function OwnRulesCard({ onChanged }: { onChanged?: () => void }) {
     <Card>
       <CardHeader
         title="قواعد خاصة"
-        subtitle="قاعدة بتغيّر رقم واحد لموظفات بالاسم أو لمتجر أو لساعات. الأخص بتغلب: موظفة بالاسم ← متجر ← الكل ← القاعدة الأساسية. ما في حذف: القاعدة بتنوقف وبتضل بالسجل."
+        subtitle="قاعدة بتغيّر رقم واحد لموظفات بالاسم أو لمتجر أو لساعات — أو لطلبات منتج أو مصدر. الأخص بتغلب: موظفة بالاسم ← منتج أو مصدر ← متجر ← الكل ← القاعدة الأساسية. ما في حذف: القاعدة بتنوقف وبتضل بالسجل."
       />
       <CardContent className="space-y-4">
         {!answer.canEdit && (
@@ -348,8 +363,9 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
     setOverlap(null);
   };
   const number = answer.numbers.find((n) => n.key === d.number);
+  const ofOrders = number?.kind === ORDER_KIND;
   const errorOf = (...fields: string[]) => (refusal && fields.some((f) => refusal.field === f || refusal.field.startsWith(`${f}.`)) ? refusal.message : undefined);
-  const known = ['name', 'userIds', 'storeId', 'hoursFrom', 'hoursTo', 'start', 'days', 'payload', 'kind'];
+  const known = ['name', 'userIds', 'storeId', 'productId', 'channelKind', 'hoursFrom', 'hoursTo', 'start', 'days', 'payload', 'kind'];
   const topError = refusal && !known.some((f) => refusal.field === f || refusal.field.startsWith(`${f}.`)) ? refusal.message : null;
 
   const refused = useCallback((e: unknown) => {
@@ -427,17 +443,23 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
 
         <div className="space-y-2" data-question="who">
           <p className="text-sm font-medium text-[var(--sys-foreground)]">1. على مين</p>
-          <Segmented
-            size="sm"
-            aria-label="على مين"
-            value={d.who}
-            onChange={(v) => set({ who: v === 'NAMED' ? 'NAMED' : 'ALL' })}
-            options={[
-              { value: 'ALL', label: 'كل الموظفات' },
-              { value: 'NAMED', label: 'موظفات بالاسم' },
-            ]}
-          />
-          {d.who === 'NAMED' &&
+          {ofOrders ? (
+            <p className="text-note text-[var(--sys-muted-foreground)]" data-order-names-nobody>
+              {ORDER_RULE_NAMES_NOBODY}
+            </p>
+          ) : (
+            <Segmented
+              size="sm"
+              aria-label="على مين"
+              value={d.who}
+              onChange={(v) => set({ who: v === 'NAMED' ? 'NAMED' : 'ALL' })}
+              options={[
+                { value: 'ALL', label: 'كل الموظفات' },
+                { value: 'NAMED', label: 'موظفات بالاسم' },
+              ]}
+            />
+          )}
+          {!ofOrders && d.who === 'NAMED' &&
             (answer.people === null ? (
               <p className="text-note text-[var(--sys-warning)]">الأسماء بدها صلاحية «عرض الموظفين».</p>
             ) : answer.people.length === 0 ? (
@@ -463,29 +485,53 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         </div>
 
         <div className="space-y-2" data-question="store">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">2. بأي متجر</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">{ofOrders ? '2. على أي طلبات' : '2. بأي متجر'}</p>
           <Select
             label="المتجر"
             value={d.storeId}
             onChange={(e) => set({ storeId: e.target.value })}
             options={[{ value: '', label: 'كل المتاجر' }, ...answer.stores.map((s) => ({ value: s.id, label: s.name }))]}
-            error={errorOf('storeId', 'productId', 'channelKind', 'phase')}
+            error={errorOf('storeId', ...(ofOrders ? [] : ['productId', 'channelKind']), 'phase')}
           />
+          {ofOrders && (
+            <>
+              <Select
+                label="المنتج"
+                value={d.productId}
+                onChange={(e) => set({ productId: e.target.value })}
+                options={[{ value: '', label: 'كل المنتجات' }, ...(answer.products ?? []).map((p) => ({ value: p.id, label: p.name }))]}
+                error={errorOf('productId')}
+              />
+              <Select
+                label="مصدر الطلب"
+                value={d.channelKind}
+                onChange={(e) => set({ channelKind: e.target.value })}
+                options={[{ value: '', label: 'كل المصادر' }, ...(answer.channels ?? [])]}
+                error={errorOf('channelKind')}
+              />
+            </>
+          )}
         </div>
 
         <div className="space-y-2" data-question="when">
           <p className="text-sm font-medium text-[var(--sys-foreground)]">3. إيمتى</p>
-          <Segmented
-            size="sm"
-            aria-label="ساعات القاعدة"
-            value={d.timing}
-            onChange={(v) => set({ timing: v === 'HOURS' ? 'HOURS' : 'ALWAYS' })}
-            options={[
-              { value: 'ALWAYS', label: 'طول الدوام' },
-              { value: 'HOURS', label: 'ساعات معيّنة' },
-            ]}
-          />
-          {d.timing === 'HOURS' && (
+          {ofOrders ? (
+            <p className="text-note text-[var(--sys-muted-foreground)]" data-order-has-no-hours>
+              {ORDER_RULE_HAS_NO_HOURS}
+            </p>
+          ) : (
+            <Segmented
+              size="sm"
+              aria-label="ساعات القاعدة"
+              value={d.timing}
+              onChange={(v) => set({ timing: v === 'HOURS' ? 'HOURS' : 'ALWAYS' })}
+              options={[
+                { value: 'ALWAYS', label: 'طول الدوام' },
+                { value: 'HOURS', label: 'ساعات معيّنة' },
+              ]}
+            />
+          )}
+          {!ofOrders && d.timing === 'HOURS' && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Input label="من الساعة" type="time" value={d.hoursFrom} onChange={(e) => set({ hoursFrom: e.target.value })} error={errorOf('hoursFrom')} />
               <Input label="لـلساعة" type="time" value={d.hoursTo} onChange={(e) => set({ hoursTo: e.target.value })} error={errorOf('hoursTo')} />

@@ -24,6 +24,7 @@ import { assertCallProven, answerCallProofRefusal } from '@/lib/call-proof-guard
 import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { confirmationRuleOnce, ruleAttempts, type ConfirmationRuleNumbers } from '@/lib/confirmation-rule-settings';
+import { orderRuleOnce } from '@/lib/order-numbers';
 import { queuePrioritySwitch } from '@/lib/queue-priority-switch';
 import { logDeskRefusal } from '@/lib/desk-refusals';
 import {
@@ -92,7 +93,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const { user, companyId, storeId, country } = await requireContext();
     // Request Q3b: the rule in force, asked at most ONCE for this press and only where a figure of it is needed (the plan's sentence, the postpone cap, the proof).
-    const ruleNow = confirmationRuleOnce(db, companyId);
+    // Request Q4d (21/11): FOR THIS ORDER — its own attempts and days, postpone cap and proof seconds when an owner's rule names its store, a product of its current
+    // lines or its channel (`order-numbers.ts`). No such rule in the company: it is the base rule itself, and the order is not read again.
+    const ruleNow = orderRuleOnce(db, companyId, id, confirmationRuleOnce(db, companyId));
 
     // Confirmation status authority (scope evaluated against the loaded order).
     // The work door: the order she holds is decided without «عرض الطلبات».

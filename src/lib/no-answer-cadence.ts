@@ -462,12 +462,16 @@ export function cadencePress(
  * THE WAY OUT OF A RULE CHANGED MID-CYCLE (request Q3b, review 19/11): an order whose counted presses already reach an EDITED rule's limit on fewer local days than it asks
  * (its dues were stored under the old rule, so the days guarantee could not place them) is not left with no press that can ever close it: the «لا يرد» presses past the limit
  * (after the last counted one, not early) count toward the MISSING DAYS, and the press that brings the local days of the counted presses and those to `minDays` closes it — so
- * a day with a press on it, each working day, always gets there (three days asked, one counted: two more days of presses). Never for the default steps and days — there the
- * door's history always has its two days (main, unchanged) — and only at a press, never by a job.
+ * a day with a press on it, each working day, always gets there (three days asked, one counted: two more days of presses). Only at a press, never by a job.
+ *
+ * FOR THE DEFAULT PLAN TOO (request Q4d, review of #448, 21/11): it was skipped for the default steps and days, on the ground that a history the door writes under the
+ * default always has its two days. Since an ORDER's rule can change mid-cycle (a rule stopped or ended, its product edited), five counted presses on ONE day written under a
+ * rule of «after» steps and one day can land on the default — and with the skip that order could never close. A history written under the default alone reaches its fifth
+ * counted press on two days, so this clause is false for it and main's answers are unchanged (both goldens hold it).
  */
 function completesTheDays(state: CadenceState, lines: readonly CadenceFact[], at: Date, cal: CadenceCal): boolean {
   const rule = ruleOf(cal);
-  if (isDefaultPlan(rule) || state.counted.length < cadenceLimit(rule) || state.days >= rule.minDays) return false;
+  if (state.counted.length < cadenceLimit(rule) || state.days >= rule.minDays) return false;
   const floor = Math.max(cal.since.getTime(), state.counted[state.counted.length - 1].getTime(), state.dueAt ? state.dueAt.getTime() - 1 : -Infinity);
   const t = at.getTime();
   if (Number.isNaN(t) || !(t > floor)) return false;
