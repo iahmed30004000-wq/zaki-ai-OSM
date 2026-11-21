@@ -158,7 +158,8 @@ describe('every handler proves the key before it does anything', () => {
     const bare: string[] = [];
     const unknown: string[] = [];
     for (const h of handlers()) {
-      const m = /requireSystemToken\(\s*req\s*,\s*'([^']+)'\s*\)/.exec(h.body);
+      // 2026-11-21: the landing door adds a third argument, `LANDING_DOOR` (`{ countryAware: true }`, landing-country.ts).
+      const m = /requireSystemToken\(\s*req\s*,\s*'([^']+)'\s*(?:,\s*LANDING_DOOR\s*)?\)/.exec(h.body);
       if (!m) {
         bare.push(`${h.method.padEnd(6)} ${h.file}`);
         continue;

@@ -44,7 +44,15 @@ interface TokenRow {
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
+  /** The one country this key sees; null for every country of the company (2026-11-21). */
+  country?: CountryChoice | null;
   state: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+}
+
+interface CountryChoice {
+  id: string;
+  code: string;
+  name: string;
 }
 
 interface SystemChoice {
@@ -62,7 +70,17 @@ interface Shelf {
   repliesScopes: string[];
   systems: SystemChoice[];
   defaultDays: number;
+  /** The company's active countries — «البلد» offers each, after «كل البلدان». */
+  countries?: CountryChoice[];
   tokens: TokenRow[];
+}
+
+/** What «البلد» says for a key bound to no country. */
+export const ALL_COUNTRIES_AR = 'كل البلدان';
+
+/** «البلد: …» on a key's row. */
+export function countryLabel(country: CountryChoice | null | undefined): string {
+  return `البلد: ${country ? country.name : ALL_COUNTRIES_AR}`;
 }
 
 const STATE_AR: Record<TokenRow['state'], string> = {
@@ -79,6 +97,8 @@ export function SystemTokensPanel() {
   const [name, setName] = useState('نظام الردود');
   const [system, setSystem] = useState('replies');
   const [chosen, setChosen] = useState<string[]>([]);
+  /** '' = every country (the default, and what every key made before was). */
+  const [countryId, setCountryId] = useState('');
   /** The one and only moment this value exists outside a header. */
   const [issued, setIssued] = useState<{ secret: string; notice: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -107,7 +127,7 @@ export function SystemTokensPanel() {
     try {
       const made = await apiJson<{ secret: string; notice: string }>('/api/settings/system-tokens', {
         method: 'POST',
-        body: JSON.stringify({ name, system, scopes: chosen }),
+        body: JSON.stringify({ name, system, scopes: chosen, ...(countryId ? { countryId } : {}) }),
       });
       setIssued({ secret: made.secret, notice: made.notice });
       setCopied(false);
@@ -116,7 +136,7 @@ export function SystemTokensPanel() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر إنشاء المفتاح');
     }
-  }, [name, system, chosen, load]);
+  }, [name, system, chosen, countryId, load]);
 
   /** Picking the system resets the name and the scopes to that system's own — least privilege as the default. */
   const pickSystem = useCallback((s: SystemChoice) => {
@@ -242,6 +262,35 @@ export function SystemTokensPanel() {
               </p>
             )}
           </fieldset>
+          <fieldset>
+            <legend className="mb-1 text-note font-semibold text-[var(--sys-muted-foreground)]">البلد</legend>
+            <div className="flex flex-wrap gap-2">
+              {[{ id: '', code: '', name: ALL_COUNTRIES_AR }, ...(shelf.countries ?? [])].map((c) => (
+                <label
+                  key={c.id || 'all'}
+                  className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm md:min-h-0 ${
+                    countryId === c.id
+                      ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] font-bold text-[var(--sys-heading)]'
+                      : 'border-[var(--sys-border)]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="systemTokenCountry"
+                    value={c.id}
+                    checked={countryId === c.id}
+                    onChange={() => setCountryId(c.id)}
+                  />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+            {countryId && (
+              <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
+                صفحات الهبوط بهذا المفتاح تشوف وتكتب منتجات وطلبات وسلات ومحادثات هذا البلد فقط. باقي الأنظمة ترفض مفتاح البلد الواحد.
+              </p>
+            )}
+          </fieldset>
           <Input
             label="اسم المفتاح"
             name="systemTokenName"
@@ -324,6 +373,7 @@ export function SystemTokensPanel() {
               >
                 {STATE_AR[t.state]}
               </span>
+              <span className="text-note text-[var(--sys-muted)]">{countryLabel(t.country)}</span>
               <span className="text-note text-[var(--sys-muted)]">
                 {t.lastUsedAt ? `آخر استخدام ${arDateTime(t.lastUsedAt)}` : 'لم يُستخدم بعد'}
               </span>

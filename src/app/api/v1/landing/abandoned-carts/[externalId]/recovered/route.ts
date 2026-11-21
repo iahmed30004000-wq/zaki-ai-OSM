@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
+import { LANDING_DOOR, idempotencySlot, orderNumberInCountry, requireCartInCountry } from '@/lib/v1/landing-country';
 import { requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import {
   claimIdempotency,
@@ -23,8 +24,8 @@ export async function POST(req: Request, ctx: Ctx) {
   const requestId = requestIdOf(req);
   let claimed: { companyId: string; key: string } | null = null;
   try {
-    const caller = await requireSystemToken(req, 'orders.create');
-    const key = idempotencyKeyOf(req);
+    const caller = await requireSystemToken(req, 'orders.create', LANDING_DOOR);
+    const key = idempotencySlot(caller, idempotencyKeyOf(req));
     const externalId = decodeURIComponent((await ctx.params).externalId).trim().slice(0, 200);
 
     const raw = await req.text();
@@ -37,7 +38,9 @@ export async function POST(req: Request, ctx: Ctx) {
     claimed = { companyId: caller.companyId, key };
 
     // An unknown cart throws the 404 envelope, and the catch below gives the key back.
-    const answer = await recoverLandingCart(caller.companyId, externalId, parsed.orderNumber);
+    // A key bound to one country: another country's cart answers as an unknown one, and another country's order is not linked.
+    await requireCartInCountry(caller, externalId);
+    const answer = await recoverLandingCart(caller.companyId, externalId, await orderNumberInCountry(caller, parsed.orderNumber));
     await rememberIdempotency(caller.companyId, key, 200, answer);
     claimed = null;
     return v1Ok(requestId, answer, 200);

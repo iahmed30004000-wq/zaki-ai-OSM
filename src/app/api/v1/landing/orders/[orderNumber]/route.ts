@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
+import { LANDING_DOOR, requireOrderInCountry } from '@/lib/v1/landing-country';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import { ORDER_NUMBER_RE } from '@/lib/order-ref';
 import { readChatOrder } from '@/lib/v1/landing-chat';
@@ -17,9 +18,11 @@ interface Ctx {
 export async function GET(req: Request, ctx: Ctx) {
   const requestId = requestIdOf(req);
   try {
-    const caller = await requireSystemToken(req, 'orders.create');
+    const caller = await requireSystemToken(req, 'orders.create', LANDING_DOOR);
     const orderNumber = decodeURIComponent((await ctx.params).orderNumber);
     if (!ORDER_NUMBER_RE.test(orderNumber)) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');
+    // A key bound to one country reaches its own country's orders only: another's answers as an unknown number.
+    await requireOrderInCountry(caller, orderNumber);
     const token = new URL(req.url).searchParams.get('token') ?? '';
 
     const result = await readChatOrder(caller.companyId, orderNumber, token);

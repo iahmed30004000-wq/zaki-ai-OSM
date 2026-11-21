@@ -2265,6 +2265,7 @@ model Country {
   orders         Order[]
   access         UserCountryAccess[]
   warehouses     Warehouse[]
+  systemTokens   SystemToken[]
 
   @@unique([companyId, code])
   @@index([companyId, isActive])
@@ -4363,11 +4364,16 @@ model SystemToken {
   /// The last time this key was accepted. Written at most once a minute —
   /// a read-only call must not cost a write on every request.
   lastUsedAt      DateTime?
+  /// THE ONE COUNTRY THIS KEY SEES (2026-11-21, Zaki Pages per country). NULL = every country of the company, exactly
+  /// as every key made before this column. Only the landing door honours it (`landing-country.ts`); every other door
+  /// refuses a country-bound key rather than let it read the whole company (`requireSystemToken`).
+  countryId       String?
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  country Country? @relation(fields: [countryId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, name])
   @@index([companyId, revokedAt])
@@ -5105,6 +5111,9 @@ model LandingChatThread {
   unreadCount        Int       @default(0)
   lastMessageAt      DateTime?
   lastMessagePreview String?
+  /// The country of the landing key that opened the thread (2026-11-21) — a country-bound key reads and writes only its
+  /// own country's threads. NULL: opened by a key for every country. Plain id, like `productId`: a thread outlives a row.
+  countryId          String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -5113,6 +5122,7 @@ model LandingChatThread {
 
   @@unique([companyId, externalId])
   @@index([companyId, lastMessageAt])
+  @@index([companyId, countryId])
   @@map("landing_chat_threads")
 }
 
