@@ -426,7 +426,7 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         <Input label="اسم القاعدة" value={d.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} error={errorOf('name')} />
 
         <div className="space-y-2" data-question="who">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">١. على مين</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">1. على مين</p>
           <Segmented
             size="sm"
             aria-label="على مين"
@@ -463,7 +463,7 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         </div>
 
         <div className="space-y-2" data-question="store">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">٢. بأي متجر</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">2. بأي متجر</p>
           <Select
             label="المتجر"
             value={d.storeId}
@@ -474,7 +474,7 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         </div>
 
         <div className="space-y-2" data-question="when">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">٣. إيمتى</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">3. إيمتى</p>
           <Segmented
             size="sm"
             aria-label="ساعات القاعدة"
@@ -516,7 +516,7 @@ function OwnRuleDialog({ answer, initial, onClose, onSaved }: { answer: OwnRules
         </div>
 
         <div className="space-y-2" data-question="what">
-          <p className="text-sm font-medium text-[var(--sys-foreground)]">٤. شو بتغيّر</p>
+          <p className="text-sm font-medium text-[var(--sys-foreground)]">4. شو بتغيّر</p>
           <Select
             label="الرقم"
             value={d.number}
