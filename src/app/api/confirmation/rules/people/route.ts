@@ -7,6 +7,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { resolveAudience } from '@/lib/notification-audience';
 import { DESK_KEYS, deskReadiness, labelledReadiness } from '@/lib/desk-readiness';
 import { ROLE_LABELS, type UserRole } from '@/types/auth';
+import { deskNumbers } from '@/lib/confirmation-own-rules';
 
 /**
  * GET /api/confirmation/rules/people — «مين مربوطة بالقواعد»: every person at the confirmation desk of THIS store, and for each
@@ -18,7 +19,8 @@ import { ROLE_LABELS, type UserRole } from '@/types/auth';
  * question the notification fan-out and the transfer list ask (`resolveAudience`): role rows by roleId or the template of her
  * legacy role, her personal ALLOW / DENY, then the real `can()`. Never a role template alone — a personal «منع» is her truth.
  *
- * WHAT IS ANSWERED: id, name, role, the readiness (`desk-readiness.ts`) with each key's Arabic name. No order, no customer.
+ * WHAT IS ANSWERED: id, name, role, the readiness (`desk-readiness.ts`) with each key's Arabic name, and (request Q4c, 21/11) her three numbers
+ * — hand, idle minutes, pull pace — each with the rule it came from and whether it acts now (`deskNumbers`; null when that read fails). No order, no customer.
  * Reading only.
  */
 
@@ -28,7 +30,7 @@ const TOO_MANY = 'طلبات كتير ورا بعض — استنّى دقيقة 
 
 export async function GET() {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('settings.view');
     await requirePermission('users.view');
 
@@ -47,6 +49,8 @@ export async function GET() {
       where: { id: { in: people.map((p) => p.id) }, companyId },
       select: { id: true, role: true, roleRef: { select: { name: true } } },
     });
+    // Request Q4c (21/11): each person's three numbers and the rule each came from — «visible in مين مربوطة with its source» — and whether each acts now.
+    const numbersOf = storeId ? await deskNumbers(db, companyId, storeId, country, people.map((p) => p.id)) : null;
     const roleOf = new Map(roles.map((r) => [r.id, r.roleRef?.name ?? ROLE_LABELS[r.role as UserRole]?.ar ?? r.role]));
 
     return NextResponse.json({
@@ -56,6 +60,7 @@ export async function GET() {
           name: p.name,
           roleLabel: roleOf.get(p.id) ?? ROLE_LABELS[p.role as UserRole]?.ar ?? p.role,
           readiness: labelledReadiness(deskReadiness((k) => can(p, k), { fullAccess: hasFullAccess(p) })),
+          numbers: numbersOf?.get(p.id) ?? null,
         }))
         .sort((a, b) => a.name.localeCompare(b.name, 'ar')),
     });

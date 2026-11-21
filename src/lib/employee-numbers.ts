@@ -62,6 +62,14 @@ export async function readConfirmationRules(client: Client, companyId: string, n
   return rows;
 }
 
+/**
+ * THE SAVE DOOR FORGETS THE CACHE (request Q4c, 21/11): a rule created, stopped, renamed or re-dated on the rules page acts in THIS process at the next read, not
+ * thirty seconds later. Another instance of the server still answers from its own cache for up to thirty seconds — the window is stated on the screen's door.
+ */
+export function forgetConfirmationRules(companyId: string): void {
+  cache.delete(companyId);
+}
+
 /** The rules, asked lazily and at most ONCE for one request or one pass of a job — the same shape as `confirmationRuleOnce`. */
 export type RulesNow = () => Promise<readonly ConfirmationRuleRow[]>;
 

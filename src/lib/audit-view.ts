@@ -23,7 +23,7 @@ export const ENTITY_AR: Record<string, string> = {
   StoreFont: 'خط المتجر', StoreRedirect: 'تحويل رابط', LandingPage: 'صفحة هبوط', Wallet: 'محفظة', WalletMovement: 'حركة محفظة',
   WalletTransfer: 'تحويل بين محافظ', CourierStatement: 'كشف مندوب', SettlementMatch: 'مطابقة كشف', DailyClosing: 'إغلاق يومي',
   Expense: 'مصروف', Payslip: 'قسيمة راتب', CommissionRule: 'قاعدة عمولة', CommissionEntry: 'عمولة', CommissionPayout: 'صرف عمولات',
-  PenaltyRule: 'قاعدة غرامة', DeliveryProvider: 'شركة شحن', DeliveryFee: 'أجرة توصيل', ShippingBatch: 'دفعة شحن',
+  PenaltyRule: 'قاعدة غرامة', ConfirmationRule: 'قاعدة خاصة لمركز التأكيد', DeliveryProvider: 'شركة شحن', DeliveryFee: 'أجرة توصيل', ShippingBatch: 'دفعة شحن',
   Region: 'منطقة', Country: 'دولة', AdAccount: 'حساب إعلانات', Campaign: 'حملة', TrackingPixel: 'بكسل تتبّع',
   CustomConversion: 'تحويل مخصّص', TelegramSource: 'مصدر تلجرام', TelegramWebhook: 'ويب هوك تلجرام', WhatsAppConnection: 'ربط واتساب',
   WhatsAppConversation: 'محادثة واتساب', WhatsAppMessage: 'رسالة واتساب', SystemToken: 'مفتاح نظام', SystemSetting: 'إعداد نظام',
@@ -76,6 +76,11 @@ const ACTION_AR: Record<string, string> = {
   // «أرقام القاعدة» (`/api/settings/confirmation-rule`, request Q3a of 19/11): a save of the rule's numbers, and a «رجّع» (back to a version, or a pending change cancelled).
   CONFIRMATION_RULE_CHANGED: 'تعديل أرقام قاعدة مركز التأكيد',
   CONFIRMATION_RULE_REVERTED: 'رجوع لنسخة سابقة من أرقام قاعدة مركز التأكيد (أو إلغاء تعديل معلّق)',
+  // «قواعد خاصة» (`/api/confirmation/rules` and `…/[id]`, request Q4c of 21/11): a rule of the owner's written, stopped (never deleted), renamed, or re-dated.
+  CONFIRMATION_OWN_RULE_CREATED: 'إنشاء قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_STOPPED: 'إيقاف قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_RENAMED: 'تغيير اسم قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_DATES_CHANGED: 'تغيير مدة قاعدة خاصة لمركز التأكيد',
   INTEGRATION_SETTING_SAVED: 'حفظ إعداد ربط (واتساب أو تيليجرام)',
   INTEGRATION_SETTING_CLEARED: 'مسح إعداد ربط محفوظ بالموقع',
   LEAD_CONVERTED: 'تحويل ليد لطلب',

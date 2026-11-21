@@ -27,8 +27,21 @@ export interface DeskCheckAnswer {
   pace: { pulled: number; perHour: number; windowMinutes: number };
   pull: { open: boolean; code: string | null; sentence: string };
   /** Her three numbers, each with where it came from in the server's words (request Q4b). Absent from an older server. */
-  numbers?: { hand: NumberAnswer; idleMinutes: NumberAnswer; pullPerHour: NumberAnswer };
+  numbers?: DeskNumbers;
 }
+
+/**
+ * Her three numbers. `inForce` (request Q4c, 21/11): whether each acts NOW — the hand and the idle minutes ride on the switches of the returns mode; a number that
+ * does not act is still shown, and said not to act. Absent or null from an older server: nothing is said.
+ */
+export interface DeskNumbers {
+  hand: NumberAnswer;
+  idleMinutes: NumberAnswer;
+  pullPerHour: NumberAnswer;
+  inForce?: { hand: boolean; idleMinutes: boolean; pullPerHour: boolean } | null;
+}
+
+export const NOT_ACTING_NOW = 'ما بيشتغل هلق';
 
 export interface NumberAnswer {
   value: number;
@@ -36,11 +49,12 @@ export interface NumberAnswer {
 }
 
 /** Her numbers as three lines: the value, then the source the server wrote («من القاعدة الأساسية» or «من قاعدة «…»»). */
-export function numbersSentences(n: NonNullable<DeskCheckAnswer['numbers']>): string[] {
+export function numbersSentences(n: DeskNumbers): string[] {
+  const asleep = (k: 'hand' | 'idleMinutes' | 'pullPerHour') => (n.inForce && !n.inForce[k] ? ` (${NOT_ACTING_NOW})` : '');
   return [
-    `حد اليد إلها: ${n.hand.value} — ${n.hand.from}`,
-    `مهلة الطلب المتروك إلها: ${n.idleMinutes.value} دقيقة دوام — ${n.idleMinutes.from}`,
-    `سرعة السحب إلها: ${n.pullPerHour.value} طلب بالساعة — ${n.pullPerHour.from}`,
+    `حد اليد إلها: ${n.hand.value} — ${n.hand.from}${asleep('hand')}`,
+    `مهلة الطلب المتروك إلها: ${n.idleMinutes.value} دقيقة دوام — ${n.idleMinutes.from}${asleep('idleMinutes')}`,
+    `سرعة السحب إلها: ${n.pullPerHour.value} طلب بالساعة — ${n.pullPerHour.from}${asleep('pullPerHour')}`,
   ];
 }
 
