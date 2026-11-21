@@ -21,6 +21,7 @@ import { readingLine } from './call-outcome';
 import { cadenceSince } from './no-answer-cadence-switch';
 import { cadenceCalOf, cadenceLimit, cadenceLineNumbers } from './no-answer-cadence';
 import { readConfirmationRule } from './confirmation-rule-settings';
+import { orderRuleOnce } from './order-numbers';
 import { attemptWords } from './attempt-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -432,7 +433,9 @@ async function planOfTimeline(
   });
   if (!order?.country) return null;
   // Request Q3b: the rule in force, read once for this timeline (cached) — the lines are numbered by the rule the door judges the next press by.
-  const rule = await readConfirmationRule(tx, contacts[0].companyId);
+  // Request Q4d (21/11): THIS ORDER's rule — its own attempts and days when an owner's rule names its store, a product of its current lines or its channel.
+  const companyId = contacts[0].companyId;
+  const rule = await orderRuleOnce(tx, companyId, orderId, () => readConfirmationRule(tx, companyId))();
   return { numbers: cadenceLineNumbers(contacts, cadenceCalOf(since, order.country, rule)) as Map<object, number | null>, limit: cadenceLimit(rule) };
 }
 

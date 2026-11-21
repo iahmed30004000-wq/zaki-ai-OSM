@@ -164,7 +164,7 @@
   },
   "src/components/confirmation/OwnRulesCard.tsx": {
     "buttons": 7,
-    "inputs": 7,
+    "inputs": 9,
     "columns": 0,
     "cards": 2,
     "modals": 1,

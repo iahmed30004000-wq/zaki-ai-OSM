@@ -108,16 +108,17 @@ describe('1 · two ways in, side by side', () => {
     expect(t.parentElement!.className.split(' ')).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'md:grid-cols-2']));
   });
 
-  it('eight templates, every one «مطفية»; the six of kinds that do not act yet are greyed with the reason, the two that act can be pressed', async () => {
+  // UPDATED 2026-11-21 (request Q4d): was «the six of kinds that do not act yet … the two that act»; the four order templates act now — two greyed, six pressable.
+  it('eight templates, every one «مطفية»; the two of kinds that do not act yet are greyed with the reason, the six that act can be pressed', async () => {
     const { container } = await open();
     const rows = container.querySelectorAll('[data-template]');
     expect(rows).toHaveLength(8);
     for (const r of rows) expect(r.querySelector('[data-template-state]')!.textContent).toBe('مطفية');
-    for (const key of ['new-employee-hand', 'evening-idle']) {
+    for (const key of ['new-employee-hand', 'evening-idle', 'expensive-product-attempts', 'page-leads-attempts', 'store-proof', 'product-postpone-once']) {
       expect((within(templateRow(container, key)).getByRole('button', { name: 'شغّلها' }) as HTMLButtonElement).disabled, key).toBe(false);
     }
     const blocked = [...rows].filter((r) => r.querySelector('[data-template-blocked]'));
-    expect(blocked).toHaveLength(6);
+    expect(blocked).toHaveLength(2);
     for (const r of blocked) expect((within(r as HTMLElement).getByRole('button', { name: 'شغّلها' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -271,5 +272,58 @@ describe('6 · the phone, the kit, the desk', () => {
   it('on the rules page, once', () => {
     const rules = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationRulesScreen.tsx'), 'utf8');
     expect(rules.match(/<OwnRulesCard /g)).toHaveLength(1);
+  });
+});
+
+/** ADDED 2026-11-21 (request Q4d): an ORDER rule in the same dialog — «على أي طلبات» instead of «على مين» and the hours. */
+describe('Q4d · an order rule in the dialog', () => {
+  const orderAnswer = () => ({
+    numbers: OWN_RULE_NUMBERS.map((n) => ({ ...n })),
+    products: [{ id: 'pA', name: 'ساعة ذهب' }, { id: 'pB', name: 'قميص' }],
+    channels: [{ value: 'LANDING_PAGE', label: 'صفحة هبوط' }, { value: 'FACEBOOK', label: 'فيسبوك' }],
+  });
+
+  it('«منتج غالي: 7 محاولات»: opens on its attempts, asks the product — no «على مين», no hours — and the body is one the door accepts once the product is chosen', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = (body) => {
+      if (!body.productId) throw refusal(400, { code: 'RULE_TEMPLATE_BLANK', errorAr: 'هالقالب بدّو تختار المنتج.', field: 'productId' });
+      return { preview: { bound: [{ id: 'sara', name: 'سارة', numbers: ['عدد محاولات «لا يرد»: 7 محاولات'] }], notBound: [], notes: [], bindsNobody: false }, overlap: null };
+    };
+    const { container } = await open(orderAnswer());
+    await press(within(templateRow(container, 'expensive-product-attempts')).getByRole('button', { name: 'شغّلها' }));
+    // The template's blank comes back as the server's sentence, beside the product.
+    await waitFor(() => expect(dialog().textContent).toContain('هالقالب بدّو تختار المنتج.'));
+    expect((screen.getByLabelText('الرقم') as HTMLSelectElement).value).toBe('attempts');
+    expect((screen.getByLabelText(/عدد محاولات/, { selector: 'input' }) as HTMLInputElement).value).toBe('7');
+    expect(dialog().querySelector('[data-order-names-nobody]')).toBeTruthy();
+    expect(dialog().querySelector('[data-order-has-no-hours]')).toBeTruthy();
+    expect(within(dialog()).queryByRole('radio', { name: 'موظفات بالاسم' })).toBeNull();
+    expect(screen.queryByLabelText('من الساعة')).toBeNull();
+    fireEvent.change(screen.getByLabelText('المنتج'), { target: { value: 'pA' } });
+    await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
+    await waitFor(() => expect(dialog().querySelector('[data-bound]')!.textContent).toContain('7 محاولات'));
+    const sent = h.calls.filter((c) => c.url === '/api/confirmation/rules/preview').pop()!.body;
+    expect(sent).toMatchObject({ kind: 'ORDER_NUMBERS', productId: 'pA', channelKind: null, userIds: null, hoursFrom: null, hoursTo: null, payload: { attempts: 7 }, templateKey: 'expensive-product-attempts' });
+    const c = candidateFromBody(sent, { companyId: 'c', userId: 'u', nowMs: Date.now(), nextWorkStart: new Date() });
+    expect(c.ok && c.rule.payload.steps).toHaveLength(6);
+  });
+
+  it('«طلبات صفحات الهبوط: 3 محاولات» opens with its channel chosen', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = () => ({ preview: PREVIEW, overlap: null });
+    const { container } = await open(orderAnswer());
+    await press(within(templateRow(container, 'page-leads-attempts')).getByRole('button', { name: 'شغّلها' }));
+    await waitFor(() => expect(dialog().querySelector('[data-preview]')).toBeTruthy());
+    expect((screen.getByLabelText('مصدر الطلب') as HTMLSelectElement).value).toBe('LANDING_PAGE');
+    expect(h.calls.find((c) => c.url === '/api/confirmation/rules/preview')!.body).toMatchObject({ channelKind: 'LANDING_PAGE', payload: { attempts: 3 } });
+  });
+
+  it('NEGATIVE: an employee number never sends a product or a channel, and shows no such box', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = () => ({ preview: PREVIEW, overlap: null });
+    await open(orderAnswer());
+    await press(screen.getByRole('button', { name: 'قاعدة جديدة' }));
+    expect(screen.queryByLabelText('المنتج')).toBeNull();
+    fireEvent.change(screen.getByLabelText(/حد اليد/, { selector: 'input' }), { target: { value: '2' } });
+    await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
+    const sent = h.calls.find((c) => c.url === '/api/confirmation/rules/preview')!.body;
+    expect('productId' in sent || 'channelKind' in sent).toBe(false);
   });
 });

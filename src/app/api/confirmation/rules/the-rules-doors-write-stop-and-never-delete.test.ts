@@ -222,7 +222,8 @@ describe('1 · create → preview → active → read at once', () => {
     const counts = Object.fromEntries(body.templates.map((t: any) => [t.key, t.activeCount]));
     expect(counts['new-employee-hand']).toBe(1);
     expect(Object.values(counts).filter((n) => n === 0)).toHaveLength(7);
-    expect(body.numbers.map((n: any) => n.key)).toEqual(['hand', 'idleMinutes', 'pullPerHour']);
+    // UPDATED 2026-11-21 (request Q4d): was the three employee numbers only; the order numbers act now, so the dialog offers their three as well.
+    expect(body.numbers.map((n: any) => n.key)).toEqual(['hand', 'idleMinutes', 'pullPerHour', 'attempts', 'proofSeconds', 'postponeMax']);
     expect(body.people.map((p: any) => p.id).sort()).toEqual(['huda', 'legacy', 'mod', 'sara']);
     expect(body.canEdit).toBe(true);
   });
@@ -292,7 +293,8 @@ describe('2c · whether a number acts now — the switches, read as the pull rea
 
 describe('3 · refused saves write nothing', () => {
   it.each([
-    ['a kind that does not act yet', { kind: 'ORDER_NUMBERS', name: 'x', storeId: 's1', payload: { proofSeconds: 20 } }, 400, 'RULE_KIND_NOT_ACTING'],
+    // UPDATED 2026-11-21 (request Q4d): the kind that does not act yet was ORDER_NUMBERS (it acts now); PRIORITY does not.
+    ['a kind that does not act yet', { kind: 'PRIORITY', name: 'x', storeId: 's1', payload: { first: true } }, 400, 'RULE_KIND_NOT_ACTING'],
     ['a hand outside its range', handFor(null, 11), 400, 'RULE_PAYLOAD'],
     ['a person of another company', handFor(['other']), 400, 'RULE_PEOPLE'],
     ['a store of another company', handFor(null, 2, { storeId: 's9' }), 400, 'RULE_SCOPE'],
@@ -389,5 +391,52 @@ describe('4 · stop, rename, dates — never delete', () => {
     state.viewer = await viewer(['settings.view', 'users.view']);
     expect((await patch(body.id, { action: 'stop' })).status).toBe(403);
     expect(state.rules[0].isActive).toBe(true);
+  });
+});
+
+/** ADDED 2026-11-21 (request Q4d): an ORDER rule through the same doors — the four order templates, the product checked, the lists the dialog asks. */
+describe('Q4d · an order rule through the doors', () => {
+  beforeEach(() => {
+    // The proof's own switch is read as the doors read it («إثبات المكالمات وجدول المحاولات» on), and the company's one product.
+    (db as any).company = { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ callProofAndCadence: { enabled: true, enabledAt: '2026-11-01T00:00:00.000Z' } }) })) };
+    (db as any).product.findFirst = vi.fn(async ({ where }: { where: Record<string, any> }) => (where.id === 'pA' && where.companyId === 'c1' ? { id: 'pA' } : null));
+  });
+  const proofOf = (extra: Record<string, unknown> = {}) => ({ kind: 'ORDER_NUMBERS', name: 'متجر: إثبات الاتصال 20 ثانية', storeId: 's1', start: 'NOW', payload: { proofSeconds: 20 }, ...extra });
+
+  it('GET offers the order numbers, the products and the channel kinds', async () => {
+    const { body } = await list();
+    expect(body.numbers.filter((n: any) => n.kind === 'ORDER_NUMBERS').map((n: any) => n.key)).toEqual(['attempts', 'proofSeconds', 'postponeMax']);
+    expect(Array.isArray(body.products)).toBe(true);
+    expect(body.channels).toHaveLength(10);
+    expect(body.channels[0]).toEqual({ value: 'LANDING_PAGE', label: 'صفحة هبوط' });
+  });
+
+  it('«متجر: إثبات الاتصال 20 ثانية» on: the preview binds whoever logs a call, and the save writes ONE row of the kind with its store', async () => {
+    const p = await preview({ ...proofOf(), templateKey: 'store-proof' });
+    expect(p.status).toBe(200);
+    expect(p.body.preview.bound.map((b: any) => b.id).sort()).toEqual(['huda', 'legacy', 'mod', 'sara']);
+    const saved = await create({ ...proofOf(), templateKey: 'store-proof' });
+    expect(saved.status).toBe(201);
+    expect(state.rules).toHaveLength(1);
+    expect(state.rules[0]).toMatchObject({ kind: 'ORDER_NUMBERS', storeId: 's1', payload: { proofSeconds: 20 } });
+  });
+
+  it('NEGATIVE: the template saved with its store left empty is refused on that field, and nothing is written', async () => {
+    const { status, body } = await create({ ...proofOf({ storeId: null }), templateKey: 'store-proof' });
+    expect([status, body.code, body.field]).toEqual([400, 'RULE_TEMPLATE_BLANK', 'storeId']);
+    expect(state.rules).toHaveLength(0);
+  });
+
+  it('NEGATIVE: a product that is not this company’s is refused, and nothing is written', async () => {
+    const { status, body } = await create({ ...proofOf({ storeId: null, productId: 'theirs-product' }) });
+    expect([status, body.code, body.field]).toEqual([400, 'RULE_SCOPE', 'productId']);
+    expect(state.rules).toHaveLength(0);
+  });
+
+  it('«منتج غالي: 7 محاولات» saved with a product of the company stores the template’s own steps', async () => {
+    const { status } = await create({ kind: 'ORDER_NUMBERS', name: 'منتج غالي: 7 محاولات', productId: 'pA', start: 'NOW', payload: { attempts: 7 }, templateKey: 'expensive-product-attempts' });
+    expect(status).toBe(201);
+    expect((state.rules[0].payload as any).steps).toHaveLength(6);
+    expect((state.rules[0].payload as any).minDays).toBe(2);
   });
 });

@@ -512,6 +512,8 @@ describe('the table', () => {
       'src/lib/confirmation-own-rules.ts',
       'src/lib/confirmation-queue.ts',
       'src/lib/employee-numbers.ts',
+      // ADDED 2026-11-21 (request Q4d): the order numbers act — `order-numbers.ts` resolves them for one order (the doors read it, never this file).
+      'src/lib/order-numbers.ts',
     ]);
   });
 
