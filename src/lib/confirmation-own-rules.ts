@@ -728,10 +728,7 @@ export function templatesAnswer(activeFrom: ReadonlyMap<string, number>) {
     const acts = (KINDS_THAT_ACT as readonly string[]).includes(t.kind);
     const payload = JSON.parse(JSON.stringify(t.payload)) as RulePayload;
     // The dialog offers the schedule as ONE number (Q4d): a template's steps open as their attempts, and the save turns them back into exactly these steps.
-    // A routing template's people are a fresh empty list (Q5c): the frozen template's own array never reaches the screen to be filled.
-    const prefillPayload: Record<string, unknown> = payload.steps
-      ? { attempts: payload.steps.length + 1 }
-      : { ...payload, ...(payload.toUserIds ? { toUserIds: [...payload.toUserIds] } : {}) };
+    const prefillPayload: Record<string, unknown> = payload.steps ? { attempts: payload.steps.length + 1 } : { ...payload };
     return {
       key: t.key,
       name: t.name,
