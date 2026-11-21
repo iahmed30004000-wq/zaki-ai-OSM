@@ -162,6 +162,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/confirmation/OwnRulesCard.tsx": {
+    "buttons": 7,
+    "inputs": 7,
+    "columns": 0,
+    "cards": 2,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0,
+    "checkboxes": 2
+  },
   "src/components/confirmation/PullPanel.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -2459,7 +2470,7 @@
     "tabs": 0
   },
   "src/components/settings/ConfirmationRuleEditor.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 5,
     "columns": 0,
     "cards": 2,

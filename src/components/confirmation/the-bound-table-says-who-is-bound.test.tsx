@@ -268,8 +268,10 @@ describe('where it stands', () => {
   it('on the rules page, once, right under the box', () => {
     const rules = read('src/components/screens/ConfirmationRulesScreen.tsx');
     expect(rules).toContain("import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';");
-    expect(rules.match(/<DeskPeopleTable \/>/g)).toHaveLength(1);
-    expect(rules.indexOf('<DeskPeopleTable />')).toBeLessThan(rules.indexOf('<CallProofCard />'));
+    // 21/11 (request Q4c): was `<DeskPeopleTable />`; now `<DeskPeopleTable key={round} />` — a save on «قواعد خاصة» reads the table again (its key moves),
+    // so a new rule's numbers and source show at once. Still once, still under the box and above the cards.
+    expect(rules.match(/<DeskPeopleTable key=\{round\} \/>/g)).toHaveLength(1);
+    expect(rules.indexOf('<DeskPeopleTable key={round} />')).toBeLessThan(rules.indexOf('<CallProofCard />'));
   });
 
   it('NEGATIVE: never on the desk — «طلباتي» imports neither part (its bundle sits at its ceiling)', () => {

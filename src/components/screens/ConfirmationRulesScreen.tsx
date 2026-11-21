@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
@@ -12,6 +12,7 @@ import { LeadsV2Card } from '@/components/settings/LeadsV2Card';
 import { QueueModesCard } from '@/components/settings/QueueModesCard';
 import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';
 import { ConfirmationRuleEditor } from '@/components/settings/ConfirmationRuleEditor';
+import { OwnRulesCard } from '@/components/confirmation/OwnRulesCard';
 
 /**
  * «قواعد مركز التأكيد» — THE ONE PAGE OF THE CONFIRMATION RULES (the owner's plan of 17/11, request C1).
@@ -29,12 +30,16 @@ import { ConfirmationRuleEditor } from '@/components/settings/ConfirmationRuleEd
  * «أرقام القاعدة» (request Q3c, 20/11) stands under that section: the owner edits the rule's numbers there; the server checks every one, and the box is read
  * again after a save (`router.refresh`).
  *
+ * «قواعد خاصة» (request Q4c, 21/11) stands between the two: the ready templates and «اكتب قاعدتك» side by side, and every rule written. A save, a stop or a
+ * new date reads «مين مربوطة» again (its `key` moves), so the new numbers and their source show there at once.
+ *
  * `lines` is the box's text, written on the server from the constants and the switches the engine reads (`confirmation-rule-summary.ts`) — this screen decides nothing and types no number.
  */
 /** The one line that says where the two old cards went (request C2). */
 export const RULE_REPLACED_LINE = 'القاعدة الوحدة اللي فوق بدّلت «نظام الجولات» و«الطلب يرجع للطابور فوراً» — انشالوا من هون وما بيتغيّروا بعد هلّق.';
 
 export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
+  const [round, setRound] = useState(0);
   return (
     <PageShell title={routeLabel('/confirmation/rules')} description="كل قواعد التأكيد بمكان واحد." width="narrow">
       <div className="space-y-4" dir="rtl">
@@ -52,7 +57,9 @@ export function ConfirmationRulesScreen({ lines }: { lines: string[] }) {
           </CardContent>
         </Card>
 
-        <DeskPeopleTable />
+        <DeskPeopleTable key={round} />
+
+        <OwnRulesCard onChanged={() => setRound((n) => n + 1)} />
 
         <ConfirmationRuleEditor />
 

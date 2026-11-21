@@ -75,7 +75,7 @@ vi.mock('@/lib/api-client', async () => {
   };
 });
 
-import { ConfirmationRuleEditor, NUMBER_LABELS, SOMEONE_SAVED_FIRST, WHEN_OPTIONS } from './ConfirmationRuleEditor';
+import { BACK_TO_DEFAULT, ConfirmationRuleEditor, NUMBER_LABELS, SOMEONE_SAVED_FIRST, WHEN_OPTIONS } from './ConfirmationRuleEditor';
 import { PUT } from '@/app/api/settings/confirmation-rule/route';
 import { CONFIRMATION_RULE_DEFAULT, CONFIRMATION_RULE_RANGES, type ConfirmationRuleNumbers } from '@/lib/confirmation-rule-settings';
 import type { RuleAnswer } from './ConfirmationRuleEditor';
@@ -320,5 +320,35 @@ describe('6 · the phone, the desk, the engine', () => {
   it('on the rules page, once', () => {
     const rules = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationRulesScreen.tsx'), 'utf8');
     expect(rules.match(/<ConfirmationRuleEditor \/>/g)).toHaveLength(1);
+  });
+});
+
+// ADDED 2026-11-21 (request Q4c, the owner's decision of 20/11): the base numbers keep their defaults with «رجّع الافتراضي».
+describe('7 · «رجّع الافتراضي» fills the defaults — and saves nothing until «احفظ الأرقام»', () => {
+  it('after an edit is saved, the button puts the defaults back in every box; only the save stores them', async () => {
+    await open();
+    type(NUMBER_LABELS.hand, '6');
+    type(NUMBER_LABELS.proofSeconds, '60');
+    chooseNow();
+    await press('احفظ الأرقام');
+    await waitFor(() => expect(stored()?.current.hand).toBe(6));
+    const puts = h.calls.filter((c) => c.method === 'PUT').length;
+    await press(BACK_TO_DEFAULT);
+    for (const [field, label] of Object.entries(NUMBER_LABELS)) {
+      expect(box(label).value, field).toBe(String(CONFIRMATION_RULE_DEFAULT[field as keyof typeof NUMBER_LABELS]));
+    }
+    expect(box('الخطوة 1: بعد كم دقيقة').value).toBe('30');
+    expect(h.calls.filter((c) => c.method === 'PUT')).toHaveLength(puts);
+    expect(stored().current.hand).toBe(6);
+    chooseNow();
+    await press('احفظ الأرقام');
+    await waitFor(() => expect(stored().current.hand).toBe(CONFIRMATION_RULE_DEFAULT.hand));
+    expect(stored().current.proofSeconds).toBe(CONFIRMATION_RULE_DEFAULT.proofSeconds);
+  });
+
+  it('NEGATIVE: without the edit key there is no «رجّع الافتراضي»', async () => {
+    h.can.value = false;
+    await open();
+    expect(screen.queryByRole('button', { name: BACK_TO_DEFAULT })).toBeNull();
   });
 });

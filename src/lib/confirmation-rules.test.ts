@@ -493,7 +493,10 @@ describe('the table', () => {
   // 21/11 (request Q4b): was «NO_CALLER_FOUND (20/11): nothing outside this module reads the resolver or the table yet», with `readers` pinned to []. Q4b wires the
   // employee numbers, as that pin said it would: the table is read in ONE place (`employee-numbers.ts`, through its thirty-second cache), the resolver is asked there,
   // and the queue imports this module only for `PULL_PACE` (now defined here). Any other reader is still refused.
-  it('the table and the resolver are read in exactly two places: the employee numbers (the reader) and the queue (the pace base)', () => {
+  // 21/11 (request Q4c): was «exactly two places» — ['src/lib/confirmation-queue.ts', 'src/lib/employee-numbers.ts']. The rules screen's three doors now WRITE the
+  // table (create, stop / rename / dates — never delete) and judge a save (`overlapRefusal`, the row validator), and `confirmation-own-rules.ts` builds their
+  // preview and words; the ACTING read is still only `employee-numbers.ts` (through its cache). Any other reader is still refused.
+  it('the table and the resolver are read by the employee numbers, the queue (the pace base), and the doors of the rules screen and their lib — nothing else', () => {
     const readers = SRC.filter((f) => {
       const r = rel(f);
       if (r === 'src/lib/confirmation-rules.ts' || r === 'src/lib/confirmation-rules.test.ts') return false;
@@ -502,7 +505,14 @@ describe('the table', () => {
       const text = readFileSync(f, 'utf8');
       return /from\s+['"][^'"]*confirmation-rules['"]/.test(text) || /\.confirmationRule\.(find|create|update|upsert|count|aggregate|groupBy)/.test(text);
     }).map(rel);
-    expect(readers.sort()).toEqual(['src/lib/confirmation-queue.ts', 'src/lib/employee-numbers.ts']);
+    expect(readers.sort()).toEqual([
+      'src/app/api/confirmation/rules/[id]/route.ts',
+      'src/app/api/confirmation/rules/preview/route.ts',
+      'src/app/api/confirmation/rules/route.ts',
+      'src/lib/confirmation-own-rules.ts',
+      'src/lib/confirmation-queue.ts',
+      'src/lib/employee-numbers.ts',
+    ]);
   });
 
   it('the confirmation desk does not import it (its bundle is at its ceiling)', () => {

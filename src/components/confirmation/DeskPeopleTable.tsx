@@ -9,7 +9,7 @@ import { DateRange, type DateOption } from '@/components/ui/DateRange';
 import { apiJson } from '@/lib/api-client';
 import type { LabelledDeskReadiness } from '@/lib/desk-readiness';
 import type { FiredPerson, RuleFiredAnswer } from '@/lib/rule-fired';
-import { DeskPersonCheck } from './DeskPersonCheck';
+import { DeskPersonCheck, numbersSentences, type DeskNumbers } from './DeskPersonCheck';
 
 /**
  * «مين مربوطة بالقواعد» — THE RULES PAGE SAYS, FOR EACH PERSON AT THE DESK, WHETHER «اسحبي الطلب أول» BINDS HER (request Q1b, 19/11).
@@ -27,6 +27,8 @@ export interface DeskPerson {
   name: string;
   roleLabel: string;
   readiness: LabelledDeskReadiness;
+  /** Her three numbers and the rule each came from (request Q4c, 21/11); null when the server could not read them. */
+  numbers?: DeskNumbers | null;
 }
 
 /** Her line beside the name: bound, the owner, exempt (with the key), or not at the desk's work at all. */
@@ -174,6 +176,13 @@ function PersonRow({ person, fired }: { person: DeskPerson; fired?: FiredPerson 
           <ul className="mt-1 space-y-0.5 text-note text-[var(--sys-muted-foreground)]" data-missing-tools>
             {lacking.map((t) => (
               <li key={t.id}>{`ناقصها ${t.labelAr}: بدها ${t.missing.map((m) => m.label).join(' و')}`}</li>
+            ))}
+          </ul>
+        )}
+        {person.numbers && (
+          <ul className="mt-1 space-y-0.5 text-note text-[var(--sys-muted-foreground)]" data-person-numbers>
+            {numbersSentences(person.numbers).map((line) => (
+              <li key={line}>{line}</li>
             ))}
           </ul>
         )}

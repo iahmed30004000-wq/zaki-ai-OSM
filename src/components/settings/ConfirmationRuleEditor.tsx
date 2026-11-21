@@ -92,6 +92,9 @@ export const WHEN_OPTIONS = [
 export const SOMEONE_SAVED_FIRST = 'في حدا حفظ تعديل بعد ما فتحت الصفحة — حفظك صار هو الأخير (آخر حفظ بيربح).';
 export const PENDING_ALREADY_ACTS = 'التعديل المعلّق صار ساري — إذا بدك ترجع عنه استعمل «رجّع» من النسخ تحت.';
 export const ORIGINAL_NUMBERS = 'الأرقام الأصلية';
+/** «رجّع الافتراضي» (the owner, 20/11): fills the boxes with the default numbers the server sent; nothing is saved until «احفظ الأرقام». */
+export const BACK_TO_DEFAULT = 'رجّع الافتراضي';
+export const BACK_TO_DEFAULT_NOTE = 'بيعبّي الأرقام الأصلية بالخانات — ما بيسري شي لحد ما تضغط «احفظ الأرقام».';
 
 const rangeLine = (r: { min: number; max: number } | undefined, unit = '') => (r ? `من ${r.min} لـ${r.max}${unit}` : undefined);
 let nextStepId = 1;
@@ -432,9 +435,17 @@ export function ConfirmationRuleEditor() {
                 {errorOf('when')}
               </p>
             )}
-            <Button disabled={busy} onClick={() => save()}>
-              احفظ الأرقام
-            </Button>
+            <p className="text-note text-[var(--sys-muted-foreground)]" data-default-note>
+              {BACK_TO_DEFAULT_NOTE}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={busy} onClick={() => save()}>
+                احفظ الأرقام
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={() => { setRefusal(null); setDraft(draftOf(answer.defaults)); }} data-back-to-default>
+                {BACK_TO_DEFAULT}
+              </Button>
+            </div>
           </div>
         )}
 

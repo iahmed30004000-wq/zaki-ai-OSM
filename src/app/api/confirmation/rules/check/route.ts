@@ -22,6 +22,7 @@ import { workFirstGate } from '@/lib/work-first';
 import { deskKeyLabel } from '@/lib/desk-readiness';
 import { confirmationRuleOnce } from '@/lib/confirmation-rule-settings';
 import { confirmationRulesOnce, employeeNumbers, numbersAnswer } from '@/lib/employee-numbers';
+import { numbersInForce } from '@/lib/confirmation-own-rules';
 
 /**
  * GET /api/confirmation/rules/check?userId= — «افحص موظفة»: for ONE person of this store, what the desk would tell her NOW.
@@ -100,6 +101,8 @@ export async function GET(request: NextRequest) {
     const mine = await employeeNumbers(db, companyId, now.getTime(), await rule(), her);
     const hand = returns ? (await returnsLimits(db, companyId, now.getTime(), rule, her)).handLimit : undefined;
     const perHour = mine.pullPerHour.value;
+    // Request Q4c (21/11, the Q4b reviewer's note): whether each of her numbers acts NOW — a rule's hand shown while the switches it rides on are off is not in force.
+    const inForce = await numbersInForce(db, companyId, now, cal, rule).catch(() => null);
 
     const since = new Date(now.getTime() - PULL_PACE.windowMinutes * 60_000);
     const [counts, pulls] = await Promise.all([
@@ -136,7 +139,7 @@ export async function GET(request: NextRequest) {
       },
       pace: { pulled: pulledAt.length, perHour, windowMinutes: PULL_PACE.windowMinutes },
       // Her three numbers and where each came from (Q4b). The hand acts where the mode is on (`hold.limitFrom` says it); the idle minutes where the plan or «أولوية الطابور» is.
-      numbers: numbersAnswer(mine),
+      numbers: { ...numbersAnswer(mine), inForce },
       pull: refusal
         ? { open: false, code: refusal.code, sentence: refusal.message }
         : { open: true, code: null, sentence: 'السحب مفتوح إلها هلّق — بتاخد الطلب التالي إذا في طلب بالطابور.' },

@@ -402,3 +402,15 @@ describe('her numbers and their source (Q4b)', () => {
     expect(body.numbers.pullPerHour.value).toBe(20);
   });
 });
+
+// ADDED 2026-11-21 (request Q4c — the Q4b reviewer's note): «افحص موظفة» showed a rule's hand even with the mode off, where the pull never uses it. The answer now
+// says, per number, whether it acts NOW (`numbers.inForce`, read by the same functions the pull reads).
+describe('whether each of her numbers acts now (Q4c)', () => {
+  it('the returns mode off: the hand and the idle minutes do not act, the pace does — and the screen is told so', async () => {
+    state.returnsOn = false;
+    const { status, body } = await ask('sara');
+    expect(status).toBe(200);
+    expect(body.numbers.inForce).toEqual({ hand: false, idleMinutes: false, pullPerHour: true });
+    expect(body.hold.limitFrom).toBe('CAP');
+  });
+});
