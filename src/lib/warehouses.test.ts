@@ -126,12 +126,27 @@ describe('the warehouses a store may place its goods in', () => {
 describe('why a warehouse may not stop', () => {
   // 20/11 (W3a): the client answers the open-transfer question too (old: only `productionBatch.count`); 0 open = today.
   // 20/11 (W6a): …and the pending-exit question (old: batches + transfers); 0 pending = the answer before W6a.
-  const client = (n: number, open = 0, pending = 0) => {
+  // 21/11 (W5a): …and the open-count question (old: batches + transfers + exits); 0 open sheets = the answer before W5a.
+  const client = (n: number, open = 0, pending = 0, counting = 0) => {
     const count = vi.fn().mockResolvedValue(n);
     const transfers = vi.fn().mockResolvedValue(open);
     const exits = vi.fn().mockResolvedValue(pending);
-    return { client: { productionBatch: { count }, stockTransfer: { count: transfers }, stockExit: { count: exits } } as never, count, transfers, exits };
+    const sheets = vi.fn().mockResolvedValue(counting);
+    return {
+      client: { productionBatch: { count }, stockTransfer: { count: transfers }, stockExit: { count: exits }, stockCount: { count: sheets } } as never,
+      count,
+      transfers,
+      exits,
+      sheets,
+    };
   };
+
+  it('NEGATIVE (W5a): an open count sheet on it is a blocker — being counted or waiting for its second hand', async () => {
+    const { client: c, sheets } = client(0, 0, 0, 1);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'OPEN_COUNT', count: 1, ar: expect.stringContaining('جرد') }]);
+    // THIS company, THIS warehouse, only a sheet OPEN or SUBMITTED (an approved or voided one holds nothing).
+    expect(sheets).toHaveBeenCalledWith({ where: { companyId: 'c1', warehouseId: 'w1', status: { in: ['OPEN', 'SUBMITTED'] } } });
+  });
 
   it('NEGATIVE (W6a): a pending exit from it is a blocker — its units are held for an approval in this warehouse', async () => {
     const { client: c, exits } = client(0, 0, 1);
@@ -286,6 +301,17 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/app/api/ops/returns/receive-all/route.ts',
     'src/lib/warehouse-count.ts',
     'src/components/screens/ReturnsScreen.tsx',
+    // 21/11, W5a (the count against the keeper): the count lib (a sheet names its warehouse; the expected figure is
+    // `warehouse-count.expectedInWarehouse`; a combination's expected reads its place in the warehouse and the orders that
+    // left it), its door helper, its five doors, and the freeze (a sheet's `warehouseId` that every stock door asks about).
+    'src/lib/stock-counts.ts',
+    'src/lib/stock-count-freeze.ts',
+    'src/lib/stock-count-door.ts',
+    'src/app/api/inventory/counts/route.ts',
+    'src/app/api/inventory/counts/[id]/route.ts',
+    'src/app/api/inventory/counts/[id]/submit/route.ts',
+    'src/app/api/inventory/counts/[id]/approve/route.ts',
+    'src/app/api/inventory/counts/[id]/void/route.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

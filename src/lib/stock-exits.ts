@@ -6,6 +6,7 @@ import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
 import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { freeStockOf, lockWarehousesForShare } from './stock-transfers';
+import { WAREHOUSE_COUNTING_AR, holdWarehousesStill, warehouseUnderCount } from './stock-count-freeze';
 import {
   EXIT_MOVEMENT_TYPE,
   EXIT_REASON_AR,
@@ -83,6 +84,8 @@ export type StockExitRefusalCode =
   | 'REQUESTER_CANNOT_DECIDE'
   | 'ALREADY_APPROVED'
   | 'ALREADY_REJECTED'
+  // 21/11 (W5a): a count sheet of the exit's warehouse is open.
+  | 'WAREHOUSE_COUNTING'
   | VariantLineRefusalCode;
 
 const STATUS_OF: Record<StockExitRefusalCode, number> = {
@@ -103,6 +106,7 @@ const STATUS_OF: Record<StockExitRefusalCode, number> = {
   REQUESTER_CANNOT_DECIDE: 403,
   ALREADY_APPROVED: 409,
   ALREADY_REJECTED: 409,
+  WAREHOUSE_COUNTING: 409,
 };
 
 const AR: Record<StockExitRefusalCode, string> = {
@@ -123,6 +127,7 @@ const AR: Record<StockExitRefusalCode, string> = {
   REQUESTER_CANNOT_DECIDE: 'إنت اللي طلبت هالإخراج، فما بتعتمده ولا بترفضه. لازم حدا تاني.',
   ALREADY_APPROVED: 'هالإخراج انعتمد من قبل. حدّث الصفحة.',
   ALREADY_REJECTED: 'هالإخراج انرفض من قبل. حدّث الصفحة.',
+  WAREHOUSE_COUNTING: WAREHOUSE_COUNTING_AR,
 };
 
 export class StockExitRefused extends Error {
@@ -300,6 +305,8 @@ export async function requestExit(tx: Tx, input: RequestInput): Promise<{ exit: 
   if (wh.countryId !== store.countryId) throw new StockExitRefused('WAREHOUSE_OTHER_COUNTRY');
   if (!(await storeIsPlaced(storeId, tx))) throw new StockExitRefused('STORE_NOT_PLACED');
   if (!wh.isActive) throw new StockExitRefused('WAREHOUSE_STOPPED');
+  // 21/11 (W5a): read after the row FOR SHARE — a warehouse under count stands still (`stock-count-freeze.ts`).
+  if (await warehouseUnderCount(tx, wh.id)) throw new StockExitRefused('WAREHOUSE_COUNTING');
   if (!(await input.mayUse({ id: wh.id, companyId: wh.companyId, countryId: wh.countryId }))) {
     throw new StockExitRefused('NOT_REACHED');
   }
@@ -375,6 +382,9 @@ export async function approveExit(tx: Tx, input: DecideInput): Promise<{ exit: S
   const e = open.exit;
 
   await lockProductsStock(tx, companyId, e.lines.map((l) => l.productId));
+  // 21/11 (W5a): the warehouse row FOR SHARE, then «under count?» — the order the request keeps (`stock-count-freeze.ts`).
+  await holdWarehousesStill(tx, [e.warehouseId]);
+  if (await warehouseUnderCount(tx, e.warehouseId)) throw new StockExitRefused('WAREHOUSE_COUNTING');
   const store = await tx.store.findFirst({ where: { id: storeId, companyId }, select: { country: { select: { minorUnit: true } } } });
   const minorUnit = store?.country?.minorUnit ?? 2;
   const reason = e.reason as ExitReason;

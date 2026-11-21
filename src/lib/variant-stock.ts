@@ -89,6 +89,8 @@ export type VariantCountRefusalCode =
   | 'WAREHOUSE_OTHER_COUNTRY'
   | 'WAREHOUSE_STOPPED'
   | 'WAREHOUSE_NOT_REACHED'
+  // 21/11 (W5a): the intake's own refusal while a count sheet of the warehouse is open.
+  | 'WAREHOUSE_COUNTING'
   | 'REASON_REQUIRED';
 
 const COUNT_REFUSALS: Record<VariantCountRefusalCode, { status: number; ar: string }> = {
@@ -97,6 +99,7 @@ const COUNT_REFUSALS: Record<VariantCountRefusalCode, { status: number; ar: stri
   WAREHOUSE_OTHER_COUNTRY: { status: 400, ar: 'هالمخزن مش ببلد هالمتجر. بتعدّ بمخازن بلده بس.' },
   WAREHOUSE_STOPPED: { status: 409, ar: 'هالمخزن موقوف. شغّله أول، أو عدّ بمخزن تاني.' },
   WAREHOUSE_NOT_REACHED: { status: 403, ar: 'ما إلك وصول على هالمخزن. عدّ بمخزن من مخازنك.' },
+  WAREHOUSE_COUNTING: { status: 409, ar: 'في جرد مفتوح على هالمخزن. عدد الخيارات بينكتب بورقة الجرد لحد ما تنعتمد أو تنلغى.' },
   REASON_REQUIRED: { status: 400, ar: 'اكتب سبب العدّ. تغيير عدد خيار بمخزن بدّو سبب.' },
 };
 

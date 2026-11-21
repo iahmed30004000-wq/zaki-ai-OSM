@@ -105,6 +105,9 @@ const ACTION_AR: Record<string, string> = {
   STOCK_TRANSFER_APPROVED: 'اعتماد نقل بضاعة لبلد تاني',
   // Goods out of a warehouse for good (`/api/inventory/exits/**`, W6a).
   STOCK_EXIT_REQUESTED: 'طلب إخراج بضاعة', STOCK_EXIT_APPROVED: 'اعتماد إخراج بضاعة', STOCK_EXIT_REJECTED: 'رفض إخراج بضاعة',
+  // Count sheets of a warehouse (`/api/inventory/counts/**`, W5a).
+  STOCK_COUNT_OPENED: 'فتح ورقة جرد', STOCK_COUNT_ANSWERED: 'كتابة عدّ بورقة جرد', STOCK_COUNT_SUBMITTED: 'تسليم ورقة جرد',
+  STOCK_COUNT_APPROVED: 'اعتماد ورقة جرد', STOCK_COUNT_VOIDED: 'إلغاء ورقة جرد',
   // The same article in two stores (`/api/inventory/pairs/**`, W7a).
   PRODUCT_PAIR_SAVED: 'ربط منتج بتوأمه بمتجر تاني', PRODUCT_PAIR_REMOVED: 'شيل ربط منتج بتوأمه',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
