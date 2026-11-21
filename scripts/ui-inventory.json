@@ -1650,6 +1650,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/StockCountsScreen.tsx": {
+    "buttons": 12,
+    "inputs": 3,
+    "columns": 20,
+    "cards": 6,
+    "modals": 3,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
   "src/components/screens/StockExitsScreen.tsx": {
     "buttons": 10,
     "inputs": 4,

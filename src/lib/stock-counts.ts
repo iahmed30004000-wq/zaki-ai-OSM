@@ -679,7 +679,15 @@ export async function voidCount(
 /* ───────────────────────────── what a door shows ───────────────────────────── */
 
 /** The fields of a line that say, or let one work out, what the book holds. */
-const BOOK_FIELDS = ['book', 'withCourier', 'expected', 'unsourcedWithCourier', 'applied', 'valueAtCost'] as const;
+const BOOK_FIELDS = ['book', 'withCourier', 'expected', 'unsourcedWithCourier', 'applied', 'valueAtCost', 'difference'] as const;
+
+/**
+ * 21/11 (W5b): THE DIFFERENCE of a line, said by the server so the approval screen computes nothing: counted − the frozen
+ * expected, once both exist (a submitted or an approved sheet); `null` before. Only ever added for a person who sees the
+ * expected figure — the difference gives the expected back.
+ */
+const differenceOf = (counted: unknown, expected: unknown): number | null =>
+  typeof counted === 'number' && typeof expected === 'number' ? counted - expected : null;
 
 /**
  * A SHEET AS A DOOR ANSWERS IT.
@@ -697,9 +705,14 @@ export function countShown<T extends { status: string; lines: (Record<string, un
   const lines = c.lines.map((l) => {
     const out: Record<string, unknown> = { ...l };
     if (!opts.seesExpected) for (const k of BOOK_FIELDS) delete out[k];
-    else if (!opts.seesCost) delete out.valueAtCost;
+    else {
+      out.difference = differenceOf(l.counted, l.expected);
+      if (!opts.seesCost) delete out.valueAtCost;
+    }
     if (l.variants) {
-      out.variants = l.variants.map((v) => (opts.seesExpected ? { ...v } : { variantId: v.variantId, counted: v.counted }));
+      out.variants = l.variants.map((v) =>
+        opts.seesExpected ? { ...v, difference: differenceOf(v.counted, v.expected) } : { variantId: v.variantId, counted: v.counted }
+      );
     }
     return out;
   });

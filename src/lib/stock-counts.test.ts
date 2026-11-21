@@ -488,16 +488,20 @@ describe('combinations are counted one by one and moved by the one writer', () =
     const c = await tx(m, (t2) => import('./stock-counts').then((x) => x.readCount(t2, C1, S1, id)));
     const blind = JSON.parse(JSON.stringify(countShown(c, { seesExpected: false, seesCost: true })));
     expect(blind.lines[0].variants).toEqual([{ variantId: 'v-blue', counted: 4 }, { variantId: 'v-red', counted: 9 }]);
-    expect(JSON.stringify(blind)).not.toMatch(/expected|book|withCourier|applied|valueAtCost/);
+    // 21/11 (W5b): `difference` joins the words that must never reach the keeper.
+    expect(JSON.stringify(blind)).not.toMatch(/expected|book|withCourier|applied|valueAtCost|difference/);
+    // 21/11 (W5b): was `{ variantId, counted, expected }`; the approver's view now also carries the server's `difference`
+    // (counted − frozen expected) so the approval screen computes nothing. The keeper's view above is unchanged.
     expect(countShown(c, { seesExpected: true, seesCost: true }).lines[0].variants).toEqual([
-      { variantId: 'v-blue', counted: 4, expected: 3 },
-      { variantId: 'v-red', counted: 9, expected: 10 },
+      { variantId: 'v-blue', counted: 4, expected: 3, difference: 1 },
+      { variantId: 'v-red', counted: 9, expected: 10, difference: -1 },
     ]);
   });
 });
 
 describe('what a door shows', () => {
-  const EXPECTED_KEYS = ['book', 'withCourier', 'expected', 'unsourcedWithCourier', 'applied', 'valueAtCost'];
+  // 21/11 (W5b): widened by `difference` — the server now says it to the approver, and it gives the expected back.
+  const EXPECTED_KEYS = ['book', 'withCourier', 'expected', 'unsourcedWithCourier', 'applied', 'valueAtCost', 'difference'];
   const walk = (v: unknown, visit: (k: string, x: unknown) => void, key = '') => {
     visit(key, v);
     if (Array.isArray(v)) v.forEach((x) => walk(x, visit));
@@ -513,7 +517,7 @@ describe('what a door shows', () => {
     walk(keeper, (k) => expect(EXPECTED_KEYS, `«${k}» reached the keeper`).not.toContain(k));
     expect(keeper.lines.map((l: Row) => [l.productId, l.counted])).toEqual([['p1', 15], ['p2', 4]]);
     const boss = countShown(c, { seesExpected: true, seesCost: false });
-    expect(boss.lines.find((l) => l.productId === 'p1')).toMatchObject({ expected: 13, applied: 2 });
+    expect(boss.lines.find((l) => l.productId === 'p1')).toMatchObject({ expected: 13, applied: 2, difference: 2 });
     expect(boss.lines.some((l) => 'valueAtCost' in l)).toBe(false);
     expect(countShown(c, { seesExpected: true, seesCost: true }).lines.find((l) => l.productId === 'p1')).toMatchObject({ valueAtCost: 6.667 });
   });
