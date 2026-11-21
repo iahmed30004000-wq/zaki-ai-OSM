@@ -243,6 +243,7 @@ const COUNT_SELECT = {
   decidedById: true,
   decidedAt: true,
   voidReason: true,
+  writerIds: true,
   lines: {
     select: {
       productId: true,
@@ -293,9 +294,13 @@ async function lockCount(tx: Tx, id: string): Promise<void> {
   await tx.$executeRaw`SELECT 1 FROM "stock_counts" WHERE "id" = ${id} FOR UPDATE`;
 }
 
-/** Everybody who had a hand in the count: the opener, every person who answered a line, the one who submitted. */
-export function countersOf(c: Pick<StockCountRow, 'openedById' | 'submittedById' | 'lines'>): Set<string> {
-  const out = new Set<string>([c.openedById]);
+/**
+ * Everybody who had a hand in the count: the opener, the one who submitted, and EVERY person who ever wrote a line —
+ * `writerIds`, kept on the sheet and never shortened, because a later answer overwrites a line's `countedById` and a
+ * person whose count was written over still counted (review of #445: without it she could approve).
+ */
+export function countersOf(c: Pick<StockCountRow, 'openedById' | 'submittedById' | 'lines'> & { writerIds?: string[] | null }): Set<string> {
+  const out = new Set<string>([c.openedById, ...(c.writerIds ?? [])]);
   if (c.submittedById) out.add(c.submittedById);
   for (const l of c.lines) if (l.countedById) out.add(l.countedById);
   return out;
@@ -403,6 +408,10 @@ export async function recordAnswers(tx: Tx, input: AnswerInput): Promise<StockCo
   checkMembership(asLines, combos, new Map(products.map((p) => [p.id, p.name])), fail, { required: true });
 
   const now = new Date();
+  // Every writer stays on the sheet for good (the two-hands rule reads it), even when her answer is written over later.
+  if (!(c.writerIds ?? []).includes(input.countedById)) {
+    await tx.stockCount.update({ where: { id: countId }, data: { writerIds: [...(c.writerIds ?? []), input.countedById] } });
+  }
   for (const l of body.lines) {
     await tx.stockCountLine.updateMany({
       where: { countId, productId: l.productId },

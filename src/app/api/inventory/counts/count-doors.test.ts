@@ -259,6 +259,65 @@ describe('who may press which door — persons built as a session builds them', 
   });
 });
 
+describe('review of #445: every person who EVER wrote a line is a counter, and refusals carry no book figure', () => {
+  it('NEGATIVE: a writer whose answer was written over by another still cannot approve — a replay included', async () => {
+    await as('u-both');
+    const o = await open();
+    const id = o.body.count.id as string;
+    expect((await answer(id, [{ productId: 'product-p1', counted: 39 }])).status).toBe(200);
+    // Another counter answers the same line again (her figure replaces u-both's) and submits.
+    await as('u-counter-2');
+    expect((await answer(id, [{ productId: 'product-p1', counted: 41 }])).status).toBe(200);
+    expect((await submit(id)).status).toBe(200);
+    expect(S.m.data.stockCountLine[0].countedById).toBe('u-counter-2');
+    // u-both opened it here too — so take the opener out of the question: a sheet opened by somebody else.
+    await as('u-both');
+    const first = await approve(id);
+    expect([first.status, first.body.code]).toEqual([403, 'COUNTER_CANNOT_APPROVE']);
+    // …and the press again (a replay) is refused the same way.
+    expect((await approve(id)).body.code).toBe('COUNTER_CANNOT_APPROVE');
+    expect(S.m.data.inventoryMovement).toEqual([]);
+    expect(S.m.data.stockCount[0].status).toBe('SUBMITTED');
+  });
+
+  it('NEGATIVE: a writer who did NOT open the sheet, written over later, still cannot approve', async () => {
+    await as('u-counter');
+    const id = (await open()).body.count.id as string;
+    await as('u-both');
+    await answer(id, [{ productId: 'product-p1', counted: 39 }]);
+    await as('u-counter-2');
+    await answer(id, [{ productId: 'product-p1', counted: 41 }]);
+    await submit(id);
+    await as('u-both');
+    expect((await approve(id)).body.code).toBe('COUNTER_CANNOT_APPROVE');
+    expect(S.m.data.stockCount[0].writerIds).toEqual(['u-both', 'u-counter-2']);
+    // A person who never touched the sheet approves.
+    await as('u-approver');
+    expect((await approve(id)).status).toBe(200);
+  });
+
+  it('the refusals a counter can meet carry no book figure', async () => {
+    await as('u-counter');
+    const id = (await open()).body.count.id as string;
+    const refusals = [
+      await submit(id), // INCOMPLETE
+      await answer(id, [{ productId: 'not-on-the-sheet', counted: 1 }]), // NOT_ON_SHEET
+    ];
+    await as('u-counter-2');
+    refusals.push(await open()); // COUNT_ALREADY_OPEN
+    await as('u-counter');
+    await answer(id, [{ productId: 'product-p1', counted: 41 }]);
+    await submit(id);
+    refusals.push(await answer(id, [{ productId: 'product-p1', counted: 2 }])); // NOT_OPEN
+    refusals.push(await approve(id)); // 403 by key
+    expect(refusals.map((r) => r.status)).toEqual([409, 400, 409, 409, 403]);
+    for (const r of refusals) {
+      const { keys, nums } = walk(r.body);
+      for (const k of BOOK_KEYS) expect(keys, `«${k}» in a refusal`).not.toContain(k);
+      for (const n of [37, 40, 3]) expect(nums, `${n} in a refusal`).not.toContain(n);
+    }
+  });
+});
 describe('the warehouse stands still while a sheet is open — by the doors', () => {
   it('the receive door answers 409 «في جرد مفتوح»; the stop door refuses with the open count named', async () => {
     await countedAndSubmitted();

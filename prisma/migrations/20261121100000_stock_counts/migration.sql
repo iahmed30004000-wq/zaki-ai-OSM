@@ -41,10 +41,14 @@ CREATE TABLE IF NOT EXISTS "stock_counts" (
   "decidedById"   TEXT,
   "decidedAt"     TIMESTAMP(3),
   "voidReason"    TEXT,
+  "writerIds"     TEXT[]       NOT NULL DEFAULT ARRAY[]::TEXT[],
   "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt"     TIMESTAMP(3) NOT NULL,
   CONSTRAINT "stock_counts_pkey" PRIMARY KEY ("id")
 );
+-- Every person who ever wrote a line (the two-hands rule). Also as its own idempotent line, for a database that took this
+-- file before the column was added to it (review of #445).
+ALTER TABLE "stock_counts" ADD COLUMN IF NOT EXISTS "writerIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 CREATE INDEX IF NOT EXISTS "stock_counts_companyId_storeId_createdAt_idx" ON "stock_counts" ("companyId", "storeId", "createdAt" DESC);
 CREATE INDEX IF NOT EXISTS "stock_counts_warehouseId_status_idx" ON "stock_counts" ("warehouseId", "status");
 CREATE UNIQUE INDEX IF NOT EXISTS "stock_counts_one_open_per_warehouse" ON "stock_counts" ("warehouseId")

@@ -484,6 +484,15 @@ describe('combinations are counted one by one and moved by the one writer', () =
       ['v-blue', 'COUNT', 1, id],
       ['v-red', 'COUNT', -1, id],
     ]);
+    // BLIND (review of #445): the keeper's view of a combination line carries what she counted — never its expected.
+    const c = await tx(m, (t2) => import('./stock-counts').then((x) => x.readCount(t2, C1, S1, id)));
+    const blind = JSON.parse(JSON.stringify(countShown(c, { seesExpected: false, seesCost: true })));
+    expect(blind.lines[0].variants).toEqual([{ variantId: 'v-blue', counted: 4 }, { variantId: 'v-red', counted: 9 }]);
+    expect(JSON.stringify(blind)).not.toMatch(/expected|book|withCourier|applied|valueAtCost/);
+    expect(countShown(c, { seesExpected: true, seesCost: true }).lines[0].variants).toEqual([
+      { variantId: 'v-blue', counted: 4, expected: 3 },
+      { variantId: 'v-red', counted: 9, expected: 10 },
+    ]);
   });
 });
 

@@ -2896,6 +2896,8 @@ model StockCount {
   decidedById   String?
   decidedAt     DateTime?
   voidReason    String?
+  /// Every person who ever wrote a line of the sheet — never shortened: the two-hands rule refuses each of them the approval.
+  writerIds     String[]  @default([])
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
