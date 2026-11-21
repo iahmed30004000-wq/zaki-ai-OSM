@@ -26,7 +26,16 @@ import { POST_ORDER_REFUSAL_AR, postOrderGate, postOrderOfferSettings, type Post
 import { unitCostsOf } from '../product-fixed-cost';
 import { V1_CODE, V1Fault } from './door';
 import { stampAdTags } from './ad-tags';
-import { attributionColumns, readLandingAttribution } from './landing-attribution';
+import {
+  PAGES_CC_SENDER,
+  attributionColumns,
+  mergedAttribution,
+  pagesColumns,
+  readLandingAttribution,
+  readPagesFields,
+  type PagesFields,
+} from './landing-attribution';
+import { PAGES_SENDS_AR } from '../conversions/types';
 import { parseVariantOptions, readVariantsView, unitsSentence, writeLineVariants, type VariantsView } from '../product-variants';
 
 /** `units: [{ variantId }]` — one per piece; read by the order door, the offer after the order and the chat's swap. */
@@ -363,6 +372,26 @@ export const landingOrderSchema = z.object({
   event_id: z.unknown().optional(),
   client_user_agent: z.unknown().optional(),
   /*
+   * WHAT ZAKI PAGES ADDS (2026-11-21) — the same rule: optional, read as `unknown`, cleaned or dropped by
+   * `landing-attribution.ts`, never a refusal. `client_ip` is accepted and stored nowhere (see that file).
+   */
+  fbp: z.unknown().optional(),
+  fbc: z.unknown().optional(),
+  client_ip: z.unknown().optional(),
+  event_source_url: z.unknown().optional(),
+  browser_event_id: z.unknown().optional(),
+  pixel_id: z.unknown().optional(),
+  utm_source: z.unknown().optional(),
+  utm_medium: z.unknown().optional(),
+  utm_campaign: z.unknown().optional(),
+  utm_content: z.unknown().optional(),
+  utm_term: z.unknown().optional(),
+  ad_id: z.unknown().optional(),
+  ad_name: z.unknown().optional(),
+  page_id: z.unknown().optional(),
+  page_slug: z.unknown().optional(),
+  cc_sender: z.unknown().optional(),
+  /*
    * ONE CHOICE PER PIECE, for a product with variants (oms-lp.v1 §10, the owner 2026-11-18): paid pieces first, then
    * the free ones. Optional: a page from before this sends none and the order is taken, flagged for the call.
    */
@@ -435,7 +464,8 @@ export async function takeLandingOrder(companyId: string, order: LandingOrderInp
   await markLandingChannel(companyId, String(result.body.orderNumber));
   await recordLandingAttribution(companyId, String(result.body.orderNumber), order);
   // The ad this order came from, for the media buyer — once, after the commit, never able to fail the order (`ad-tags.ts`).
-  await stampAdTags(companyId, String(result.body.orderNumber), order.attribution);
+  // With what Zaki Pages sent at the top level filling only what `attribution` lacks (`mergedAttribution`).
+  await stampAdTags(companyId, String(result.body.orderNumber), mergedAttribution(order));
   if (stoodDown.length > 0) {
     await cartsRecoveredBy(companyId, stoodDown, String(result.body.orderNumber)).catch((e) =>
       console.error('landing door: could not mark the cart recovered (non-fatal):', (e as Error)?.name || 'unknown')
@@ -600,13 +630,41 @@ async function markLandingChannel(companyId: string, orderNumber: string) {
  * error can quote the values it was given, and none of them belongs in a log.
  */
 async function recordLandingAttribution(companyId: string, orderNumber: string, order: LandingOrderInput) {
+  let pages: PagesFields | null = null;
   try {
-    const data = attributionColumns(readLandingAttribution(order));
+    pages = readPagesFields(order);
+    const data = {
+      ...attributionColumns(readLandingAttribution({ ...order, attribution: mergedAttribution(order) })),
+      ...pagesColumns(pages),
+    };
     if (Object.keys(data).length === 0) return;
     await db.order.updateMany({ where: { companyId, orderNumber }, data });
   } catch (e) {
     const code = (e as { code?: unknown })?.code;
     console.error('landing door: could not record the ad attribution (non-fatal):', typeof code === 'string' ? code : 'error');
+    return;
+  }
+  if (pages.ccSender === PAGES_CC_SENDER) await standDownOmsConversions(companyId, orderNumber);
+}
+
+/**
+ * ZAKI PAGES SENDS THIS ORDER'S CUSTOM CONVERSIONS ITSELF (`cc_sender: "pages"`, 2026-11-21) — so the conversion this
+ * system queued at creation (`createPublicOrder` queues «عبّأ النموذج» before this door can write `ccSender`, and order
+ * creation is not changed) is stood down here, marked «تُرسَل من صفحات ذكي» rather than sent: one sale counted once.
+ * The later moments never queue for it (`queueConversions`), and the sender checks again (`deliverConversion`).
+ * Never fatal, and logs a code only.
+ */
+async function standDownOmsConversions(companyId: string, orderNumber: string) {
+  try {
+    const row = await db.order.findFirst({ where: { companyId, orderNumber }, select: { id: true } });
+    if (!row) return;
+    await db.conversionDelivery.updateMany({
+      where: { companyId, orderId: row.id, status: 'PENDING' },
+      data: { status: 'SKIPPED', nextAttemptAt: null, lastError: PAGES_SENDS_AR },
+    });
+  } catch (e) {
+    const code = (e as { code?: unknown })?.code;
+    console.error('landing door: could not stand down the conversions (non-fatal):', typeof code === 'string' ? code : 'error');
   }
 }
 

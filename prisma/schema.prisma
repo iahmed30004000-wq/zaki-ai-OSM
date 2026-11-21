@@ -1110,7 +1110,15 @@ model Order {
   /// The id of the Purchase event the landing system sent Meta for this order — for reference only. This system's
   /// own conversions keep their own ids (`conversionEventId`).
   lpPurchaseEventId         String?
-  freeQuantity              Int       @default(0) // gift units from a landing-page offer (additive)
+  /// ── WHAT ZAKI PAGES ADDS (2026-11-21) — written once, after creation, by the landing door alone, null elsewhere ──
+  /// Who sends this order's custom conversions to Meta: «pages» = Zaki Pages does, and this system's sender skips it
+  /// (`conversions/emit.ts`); null = this system sends, exactly as before.
+  ccSender                  String?
+  /// The Meta pixel id the Zaki Pages page fired (digits). For reference; nothing is sent with it.
+  lpPixelId                 String?
+  /// The page's slug in Zaki Pages, beside `externalLandingPageId`.
+  externalPageSlug          String?
+  freeQuantity             Int       @default(0) // gift units from a landing-page offer (additive)
   internalNotes             String?
   customerNotes             String?
   postponedUntil            DateTime?
@@ -4296,9 +4304,14 @@ model AppDelivery {
   nextAttemptAt DateTime?
   deliveredAt   DateTime?
   createdAt     DateTime  @default(now())
+  /// One fact, one row (2026-11-21): set on the order-status events to Zaki Pages
+  /// (`pages.order_status:<companyId>:<orderId>:<status>`), null on every other row. A second emit of the same
+  /// status for the same order writes nothing (`skipDuplicates` on the pair below).
+  idempotencyKey String?
 
   install AppInstall @relation(fields: [installId], references: [id], onDelete: Cascade)
 
+  @@unique([installId, idempotencyKey])
   @@index([status, nextAttemptAt])
   @@index([companyId, createdAt])
   @@map("app_deliveries")
