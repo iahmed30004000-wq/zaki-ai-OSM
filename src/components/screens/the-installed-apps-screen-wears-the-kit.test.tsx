@@ -251,7 +251,8 @@ const PANEL_SHELF = () => ({
   ],
 });
 
-let panelShelf: ReturnType<typeof PANEL_SHELF>;
+// 2026-11-21: a shelf may carry آ«ط§ظ„ط¨ظ„ط¯آ» â€” the countries, and each key's country.
+let panelShelf: ReturnType<typeof PANEL_SHELF> & { countries?: unknown[] };
 let posted: { body: Record<string, unknown> }[];
 
 const answerPanel = () =>
@@ -337,6 +338,38 @@ describe('the system keys panel on the kit', () => {
     await createKey();
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0].body).toEqual({ name: 'نظام الردود', system: 'replies', scopes: ['orders:read'] });
+  });
+
+  // 2026-11-21 — «البلد»: every country by default (and then no `countryId` is sent, as before), or one active country.
+  it('— «البلد»: every country is the default and sends no country; picking one sends its id; each row says its country', async () => {
+    posted = [];
+    panelShelf = {
+      ...PANEL_SHELF(),
+      countries: [{ id: 'jo-id', code: 'JO', name: 'الأردن' }],
+      tokens: PANEL_SHELF().tokens.map((t) => ({ ...t, country: { id: 'jo-id', code: 'JO', name: 'الأردن' } })),
+    };
+    answerPanel();
+    render(<SystemTokensPanel />);
+    await screen.findByText('مفتاح قديم');
+    expect(screen.getByText('البلد: الأردن')).toBeTruthy();
+    await openForm();
+    const all = screen.getByRole('radio', { name: 'كل البلدان' }) as HTMLInputElement;
+    expect(all.checked).toBe(true);
+    await createKey();
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].body).not.toHaveProperty('countryId');
+    await openForm();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: 'الأردن' }));
+    });
+    await createKey();
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[1].body.countryId).toBe('jo-id');
+  });
+
+  it('— a key with no country says «البلد: كل البلدان» on its row', async () => {
+    await readyPanel();
+    expect(screen.getAllByText('البلد: كل البلدان').length).toBeGreaterThan(0);
   });
 
   it('NEGATIVE: a scope in the replies defaults that this person may not put on a key is neither ticked nor sent', async () => {

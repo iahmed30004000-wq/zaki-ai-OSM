@@ -27,6 +27,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   db: {
     systemToken: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
+    // 2026-11-21: the list also offers «البلد» (the company's active countries) — a-landing-key-sees-one-country.test.ts.
+    country: { findMany: vi.fn() },
   },
   requireCompanyTenant: vi.fn(),
   requirePermission: vi.fn(),
@@ -64,6 +66,7 @@ beforeEach(() => {
     Promise.resolve({ id: 'tok_1', createdAt: new Date(), ...data })
   );
   h.db.systemToken.updateMany.mockResolvedValue({ count: 1 });
+  h.db.country.findMany.mockResolvedValue([]);
 });
 
 describe('the permission, on every verb', () => {

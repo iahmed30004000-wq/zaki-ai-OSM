@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
+import { LANDING_DOOR, idempotencySlot, relayInCountry } from '@/lib/v1/landing-country';
 import { requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import {
   claimIdempotency,
@@ -19,8 +20,8 @@ export async function POST(req: Request) {
   const requestId = requestIdOf(req);
   let claimed: { companyId: string; key: string } | null = null;
   try {
-    const caller = await requireSystemToken(req, 'orders.create');
-    const key = idempotencyKeyOf(req);
+    const caller = await requireSystemToken(req, 'orders.create', LANDING_DOOR);
+    const key = idempotencySlot(caller, idempotencyKeyOf(req));
 
     const raw = await req.text();
     const parsed = readRelay(raw);
@@ -32,7 +33,8 @@ export async function POST(req: Request) {
     if (replay) return v1Ok(requestId, replay.body as Record<string, unknown>, replay.status);
     claimed = { companyId: caller.companyId, key };
 
-    const result = await relayChatLines(caller.companyId, parsed.data);
+    // A key bound to one country: another country's thread is 404, its order or product is not linked (`landing-country.ts`).
+    const result = await relayChatLines(caller.companyId, await relayInCountry(caller, parsed.data), new Date(), caller.countryId ?? null);
     await rememberIdempotency(caller.companyId, key, result.status, result.body);
     claimed = null;
     return v1Ok(requestId, result.body, result.status);

@@ -25,6 +25,7 @@ import { checkoutRules, parseStoreTheme } from '../store-theme';
 import { POST_ORDER_REFUSAL_AR, postOrderGate, postOrderOfferSettings, type PostOrderRefusal } from '../post-order-offer';
 import { unitCostsOf } from '../product-fixed-cost';
 import { V1_CODE, V1Fault } from './door';
+import { productsInCountry } from './landing-country';
 import { stampAdTags } from './ad-tags';
 import {
   PAGES_CC_SENDER,
@@ -182,9 +183,10 @@ function productView(p: ProductRow, offers: OfferView[], availableStockShown: nu
  * orders evidence behind `compareAtPrice`: this list is a picker, and the
  * page itself reads one product through `readLandingProduct`.
  */
-export async function listLandingProducts(companyId: string) {
+export async function listLandingProducts(companyId: string, countryId: string | null = null) {
+  // A key bound to one country lists that country's stores only (`landing-country.ts`); null is every country, as before.
   const rows = await db.product.findMany({
-    where: { companyId, ...realStoresOnly() },
+    where: { companyId, ...realStoresOnly(), ...productsInCountry(countryId) },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
     select: PRODUCT_SELECT,
   });
@@ -207,8 +209,12 @@ export async function listLandingProducts(companyId: string) {
   return out;
 }
 
-export async function readLandingProduct(companyId: string, productId: string) {
-  const p = await db.product.findFirst({ where: { companyId, id: productId, ...realStoresOnly() }, select: PRODUCT_SELECT });
+export async function readLandingProduct(companyId: string, productId: string, countryId: string | null = null) {
+  // Another country's product, for a key bound to one, is a product that does not exist: the same 404.
+  const p = await db.product.findFirst({
+    where: { companyId, id: productId, ...realStoresOnly(), ...productsInCountry(countryId) },
+    select: PRODUCT_SELECT,
+  });
   if (!p) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such product');
   const minor = p.store?.country.minorUnit ?? 2;
   const offers = await activeOffersFor(db, companyId, p.id, minor);
@@ -331,15 +337,22 @@ export async function deliveryQuote(params: {
 
 const UNAVAILABLE: Refusal = { ok: false, status: 409, body: { error: 'هذا العرض لم يعد متاحًا' } };
 
-/** The sellable product, or why not. Company first: it comes from the token. */
-async function sellableProduct(companyId: string, productId: string) {
-  const p = await db.product.findFirst({ where: { companyId, id: productId, ...realStoresOnly() }, select: PRODUCT_SELECT });
+/** The sellable product, or why not. Company first: it comes from the token — and so does the country, when it has one. */
+async function sellableProduct(companyId: string, productId: string, countryId: string | null = null) {
+  const p = await db.product.findFirst({
+    where: { companyId, id: productId, ...realStoresOnly(), ...productsInCountry(countryId) },
+    select: PRODUCT_SELECT,
+  });
   if (!p?.store || p.status !== 'ACTIVE' || p.store.status !== 'ACTIVE') return null;
   return { ...p, store: p.store };
 }
 
-export async function quoteLandingOrder(companyId: string, q: { productId: string; offerId: string; city: string; units?: string[] }) {
-  const productRow = await sellableProduct(companyId, q.productId);
+export async function quoteLandingOrder(
+  companyId: string,
+  q: { productId: string; offerId: string; city: string; units?: string[] },
+  countryId: string | null = null
+) {
+  const productRow = await sellableProduct(companyId, q.productId, countryId);
   if (!productRow) return UNAVAILABLE;
   return deliveryQuote({ companyId, productRow, offerId: q.offerId, city: q.city, units: q.units });
 }
@@ -399,8 +412,9 @@ export const landingOrderSchema = z.object({
 });
 export type LandingOrderInput = z.infer<typeof landingOrderSchema>;
 
-export async function takeLandingOrder(companyId: string, order: LandingOrderInput): Promise<IntakeResult> {
-  const productRow = await sellableProduct(companyId, order.productId);
+export async function takeLandingOrder(companyId: string, order: LandingOrderInput, countryId: string | null = null): Promise<IntakeResult> {
+  // Another country's product, for a key bound to one, is refused as a product that is no longer sold — nothing is written.
+  const productRow = await sellableProduct(companyId, order.productId, countryId);
   if (!productRow) return UNAVAILABLE;
   const { store } = productRow;
 
