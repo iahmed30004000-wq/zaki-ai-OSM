@@ -41,7 +41,7 @@ vi.mock('@/components/ui/Confirm', () => ({
 }));
 
 import { OwnRulesCard, I_KNOW_IT_BINDS_NOBODY, NO_RULES_YET, type OwnRulesAnswer } from './OwnRulesCard';
-import { NOT_ACTING_YET_AR, OWN_RULE_NUMBERS, candidateFromBody, templatesAnswer } from '@/lib/confirmation-own-rules';
+import { NOT_ACTING_YET_AR, OWN_RULE_NUMBERS, PRIORITY_EFFECT_AR, candidateFromBody, notActingYetAnswer, templatesAnswer } from '@/lib/confirmation-own-rules';
 
 const refusal = (status: number, data: Record<string, unknown>) => Object.assign(new Error(String(data.errorAr)), { status, data });
 
@@ -109,17 +109,16 @@ describe('1 · two ways in, side by side', () => {
   });
 
   // UPDATED 2026-11-21 (request Q4d): was «the six of kinds that do not act yet … the two that act»; the four order templates act now — two greyed, six pressable.
-  it('eight templates, every one «مطفية»; the two of kinds that do not act yet are greyed with the reason, the six that act can be pressed', async () => {
+  // UPDATED 2026-11-21 (request Q5c): was «two greyed (the kinds of Q5), six pressable»; priority and routing act now — all eight pressable, none greyed.
+  it('eight templates, every one «مطفية», every one pressable — none greyed', async () => {
     const { container } = await open();
     const rows = container.querySelectorAll('[data-template]');
     expect(rows).toHaveLength(8);
     for (const r of rows) expect(r.querySelector('[data-template-state]')!.textContent).toBe('مطفية');
-    for (const key of ['new-employee-hand', 'evening-idle', 'expensive-product-attempts', 'page-leads-attempts', 'store-proof', 'product-postpone-once']) {
+    for (const key of ['new-employee-hand', 'evening-idle', 'expensive-product-attempts', 'page-leads-attempts', 'store-proof', 'product-postpone-once', 'product-first', 'store-to-its-team']) {
       expect((within(templateRow(container, key)).getByRole('button', { name: 'شغّلها' }) as HTMLButtonElement).disabled, key).toBe(false);
     }
-    const blocked = [...rows].filter((r) => r.querySelector('[data-template-blocked]'));
-    expect(blocked).toHaveLength(2);
-    for (const r of blocked) expect((within(r as HTMLElement).getByRole('button', { name: 'شغّلها' }) as HTMLButtonElement).disabled).toBe(true);
+    expect([...rows].filter((r) => r.querySelector('[data-template-blocked]'))).toHaveLength(0);
   });
 
   it('a template a rule came from says so', async () => {
@@ -325,5 +324,98 @@ describe('Q4d · an order rule in the dialog', () => {
     await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
     const sent = h.calls.find((c) => c.url === '/api/confirmation/rules/preview')!.body;
     expect('productId' in sent || 'channelKind' in sent).toBe(false);
+  });
+});
+
+/** ADDED 2026-11-21 (request Q5c): «هالطلبات أول» and «هالطلبات بس لهالموظفات» in the same dialog — from the list, their side effect under them, the server's warning. */
+describe('Q5c · priority and routing in the dialog', () => {
+  const wideAnswer = (over: Partial<OwnRulesAnswer> = {}) => ({
+    numbers: OWN_RULE_NUMBERS.map((n) => ({ ...n })),
+    notActingYetAr: notActingYetAnswer(),
+    products: [{ id: 'pA', name: 'ساعة ذهب' }],
+    channels: [{ value: 'LANDING_PAGE', label: 'صفحة هبوط' }],
+    phases: [{ value: 'NEW', label: 'الطلبات الجديدة' }, { value: 'RETRY', label: 'طلبات الإعادة' }],
+    ...over,
+  });
+  const accepted = (body: any) => candidateFromBody(body, { companyId: 'c', userId: 'u', nowMs: Date.now(), nextWorkStart: new Date() });
+
+  it('every kind acts: no «لسا ما بيشتغل» line anywhere', async () => {
+    const { container } = await open(wideAnswer());
+    expect(container.querySelector('[data-not-acting-yet]')).toBeNull();
+    expect(container.textContent).not.toContain(NOT_ACTING_YET_AR);
+  });
+
+  it('«منتج: طلباته أول»: chosen from the list, nothing to type, its side effect under it; orders by product and new / retry, with hours — a body the door accepts', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = () => ({ preview: PREVIEW, overlap: null });
+    const { container } = await open(wideAnswer());
+    await press(within(templateRow(container, 'product-first')).getByRole('button', { name: 'شغّلها' }));
+    expect((screen.getByLabelText('الرقم') as HTMLSelectElement).value).toBe('first');
+    expect(dialog().querySelector('[data-effect]')!.textContent).toBe(PRIORITY_EFFECT_AR);
+    // Nothing is typed for it: the only number box left is the rule's length.
+    expect([...dialog().querySelectorAll('input[type="number"]')].map((i) => (i as HTMLInputElement).id || i.getAttribute('name'))).toHaveLength(1);
+    expect(dialog().querySelector('[data-orders-wide]')).toBeTruthy();
+    expect(within(dialog()).queryByRole('radio', { name: 'موظفات بالاسم' })).toBeNull();
+    expect(within(dialog()).getByRole('radio', { name: 'ساعات معيّنة' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('المنتج'), { target: { value: 'pA' } });
+    fireEvent.change(screen.getByLabelText('نوع الطلب'), { target: { value: 'RETRY' } });
+    await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
+    const sent = h.calls.filter((c) => c.url === '/api/confirmation/rules/preview').pop()!.body;
+    expect(sent).toMatchObject({ kind: 'PRIORITY', productId: 'pA', phase: 'RETRY', userIds: null, payload: { first: true }, templateKey: 'product-first' });
+    expect(accepted(sent).ok).toBe(true);
+  });
+
+  it('«متجر: طلباته بس لموظفاته»: people ticked under question four, the minutes open on 30, the side effect follows the minutes typed — a body the door accepts', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = (body) => {
+      if (!body.payload.toUserIds?.length) throw refusal(400, { code: 'RULE_TEMPLATE_BLANK', field: 'payload.toUserIds', errorAr: 'هالقالب بدّو تختار الموظفات اللي إلهن الطلبات.' });
+      return { preview: { ...PREVIEW, warnings: ['ولا وحدة من موظفات القاعدة بتقدر تسحب هلق'] }, overlap: null };
+    };
+    const { container } = await open(wideAnswer());
+    await press(within(templateRow(container, 'store-to-its-team')).getByRole('button', { name: 'شغّلها' }));
+    // The template ships with nobody: the server's sentence, beside the people.
+    await waitFor(() => expect(dialog().querySelector('[data-refusal="toUserIds"]')!.textContent).toContain('هالقالب بدّو تختار الموظفات'));
+    expect((screen.getByLabelText('الرقم') as HTMLSelectElement).value).toBe('toUserIds');
+    const minutes = screen.getByLabelText(/مهلة «طلبات بلا موظفة»/, { selector: 'input' }) as HTMLInputElement;
+    expect(minutes.value).toBe('30');
+    expect(dialog().querySelector('[data-effect]')!.textContent).toBe('الطلبات بتروح لهالموظفات بس، وإذا ما حدا منهن قادر بتصير للكل بعد 30 دقيقة دوام.');
+    fireEvent.change(minutes, { target: { value: '60' } });
+    expect(dialog().querySelector('[data-effect]')!.textContent).toBe('الطلبات بتروح لهالموظفات بس، وإذا ما حدا منهن قادر بتصير للكل بعد 60 دقيقة دوام.');
+    await press(within(dialog().querySelector('[data-routing-people]') as HTMLElement).getByLabelText('سارة'));
+    fireEvent.change(screen.getByLabelText('المتجر'), { target: { value: 's1' } });
+    await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
+    await waitFor(() => expect(dialog().querySelector('[data-preview-warnings]')).toBeTruthy());
+    expect(dialog().querySelector('[data-preview-warnings]')!.getAttribute('role')).toBe('alert');
+    const sent = h.calls.filter((c) => c.url === '/api/confirmation/rules/preview').pop()!.body;
+    expect(sent).toMatchObject({ kind: 'ROUTING', storeId: 's1', userIds: null, payload: { toUserIds: ['sara'], fallbackMinutes: 60 }, templateKey: 'store-to-its-team' });
+    expect(accepted(sent).ok).toBe(true);
+    expect(dialog().textContent).not.toMatch(/[{}]/);
+  });
+
+  it('NEGATIVE: a minutes refusal lands beside the minutes, and what was typed stays', async () => {
+    h.answers['POST /api/confirmation/rules'] = () => {
+      throw refusal(400, { code: 'RULE_PAYLOAD', field: 'payload.fallbackMinutes', errorAr: 'مهلة «طلبات بلا موظفة» لازم تكون رقم صحيح من 5 لـ480 دقيقة دوام.' });
+    };
+    await open(wideAnswer());
+    await press(screen.getByRole('button', { name: 'قاعدة جديدة' }));
+    fireEvent.change(screen.getByLabelText('الرقم'), { target: { value: 'toUserIds' } });
+    const minutes = screen.getByLabelText(/مهلة «طلبات بلا موظفة»/, { selector: 'input' }) as HTMLInputElement;
+    // Empty: the effect says the default.
+    expect(dialog().querySelector('[data-effect]')!.textContent).toContain('30 دقيقة');
+    fireEvent.change(minutes, { target: { value: '900' } });
+    await press(screen.getByRole('button', { name: 'احفظ وشغّل' }));
+    await waitFor(() => expect(minutes.parentElement!.textContent).toContain('من 5 لـ480'));
+    expect(minutes.value).toBe('900');
+  });
+
+  it('NEGATIVE: an empty minutes box sends no minutes; back to an employee number, «على مين» returns and the order boxes and the effect go', async () => {
+    h.answers['POST /api/confirmation/rules/preview'] = () => ({ preview: PREVIEW, overlap: null });
+    await open(wideAnswer());
+    await press(screen.getByRole('button', { name: 'قاعدة جديدة' }));
+    fireEvent.change(screen.getByLabelText('الرقم'), { target: { value: 'toUserIds' } });
+    await press(screen.getByRole('button', { name: 'شوف مين بتمسك' }));
+    expect('fallbackMinutes' in h.calls.filter((c) => c.url === '/api/confirmation/rules/preview').pop()!.body.payload).toBe(false);
+    fireEvent.change(screen.getByLabelText('الرقم'), { target: { value: 'hand' } });
+    expect(within(dialog()).getByRole('radio', { name: 'موظفات بالاسم' })).toBeTruthy();
+    expect(screen.queryByLabelText('نوع الطلب')).toBeNull();
+    expect(dialog().querySelector('[data-effect]')).toBeNull();
   });
 });

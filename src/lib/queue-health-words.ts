@@ -71,6 +71,15 @@ export function healthAlerts(h: QueueHealth): HealthAlert[] {
   return out;
 }
 
+/**
+ * «طلبات بلا موظفة» ON THE BOARD (request Q5c, 21/11): the line said under the tiles while a routing rule is in force (`health.unstaffed` present), with how it is
+ * counted. null without the count — the board is as it was.
+ */
+export function unstaffedLine(n: number | undefined): string | null {
+  if (n === undefined) return null;
+  return `طلبات بلا موظفة: ${n} — طلبات قاعدة توزيع ما في ولا وحدة من موظفاتها بتقدر تسحبها هلق. بتستنى مهلة القاعدة (دقائق دوام من وصول الطلب)، وبعدها بتروح لكل الموظفات.`;
+}
+
 /** «قاعدة الاحتساب» — said under the board. */
 export const HEALTH_RULE_AR =
   'قاعدة الاحتساب: «بالانتظار» = طلب مفتوح عليه «لا يرد» واحد على الأقل. «حان موعده» = موعد الخطة (أو آخر «لا يرد») وصل وما حدا ماسكو. «دخل اليوم» = أول «لا يرد» إلو اليوم بتوقيت المتجر. «انسكّر اليوم» = كان عليه «لا يرد» قبل اليوم ووصل لحالة نهائية اليوم. ' +
