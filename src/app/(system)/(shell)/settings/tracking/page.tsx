@@ -4,6 +4,7 @@ import { routeLabel } from '@/lib/route-registry';
 import { TrackingPixelsSection } from '@/components/settings/TrackingPixelsSection';
 import { AdAccountsCard } from '@/components/settings/AdAccountsCard';
 import { CustomConversionsCard } from '@/components/settings/CustomConversionsCard';
+import { PagesLinkCard } from '@/components/settings/PagesLinkCard';
 
 export default async function Page() {
   await guardRoute('/settings/tracking');
@@ -29,6 +30,11 @@ export default async function Page() {
         browser could ever have watched.
       */}
       <CustomConversionsCard />
+      {/*
+        Under the conversions (2026-11-21): where the owner points this system at Zaki Pages, which sends some orders'
+        conversions itself and must hear their status. The card draws nothing for anybody but the owner.
+      */}
+      <PagesLinkCard />
       {/*
         Beside the pixels, not on a screen of its own.
 

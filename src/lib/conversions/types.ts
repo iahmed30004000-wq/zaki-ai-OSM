@@ -29,6 +29,19 @@ export type ConversionTrigger = (typeof CONVERSION_TRIGGERS)[number];
 export const LANDING_PAGE_ORDER_SOURCE = 'Landing Page';
 export const STOREFRONT_ORDER_SOURCE = 'Store';
 
+/**
+ * AN ORDER WHOSE CUSTOM CONVERSIONS ZAKI PAGES SENDS ITSELF (2026-11-21) — `Order.ccSender = "pages"`, written by the
+ * landing door from the order's `cc_sender`. This system's sender skips it, so Meta hears the sale once; its delivery row
+ * is SKIPPED with this sentence, and the conversions card counts those apart from the «متأخّر» ones.
+ */
+export const PAGES_SENDS_AR = 'تُرسَل من صفحات ذكي';
+export const PAGES_CC_SENDER_VALUE = 'pages';
+
+/** Does Zaki Pages send this order's custom conversions? */
+export function sentByPages(order: { ccSender?: string | null } | null | undefined): boolean {
+  return order?.ccSender === PAGES_CC_SENDER_VALUE;
+}
+
 /** The kind of selling page an order came through, or null for one that came through no page at all. */
 export function salesPageOf(order: { source: string | null; landingPageId: string | null }): 'LANDING_PAGES' | 'PUBLIC' | null {
   if (order.landingPageId || order.source === LANDING_PAGE_ORDER_SOURCE) return 'LANDING_PAGES';

@@ -7,7 +7,7 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import {
   CONVERSION_TRIGGERS, VALUE_SOURCES, validateEventName, collidesWithBrowserPixel, replacesBrowserPurchase, orderEventOf,
-  TRIGGER_AR, TRIGGER_HINT_AR, VALUE_SOURCE_AR, SUGGESTED_EVENT_NAMES,
+  TRIGGER_AR, TRIGGER_HINT_AR, VALUE_SOURCE_AR, SUGGESTED_EVENT_NAMES, PAGES_CC_SENDER_VALUE,
   type ConversionTrigger, type ValueSource,
 } from '@/lib/conversions/types';
 
@@ -93,6 +93,15 @@ export async function GET() {
     });
     const avgById = new Map(quality.map((q) => [q.conversionId, q._avg.matchQuality]));
 
+    // The skipped rows that are not late at all (2026-11-21): orders whose conversions Zaki Pages sends itself
+    // (`cc_sender: "pages"`). Counted apart, so the card says «تُرسَل من صفحات ذكي» for them and «متأخّر» for the rest.
+    const fromPages = await db.conversionDelivery.groupBy({
+      by: ['conversionId'],
+      where: { companyId, status: 'SKIPPED', order: { ccSender: PAGES_CC_SENDER_VALUE } },
+      _count: { _all: true },
+    });
+    const pagesById = new Map(fromPages.map((p) => [p.conversionId, p._count._all]));
+
     const statsById = new Map<string, Record<string, number>>();
     for (const row of counts) {
       const s = statsById.get(row.conversionId) ?? {};
@@ -110,6 +119,8 @@ export async function GET() {
             pending: s.PENDING ?? 0,
             failed: s.FAILED ?? 0,
             skipped: s.SKIPPED ?? 0,
+            // A part of `skipped`, never added to it.
+            fromPages: pagesById.get(c.id) ?? 0,
             matchQuality: avgById.get(c.id) ?? null,
           },
         };
