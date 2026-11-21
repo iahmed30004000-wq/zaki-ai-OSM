@@ -19,6 +19,7 @@ import {
   OWN_RULE_STATE_AR,
   RULE_DAYS,
   activeRowsFresh,
+  lockRulesOf,
   candidateFromBody,
   payloadWords,
   previewAtTheDoor,
@@ -169,26 +170,35 @@ export async function POST(req: Request) {
       return refuse(409, 'RULE_BINDS_NOBODY', BINDS_NOBODY_AR, { preview });
     }
 
-    const created = await db.confirmationRule.create({
-      data: {
-        companyId,
-        storeId: row.storeId,
-        name: rule.name,
-        kind: rule.kind,
-        userIds: rule.userIds ?? undefined,
-        productId: row.productId,
-        channelKind: row.channelKind,
-        phase: row.phase,
-        hoursFrom: row.hoursFrom,
-        hoursTo: row.hoursTo,
-        effectiveFrom: row.effectiveFrom,
-        effectiveTo: row.effectiveTo,
-        isActive: true,
-        payload: rule.payload as object,
-        createdById: user.id,
-      },
-      select: { id: true },
+    // The overlap is asked again under the company's rules lock, and the row written in the same transaction: two saves at one moment cannot both pass it.
+    const written = await db.$transaction(async (tx) => {
+      await lockRulesOf(tx, companyId);
+      const late = overlapRefusal(rule, await activeRowsFresh(tx, companyId));
+      if (late) return { late };
+      const created = await tx.confirmationRule.create({
+        data: {
+          companyId,
+          storeId: row.storeId,
+          name: rule.name,
+          kind: rule.kind,
+          userIds: rule.userIds ?? undefined,
+          productId: row.productId,
+          channelKind: row.channelKind,
+          phase: row.phase,
+          hoursFrom: row.hoursFrom,
+          hoursTo: row.hoursTo,
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+          isActive: true,
+          payload: rule.payload as object,
+          createdById: user.id,
+        },
+        select: { id: true },
+      });
+      return { created };
     });
+    if (written.late) return refuse(409, written.late.code, written.late.errorAr, { field: 'payload', otherRuleId: written.late.otherRuleId });
+    const created = written.created!;
     forgetConfirmationRules(companyId);
 
     await logAudit({

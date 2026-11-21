@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/audit';
 import { nextWorkStart } from '@/lib/confirmation-rule-settings';
 import { overlapRefusal, validateConfirmationRuleRow, type ConfirmationRuleRow } from '@/lib/confirmation-rules';
 import { forgetConfirmationRules } from '@/lib/employee-numbers';
-import { activeRowsFresh, endAfter, startOf } from '@/lib/confirmation-own-rules';
+import { activeRowsFresh, endAfter, lockRulesOf, startOf } from '@/lib/confirmation-own-rules';
 
 /**
  * PATCH /api/confirmation/rules/[id] — STOP, RENAME, OR CHANGE THE DATES of one of the owner's rules (request Q4c, 21/11). `settings.manage` (decision R4).
@@ -76,17 +76,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const checked = validateConfirmationRuleRow(next);
       if (!checked.ok) return refuse(400, checked.code, checked.errorAr, { field: checked.field });
       next = { ...next, name: checked.rule.name };
-      if (action === 'dates') {
-        const overlap = overlapRefusal(checked.rule, await activeRowsFresh(db, companyId));
-        if (overlap) return refuse(409, overlap.code, overlap.errorAr, { field: 'days', otherRuleId: overlap.otherRuleId });
-      }
     }
+    const candidate = action === 'dates' ? validateConfirmationRuleRow(next) : null;
 
+    // New dates are judged against the other rules under the company's rules lock, and written in the same transaction (a save beside it cannot slip between).
     // Written only while it is still active: a stop that raced another stop changes nothing twice.
-    const written = await db.confirmationRule.updateMany({
-      where: { id, companyId, isActive: true },
-      data: { isActive: next.isActive, name: next.name, effectiveFrom: next.effectiveFrom, effectiveTo: next.effectiveTo },
+    const final = next;
+    const outcome = await db.$transaction(async (tx) => {
+      if (candidate?.ok) {
+        await lockRulesOf(tx, companyId);
+        const overlap = overlapRefusal(candidate.rule, await activeRowsFresh(tx, companyId));
+        if (overlap) return { overlap };
+      }
+      const done = await tx.confirmationRule.updateMany({
+        where: { id, companyId, isActive: true },
+        data: { isActive: final.isActive, name: final.name, effectiveFrom: final.effectiveFrom, effectiveTo: final.effectiveTo },
+      });
+      return { count: done.count };
     });
+    if (outcome.overlap) return refuse(409, outcome.overlap.code, outcome.overlap.errorAr, { field: 'days', otherRuleId: outcome.overlap.otherRuleId });
+    const written = { count: outcome.count ?? 0 };
     if (written.count === 0) return refuse(409, 'RULE_STOPPED', 'هالقاعدة انوقفت هلق من حدا تاني.');
     forgetConfirmationRules(companyId);
 

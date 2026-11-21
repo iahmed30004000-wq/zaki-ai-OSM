@@ -14,7 +14,7 @@ import {
   type RulePayload,
   type ValidRule,
 } from './confirmation-rules';
-import { readReturnsMode } from './confirmation-queue';
+import { mustHoldToWork, readReturnsMode } from './confirmation-queue';
 import { cadenceSince } from './no-answer-cadence-switch';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { roundsSwitch } from './no-answer-rounds-switch';
@@ -279,6 +279,11 @@ export interface PreviewPerson {
   id: string;
   name: string;
   readiness: DeskReadiness;
+  /**
+   * Takes an order by its number (`orders.claim`) without being bound to «اسحبي الطلب أول» (`mustHoldToWork`) — the claim door then applies HER hand limit
+   * (`orders/[id]/claim`, `returnsLimits(..., { userId })`). Built by the door from her real grants. Absent = false.
+   */
+  claimsByNumber?: boolean;
 }
 
 export interface OwnRulePreview {
@@ -295,13 +300,14 @@ const CANDIDATE_ID = '\u0000candidate';
 type EmployeeKey = (typeof NUMBERS_OF_KIND)['EMPLOYEE_NUMBERS'][number];
 
 /**
- * Whether a number can ever reach her at the desk: the hand and the pace where she pulls (the hand also at «الزبون على الخط»). The idle minutes reach every person
+ * Whether a number can ever reach her at the desk: the hand and the pace where she pulls (the hand also at «الزبون على الخط», and at the claim by number for whoever is not bound to «اسحبي الطلب أول»). The idle minutes reach every person
  * of the desk: whoever holds an order — pulled, handed, or claimed by its number — is released by her own minutes (Q4b), so no key is said to keep her out of them.
  */
-function reaches(n: EmployeeKey, r: DeskReadiness): string | null {
+function reaches(n: EmployeeKey, r: DeskReadiness, claimsByNumber = false): string | null {
   const has = (id: string) => r.tools.find((t) => t.id === id)?.has === true;
   if (n === 'pullPerHour') return has('pull') ? null : 'ما بتسحب طلبات — سرعة السحب ما بتوصلها';
-  if (n === 'hand') return has('pull') || has('on_the_line') ? null : 'ما بتسحب ولا بتاخد «الزبون على الخط» — حد اليد ما بيوصلها';
+  // The hand also binds whoever takes an order by its number: the claim door asks HER hand limit (review of #446).
+  if (n === 'hand') return has('pull') || has('on_the_line') || claimsByNumber ? null : 'ما بتسحب ولا بتاخد طلب برقمه ولا «الزبون على الخط» — حد اليد ما بيوصلها';
   return null;
 }
 
@@ -351,7 +357,7 @@ export function previewOwnRule(
     const got: string[] = [];
     const why: string[] = [];
     for (const n of numbers) {
-      const far = reaches(n, p.readiness);
+      const far = reaches(n, p.readiness, p.claimsByNumber === true);
       if (far) { why.push(far); continue; }
       if (!ctx.inForce[n]) { why.push(`${numberLabel(n)} ما بيشتغل هلق`); continue; }
       const src = eff[n].source;
@@ -372,6 +378,14 @@ export function previewOwnRule(
 }
 
 export const BINDS_NOBODY_AR = 'هالقاعدة ما بتمسك حدا هلق — إذا بدك تحفظها هيك أكّد إنك عارف.';
+
+/**
+ * THE COMPANY'S RULES LOCK — held by a save (create, or new dates) from the overlap check to its write, inside one transaction, so two saves at one moment cannot both
+ * pass `overlapRefusal`. Released by Postgres at commit or rollback.
+ */
+export async function lockRulesOf(tx: Prisma.TransactionClient, companyId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`own-rules:${companyId}`}::text, 0))`;
+}
 
 /** The company's ACTIVE rows, read fresh (never the thirty-second cache: a save is judged against what is stored NOW). */
 export async function activeRowsFresh(client: Client, companyId: string): Promise<ConfirmationRuleRow[]> {
@@ -397,7 +411,10 @@ export async function previewAtTheDoor(
   const { companyId, rule, nowMs } = ask;
   const storeId = rule.storeId ?? ask.storeId;
   const audience = await resolveAudience({ companyId, storeId, audience: { anyPermission: DESK_KEYS } });
-  const people = audience.map((p) => ({ id: p.id, name: p.name, readiness: deskReadiness((k) => can(p, k), { fullAccess: hasFullAccess(p) }) }));
+  const people = audience.map((p) => {
+    const holds = (k: string) => can(p, k);
+    return { id: p.id, name: p.name, readiness: deskReadiness(holds, { fullAccess: hasFullAccess(p) }), claimsByNumber: holds('orders.claim') && !mustHoldToWork(holds) };
+  });
   const missing = (rule.userIds ?? []).filter((id) => !people.some((p) => p.id === id));
   const named = missing.length ? await client.user.findMany({ where: { id: { in: missing }, companyId }, select: { id: true, name: true } }) : [];
   const others = ask.others ?? (await activeRowsFresh(client, companyId));

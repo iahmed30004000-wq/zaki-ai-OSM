@@ -32,6 +32,7 @@ const { state, db, audit } = vi.hoisted(() => {
     audits: [] as { entityId: string; newData: string }[],
     returnsOn: true,
     planOn: true,
+    qpOn: false,
     seq: 0,
   };
   const pick = (where: Record<string, any>) =>
@@ -91,7 +92,9 @@ const { state, db, audit } = vi.hoisted(() => {
   const audit = vi.fn(async (row: { action: string; entityId: string; newData?: unknown }) => {
     state.audits.push({ entityId: row.entityId, newData: JSON.stringify(row.newData ?? null) });
   });
-  return { state, db, audit };
+  // One transaction = the same fake; the rules lock is a statement the test can count.
+  Object.assign(db, { $transaction: async (fn: (tx: unknown) => unknown) => fn(db), $executeRaw: vi.fn(async () => 1) });
+  return { state, db: db as typeof db & { $executeRaw: ReturnType<typeof vi.fn> }, audit };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
@@ -118,7 +121,7 @@ vi.mock('@/lib/authorization', async (orig) => {
 // The switches a number rides on (their own tests elsewhere): the returns mode and the plan, read as the pull reads them.
 vi.mock('@/lib/no-answer-rounds-switch', () => ({ roundsSwitch: async () => ({ enabled: false }) }));
 vi.mock('@/lib/no-answer-cadence-switch', () => ({ cadenceSince: async () => (state.planOn ? new Date(0) : null) }));
-vi.mock('@/lib/queue-priority-switch', () => ({ queuePrioritySwitch: async () => ({ enabled: false }) }));
+vi.mock('@/lib/queue-priority-switch', () => ({ queuePrioritySwitch: async () => ({ enabled: state.qpOn }) }));
 vi.mock('@/lib/confirmation-queue', async (orig) => ({
   ...(await orig<typeof import('@/lib/confirmation-queue')>()),
   readReturnsMode: async () => (state.returnsOn ? ({ on: true } as never) : null),
@@ -132,6 +135,7 @@ import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { readConfirmationRules } from '@/lib/employee-numbers';
 import { describeAction } from '@/lib/audit-view';
+import { numbersInForce } from '@/lib/confirmation-own-rules';
 import * as listDoor from './route';
 import * as oneDoor from './[id]/route';
 import * as previewDoor from './preview/route';
@@ -168,6 +172,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   state.returnsOn = true;
   state.planOn = true;
+  state.qpOn = false;
   state.rules = [];
   state.audits = [];
   state.roles = { 'r-agent': { name: 'موظفة تأكيد', keys: AGENT }, 'r-mod': { name: 'موديريتور', keys: MODERATOR } };
@@ -187,10 +192,10 @@ describe('1 · create → preview → active → read at once', () => {
   it('the preview names who it binds and why the others are not, from their REAL grants — and writes nothing', async () => {
     const { status, body } = await preview(handFor(null));
     expect(status).toBe(200);
-    expect(body.preview.bound.map((b: any) => b.id).sort()).toEqual(['legacy', 'sara']);
+    // Review of #446: the moderator is bound too — she takes orders by number and the claim door applies her hand. Was ['legacy', 'sara'].
+    expect(body.preview.bound.map((b: any) => b.id).sort()).toEqual(['legacy', 'mod', 'sara']);
     const why = Object.fromEntries(body.preview.notBound.map((n: any) => [n.id, n.reason]));
     expect(why.huda).toMatch(/ما بتسحب/); // her personal «منع» — a role template would have bound her
-    expect(why.mod).toMatch(/ما بتسحب/);
     expect(why.other).toBeUndefined(); // another company's person never appears
     expect(db.confirmationRule.create).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
@@ -234,15 +239,17 @@ describe('1 · create → preview → active → read at once', () => {
 });
 
 describe('2 · a rule that binds nobody needs an explicit «I know»', () => {
-  it('a hand for the moderator alone (she never pulls): 409 with the preview, nothing written; with confirmBindsNobody it is saved', async () => {
-    const first = await create(handFor(['mod']));
+  // Review of #446: was «a hand for the moderator alone» — but the claim by number applies HER hand to whoever is not bound to «اسحبي الطلب أول», the moderator
+  // included; so the case that truly binds nobody is the PACE for the moderator (she never pulls).
+  it('a pace for the moderator alone (she never pulls): 409 with the preview, nothing written; with confirmBindsNobody it is saved', async () => {
+    const first = await create({ ...handFor(['mod']), payload: { pullPerHour: 20 } });
     expect(first.status).toBe(409);
     expect(first.body.code).toBe('RULE_BINDS_NOBODY');
     expect(first.body.errorAr).toMatch(/ما بتمسك حدا/);
     expect(first.body.preview.bound).toEqual([]);
     expect(first.body.preview.notBound.find((n: any) => n.id === 'mod').reason).toMatch(/ما بتسحب/);
     expect(state.rules).toHaveLength(0);
-    const second = await create({ ...handFor(['mod']), confirmBindsNobody: true });
+    const second = await create({ ...handFor(['mod']), payload: { pullPerHour: 20 }, confirmBindsNobody: true });
     expect(second.status).toBe(201);
     expect(JSON.parse(state.audits[0].newData).confirmedBindsNobody).toBe(true);
   });
@@ -252,6 +259,34 @@ describe('2 · a rule that binds nobody needs an explicit «I know»', () => {
     const { status, body } = await create(handFor(null));
     expect(status).toBe(409);
     expect(body.preview.notes.join(' ')).toMatch(/ما بيشتغل هلق/);
+  });
+});
+
+describe('2b · the hand reaches whoever takes an order by its number (review of #446)', () => {
+  it('a hand for the moderator (orders.claim, not bound to «اسحبي الطلب أول», built by computeEffectiveGrants) binds her — saved without the tick', async () => {
+    const r = await create(handFor(['mod']));
+    expect(r.status).toBe(201);
+    expect(r.body.preview.bound).toEqual([{ id: 'mod', name: 'مازن', numbers: [expect.stringContaining('حد اليد')] }]);
+  });
+
+  it('NEGATIVE: a moderator personally denied orders.claim is not reached by the hand', async () => {
+    state.overrides.push({ userId: 'mod', permission: 'orders.claim', effect: 'DENY' });
+    const r = await create(handFor(['mod']));
+    expect(r.status).toBe(409);
+    expect(r.body.preview.notBound.find((n: any) => n.id === 'mod').reason).toMatch(/برقمه/);
+  });
+});
+
+describe('2c · whether a number acts now — the switches, read as the pull reads them', () => {
+  it.each([
+    [false, false, false, { hand: false, idleMinutes: false, pullPerHour: true }],
+    [true, true, false, { hand: true, idleMinutes: true, pullPerHour: true }],
+    [true, false, true, { hand: true, idleMinutes: true, pullPerHour: true }],
+    [true, false, false, { hand: false, idleMinutes: false, pullPerHour: true }],
+  ])('returns mode %s · plan %s · queue priority %s', async (returnsOn, planOn, qpOn, want) => {
+    Object.assign(state, { returnsOn, planOn, qpOn });
+    const cal = { timezone: 'Asia/Damascus', workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5] };
+    expect(await numbersInForce(db as never, 'c1', new Date(), cal)).toEqual(want);
   });
 });
 
@@ -288,6 +323,18 @@ describe('3 · refused saves write nothing', () => {
     expect(state.rules).toHaveLength(0);
   });
 
+  it('GET without settings.view → 403', async () => {
+    state.viewer = await viewer(['users.view', 'settings.manage']);
+    expect((await listDoor.GET()).status).toBe(403);
+  });
+
+  it('the save takes the rules lock of the company (inside its transaction); a stop takes none', async () => {
+    const { body } = await create(handFor(['sara']));
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+    await patch(body.id, { action: 'stop' });
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
   it('the preview asks «عرض الموظفين» too (it names people)', async () => {
     state.viewer = await viewer(['settings.view', 'settings.manage']);
     expect((await previewDoor.POST(json(handFor(null)))).status).toBe(403);
@@ -317,6 +364,12 @@ describe('4 · stop, rename, dates — never delete', () => {
     const dated = await patch(body.id, { action: 'dates', days: 7 });
     expect(dated.status).toBe(200);
     expect(Date.parse(dated.body.effectiveTo) - Date.parse(dated.body.effectiveFrom)).toBe(7 * 86_400_000);
+    // New dates that would meet another rule on the same number and target are refused, and nothing is written.
+    state.rules.push({ id: 'later', companyId: 'c1', storeId: null, name: 'الأسبوع الجاي', kind: 'EMPLOYEE_NUMBERS', userIds: ['sara'], productId: null, channelKind: null, phase: null, hoursFrom: null, hoursTo: null, effectiveFrom: new Date(Date.now() + 10 * 86_400_000), effectiveTo: null, isActive: true, payload: { hand: 3 }, createdAt: new Date() });
+    const into = await patch(body.id, { action: 'dates', days: 30 });
+    expect([into.status, into.body.code]).toEqual([409, 'RULE_OVERLAP']);
+    expect(into.body.errorAr).toContain('«الأسبوع الجاي»');
+    expect(Date.parse(state.rules[0].effectiveTo) - Date.parse(state.rules[0].effectiveFrom)).toBe(7 * 86_400_000);
     // The start of a rule that has begun does not move.
     expect((await patch(body.id, { action: 'dates', days: 7, start: 'NEXT_WORK_START' })).body.code).toBe('RULE_STARTED');
   });

@@ -3,6 +3,7 @@ import type { SessionUser } from '@/types/auth';
 import { attachGrants, can, hasFullAccess } from './authorization';
 import { computeEffectiveGrants } from './permissions-core';
 import { deskReadiness } from './desk-readiness';
+import { mustHoldToWork } from './confirmation-queue';
 import { CONFIRMATION_RULE_DEFAULT } from './confirmation-rule-settings';
 import { CONFIRMATION_RULE_TEMPLATES, validateConfirmationRuleRow, type ConfirmationRuleRow, type ValidRule } from './confirmation-rules';
 import {
@@ -48,7 +49,8 @@ async function person(s: Spec): Promise<PreviewPerson> {
     ],
   });
   const u = attachGrants(base, grants);
-  return { id: u.id, name: u.name, readiness: deskReadiness((k) => can(u, k), { fullAccess: hasFullAccess(u) }) };
+  const holds = (k: string) => can(u, k);
+  return { id: u.id, name: u.name, readiness: deskReadiness(holds, { fullAccess: hasFullAccess(u) }), claimsByNumber: holds('orders.claim') && !mustHoldToWork(holds) };
 }
 
 const NOW = Date.parse('2026-11-21T10:00:00Z');
@@ -150,6 +152,16 @@ describe('2 · the preview reads each person as her session does', () => {
     expect(bound(p)).toEqual(['huda']);
   });
 
+  it('the hand reaches whoever takes an order by its number (review of #446): the moderator is bound by a hand rule, the pace still skips her', async () => {
+    const hand = await look(candidate({ userIds: ['mod'], payload: { hand: 2 } }));
+    expect(bound(hand)).toEqual(['mod']);
+    const pace = await look(candidate({ userIds: ['mod'], payload: { pullPerHour: 20 } }));
+    expect(pace.bindsNobody).toBe(true);
+    // An agent bound to «اسحبي الطلب أول» with her pull denied cannot claim by number either: the hand does not reach her.
+    const deniedPull = await look(candidate({ userIds: ['huda'], payload: { hand: 2 } }));
+    expect(reasonOf(deniedPull, 'huda')).toMatch(/حد اليد ما بيوصلها/);
+  });
+
   it('the idle minutes reach every person of the desk — whoever holds an order is released by her own minutes, the moderator too', async () => {
     const p = await look(candidate({ payload: { idleMinutes: 30 } }));
     expect(bound(p)).toEqual(['huda', 'legacy', 'mod', 'owner', 'sara']);
@@ -173,7 +185,8 @@ describe('2 · the preview reads each person as her session does', () => {
   it('a more specific rule wins — asked of the real resolver: a named rule beats a rule for everyone on the same number', async () => {
     const named = row({ id: 'n1', name: 'سارة الجديدة', userIds: ['sara'], payload: { hand: 1 } });
     const p = await look(candidate({ payload: { hand: 4 } }), { others: [named] });
-    expect(bound(p)).toEqual(['legacy', 'owner']);
+    // Review of #446: the moderator is reached by the hand too (claim by number). Was ['legacy', 'owner'].
+    expect(bound(p)).toEqual(['legacy', 'mod', 'owner']);
     expect(reasonOf(p, 'sara')).toMatch(/«سارة الجديدة» أخص منها/);
     // A stopped rule does not win.
     const q = await look(candidate({ payload: { hand: 4 } }), { others: [{ ...named, isActive: false }] });
