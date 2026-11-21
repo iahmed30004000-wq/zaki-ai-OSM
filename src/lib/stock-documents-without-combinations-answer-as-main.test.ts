@@ -43,6 +43,8 @@ vi.mock('node:crypto', async (orig) => {
 const GOLDEN = join(__dirname, 'stock-documents.w8b-main-golden.json');
 const WRITE = process.env.W8B_WRITE_GOLDEN === '1';
 const SEEDS = 70;
+/** 21/11 (W5a): the lock lines of the count freeze today's code took over the seeds (main took none). */
+const FREEZE = { lines: 0 };
 
 type Mod = Record<string, (...a: never[]) => Promise<Row>>;
 interface Impl {
@@ -294,7 +296,15 @@ async function runAll(impl: Impl) {
     }
     // The tables a document may write (the variant tables included: they must stay empty), and the locks as one hash.
     const tables = Object.fromEntries(CHANGING.map((t) => [t, answer(t === 'productionBatch' ? m.data[t].map(slim) : m.data[t])]));
-    out.push({ seed, steps, data: tables, touched: [...m.touched], locks: { n: m.locks.length, hash: fnv(m.locks.join('|')) } });
+    /*
+     * 21/11 (W5a): old = every lock line; new = every lock line but the count freeze's own — a transfer's receipt and cancel
+     * and an exit's approval now read the warehouse row FOR SHARE (`stock-count-freeze.holdWarehousesStill`, its statement
+     * marked «count-freeze») before they ask whether the warehouse is under count. That one line is added on purpose; every
+     * lock main took is still compared, in its order, and the freeze lines are counted so the filter is never vacuous.
+     */
+    const mainLocks = m.locks.filter((l) => !l.includes('count-freeze'));
+    FREEZE.lines += m.locks.length - mainLocks.length;
+    out.push({ seed, steps, data: tables, touched: [...m.touched], locks: { n: mainLocks.length, hash: fnv(mainLocks.join('|')) } });
   }
   return out;
 }
@@ -335,5 +345,7 @@ describe('a product without combinations: the transfer, the exit and the placeme
     };
     const now = await runAll(today);
     for (let i = 0; i < golden.length; i++) expect(now[i], `seed ${golden[i].seed}`).toEqual(golden[i]);
+    // 21/11 (W5a): the freeze's lock was taken by today's code (receipts, cancels and approvals happen in these seeds).
+    expect(FREEZE.lines).toBeGreaterThan(0);
   });
 });

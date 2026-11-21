@@ -91,6 +91,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'stockTransfer', label: 'نقل البضاعة بين المخازن', how: 'blocks' },
   // Goods out of the store's warehouses for good (W6a): a document of goods that left — never deleted, so the store stays.
   { model: 'stockExit', label: 'إخراج بضاعة من المخازن', how: 'blocks' },
+  // Count sheets of the store's goods in its warehouses (W5a): a document of what was counted and approved — never deleted.
+  { model: 'stockCount', label: 'أوراق الجرد على المخازن', how: 'blocks' },
   { model: 'productionBatch', label: 'تشغيلات الإنتاج', how: 'blocks' },
   { model: 'shippingBatch', label: 'دفعات الشحن', how: 'blocks' },
   { model: 'courierStatement', label: 'كشوف شركات الشحن', how: 'blocks' },

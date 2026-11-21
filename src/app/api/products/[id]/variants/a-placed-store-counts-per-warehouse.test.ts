@@ -75,7 +75,8 @@ vi.mock('@/lib/db', () => {
       },
     };
   };
-  const names = ['product', 'productVariant', 'orderItemVariant', 'store', 'warehouse', 'warehousePlacement', 'productVariantStock', 'variantStockMovement'];
+  // 21/11 (W5a): 'stockCount' — a combination's count asks the intake, which asks whether the warehouse is under count; no sheet here (today's answer).
+  const names = ['product', 'productVariant', 'orderItemVariant', 'store', 'warehouse', 'warehousePlacement', 'productVariantStock', 'variantStockMovement', 'stockCount'];
   const db: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
   db.$executeRaw = async () => 1;
   db.$queryRaw = async (strings: TemplateStringsArray, ...values: unknown[]) => {

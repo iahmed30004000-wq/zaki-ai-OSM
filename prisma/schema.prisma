@@ -58,6 +58,7 @@ model Company {
   warehouses            Warehouse[]
   stockTransfers        StockTransfer[]
   stockExits            StockExit[]
+  stockCounts           StockCount[]
   productPairs          ProductPair[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
@@ -473,6 +474,7 @@ model Product {
   /// 20/11 (W7b): transfer lines from another store whose units land in this product (its twin).
   stockTransfersIn   StockTransferLine[]         @relation("StockTransferLineTwin")
   stockExitLines     StockExitLine[]
+  stockCountLines    StockCountLine[]
   /// 20/11 (W7a): the same article in another store of the company — at most one twin per other store (`ProductPair`).
   pairsAsA           ProductPair[]               @relation("ProductPairA")
   pairsAsB           ProductPair[]               @relation("ProductPairB")
@@ -2443,6 +2445,8 @@ model Store {
   stockTransfersIn  StockTransfer[] @relation("StockTransferToStore")
   /// Goods that left this store's warehouses for good (`stock_exits`).
   stockExits        StockExit[]
+  /// 21/11 (W5a): the count sheets of this store's goods in its warehouses (`stock_counts`).
+  stockCounts       StockCount[]
   pages             StorePage[]
   menus             StoreMenu[]
   redirects         StoreRedirect[]
@@ -2606,6 +2610,7 @@ model Warehouse {
   transfersOut    StockTransfer[]       @relation("StockTransferFrom")
   transfersIn     StockTransfer[]       @relation("StockTransferTo")
   stockExits      StockExit[]
+  stockCounts     StockCount[]
 
   // One name per country — two countries may each have «المخزن الرئيسي».
   @@unique([companyId, countryId, name])
@@ -2856,6 +2861,106 @@ model StockExitLineVariant {
   @@map("stock_exit_line_variants")
 }
 
+/// A COUNT SHEET OF ONE WAREHOUSE (the warehouse plan, request W5a — the owner's decision 4: the count is of what is
+/// PHYSICALLY in the warehouse). A sheet names one warehouse of a placed store and its products (all, or a chosen list).
+///
+///   OPEN       the keeper writes what she counted, line by line. She is never told the book's figure: the doors answer
+///              a holder of `inventory.count` without `inventory.count_approve` with no expected figure at all.
+///   SUBMITTED  the counter is done; the expected figure of each line is FROZEN on the line
+///              (`warehouse-count.expectedInWarehouse`: the warehouse's rows − the units that left it with the courier).
+///   APPROVED   a DIFFERENT person (not the one who opened, counted or submitted) applies each line's difference
+///              (counted − frozen expected) through the recount's own arithmetic in that warehouse; each ledger line
+///              carries the sheet's id (`referenceId`).
+///   VOIDED     nothing is applied; nothing changed.
+/// While a sheet is OPEN or SUBMITTED its warehouse refuses receipts, transfers, exits and return receipts; deliveries go
+/// on (they move the book and the units with the courier together, so the expected figure does not move).
+///
+/// Held in the migration `20261121100000_stock_counts`, which this file cannot express:
+///   stock_counts_status_check (the four statuses), stock_counts_scope_check (ALL / CHOSEN),
+///   stock_counts_one_open_per_warehouse — ONE open sheet per warehouse: a partial unique index on "warehouseId" WHERE
+///   "status" IN ('OPEN', 'SUBMITTED'),
+///   stock_count_lines_counted_check (counted null or ≥ 0), stock_count_line_variants_counted_check (counted ≥ 0).
+model StockCount {
+  id            String    @id @default(uuid())
+  companyId     String
+  /// Whose goods are counted.
+  storeId       String
+  warehouseId   String
+  status        String    @default("OPEN")
+  scope         String    @default("ALL")
+  note          String?
+  openedById    String
+  openedAt      DateTime  @default(now())
+  submittedById String?
+  submittedAt   DateTime?
+  decidedById   String?
+  decidedAt     DateTime?
+  voidReason    String?
+  /// Every person who ever wrote a line of the sheet — never shortened: the two-hands rule refuses each of them the approval.
+  writerIds     String[]  @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store     Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  lines     StockCountLine[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([warehouseId, status])
+  @@map("stock_counts")
+}
+
+/// One product of a count sheet (unique per sheet). `counted` is the keeper's answer (null until she writes it).
+/// `book`, `withCourier` and `expected` are frozen at SUBMIT (null before); `unsourcedWithCourier` is the units of this
+/// store's orders with the courier that name NO warehouse (their units are in some warehouse's rows and are subtracted
+/// from none — shown to the approver as a reason a shortfall may not be real). `applied` (= counted − expected) and
+/// `valueAtCost` (what that difference is worth at the batches' cost, signed, rounded once) are written at approval.
+model StockCountLine {
+  id                   String    @id @default(uuid())
+  countId              String
+  productId            String
+  counted              Int?
+  countedById          String?
+  countedAt            DateTime?
+  book                 Int?
+  withCourier          Int?
+  expected             Int?
+  unsourcedWithCourier Int?
+  applied              Int?
+  valueAtCost          Float?
+
+  count    StockCount              @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product  Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants StockCountLineVariant[]
+
+  @@unique([countId, productId])
+  @@index([productId])
+  @@map("stock_count_lines")
+}
+
+/// ONE COMBINATION OF A COUNT LINE (W5a, the W8b pattern): for a product with combinations the keeper counts each one;
+/// the line's `counted` is their sum. `expected` is frozen at submit (the combination's pieces in that warehouse − its
+/// pieces with the courier from it); at approval the difference moves the combination through `variant-stock`'s one
+/// writer. `countId` and `productId` are copies of the line's.
+model StockCountLineVariant {
+  id        String @id @default(uuid())
+  lineId    String
+  countId   String
+  productId String
+  variantId String
+  counted   Int
+  expected  Int?
+
+  line    StockCountLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([countId])
+  @@index([variantId])
+  @@map("stock_count_line_variants")
+}
+
 /// THE SAME ARTICLE IN TWO STORES (the warehouse plan, request W7a). Two `Product` rows of two stores of ONE company
 /// that a person said are the same goods — what a transfer between stores will read to know where the goods land
 /// (W7b). Chosen by a person (the door proposes equal sku first, then equal name), never made by the system.
@@ -2964,6 +3069,7 @@ model ProductVariant {
   /// 20/11 (W8b): the stock documents that name this combination.
   transferLines  StockTransferLineVariant[]
   exitLines      StockExitLineVariant[]
+  countLines     StockCountLineVariant[]
 
   @@index([companyId, productId])
   @@map("product_variants")

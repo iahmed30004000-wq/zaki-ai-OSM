@@ -173,6 +173,15 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        */
       { key: 'inventory.exit', requires: 'inventory.view', ar: 'طلب إخراج بضاعة من المخزن (تالف، منتهي، عيّنات…)', en: 'Request goods out of a warehouse for good (damaged, expired, samples…)' },
       { key: 'inventory.exit_approve', requires: 'inventory.view', ar: 'اعتماد أو رفض إخراج بضاعة من المخزن', en: 'Approve or reject goods out of a warehouse' },
+      /*
+       * 21/11 (warehouse plan W5a): the two hands of a count sheet — who counts a warehouse (blind: she is never told what
+       * the book holds) and who approves the differences (a different person; he sees the expected figure). Two boxes, because
+       * the counter never approves her own count. Granted by no migration: nobody holds them until the owner ticks them; his
+       * full access holds them. Neither opens any money: an approved difference moves stock and its value at cost, as the
+       * recount does — nothing is posted to a profit, a wallet or an expense.
+       */
+      { key: 'inventory.count', requires: 'inventory.view', ar: 'جرد مخزن بورقة جرد (بدون ما يشوف رقم الدفتر)', en: 'Count a warehouse on a count sheet (blind to the book figure)' },
+      { key: 'inventory.count_approve', requires: 'inventory.view', ar: 'اعتماد ورقة جرد وفروقاتها', en: 'Approve a count sheet and its differences' },
     ],
   },
   {
