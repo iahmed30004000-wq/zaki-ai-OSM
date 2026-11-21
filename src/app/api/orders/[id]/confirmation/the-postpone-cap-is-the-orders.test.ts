@@ -142,3 +142,14 @@ describe('no ORDER_NUMBERS row = main', () => {
     expect(calls).not.toContain('facts');
   });
 });
+
+/** REVIEW OF #448 (21/11): the proof seconds of a «لا يرد» date are asked of the same per-order rule (pinned: the plan refuses such a date before the proof is asked). */
+describe('the proof seconds come from the order’s rule', () => {
+  it('one `ruleNow`, built for the order, answers the cap, the sentence and the proof seconds', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./route.ts', import.meta.url), 'utf8');
+    expect(src).toContain('const ruleNow = orderRuleOnce(db, companyId, id, confirmationRuleOnce(db, companyId));');
+    expect(src).toContain('const proofSeconds = proofOn && !statusGuarded ? (await ruleNow()).proofSeconds : undefined;');
+    expect(src.match(/confirmationRuleOnce\(/g)).toHaveLength(1);
+  });
+});

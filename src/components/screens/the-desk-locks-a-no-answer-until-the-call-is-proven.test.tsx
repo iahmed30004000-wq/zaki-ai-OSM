@@ -477,3 +477,12 @@ describe('THE OUTBOX: «too soon» and «no press yet» are retried; the rest ar
     expect(posts('NO_ANSWER')).toHaveLength(1);
   });
 });
+
+/** REVIEW OF #448 (21/11): the call sheet waits the CARD's seconds too (its own wait is the one the card waits). */
+describe('the call sheet waits the card’s seconds', () => {
+  it('proofMs is waitMsOf of the order on the sheet', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationMineScreen.tsx'), 'utf8');
+    expect(src).toContain('proofMs={waitMsOf(workable(callOrder.id) ?? callOrder)}');
+    expect(src).not.toContain('proofMs={waitMs}');
+  });
+});

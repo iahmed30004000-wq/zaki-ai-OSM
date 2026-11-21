@@ -126,3 +126,63 @@ describe('every order closes, whatever valid steps and days its rule gives it, a
     }
   });
 });
+
+/**
+ * REVIEW OF #448 (21/11), the blocker: a rule switched mid-cycle ONTO THE DEFAULT PLAN. Five counted presses on ONE day (written under a rule of «after» steps and one
+ * day — an edited base, or an order rule) and then the order lands on the default (its rule stopped or ended, or its product edited onto another): five counted reach
+ * the default's limit on one day, and the default asks two. The way out (`completesTheDays`) used to skip the default plan — the order never closed. It now closes at
+ * the first «لا يرد» on another day, and a history written under the default alone is untouched (both goldens, and the three doors' main-goldens).
+ */
+describe('a mid-cycle switch onto the default plan never strands an order', () => {
+  const ONE_DAY_FAST: ConfirmationRuleNumbers = { ...CONFIRMATION_RULE_DEFAULT, steps: Array.from({ length: 6 }, () => ({ kind: 'after' as const, minutes: 10 })), minDays: 1 };
+  const AMMAN = COUNTRIES[0];
+
+  it('the reviewer’s case: 5 counted on Sunday under «7 × after 10 min, one day», then the default — Monday’s first «لا يرد» closes it', () => {
+    expect(validateRulePayload('ORDER_NUMBERS', { steps: ONE_DAY_FAST.steps, minDays: 1 }).ok).toBe(true);
+    const fast = cadenceCalOf(SINCE, AMMAN, ONE_DAY_FAST);
+    const lines: CadenceFact[] = [];
+    let at = new Date('2026-11-15T07:00:00.000Z'); // Sunday 10:00 Amman
+    for (let i = 0; i < 5; i++) {
+      const out = cadencePress(lines, { at, result: 'NO_ANSWER' }, fast);
+      expect(out.counted).toBe(true);
+      expect(out.closes).toBe(false);
+      lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: i + 1, employeeId: 'u1', nextFollowUpAt: out.dueAt } as CadenceFact);
+      at = out.dueAt!;
+    }
+    const plain = cadenceCalOf(SINCE, AMMAN, CONFIRMATION_RULE_DEFAULT);
+    // The same day: two days are asked, one is all there is — not yet.
+    expect(cadencePress(lines, { at: new Date('2026-11-15T12:00:00.000Z'), result: 'NO_ANSWER' }, plain).closes).toBe(false);
+    // The next working day: closes.
+    const monday = cadencePress(lines, { at: new Date('2026-11-16T07:00:00.000Z'), result: 'NO_ANSWER' }, plain);
+    expect(monday.closes).toBe(true);
+    expect(monday.next.counted.length).toBeGreaterThanOrEqual(NO_ANSWER_LIMIT);
+  });
+
+  it('600 seeded orders whose rules include «after»-only one-day schedules and the default: every one closes', () => {
+    const stranded: number[] = [];
+    for (let i = 0; i < 600; i++) {
+      const next = rng(7_000_000 + i);
+      const fastN = 3 + Math.floor(next() * 4);
+      const fastRule: ConfirmationRuleNumbers = {
+        ...CONFIRMATION_RULE_DEFAULT,
+        steps: Array.from({ length: fastN }, () => ({ kind: 'after' as const, minutes: 10 + Math.floor(next() * 50) })),
+        minDays: 1,
+      };
+      const pool = [fastRule, CONFIRMATION_RULE_DEFAULT, { ...CONFIRMATION_RULE_DEFAULT, ...scheduleOfAttempts(3 + Math.floor(next() * 5))! }, { ...CONFIRMATION_RULE_DEFAULT, ...randomSchedule(next) }];
+      const country = COUNTRIES[Math.floor(next() * COUNTRIES.length)];
+      let rule = fastRule;
+      const lines: CadenceFact[] = [];
+      let at = new Date(Date.UTC(2026, 10, 2, 7 + Math.floor(next() * 4), Math.floor(next() * 60)));
+      let closed = false;
+      for (let press = 1; press <= 60 && !closed; press++) {
+        if (press >= 2 && press <= 10 && next() < 0.35) rule = pool[Math.floor(next() * pool.length)];
+        const out = cadencePress(lines, { at, result: 'NO_ANSWER' }, cadenceCalOf(SINCE, country, rule));
+        lines.push({ createdAt: at, result: 'NO_ANSWER', attemptNumber: press, employeeId: 'u1', nextFollowUpAt: out.counted ? out.dueAt : null } as CadenceFact);
+        if (out.closes && out.next.counted.length >= NO_ANSWER_LIMIT) closed = true;
+        else at = out.next.dueAt ? new Date(out.next.dueAt.getTime() + Math.floor(next() * 30) * MIN) : new Date(at.getTime() + DAY);
+      }
+      if (!closed) stranded.push(7_000_000 + i);
+    }
+    expect(stranded).toEqual([]);
+  });
+});

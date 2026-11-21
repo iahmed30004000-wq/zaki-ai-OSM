@@ -137,3 +137,15 @@ describe('two products, one desk', () => {
     expect(binding).toEqual(without);
   });
 });
+
+/** REVIEW OF #448 (21/11): every per-card limit is the ORDER's — pinned where a behaviour test above does not reach (a closed card, the hint beside «لا يرد»). */
+describe('every card word reads its order’s limit', () => {
+  it('the closed card and the «لا يرد» hint ask `limitOf(o.id)`, never the desk’s `planLimit`', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./route.ts', import.meta.url), 'utf8');
+    expect(src).toContain('closedCardWords(row.noAnswerCount, limitOf(o.id))');
+    expect(src).toContain('limit: desks ? limitOf(o.id) : NO_ANSWER_LIMIT');
+    expect(src).toContain('cadenceCardWords(desks.get(o.id)!, now, country.timezone, limitOf(o.id))');
+    expect(src).not.toMatch(/closedCardWords\([^)]*planLimit\)/);
+  });
+});
