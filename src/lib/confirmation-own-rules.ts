@@ -14,6 +14,7 @@ import {
   type ConfirmationRuleRow,
   type RulePayload,
   type ValidRule,
+  ROUTING_FALLBACK,
 } from './confirmation-rules';
 import { mustHoldToWork, readReturnsMode } from './confirmation-queue';
 import { cadenceSince } from './no-answer-cadence-switch';
@@ -121,6 +122,8 @@ export function payloadWords(p: RulePayload, nameOf: (id: string) => string | nu
   if (p.toUserIds !== undefined) {
     const names = p.toUserIds.map(nameOf);
     out.push(p.toUserIds.length === 0 ? 'بس لموظفات بتختارهن' : names.every((n) => n) ? `بس لـ${names.join('، ')}` : `بس لـ${p.toUserIds.length} موظفات`);
+    // Request Q5b: the number that keeps an order from waiting for nobody, said with the rule (its default when the rule sets none).
+    out.push(`وإذا ما في حدا منهن بيقدر يسحب: للكل بعد ${p.fallbackMinutes ?? ROUTING_FALLBACK.defaultMinutes} دقيقة دوام`);
   }
   return out;
 }

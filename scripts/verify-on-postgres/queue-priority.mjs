@@ -14,6 +14,9 @@
  *      the two time-of-day modes (new first, oldest first) — and the key off (no plan: the old order).
  *   5b. Part 3 (request Q5a, 21/11) — «هالطلبات أول»: two owner's PRIORITY rules (a product; a channel's kind, new orders only) turned into filters by the REAL
  *      `priorityBoostOf` and dealt on real tables: with no rule the order is main's, with the rules the boosted come first INSIDE each tier and no tier moves.
+ *   5c. Part 4 (request Q5b, 21/11) — «هالطلبات بس لهالموظفات»: a ROUTING rule of a product turned into the puller's filter by the REAL `routingWhereFor` and dealt
+ *      on real tables (a line of the product, the header product of an order with no lines, a header of it whose line is another): kept from her while somebody
+ *      named can pull, hers too once nobody can and the order is past the rule's wait, all hers when she is named — and the board's «طلبات بلا موظفة» count.
  *   6. Exit code 0 when it ran to the end (and, with `--assert`, every case matched), 2 when a database/Prisma error stopped it, 3 when `--assert` found a mismatch.
  *
  *   node scripts/verify-on-postgres/queue-priority.mjs [--assert]
@@ -220,6 +223,58 @@ try {
         const night = await dealAll(plan({ boost, mode: 'NIGHT_FIRST' }));
         const nightMain = await dealAll(plan({ mode: 'NIGHT_FIRST' }));
         check('الأولوية: وضع الصبح ما بيتغيّر بالقاعدة', night === nightMain, `${night} | ${nightMain}`);
+
+        // ── Part 4 (request Q5b, 21/11): «هالطلبات بس لهالموظفات» — a ROUTING rule of a product, through the REAL `routingWhereFor`, on real tables.
+        // The roster is handed in (who can pull is `routing-staff.ts`'s, tested against the grants engine); here the SQL of the filter is what is proved.
+        await tx.order.updateMany({ where: { storeId: store.id }, data: { claimedById: agent.id, claimedAt: now, confirmationStatus: 'IN_PROGRESS', status: 'IN_PROGRESS' } });
+        const routedProduct = await tx.product.create({
+          data: { companyId: company.id, storeId: store.id, name: 'منتج بموظفات', sku: `KIT-QP-R-${stamp}`, basePrice: 20, status: 'ACTIVE' },
+        });
+        const { routingRulesInForce, routingWhereFor, fallbackCut, unstaffedWhere } = await import('../../src/lib/routing-rules.ts');
+        /** A Part-4 order: a new one, its header product and its line (or no line row at all). */
+        async function routedOrder(key, age, { header, line }) {
+          const o = await order(key, age);
+          if (header) await tx.order.update({ where: { id: o.id }, data: { productId: header.id } });
+          if (line === null) await tx.orderItem.deleteMany({ where: { orderId: o.id } });
+          else if (line) await tx.orderItem.updateMany({ where: { orderId: o.id }, data: { productId: line.id, productName: line.name } });
+          return o;
+        }
+        const routedPool = [
+          await routedOrder('R-PLAIN', 3 * HOUR, {}),
+          await routedOrder('R-LINE', 2 * HOUR, { line: routedProduct }),
+          await routedOrder('R-HEADER', 1 * HOUR, { header: routedProduct, line: null }),
+          await routedOrder('R-OTHERLINE', 50 * MIN, { header: routedProduct }),
+          await routedOrder('R-YOUNG', 10 * MIN, { line: routedProduct }),
+        ];
+        const routingRow = (toUserIds) => ({
+          id: 'kit-routing', companyId: company.id, storeId: null, name: 'kit-routing', kind: 'ROUTING', userIds: null, productId: routedProduct.id, channelKind: null, phase: null,
+          hoursFrom: null, hoursTo: null, effectiveFrom: ago(DAY), effectiveTo: null, isActive: true, payload: { toUserIds, fallbackMinutes: 30 }, createdAt: ago(DAY),
+        });
+        const cut = fallbackCut(now, cal);
+        const routedFor = (toUserIds, staff) =>
+          routingWhereFor(routingRulesInForce([routingRow(toUserIds)], { companyId: company.id, storeId: store.id, now, timezone: 'UTC' }), { userId: agent.id, staff, cutOf: cut });
+        async function dealRouted(routing) {
+          await tx.order.updateMany({ where: { id: { in: routedPool.map((o) => o.id) } }, data: { claimedById: null, claimedAt: null, confirmationStatus: 'NEW', status: 'NEW' } });
+          const out = [];
+          for (let i = 0; i < 8; i++) {
+            const id = await queue.pickNextCandidate(tx, scope, now, agent.id, { returns, priority: null, ...(routing ? { routing } : {}) });
+            if (!id) break;
+            out.push(await numberOf(id));
+            await claim(id);
+          }
+          return out.join(' → ');
+        }
+        const ALL = 'R-PLAIN → R-LINE → R-HEADER → R-OTHERLINE → R-YOUNG';
+        check('التوزيع: بلا قاعدة = كل الطلبات بترتيبها', (await dealRouted(null)) === ALL);
+        const keptOut = await dealRouted(routedFor(['kit-colleague'], new Set(['kit-colleague'])));
+        check('التوزيع: زميلة مسمّاة بتقدر تسحب = طلبات المنتج (سطر أو راس بلا سطور) مش إلها، والراس اللي سطره غيره إلها', keptOut === 'R-PLAIN → R-OTHERLINE', keptOut);
+        const fellBack = await dealRouted(routedFor(['kit-colleague'], new Set()));
+        check('التوزيع: ما حدا من المسمّيات بيقدر يسحب = بعد 30 دقيقة دوام للكل، والأحدث بيستنّى', fellBack === 'R-PLAIN → R-LINE → R-HEADER → R-OTHERLINE', fellBack);
+        check('التوزيع: هي مسمّاة = ما في فلتر', routedFor([agent.id], new Set()) === null);
+        await tx.order.updateMany({ where: { id: { in: routedPool.map((o) => o.id) } }, data: { claimedById: null, claimedAt: null, confirmationStatus: 'NEW', status: 'NEW' } });
+        const unstaffed = unstaffedWhere(routingRulesInForce([routingRow(['kit-colleague'])], { companyId: company.id, storeId: store.id, now, timezone: 'UTC' }), new Set());
+        const boardCount = await tx.order.count({ where: { AND: [{ OR: [queue.readyToPullWhere(scope, undefined, now), queue.duePostponedWhere(scope, now)] }, unstaffed] } });
+        check('التوزيع: «طلبات بلا موظفة» = 3 (سطر المنتج، راسه بلا سطور، والأحدث)', boardCount === 3, String(boardCount));
 
         throw new Rollback();
       },
