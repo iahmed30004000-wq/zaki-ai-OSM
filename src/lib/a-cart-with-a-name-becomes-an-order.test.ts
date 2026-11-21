@@ -212,7 +212,11 @@ vi.mock('@/lib/db', () => {
         s.cartActivities.push({ id: `ca${++s.seq}`, createdAt: new Date(), ...data });
         return data;
       },
+      findMany: async ({ where }: Row) =>
+        s.cartActivities.filter((a) => where.cartId.in.includes(a.cartId) && a.userId != null && a.action === where.action),
     },
+    // One cart per customer per product (21/11) is held by `a-cart-whose-customer-ordered-closes-itself.test.ts`.
+    abandonedCartAlias: { findUnique: async () => null, create: async () => ({}) },
   };
   return { db, default: db };
 });
@@ -422,12 +426,29 @@ describe('when it stays a cart, its history says why — and the door still answ
     expect(JSON.parse(cartLines(CART_AUTO_ACTION.SKIPPED)[0].metadata)).toEqual({ reason: 'UNAVAILABLE' });
   });
 
-  it('the same phone already ordered the same product this week (a real order)', async () => {
+  it('the same phone already ordered the same product this week (a real order) — a cart the team worked stays a cart', async () => {
+    // Changed 21/11 (the owner): a NEW cart with «له طلب» now closes itself as «طلب لحاله» before any automatic order
+    // (`cart-has-order.ts`, held by `a-cart-whose-customer-ordered-closes-itself.test.ts`). The HAS_ORDER skip stays for a
+    // cart a person already worked — its status is the team's.
+    s.settings = JSON.stringify({ abandonedCarts: { autoConvert: false } });
+    await upsertLandingCart('c1', cart());
+    cartRow().status = 'CONTACTED';
+    s.settings = null;
     s.customers.push({ id: 'cust-x', companyId: 'c1', storeId: STORE.id, phone: '791234567' });
     s.orders.push({ id: 'real-1', orderNumber: 'ORD-R1', companyId: 'c1', storeId: STORE.id, customerId: 'cust-x', productId: 'p1', items: [], source: 'Landing Page', confirmationStatus: 'NEW', createdAt: new Date() });
-    expect((await upsertLandingCart('c1', cart())).body.status).toBe('NEW');
+    expect(await autoOrderForCart('c1', cartRow().id)).toEqual({ kind: 'SKIPPED', reason: 'HAS_ORDER' });
+    expect(cartRow().status).toBe('CONTACTED');
     expect(autoOrders()).toHaveLength(0);
     expect(JSON.parse(cartLines(CART_AUTO_ACTION.SKIPPED)[0].metadata)).toEqual({ reason: 'HAS_ORDER', orderNumber: 'ORD-R1' });
+  });
+
+  it('the same phone already ordered the same product this week — a NEW cart closes itself as «طلب لحاله» (21/11)', async () => {
+    s.customers.push({ id: 'cust-x', companyId: 'c1', storeId: STORE.id, phone: '791234567' });
+    s.orders.push({ id: 'real-1', orderNumber: 'ORD-R1', companyId: 'c1', storeId: STORE.id, customerId: 'cust-x', productId: 'p1', items: [], source: 'Landing Page', confirmationStatus: 'NEW', createdAt: new Date() });
+    expect((await upsertLandingCart('c1', cart())).body.status).toBe('RECOVERED');
+    expect(autoOrders()).toHaveLength(0);
+    expect(cartRow()).toMatchObject({ status: 'RECOVERED', orderId: 'real-1', autoOrderAt: null });
+    expect(cartLines(CART_AUTO_ACTION.SKIPPED)).toEqual([]);
   });
 
   it('the order door refuses what the cart holds (a number that is not the country’s) — its own words, nothing typed', async () => {

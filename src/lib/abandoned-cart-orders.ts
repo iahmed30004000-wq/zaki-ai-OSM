@@ -41,6 +41,10 @@ import { takeCartOrder } from './v1/landing-door';
  * cart stays in «السلات المهجورة» for the team, with the reason as a line of its history, and the claim stays: the
  * reason will not change by asking again every five minutes.
  *
+ * Since 21/11 (the owner) a NEW cart whose customer already has an order does not reach this file as «له طلب»: the landing
+ * door and the job close it first as «طلب لحاله», pointing at that order (`cart-has-order.ts`). The HAS_ORDER skip below
+ * stays for the rest — a cart a person already worked (CONTACTED, CALLBACK, …), whose status is the team's.
+ *
  * ── WHAT THE CART SAYS ──
  *
  * CONVERTED, pointing at the order, with a history line and an audit row in nobody's name (`userId` null, `via: auto`).

@@ -57,13 +57,116 @@ export function isAppEvent(v: string): v is AppEvent {
  */
 export const OWNER_STOP_EVENT = 'owner.stop_requested' as const;
 
+/**
+ * THE ORDER-STATUS EVENT FOR ZAKI PAGES (2026-11-21) — a second extra, for the same reason as the stop request: the six
+ * stay exactly the replies contract's, untouched. Zaki Pages sends some orders' custom conversions to Meta itself
+ * (`cc_sender: "pages"`), so it must hear when such an order is confirmed, delivered and paid, cancelled or returned.
+ *
+ * Only for an order that came from Zaki Pages (it carries `externalLandingPageId`), only to an app that registered for
+ * this name (the «صفحات ذكي» card on /settings/tracking registers it), and with NO personal data: the order's id and
+ * number, the page's id, the status and its moment. Same machinery as the six — the app's URL and secret, the signed
+ * delivery (`X-Zaki-*`, «<timestamp ms>.<body>»), the retries and the log on /apps/installed — plus one idempotency key per
+ * (company, order, status) on the row, so a status announced twice is queued once.
+ */
+export const PAGES_ORDER_STATUS_EVENT = 'pages.order_status' as const;
+/** The installed app the owner's «صفحات ذكي» card writes (`/api/settings/pages-link`). */
+export const PAGES_APP_CODE = 'ZAKI_PAGES';
+
 /** Events an external app may register for beyond the six of the replies contract. */
-export const EXTRA_APP_EVENTS = [OWNER_STOP_EVENT] as const;
+export const EXTRA_APP_EVENTS = [OWNER_STOP_EVENT, PAGES_ORDER_STATUS_EVENT] as const;
 export type ExtraAppEvent = (typeof EXTRA_APP_EVENTS)[number];
 
 export const EXTRA_APP_EVENT_AR: Record<ExtraAppEvent, string> = {
   'owner.stop_requested': 'طلب إيقاف من المالك («اوقف …» للبوت)',
+  'pages.order_status': 'حالة طلب من صفحات ذكي (تأكّد · استلم ودفع · ملغي · راجع)',
 };
+
+/** The four moments Zaki Pages hears, by the app event that announces each. */
+export const PAGES_ORDER_STATUSES = {
+  'order.confirmed': 'confirmed',
+  'order.delivered': 'delivered',
+  'order.cancelled': 'cancelled',
+  'order.returned': 'returned',
+} as const satisfies Partial<Record<AppEvent, string>>;
+export type PagesOrderStatus = (typeof PAGES_ORDER_STATUSES)[keyof typeof PAGES_ORDER_STATUSES];
+
+/** One fact, one key — and the company is in it, so two companies' orders can never share one. */
+export function pagesStatusKey(companyId: string, orderId: string, status: PagesOrderStatus): string {
+  return `${PAGES_ORDER_STATUS_EVENT}:${companyId}:${orderId}:${status}`;
+}
+
+/** The whole body of one order-status event — nothing about the customer, by construction. */
+export function pagesStatusBody(
+  key: string,
+  order: { id: string; orderNumber: string; externalLandingPageId: string },
+  status: PagesOrderStatus,
+  at: Date
+): string {
+  const iso = at.toISOString();
+  return JSON.stringify({
+    event: PAGES_ORDER_STATUS_EVENT,
+    at: iso,
+    data: {
+      idempotency_key: key,
+      order_id: order.id,
+      order_number: order.orderNumber,
+      page_id: order.externalLandingPageId,
+      status,
+      status_at: iso,
+    },
+  });
+}
+
+/**
+ * Queue the order-status event for Zaki Pages, when this is one of the four moments and the order came from Zaki Pages.
+ * Never throws; returns how many rows were queued (0 for a repeat). Logs an error NAME only.
+ */
+export async function emitPagesOrderStatus(companyId: string, event: AppEvent, orderId: unknown): Promise<number> {
+  const status = (PAGES_ORDER_STATUSES as Partial<Record<AppEvent, PagesOrderStatus>>)[event];
+  if (!status || typeof orderId !== 'string' || !orderId) return 0;
+  try {
+    const order = await db.order.findFirst({
+      where: { id: orderId, companyId, externalLandingPageId: { not: null } },
+      select: { id: true, orderNumber: true, externalLandingPageId: true },
+    });
+    if (!order?.externalLandingPageId) return 0;
+
+    const installs = await db.appInstall.findMany({
+      where: { companyId, enabled: true, app: { status: 'ACTIVE', webhookUrl: { not: null } } },
+      select: { id: true, app: { select: { events: true, webhookUrl: true } } },
+    });
+    const listening = installs.filter((i) => {
+      try {
+        const events = JSON.parse(i.app?.events ?? '[]');
+        return Array.isArray(events) && events.includes(PAGES_ORDER_STATUS_EVENT);
+      } catch {
+        return false;
+      }
+    });
+    if (listening.length === 0) return 0;
+
+    const key = pagesStatusKey(companyId, order.id, status);
+    const body = pagesStatusBody(key, { ...order, externalLandingPageId: order.externalLandingPageId }, status, new Date());
+    const { count } = await db.appDelivery.createMany({
+      data: listening.map((i) => ({
+        companyId,
+        installId: i.id,
+        event: PAGES_ORDER_STATUS_EVENT,
+        payload: body,
+        url: i.app!.webhookUrl!,
+        status: 'PENDING',
+        nextAttemptAt: new Date(),
+        idempotencyKey: key,
+      })),
+      // THE GUARANTEE: the same status of the same order, announced twice, is one row per app.
+      skipDuplicates: true,
+    });
+    return count;
+  } catch (e) {
+    console.error('emitPagesOrderStatus failed (non-fatal):', (e as Error)?.name || 'unknown');
+    return 0;
+  }
+}
 
 /** Is this a name an external app may register for — one of the six, or an extra? */
 export function isRegisterableEvent(v: string): v is AppEvent | ExtraAppEvent {
@@ -167,6 +270,19 @@ export const MAX_ATTEMPTS = BACKOFF.length;
  * order that saved has saved, whatever any integration thinks about it.
  */
 export async function emitAppEvent(
+  companyId: string,
+  event: AppEvent,
+  payload: Record<string, unknown>
+): Promise<number> {
+  const n = await queueAppEvent(companyId, event, payload);
+  // AFTER the six, and apart from them (2026-11-21): the order-status event Zaki Pages hears for its own orders. Never
+  // throws, and does nothing for any other moment or any other order — see `emitPagesOrderStatus`.
+  await emitPagesOrderStatus(companyId, event, payload.orderId);
+  return n;
+}
+
+/** The six, to every installed app that asked for this one — exactly as `emitAppEvent` always did. */
+async function queueAppEvent(
   companyId: string,
   event: AppEvent,
   payload: Record<string, unknown>

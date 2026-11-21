@@ -4,7 +4,7 @@ import { BACKOFF, MAX_ATTEMPTS } from '../apps/events';
 import { buildUserData, customerPhoneFacts, matchQuality } from './hash';
 import { sendEvents, explainCapiError, CapiError, type CapiEvent } from './meta-capi';
 import {
-  conversionEventId, isTooOldForMeta, META_EVENT_MAX_AGE_DAYS, salesPageOf,
+  conversionEventId, isTooOldForMeta, META_EVENT_MAX_AGE_DAYS, salesPageOf, sentByPages, PAGES_SENDS_AR,
   type ConversionTrigger,
 } from './types';
 import { pixelReaches, scopeServesPage } from '../tracking/tracking-types';
@@ -39,10 +39,13 @@ export async function queueConversions(
     // One typed in from a chat, a call or a sheet is owed nothing.
     const order = await db.order.findFirst({
       where: { id: orderId, companyId },
-      select: { source: true, landingPageId: true, storeId: true, countryId: true },
+      select: { source: true, landingPageId: true, storeId: true, countryId: true, ccSender: true },
     });
     const page = order ? salesPageOf(order) : null;
     if (!order || !page) return 0;
+    // Zaki Pages sends this one itself (`cc_sender: "pages"`): its rows are written already SKIPPED, with the reason,
+    // so the card can say «تُرسَل من صفحات ذكي» — and nothing is ever sent from here for it.
+    const byPages = sentByPages(order);
 
     const candidates = await db.customConversion.findMany({
       where: {
@@ -71,16 +74,21 @@ export async function queueConversions(
         conversionId: c.id,
         orderId,
         eventId: conversionEventId(c.id, orderId),
-        status: 'PENDING',
-        // Due immediately. The delay in this feature is the worker's tick,
-        // not an artificial wait.
-        nextAttemptAt: new Date(),
+        ...(byPages
+          ? { status: 'SKIPPED', nextAttemptAt: null, lastError: PAGES_SENDS_AR }
+          : {
+              status: 'PENDING',
+              // Due immediately. The delay in this feature is the worker's tick,
+              // not an artificial wait.
+              nextAttemptAt: new Date(),
+            }),
       })),
       // THE GUARANTEE. A status set to DELIVERED twice, a replayed webhook,
       // two requests racing — all collapse onto the row already there.
       skipDuplicates: true,
     });
-    return count;
+    // Rows written for the record only are not conversions this system owes.
+    return byPages ? 0 : count;
   } catch {
     return 0;
   }
@@ -194,6 +202,8 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
           customer: { select: { id: true, fullName: true, phone: true, rawPhone: true, city: true } },
           // What a standalone landing page reported about the visit (`v1/landing-attribution.ts`); null on any other order.
           fbcEnc: true, fbpEnc: true, clientUserAgent: true,
+          // «pages»: Zaki Pages sends this order's custom conversions itself (2026-11-21).
+          ccSender: true,
         },
       },
     },
@@ -203,6 +213,16 @@ export async function deliverConversion(deliveryId: string): Promise<boolean> {
   const attempt = delivery.attempts + 1;
   const { conversion, order } = delivery;
   const pixel = conversion.pixel;
+
+  // The last check before anything leaves: a row queued at creation, before the landing door wrote `ccSender`, and
+  // not yet stood down by it, is never sent — Zaki Pages sends this sale, and Meta must hear it once.
+  if (sentByPages(order)) {
+    await db.conversionDelivery.update({
+      where: { id: delivery.id },
+      data: { status: 'SKIPPED', attempts: delivery.attempts, nextAttemptAt: null, lastError: PAGES_SENDS_AR },
+    });
+    return false;
+  }
 
   // Only Meta speaks this API. TikTok and Snapchat have their own Events
   // APIs with different shapes; a row for one of those is parked rather

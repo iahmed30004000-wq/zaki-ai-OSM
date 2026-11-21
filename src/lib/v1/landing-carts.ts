@@ -3,8 +3,10 @@ import { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { matchRegion } from '../regions';
 import { logAudit } from '../audit';
-import { cartPhoneKey } from '../abandoned-cart-rules';
+import { phoneKeys } from '../phone-rules';
+import { CART_MERGE_HOURS, MERGE_INTO_STATUSES, cartPhoneKey } from '../abandoned-cart-rules';
 import { autoOrderForCart } from '../abandoned-cart-orders';
+import { closeCartIfOrdered } from '../cart-has-order';
 import { V1_CODE, V1Fault } from './door';
 
 /**
@@ -26,6 +28,17 @@ import { V1_CODE, V1Fault } from './door';
  *     one, by a person («حوّل لطلب»), or — when it carries a name and a phone and the company's switch is on — the
  *     landing orders' own engine, by itself, on this very send (the owner, 17/11; `abandoned-cart-orders.ts`). The
  *     answer then says CONVERTED. Whatever happens there, this door still answers `{ id, status }`.
+ *
+ * ── TWO RULES OF 21/11 (the owner) ──
+ *
+ *   · A NEW cart whose customer already has an order for the same product («له طلب») closes itself as RECOVERED, pointing
+ *     at that order (`cart-has-order.ts`), before any automatic order and whatever the company's switch says. The answer
+ *     then says RECOVERED — still `{ id, status }`, the cart's real status, as the contract has it.
+ *   · ONE CART PER CUSTOMER PER PRODUCT, NOT ONE PER VISIT. Zaki pages gives each visit its own `externalId`. A new one
+ *     whose phone and product match a cart still open (`MERGE_INTO_STATUSES`) and seen within `CART_MERGE_HOURS` updates
+ *     that cart — its `firstSeenAt` kept — and is remembered as its alias (`AbandonedCartAlias`), so a re-send or a
+ *     `/recovered` under it reaches the same cart. The answer's `id` is that cart's. Never across products or companies,
+ *     never into a closed cart, never for a product unknown here.
  *
  * ── TWO KINDS OF «NO» ──
  *
@@ -139,10 +152,29 @@ async function regionOf(companyId: string, countryCode: string | null, city: str
 
 const CART_ANSWER = { id: true, status: true } as const;
 
+/** The cart Zaki pages calls by this `externalId`: its own, or the one it was folded into (`alias: true`). */
+async function cartOf(
+  companyId: string,
+  externalId: string
+): Promise<{ id: string; lastSeenAt: Date; alias: boolean } | null> {
+  const own = await db.abandonedCart.findUnique({
+    where: { companyId_externalId: { companyId, externalId } },
+    select: { id: true, lastSeenAt: true },
+  });
+  if (own) return { ...own, alias: false };
+  const alias = await db.abandonedCartAlias.findUnique({
+    where: { companyId_externalId: { companyId, externalId } },
+    select: { cart: { select: { id: true, lastSeenAt: true } } },
+  });
+  return alias ? { ...alias.cart, alias: true } : null;
+}
+
 /**
  * CREATE OR UPDATE ONE CART. `201` when it is new, `200` when it was already here — and the answer is the cart's REAL
  * status, which stays CONTACTED (or whatever the team set) through any number of updates. CONVERTED when this send made
  * it an order by itself (a name and a phone, the company's switch on — `abandoned-cart-orders.ts`), or when it already was.
+ * RECOVERED when the customer already had an order for this product and the cart closed itself (`cart-has-order.ts`).
+ * A new `externalId` folded into the customer's open cart for the same product answers `200` with THAT cart's id.
  */
 export async function upsertLandingCart(
   companyId: string,
@@ -171,21 +203,75 @@ export async function upsertLandingCart(
     lastSeenAt,
   };
 
-  const update = async () => {
+  const update = async (id: string) => {
     const row = await db.abandonedCart.update({
-      where: { companyId_externalId: { companyId, externalId: input.externalId } },
+      where: { id },
       data: { ...data, activities: { create: { companyId, action: 'UPDATED' } } },
       select: CART_ANSWER,
     });
     return { status: 200 as const, body: { id: row.id, status: row.status } };
   };
 
-  const upsert = async (): Promise<{ status: 200 | 201; body: { id: string; status: string } }> => {
-    const known = await db.abandonedCart.findUnique({
-      where: { companyId_externalId: { companyId, externalId: input.externalId } },
-      select: { id: true },
+  /**
+   * A SECOND VISIT OF THE SAME CUSTOMER FOR THE SAME PRODUCT: the cart still open, seen within the window. Only for a
+   * product of this company — two unknown products are not known to be the same one.
+   */
+  const twinOf = async () => {
+    if (!data.productId || !data.phoneNormalized) return null;
+    return db.abandonedCart.findFirst({
+      where: {
+        companyId,
+        productId: data.productId,
+        phoneNormalized: { in: phoneKeys(data.phoneNormalized) },
+        status: { in: MERGE_INTO_STATUSES },
+        lastSeenAt: { gte: new Date(lastSeenAt.getTime() - CART_MERGE_HOURS * 60 * 60 * 1000) },
+      },
+      orderBy: { lastSeenAt: 'desc' },
+      select: { id: true, lastSeenAt: true },
     });
-    if (known) return update();
+  };
+
+  /**
+   * FOLD THIS VISIT INTO THE CART: what it brings, over what the cart holds — an empty field never wipes a filled one, the
+   * first visit's moment stays, the last one moves only forward. Then the `externalId` is remembered as the cart's alias
+   * (once: a re-send under an alias it already is comes through here too, and finds it remembered).
+   */
+  const fold = async (twin: { id: string; lastSeenAt: Date }, remember: boolean) => {
+    const brought = Object.fromEntries(
+      Object.entries(data).filter(([k, v]) => v != null && k !== 'firstSeenAt' && k !== 'lastSeenAt')
+    );
+    const row = await db.abandonedCart.update({
+      where: { id: twin.id },
+      data: {
+        ...brought,
+        lastSeenAt: lastSeenAt > twin.lastSeenAt ? lastSeenAt : twin.lastSeenAt,
+        activities: { create: { companyId, action: 'UPDATED', metadata: JSON.stringify({ alias: input.externalId }) } },
+      },
+      select: CART_ANSWER,
+    });
+    if (remember) {
+      try {
+        await db.abandonedCartAlias.create({ data: { companyId, externalId: input.externalId, cartId: twin.id } });
+      } catch (e) {
+        // The same visit sent twice in the same second: the other send already remembered it.
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e;
+      }
+    }
+    return { status: 200 as const, body: { id: row.id, status: row.status } };
+  };
+
+  const existing = async () => {
+    const known = await cartOf(companyId, input.externalId);
+    if (!known) return null;
+    return known.alias ? fold(known, false) : update(known.id);
+  };
+
+  const upsert = async (): Promise<{ status: 200 | 201; body: { id: string; status: string } }> => {
+    const known = await existing();
+    if (known) return known;
+
+    const twin = await twinOf();
+    if (twin) return fold(twin, true);
 
     try {
       const row = await db.abandonedCart.create({
@@ -202,12 +288,19 @@ export async function upsertLandingCart(
       return { status: 201, body: { id: row.id, status: row.status } };
     } catch (e) {
       // Two sends of one lead under two keys, in the same second: the unique index let one create, and the other updates.
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return update();
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const raced = await existing();
+        if (raced) return raced;
+      }
       throw e;
     }
   };
 
   const answer = await upsert();
+  // The customer already has an order for this product: the cart closes itself as «طلب لحاله», pointing at it
+  // (`cart-has-order.ts`) — whatever the switch says, because it makes no order. Never fails this door.
+  const had = await closeCartIfOrdered(companyId, answer.body.id, now);
+  if (had) return { status: answer.status, body: { id: answer.body.id, status: 'RECOVERED' } };
   // A name and a phone: the cart becomes an order by itself (`abandoned-cart-orders.ts`) — or stays a cart, with the
   // reason on its history. Never fails this door, and a cart already tried is never tried twice.
   const made = await autoOrderForCart(companyId, answer.body.id, { now });
@@ -218,7 +311,7 @@ export async function upsertLandingCart(
  * THE CART BECAME AN ORDER — THE CUSTOMER ORDERED BY HIMSELF.
  *
  * RECOVERED, linked to the order when its number is this company's (the number may be null: the order was still in Zaki
- * pages' queue). A repeat answers 200 and changes nothing — except that a link missing the first time is written when the
+ * pages' queue). The `externalId` is the cart's own or one of its aliases (21/11). A repeat answers 200 and changes nothing — except that a link missing the first time is written when the
  * number arrives. An unknown cart is 404, the machine envelope.
  *
  * ONE DEPARTURE, NAMED: a cart the TEAM already turned into an order (CONVERTED) keeps that status, because the team's
@@ -230,10 +323,11 @@ export async function recoverLandingCart(
   externalId: string,
   orderNumber: string | null
 ): Promise<{ id: string; status: string }> {
-  const cart = await db.abandonedCart.findUnique({
-    where: { companyId_externalId: { companyId, externalId } },
-    select: { id: true, status: true, orderId: true },
-  });
+  // Its own `externalId`, or one folded into it as an alias (a second visit of the same customer for the same product).
+  const known = await cartOf(companyId, externalId);
+  const cart = known
+    ? await db.abandonedCart.findUnique({ where: { id: known.id }, select: { id: true, status: true, orderId: true } })
+    : null;
   if (!cart) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such abandoned cart');
 
   const order = orderNumber

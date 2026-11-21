@@ -78,7 +78,10 @@ describe('the six stay six', () => {
     expect(isRegisterableEvent(OWNER_STOP_EVENT)).toBe(true);
     expect(isRegisterableEvent('order.created')).toBe(true);
     expect(isRegisterableEvent('order.exploded')).toBe(false);
-    expect([...EXTRA_APP_EVENTS]).toEqual([OWNER_STOP_EVENT]);
+    // 2026-11-21: a second extra joined the stop request — Zaki Pages' order-status event (`pages.order_status`). Still
+    // not one of the six, which stay exactly the replies contract's.
+    expect([...EXTRA_APP_EVENTS]).toEqual([OWNER_STOP_EVENT, 'pages.order_status']);
+    expect(isAppEvent('pages.order_status')).toBe(false);
   });
 });
 
