@@ -80,6 +80,7 @@ model Company {
   partners              Partner[]
   abandonedCarts        AbandonedCart[]
   abandonedCartEvents   AbandonedCartActivity[]
+  abandonedCartAliases  AbandonedCartAlias[]
   landingChatThreads    LandingChatThread[]
   authenticityCodes     AuthenticityCode[]
 
@@ -4863,7 +4864,8 @@ model UserSession {
 /// is the link written afterwards.
 ///
 /// status: NEW · CONTACTED · NO_ANSWER · CALLBACK · NOT_INTERESTED · INVALID · CONVERTED (the team made the order) ·
-/// RECOVERED (the customer ordered by himself, told by Zaki pages). The words and the rules are `src/lib/abandoned-carts.ts`.
+/// RECOVERED (the customer ordered by himself: told by Zaki pages, or — since 21/11 — found by this system when the same
+/// phone already has an order for the same product, `cart-has-order.ts`). The words and the rules are `src/lib/abandoned-carts.ts`.
 model AbandonedCart {
   id              String    @id @default(uuid())
   companyId       String
@@ -4906,6 +4908,7 @@ model AbandonedCart {
   order      Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   assignedTo User?                   @relation("AbandonedCartAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   activities AbandonedCartActivity[]
+  aliases    AbandonedCartAlias[]
 
   @@unique([companyId, externalId])
   @@index([companyId, status, lastSeenAt])
@@ -4914,6 +4917,25 @@ model AbandonedCart {
   @@index([companyId, assignedToId])
   @@index([productId])
   @@map("abandoned_carts")
+}
+
+/// ONE CART PER CUSTOMER PER PRODUCT, NOT ONE PER VISIT (the owner, 21/11). Zaki pages gives every visit its own
+/// `externalId`; when a second visit of the same phone for the same product arrives within a day while the first cart is
+/// still open, the landing door updates that cart and keeps the new `externalId` here, so Zaki pages' later calls with it
+/// (a re-send, `/recovered`) reach the same cart. Unique per company like the cart's own `externalId`; goes with its cart.
+model AbandonedCartAlias {
+  id         String   @id @default(uuid())
+  companyId  String
+  externalId String
+  cartId     String
+  createdAt  DateTime @default(now())
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cart    AbandonedCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, externalId])
+  @@index([cartId])
+  @@map("abandoned_cart_aliases")
 }
 
 /// A cart's history and notes, one line each: the door's arrivals and updates, a status changed, «ما رد», a note, a

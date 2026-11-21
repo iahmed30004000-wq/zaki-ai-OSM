@@ -15,6 +15,7 @@ const h = vi.hoisted(() => {
     idem: new Map<string, Row>(),
     carts: [] as Row[],
     activities: [] as Row[],
+    aliases: [] as Row[],
     orders: [] as Row[],
     products: [] as Row[],
     seq: 0,
@@ -26,6 +27,9 @@ vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => h.logAudit(...a) 
 // A cart with a name now becomes an order by itself (the owner, 17/11). That step is held by
 // `a-cart-with-a-name-becomes-an-order.test.ts`; here it makes nothing, so this file keeps holding the cart door alone.
 vi.mock('@/lib/abandoned-cart-orders', () => ({ autoOrderForCart: async () => ({ kind: 'NONE' }) }));
+// A cart whose customer already has an order closes itself (21/11) — held by
+// `a-cart-whose-customer-ordered-closes-itself.test.ts`; here nobody has one.
+vi.mock('@/lib/cart-has-order', () => ({ closeCartIfOrdered: async () => null }));
 
 vi.mock('@/lib/db', () => {
   const s = h.state;
@@ -104,6 +108,33 @@ vi.mock('@/lib/db', () => {
         apply(row, data);
         return pick(row, select);
       }),
+      // The second visit's lookup: same company, product and phone keys, an open status, seen since the window opened.
+      findFirst: vi.fn(async ({ where, select }: Row) => {
+        const hits = s.carts
+          .filter(
+            (c) =>
+              c.companyId === where.companyId &&
+              c.productId === where.productId &&
+              where.phoneNormalized.in.includes(c.phoneNormalized) &&
+              where.status.in.includes(c.status) &&
+              c.lastSeenAt >= where.lastSeenAt.gte
+          )
+          .sort((a, b) => +b.lastSeenAt - +a.lastSeenAt);
+        return pick(hits[0], select);
+      }),
+    },
+    abandonedCartAlias: {
+      findUnique: vi.fn(async ({ where }: Row) => {
+        const a = s.aliases.find((x) => x.companyId === where.companyId_externalId.companyId && x.externalId === where.companyId_externalId.externalId);
+        if (!a) return null;
+        const c = s.carts.find((x) => x.id === a.cartId)!;
+        return { cart: { id: c.id, lastSeenAt: c.lastSeenAt } };
+      }),
+      create: vi.fn(async ({ data }: Row) => {
+        if (s.aliases.some((x) => x.companyId === data.companyId && x.externalId === data.externalId)) throw dup();
+        s.aliases.push({ ...data });
+        return data;
+      }),
     },
     abandonedCartActivity: {
       create: vi.fn(async ({ data }: Row) => {
@@ -169,6 +200,7 @@ beforeEach(() => {
   s.idem.clear();
   s.carts.length = 0;
   s.activities.length = 0;
+  s.aliases.length = 0;
   s.orders.length = 0;
   s.products.length = 0;
   s.tokens.clear();
@@ -354,5 +386,113 @@ describe('POST /abandoned-carts/:externalId/recovered — the customer ordered b
     expect(((await res.json()) as { status: string }).status).toBe('CONVERTED');
     expect(h.state.carts[0]).toMatchObject({ status: 'CONVERTED', orderId: 'ordTeam' });
     expect(h.state.activities.at(-1)).toMatchObject({ action: 'RECOVERED', toStatus: 'CONVERTED' });
+  });
+});
+
+describe('one cart per customer per product, not one per visit (the owner, 21/11)', () => {
+  // The owner's screenshot: the same phone and product, two visits five minutes apart, each its own externalId.
+  const FIRST = { ...CART, externalId: 'visit-1', customerName: 'عادل شهاب', phone: '0791234567', lastSeenAt: '2026-11-21T08:05:00.000Z', firstSeenAt: '2026-11-21T08:00:00.000Z' };
+  const SECOND = { ...CART, externalId: 'visit-2', customerName: 'عادل شهاي', phone: '0791234567', city: 'إربد', lastSeenAt: '2026-11-21T08:10:00.000Z', firstSeenAt: '2026-11-21T08:09:00.000Z' };
+
+  it('a second visit → 200 with the FIRST cart’s id; still one row, its data updated, its first moment kept, the visit remembered', async () => {
+    const first = (await (await send(FIRST)).json()) as { id: string };
+    const res = await send(SECOND);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: first.id, status: 'NEW' });
+    expect(h.state.carts).toHaveLength(1);
+    expect(h.state.carts[0]).toMatchObject({
+      externalId: 'visit-1',
+      customerName: 'عادل شهاي',
+      city: 'إربد',
+      regionId: 'irb',
+      firstSeenAt: new Date('2026-11-21T08:00:00.000Z'),
+      lastSeenAt: new Date('2026-11-21T08:10:00.000Z'),
+    });
+    expect(h.state.aliases).toEqual([{ companyId: 'cA', externalId: 'visit-2', cartId: first.id }]);
+    expect(h.state.activities.at(-1)).toMatchObject({ action: 'UPDATED', metadata: JSON.stringify({ alias: 'visit-2' }) });
+  });
+
+  it('an empty field in the second visit never wipes what the first one brought', async () => {
+    await send(FIRST);
+    await send({ ...SECOND, customerName: '', city: null });
+    expect(h.state.carts[0]).toMatchObject({ customerName: 'عادل شهاب', city: 'عمّان', regionId: 'amm' });
+  });
+
+  it('a re-send under the second visit’s id → the same cart again, no second alias; the same key replays', async () => {
+    const first = (await (await send(FIRST)).json()) as { id: string };
+    await send(SECOND);
+    const again = await send({ ...SECOND, customerName: 'عادل شهاب', lastSeenAt: '2026-11-21T08:30:00.000Z' });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ id: first.id, status: 'NEW' });
+    expect(h.state.carts).toHaveLength(1);
+    expect(h.state.aliases).toHaveLength(1);
+    expect(h.state.carts[0]).toMatchObject({ customerName: 'عادل شهاب', firstSeenAt: new Date('2026-11-21T08:00:00.000Z') });
+    const writes = h.state.activities.length;
+    const a = await (await send(SECOND, { key: 'cart:visit-2:9' })).json();
+    expect(await (await send(SECOND, { key: 'cart:visit-2:9' })).json()).toEqual(a);
+    expect(h.state.activities.length).toBe(writes + 1);
+  });
+
+  it('/recovered under the second visit’s id finds the same cart', async () => {
+    const first = (await (await send(FIRST)).json()) as { id: string };
+    await send(SECOND);
+    const res = await recover('visit-2', { orderNumber: 'JO-2026-0007' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: first.id, status: 'RECOVERED' });
+    expect(h.state.carts[0]).toMatchObject({ status: 'RECOVERED', orderId: 'ord7' });
+  });
+
+  it('a cart the team worked keeps its status when a second visit folds into it', async () => {
+    await send(FIRST);
+    Object.assign(h.state.carts[0], { status: 'CALLBACK', attempts: 1, assignedToId: 'u1' });
+    const res = await send(SECOND);
+    expect(((await res.json()) as { status: string }).status).toBe('CALLBACK');
+    expect(h.state.carts).toHaveLength(1);
+    expect(h.state.carts[0]).toMatchObject({ status: 'CALLBACK', attempts: 1, assignedToId: 'u1' });
+  });
+
+  it('NEGATIVE: another product → two carts', async () => {
+    h.state.products.push({ id: 'p2', companyId: 'cA', name: 'زيت', country: 'JO' });
+    await send(FIRST);
+    expect((await send({ ...SECOND, productId: 'p2' })).status).toBe(201);
+    expect(h.state.carts).toHaveLength(2);
+    expect(h.state.aliases).toHaveLength(0);
+  });
+
+  it('NEGATIVE: another phone → two carts', async () => {
+    await send(FIRST);
+    expect((await send({ ...SECOND, phone: '0795555555' })).status).toBe(201);
+    expect(h.state.carts).toHaveLength(2);
+  });
+
+  it('NEGATIVE: a product unknown here is never merged (two unknowns are not known to be the same)', async () => {
+    await send({ ...FIRST, productId: 'not-ours' });
+    expect((await send({ ...SECOND, productId: 'not-ours' })).status).toBe(201);
+    expect(h.state.carts).toHaveLength(2);
+  });
+
+  it('NEGATIVE: another company → its own cart', async () => {
+    h.state.products.push({ id: 'p1', companyId: 'cB', name: 'دبس رمان', country: 'JO' });
+    await send(FIRST);
+    expect((await send(SECOND, { token: KEY_B })).status).toBe(201);
+    expect(h.state.carts.map((c) => c.companyId).sort()).toEqual(['cA', 'cB']);
+  });
+
+  it('NEGATIVE: a closed cart (an order, «غير مهتم», «رقم غير صالح») → a new cart', async () => {
+    for (const status of ['CONVERTED', 'RECOVERED', 'NOT_INTERESTED', 'INVALID']) {
+      h.state.carts.length = 0;
+      h.state.aliases.length = 0;
+      await send(FIRST);
+      h.state.carts[0].status = status;
+      expect((await send(SECOND)).status, status).toBe(201);
+      expect(h.state.carts, status).toHaveLength(2);
+      expect(h.state.carts[0].status, status).toBe(status);
+    }
+  });
+
+  it('NEGATIVE: the first visit seen more than a day before → a new cart', async () => {
+    await send(FIRST);
+    expect((await send({ ...SECOND, lastSeenAt: '2026-11-22T08:06:00.000Z' })).status).toBe(201);
+    expect(h.state.carts).toHaveLength(2);
   });
 });
