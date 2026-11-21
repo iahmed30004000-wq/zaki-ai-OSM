@@ -22,6 +22,7 @@ import { CALL_PROOF_WORDS } from '@/lib/call-proof-words';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { cadenceCalOf, cadenceLimit, cadencePress, cadencePressWords } from '@/lib/no-answer-cadence';
 import { readConfirmationRule } from '@/lib/confirmation-rule-settings';
+import { orderRuleOnce } from '@/lib/order-numbers';
 import { MAX_TALK_S } from '@/lib/call-helper/core';
 
 /**
@@ -52,12 +53,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      * the door asks, so the order window never decides the rule: it ticks `unlocksAtMs` against `serverNow`. With it off the answer has no such key.
      */
     // Request Q3b: the wait is the rule in force's seconds (read once, cached), so the order window unlocks when the door would.
+    // Request Q4d: THIS ORDER's seconds — the base rule's unless an owner's rule names its store, a product of its lines or its channel (`order-numbers.ts`).
     const proof = (await callProofOn(db, companyId))
       ? {
           callProof: {
             on: true,
             serverNow: Date.now(),
-            ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date(), proofSeconds: (await readConfirmationRule(db, companyId)).proofSeconds }),
+            ...callProofState({ attempts, employeeId: user.id, claimedAt: access.order.claimedAt ?? null, now: new Date(), proofSeconds: (await orderRuleOnce(db, companyId, id, () => readConfirmationRule(db, companyId))()).proofSeconds }),
           },
         }
       : {};
@@ -213,7 +215,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
      * today's. Its proof seconds go to the guard, its steps, days and clocks into the plan's calendar, its attempts into the answer. The due a line STORED is never rewritten:
      * an edit judges the next press only.
      */
-    const rule = proofOn ? await readConfirmationRule(db, companyId) : null;
+    // REQUEST Q4d (21/11): the rule in force FOR THIS ORDER — the base rule with its own attempts, steps, days and proof seconds when an owner's rule names its store,
+    // a product of its current lines or its channel (`order-numbers.ts`). No such rule in the company: it is the base rule itself, and nothing more is read.
+    const rule = proofOn ? await orderRuleOnce(db, companyId, id, () => readConfirmationRule(db, companyId))() : null;
     const cal = cadenceAt && rule ? cadenceCalOf(cadenceAt, country, rule) : null;
     let enteredDuration: number | null = null;
     if (proofOn && !guardedClass && durationSeconds !== undefined && durationSeconds !== null && durationSeconds !== '') {

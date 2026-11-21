@@ -19,7 +19,9 @@ import { hhmmToMinutes } from './work-hours';
  * ── WHO CALLS `ruleFor` (21/11, request Q4b) ──
  * The EMPLOYEE numbers act: `employee-numbers.ts` reads the rows (one cached read per request or job) and resolves them for one person — the pull (hand, pace, the idle
  * release inside it), the claim by number, «الزبون على الخط», the returning-customer hold, the idle release job (each holder's own minutes), the queue door and «افحص
- * موظفة». The ORDER numbers (Q4d), the priority and the routing (Q5) are read by nobody yet; Q4c writes rows from the screen. The confirmation desk's bundle («طلباتي»)
+ * موظفة». The ORDER numbers act since request Q4d (21/11): `order-numbers.ts` resolves them for one order — its store, the products of its current lines, its channel —
+ * at the contact door, the proof guard, the confirmation door, «طلباتي» and the timeline. The priority and the routing (Q5) are read by nobody yet; Q4c writes rows
+ * from the screen. The confirmation desk's bundle («طلباتي»)
  * is at its ceiling: the desk never imports this file — its words and numbers reach it from the server's answer.
  *
  * ── THE KINDS (the catalogue; a kind not here is a development request, never a free «if/then») ──

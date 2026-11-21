@@ -1,13 +1,14 @@
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import type { BusinessCalendar } from './business-calendar';
-import { CONFIRMATION_RULE_RANGES, confirmationRuleOnce, type ConfirmationRuleNumbers, type RuleNow } from './confirmation-rule-settings';
+import { CONFIRMATION_RULE_DEFAULT, CONFIRMATION_RULE_RANGES, confirmationRuleOnce, type ConfirmationRuleNumbers, type RuleNow, type RuleStep } from './confirmation-rule-settings';
 import {
   CONFIRMATION_RULE_KIND_AR,
   CONFIRMATION_RULE_TEMPLATES,
   NUMBERS_OF_KIND,
   PULL_PACE_RANGE,
   ruleFor,
+  ruleLevel,
   validateConfirmationRuleRow,
   type ConfirmationRuleKind,
   type ConfirmationRuleRow,
@@ -18,6 +19,7 @@ import { mustHoldToWork, readReturnsMode } from './confirmation-queue';
 import { cadenceSince } from './no-answer-cadence-switch';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { roundsSwitch } from './no-answer-rounds-switch';
+import { callProofOn } from './call-proof-switch';
 import { employeeNumbersOf, numbersAnswer, readConfirmationRules } from './employee-numbers';
 import { CHANNEL_KIND_AR } from './order-channel-kinds';
 import { DESK_KEYS, deskReadiness, type DeskReadiness } from './desk-readiness';
@@ -35,9 +37,14 @@ type Client = Prisma.TransactionClient | typeof db;
  * بتمسك ومين لا — وليش», the words of a row, and whether a number acts right now. The screen decides nothing: every word it shows is written here.
  *
  * ── ONLY A KIND THAT ACTS CAN BE SAVED ──
- * A rule that looks on and binds nobody is the owner's fear (18/11). The employee numbers act (Q4b); the order numbers act with Q4d, the priority and the routing with
+ * A rule that looks on and binds nobody is the owner's fear (18/11). The employee numbers act (Q4b) and the order numbers (Q4d, 21/11); the priority and the routing act with
  * Q5 — until then the door refuses them (`RULE_KIND_NOT_ACTING`) and the screen shows their templates greyed with the reason. Each stage adds its kind to
  * `KINDS_THAT_ACT`, one line.
+ *
+ * ── THE ORDER NUMBERS ON THE SCREEN (Q4d) ──
+ * They name no person and no hours (the validator refuses both): the dialog asks «على أي طلبات» — a store, a product, a channel — instead. The schedule is offered as ONE
+ * number, the attempts (3–7), turned here into steps by `scheduleOfAttempts` — the very steps of the two ready templates — so the owner never types a step. Their
+ * preview names whoever works the orders they touch (logs a call · confirms or postpones), whether each number acts now, and a rule more specific on some orders.
  *
  * ── THE PREVIEW IS THE ENGINE'S, NEVER A ROLE TEMPLATE'S ──
  * The people are built by the door exactly as a session builds them (`resolveAudience` → `computeEffectiveGrants` → `can` → `deskReadiness`), and who wins between two
@@ -48,26 +55,47 @@ type Client = Prisma.TransactionClient | typeof db;
  * ═══════════════════════════════════════════════════════════════════════
  */
 
-/** The kinds a save may write today. Q4d adds 'ORDER_NUMBERS'; Q5 adds 'PRIORITY' and 'ROUTING'. */
-export const KINDS_THAT_ACT: readonly ConfirmationRuleKind[] = Object.freeze(['EMPLOYEE_NUMBERS']);
+/** The kinds a save may write today. Q4d added 'ORDER_NUMBERS' (21/11); Q5 adds 'PRIORITY' and 'ROUTING'. */
+export const KINDS_THAT_ACT: readonly ConfirmationRuleKind[] = Object.freeze(['EMPLOYEE_NUMBERS', 'ORDER_NUMBERS']);
 
-export const NOT_ACTING_YET_AR =
-  'أرقام الطلب (المحاولات وثواني الإثبات وحد التأجيل) و«هالطلبات أول» و«هالطلبات بس لهالموظفات» لسا ما بتشتغل بالمكتب — بتنفتح هون لما تنبني مراحلها.';
+export const NOT_ACTING_YET_AR = '«هالطلبات أول» و«هالطلبات بس لهالموظفات» لسا ما بتشتغل بالمكتب — بتنفتح هون لما تنبني مرحلتها.';
 export const NOT_ACTING_SHORT_AR = 'لسا ما بتشتغل — بتنفتح لما تنبني مرحلتها';
 
 /** One number a rule may set, as the dialog offers it. */
 export interface OwnRuleNumber {
-  key: 'hand' | 'idleMinutes' | 'pullPerHour' | 'proofSeconds' | 'postponeMax';
+  key: 'hand' | 'idleMinutes' | 'pullPerHour' | 'attempts' | 'proofSeconds' | 'postponeMax';
   kind: ConfirmationRuleKind;
   label: string;
   unit: string;
   range: { min: number; max: number };
 }
 
+/** The attempts an order rule may give (Q4d): the base rule's own range of steps, plus the first press. */
+export const ATTEMPTS_RANGE = Object.freeze({ min: CONFIRMATION_RULE_RANGES.steps.min + 1, max: CONFIRMATION_RULE_RANGES.steps.max + 1 });
+
+/**
+ * THE STEPS OF N ATTEMPTS (Q4d) — built from the DEFAULT rule's four steps (after 30 min · after 2 h · the morning anchor · the evening anchor), so an order rule
+ * keeps the owner's rhythm: fewer attempts drop the second «after» and then the evening, more repeat the next day's two anchors. The days stay the default's (two):
+ * every list here holds at least one anchor, so the validator's «days ≤ anchors + 1» always holds. 7 and 3 are exactly the two ready templates' steps.
+ */
+export function scheduleOfAttempts(n: number): { steps: RuleStep[]; minDays: number } | null {
+  if (!Number.isInteger(n) || n < ATTEMPTS_RANGE.min || n > ATTEMPTS_RANGE.max) return null;
+  const [a1, a2, morning, evening] = CONFIRMATION_RULE_DEFAULT.steps;
+  const lists: Record<number, RuleStep[]> = {
+    3: [a1, morning],
+    4: [a1, a2, morning],
+    5: [a1, a2, morning, evening],
+    6: [a1, a2, morning, evening, morning],
+    7: [a1, a2, morning, evening, morning, evening],
+  };
+  return { steps: lists[n].map((s) => ({ ...s })), minDays: CONFIRMATION_RULE_DEFAULT.minDays };
+}
+
 export const OWN_RULE_NUMBERS: readonly OwnRuleNumber[] = Object.freeze([
   { key: 'hand', kind: 'EMPLOYEE_NUMBERS', label: 'حد اليد (كم طلب بإيدها)', unit: 'طلب', range: CONFIRMATION_RULE_RANGES.hand },
   { key: 'idleMinutes', kind: 'EMPLOYEE_NUMBERS', label: 'مهلة الطلب المتروك', unit: 'دقيقة دوام', range: CONFIRMATION_RULE_RANGES.idleMinutes },
   { key: 'pullPerHour', kind: 'EMPLOYEE_NUMBERS', label: 'سرعة السحب', unit: 'طلب بالساعة', range: PULL_PACE_RANGE },
+  { key: 'attempts', kind: 'ORDER_NUMBERS', label: 'عدد محاولات «لا يرد»', unit: 'محاولات', range: ATTEMPTS_RANGE },
   { key: 'proofSeconds', kind: 'ORDER_NUMBERS', label: 'ثواني إثبات الاتصال', unit: 'ثانية', range: CONFIRMATION_RULE_RANGES.proofSeconds },
   { key: 'postponeMax', kind: 'ORDER_NUMBERS', label: 'حد تأجيل الزبون', unit: 'مرات', range: CONFIRMATION_RULE_RANGES.postponeMax },
 ] satisfies OwnRuleNumber[]);
@@ -182,6 +210,20 @@ export function candidateFromBody(
     if (v === undefined) return refuse('RULE_SCOPE', k, 'في خانة مش مفهومة بالقاعدة.');
     fields[k] = v;
   }
+  // The attempts (Q4d): one number on the screen, the steps of `scheduleOfAttempts` in the row — so the stored payload is the one the resolver and the validator know.
+  let payloadIn: unknown = body.payload;
+  if (body.kind === 'ORDER_NUMBERS' && isObject(body.payload) && 'attempts' in body.payload) {
+    const { attempts, ...rest } = body.payload;
+    const schedule = typeof attempts === 'number' ? scheduleOfAttempts(attempts) : null;
+    if (!schedule) return refuse('RULE_PAYLOAD', 'payload.attempts', `عدد المحاولات لازم يكون رقم صحيح من ${ATTEMPTS_RANGE.min} لـ${ATTEMPTS_RANGE.max}.`);
+    payloadIn = { ...rest, ...schedule };
+  }
+  // A ready template's blanks are the owner's to fill (Q4d): «منتج غالي» saved with no product would give EVERY order seven attempts.
+  const template = CONFIRMATION_RULE_TEMPLATES.find((t) => t.key === templateKeyOf(body.templateKey));
+  for (const need of template?.needs ?? []) {
+    if (need === 'productId' && !fields.productId) return refuse('RULE_TEMPLATE_BLANK', 'productId', 'هالقالب بدّو تختار المنتج.');
+    if (need === 'storeId' && !fields.storeId) return refuse('RULE_TEMPLATE_BLANK', 'storeId', 'هالقالب بدّو تختار المتجر.');
+  }
   const start = startOf(body.start, ctx.nowMs, ctx.nextWorkStart);
   if (!start.ok) return start;
   const end = endAfter(start.from, body.days);
@@ -202,7 +244,7 @@ export function candidateFromBody(
     effectiveFrom: start.from,
     effectiveTo: end.to,
     isActive: true,
-    payload: body.payload,
+    payload: payloadIn,
     createdAt: new Date(ctx.nowMs),
     createdById: ctx.userId,
   };
@@ -233,6 +275,30 @@ export async function numbersInForce(client: Client, companyId: string, now: Dat
 }
 
 export const NOT_IN_FORCE_AR = 'ما بيشتغل هلق — حد اليد ومهلة المتروك بيمشوا بس لما يكون «إثبات المكالمات وجدول المحاولات» أو «أولوية الطابور» شغّال.';
+
+/** Whether each ORDER number acts right now (Q4d) — the switches the doors ask before they read it. */
+export interface OrderNumbersInForce {
+  schedule: boolean;
+  proofSeconds: boolean;
+  postponeMax: boolean;
+}
+
+/**
+ * Read with the doors' own switches: the steps and their days are the plan's (`cadenceSince` — the contact door builds the plan only with it), the proof seconds the
+ * proof's (`callProofOn`), the postpone cap the confirmation door's (the plan or «أولوية الطابور»).
+ */
+export async function orderNumbersInForce(client: Client, companyId: string, now: Date): Promise<OrderNumbersInForce> {
+  const plan = !!(await cadenceSince(client, companyId));
+  const proof = await callProofOn(client, companyId);
+  const priority = plan || (await queuePrioritySwitch(client, companyId, now.getTime())).enabled;
+  return { schedule: plan, proofSeconds: proof, postponeMax: priority };
+}
+
+export const ORDER_NOT_IN_FORCE_AR: Record<keyof OrderNumbersInForce, string> = {
+  schedule: 'ما بيشتغل هلق — عدد المحاولات بيمشي بس لما يكون «إثبات المكالمات وجدول المحاولات» شغّال.',
+  proofSeconds: 'ما بيشتغل هلق — ثواني الإثبات بتمشي بس لما يكون «إثبات المكالمات وجدول المحاولات» شغّال.',
+  postponeMax: 'ما بيشتغل هلق — حد التأجيل بيمشي بس لما يكون «إثبات المكالمات وجدول المحاولات» أو «أولوية الطابور» شغّال.',
+};
 
 /** The store's calendar as the pull reads it. */
 export function calendarOf(country: { timezone: string; workHoursStart?: string | null; workHoursEnd?: string | null; weekendDays?: readonly number[] | null }): BusinessCalendar {
@@ -326,12 +392,16 @@ export function previewOwnRule(
     storeId: string;
     nowMs: number;
     inForce: NumbersInForce;
+    /** Whether each ORDER number acts now (Q4d, `orderNumbersInForce`) — asked only for an order rule; absent = all on. */
+    orderInForce?: OrderNumbersInForce;
   }
 ): OwnRulePreview {
   const notes: string[] = [];
-  if (!(KINDS_THAT_ACT as readonly string[]).includes(rule.kind) || rule.kind !== 'EMPLOYEE_NUMBERS') {
+  if (!(KINDS_THAT_ACT as readonly string[]).includes(rule.kind)) {
     return { bound: [], notBound: [], notes: [NOT_ACTING_YET_AR], bindsNobody: true };
   }
+  if (rule.kind === 'ORDER_NUMBERS') return previewOrderRule(rule, ctx);
+  if (rule.kind !== 'EMPLOYEE_NUMBERS') return { bound: [], notBound: [], notes: [NOT_ACTING_YET_AR], bindsNobody: true };
   const numbers = NUMBERS_OF_KIND.EMPLOYEE_NUMBERS.filter((n) => rule.payload[n] !== undefined);
   const sleeping = numbers.filter((n) => !ctx.inForce[n]);
   if (sleeping.length) notes.push(`${sleeping.map(numberLabel).join(' و')}: ${NOT_IN_FORCE_AR}`);
@@ -373,6 +443,64 @@ export function previewOwnRule(
   const here = new Set(ctx.people.map((p) => p.id));
   for (const n of ctx.named) {
     if (!here.has(n.id)) notBound.push({ id: n.id, name: n.name, reason: 'مش على مكتب التأكيد بهالمتجر (موقوفة، أو ما بتوصل للمتجر، أو ما معها مفاتيح المكتب)' });
+  }
+  return { bound, notBound, notes, bindsNobody: bound.length === 0 };
+}
+
+type OrderKey = keyof OrderNumbersInForce;
+const ORDER_LABEL: Record<OrderKey, string> = { schedule: 'عدد محاولات «لا يرد»', proofSeconds: 'ثواني إثبات الاتصال', postponeMax: 'حد تأجيل الزبون' };
+/** The desk tool through which each order number reaches a person: the steps and the proof at the call she logs, the cap at the date she gives. */
+const ORDER_TOOL: Record<OrderKey, string> = { schedule: 'log_call', proofSeconds: 'log_call', postponeMax: 'decide' };
+const orderValueWords = (n: OrderKey, p: RulePayload) => (n === 'schedule' ? `${(p.steps?.length ?? 0) + 1} محاولات` : String(p[n]));
+
+/**
+ * THE PREVIEW OF AN ORDER RULE (Q4d) — pure. It binds ORDERS, so whom it reaches is whoever works them at the desk: a person is bound when a number it sets reaches her
+ * (she logs calls, or she confirms and postpones) and acts now. The notes say what the owner must know of the rule as a whole: which orders, a later start or an end, a
+ * number not acting now, and every other active rule MORE specific that takes some of its orders (a product rule inside a store rule, by the resolver's levels).
+ */
+function previewOrderRule(rule: ValidRule, ctx: Parameters<typeof previewOwnRule>[1]): OwnRulePreview {
+  const notes: string[] = [];
+  const inForce: OrderNumbersInForce = ctx.orderInForce ?? { schedule: true, proofSeconds: true, postponeMax: true };
+  const p = rule.payload;
+  const numbers = (['schedule', 'proofSeconds', 'postponeMax'] as const).filter((n) => (n === 'schedule' ? p.steps !== undefined : p[n] !== undefined));
+  notes.push('بتمشي على الطلبات مش على الموظفات: كل موظفة بتشتغل على طلب منها بتمشي عليها.');
+  for (const n of numbers) if (!inForce[n]) notes.push(`${ORDER_LABEL[n]}: ${ORDER_NOT_IN_FORCE_AR[n]}`);
+  if (rule.effectiveFrom.getTime() > ctx.nowMs) notes.push('بتبدأ بالموعد اللي تحت، مش هلق.');
+  if (rule.effectiveTo) notes.push('إلها نهاية — بعدها بترجع الأرقام لحالها.');
+  if (!rule.storeId) notes.push('القاعدة لكل المتاجر — الأسماء هون من المتجر اللي فاتح عليه.');
+  if (rule.productId) notes.push('الطلب اللي فيه أكتر من منتج: كل سطر بيحسب، والأخص بتغلب.');
+  const meet = (a: string | null, b: string | null) => a === null || b === null || a === b;
+  const level = ruleLevel(rule);
+  for (const row of ctx.others) {
+    if (row.id === rule.id || !row.isActive || row.kind !== 'ORDER_NUMBERS') continue;
+    const checked = validateConfirmationRuleRow(row);
+    if (!checked.ok) continue;
+    const o = checked.rule;
+    const common = numbers.filter((n) => (n === 'schedule' ? o.payload.steps !== undefined : o.payload[n] !== undefined));
+    if (common.length === 0 || ruleLevel(o) <= level) continue;
+    if (!meet(o.storeId, rule.storeId) || !meet(o.productId, rule.productId) || !meet(o.channelKind, rule.channelKind)) continue;
+    notes.push(`على بعض الطلبات قاعدة «${o.name}» أخص منها على ${common.map((n) => ORDER_LABEL[n]).join(' و')}.`);
+  }
+
+  const bound: OwnRulePreview['bound'] = [];
+  const notBound: OwnRulePreview['notBound'] = [];
+  for (const person of ctx.people) {
+    const has = (id: string) => person.readiness.tools.find((t) => t.id === id)?.has === true;
+    const got: string[] = [];
+    const why: string[] = [];
+    for (const n of numbers) {
+      if (!has(ORDER_TOOL[n])) {
+        why.push(ORDER_TOOL[n] === 'log_call' ? 'ما بتسجّل نتيجة اتصال — المحاولات والإثبات ما بيوصلوها' : 'ما بتأكّد ولا بتأجّل — حد التأجيل ما بيوصلها');
+        continue;
+      }
+      if (!inForce[n]) {
+        why.push(`${ORDER_LABEL[n]} ما بيشتغل هلق`);
+        continue;
+      }
+      got.push(`${ORDER_LABEL[n]}: ${orderValueWords(n, p)}`);
+    }
+    if (got.length) bound.push({ id: person.id, name: person.name, numbers: got });
+    else notBound.push({ id: person.id, name: person.name, reason: [...new Set(why)].join(' · ') });
   }
   return { bound, notBound, notes, bindsNobody: bound.length === 0 };
 }
@@ -421,7 +549,8 @@ export async function previewAtTheDoor(
   const ruleNow = confirmationRuleOnce(client, companyId, nowMs);
   const base = await ruleNow();
   const inForce = await numbersInForce(client, companyId, new Date(nowMs), calendarOf(ask.country), ruleNow);
-  return previewOwnRule(rule, { people, named, others, base, storeId, nowMs, inForce });
+  const orderInForce = rule.kind === 'ORDER_NUMBERS' ? await orderNumbersInForce(client, companyId, new Date(nowMs)) : undefined;
+  return previewOwnRule(rule, { people, named, others, base, storeId, nowMs, inForce, orderInForce });
 }
 
 /* ─────────────────────────── the ready templates ─────────────────────────── */
@@ -434,6 +563,8 @@ export function templatesAnswer(activeFrom: ReadonlyMap<string, number>) {
   return CONFIRMATION_RULE_TEMPLATES.map((t) => {
     const acts = (KINDS_THAT_ACT as readonly string[]).includes(t.kind);
     const payload = JSON.parse(JSON.stringify(t.payload)) as RulePayload;
+    // The dialog offers the schedule as ONE number (Q4d): a template's steps open as their attempts, and the save turns them back into exactly these steps.
+    const prefillPayload: Record<string, unknown> = payload.steps ? { attempts: payload.steps.length + 1 } : { ...payload };
     return {
       key: t.key,
       name: t.name,
@@ -445,7 +576,7 @@ export function templatesAnswer(activeFrom: ReadonlyMap<string, number>) {
       acts,
       blockedAr: acts ? null : NOT_ACTING_SHORT_AR,
       activeCount: activeFrom.get(t.key) ?? 0,
-      prefill: { name: t.name, kind: t.kind, ...t.scope, payload, days: t.days },
+      prefill: { name: t.name, kind: t.kind, ...t.scope, payload: prefillPayload, days: t.days },
     };
   });
 }

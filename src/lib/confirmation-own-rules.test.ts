@@ -87,9 +87,11 @@ const bound = (p: Awaited<ReturnType<typeof look>>) => p.bound.map((b) => b.id).
 const reasonOf = (p: Awaited<ReturnType<typeof look>>, id: string) => p.notBound.find((n) => n.id === id)?.reason;
 
 describe('1 · a save is read whole', () => {
-  it('only the employee numbers act today — the other three kinds are refused with a sentence, never saved to bind nobody', () => {
-    expect(KINDS_THAT_ACT).toEqual(['EMPLOYEE_NUMBERS']);
-    for (const kind of ['ORDER_NUMBERS', 'PRIORITY', 'ROUTING']) {
+  // UPDATED 2026-11-21 (request Q4d): was «only the employee numbers act» with ['EMPLOYEE_NUMBERS'] and ORDER_NUMBERS refused; the order numbers act now
+  // (`order-numbers.ts`), so the two kinds of Q5 are the ones still refused.
+  it('the employee and the order numbers act — the two other kinds are refused with a sentence, never saved to bind nobody', () => {
+    expect(KINDS_THAT_ACT).toEqual(['EMPLOYEE_NUMBERS', 'ORDER_NUMBERS']);
+    for (const kind of ['PRIORITY', 'ROUTING']) {
       const c = candidateFromBody({ kind, name: 'x', payload: { proofSeconds: 20 } }, ctx);
       expect(c.ok, kind).toBe(false);
       if (!c.ok) expect([c.code, c.field]).toEqual(['RULE_KIND_NOT_ACTING', 'kind']);
@@ -201,8 +203,9 @@ describe('2 · the preview reads each person as her session does', () => {
     expect(p.notes.join(' ')).toMatch(/17:00/);
   });
 
+  // UPDATED 2026-11-21 (request Q4d): the kind that does not act was ORDER_NUMBERS; it acts now (its preview: `order-numbers-act.test.ts`), PRIORITY does not yet.
   it('a kind that does not act binds nobody, whatever the people', async () => {
-    const order = validateConfirmationRuleRow(row({ kind: 'ORDER_NUMBERS', payload: { proofSeconds: 20 }, storeId: 's1' }));
+    const order = validateConfirmationRuleRow(row({ kind: 'PRIORITY', payload: { first: true }, storeId: 's1' }));
     if (!order.ok) throw new Error(order.errorAr);
     const p = await look(order.rule);
     expect(p).toEqual({ bound: [], notBound: [], notes: [NOT_ACTING_YET_AR], bindsNobody: true });
@@ -219,20 +222,29 @@ describe('3 · words and templates', () => {
     expect(scopeWords(r, { person: () => null, store: () => null, product: () => null })[0]).toBe('على 1 موظفات بالاسم');
   });
 
-  it('eight templates, every one OFF (no rule from it), only the employee kinds pressable — and each a COPY', () => {
+  // UPDATED 2026-11-21 (request Q4d): was «only the employee kinds pressable» (two keys) and the copy was proved on the steps of template 2; the four order templates
+  // are pressable now, and a schedule template opens as its ATTEMPTS (the dialog's one number) — the copy is proved on a payload the screen receives as it is.
+  it('eight templates, every one OFF (no rule from it), the employee and the order kinds pressable — and each a COPY', () => {
     const t = templatesAnswer(new Map());
     expect(t).toHaveLength(8);
     expect(t.every((x) => x.activeCount === 0)).toBe(true);
-    expect(t.filter((x) => x.acts).map((x) => x.key).sort()).toEqual(['evening-idle', 'new-employee-hand']);
+    expect(t.filter((x) => x.acts).map((x) => x.key).sort()).toEqual([
+      'evening-idle', 'expensive-product-attempts', 'new-employee-hand', 'page-leads-attempts', 'product-postpone-once', 'store-proof',
+    ]);
     expect(t.filter((x) => !x.acts).every((x) => x.blockedAr)).toBe(true);
-    (t[2].prefill.payload.steps as unknown[]).push('x');
-    expect(CONFIRMATION_RULE_TEMPLATES[2].payload.steps).toHaveLength(CONFIRMATION_RULE_DEFAULT.steps.length + 2);
+    expect(t[2].prefill.payload).toEqual({ attempts: 7 });
+    (t[0].prefill.payload as Record<string, unknown>).hand = 9;
+    expect(CONFIRMATION_RULE_TEMPLATES[0].payload.hand).toBe(2);
     expect(templatesAnswer(new Map([['evening-idle', 2]])).find((x) => x.key === 'evening-idle')!.activeCount).toBe(2);
   });
 
   it('a pressable template, its blanks filled, is a rule the door accepts', () => {
     for (const t of templatesAnswer(new Map()).filter((x) => x.acts)) {
-      const c = candidateFromBody({ ...t.prefill, userIds: t.needs.includes('userIds') ? ['sara'] : null }, ctx);
+      // UPDATED 2026-11-21 (request Q4d): the order templates need a product or a store — filled here as the owner fills them on the screen.
+      const c = candidateFromBody(
+        { ...t.prefill, userIds: t.needs.includes('userIds') ? ['sara'] : null, productId: t.needs.includes('productId') ? 'p1' : null, storeId: t.needs.includes('storeId') ? 's1' : null },
+        ctx
+      );
       expect(c.ok, t.key).toBe(true);
     }
   });

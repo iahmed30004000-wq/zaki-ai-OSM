@@ -364,6 +364,8 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       'lib/jobs/definitions/release-stale-claims.ts',
       'lib/no-answer-cadence.ts',
       'lib/no-answer-watch.ts',
+      // ADDED 2026-11-21 (request Q4d): an order's numbers over the base rule (`order-numbers.ts`, type imports only) — the doors' resolver for one order, never a screen.
+      'lib/order-numbers.ts',
       'lib/order-timeline.ts',
       'lib/reserve-returning-customers.ts',
     ]);

@@ -11,6 +11,7 @@ import { DESK_KEYS } from '@/lib/desk-readiness';
 import { nextWorkStart } from '@/lib/confirmation-rule-settings';
 import { CONFIRMATION_RULE_KIND_AR, overlapRefusal, validateConfirmationRuleRow, type ConfirmationRuleKind, type ConfirmationRuleRow } from '@/lib/confirmation-rules';
 import { forgetConfirmationRules } from '@/lib/employee-numbers';
+import { CHANNEL_KINDS, CHANNEL_KIND_AR } from '@/lib/order-channel-kinds';
 import {
   BINDS_NOBODY_AR,
   KINDS_THAT_ACT,
@@ -34,7 +35,8 @@ import {
  *
  *  · GET (`settings.view`) → every rule of the company, newest first, stopped ones included (never deleted), each in the server's words; the eight ready templates
  *    (OFF until pressed; how many active rules came from each); the numbers the dialog offers with their ranges; the stores; the desk's people of this store (names
- *    only with `users.view`, as «مين مربوطة»); whether the viewer may edit and the edit key's Arabic name; the store's next start of work.
+ *    only with `users.view`, as «مين مربوطة»); whether the viewer may edit and the edit key's Arabic name; the store's next start of work; and (Q4d, 21/11) the
+ *    company's products and the channel kinds — «على أي طلبات» of an order rule.
  *  · POST (`settings.manage` — the existing edit key of the rules page, the owner's decision R4 — AND `users.view`, since the answer names people) → the body read
  *    WHOLE (`candidateFromBody` → `validateConfirmationRuleRow`); people and store checked to be this company's; refused when another active rule of the same level
  *    sets the same number for the same target (`overlapRefusal`); then the preview (`previewAtTheDoor` — people built from their effective grants). A rule that binds
@@ -61,6 +63,9 @@ const ROW_SELECT = {
   hoursFrom: true, hoursTo: true, effectiveFrom: true, effectiveTo: true, isActive: true, payload: true, createdAt: true, createdById: true,
 } as const;
 
+/** More products than a company sells by hand; the dialog's list is bounded all the same. */
+const PRODUCTS_OFFERED = 500;
+
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 export async function GET() {
@@ -76,7 +81,7 @@ export async function GET() {
     const personIds = [...new Set(rows.flatMap((r) => [...strings(r.userIds), ...strings((r.payload as { toUserIds?: unknown } | null)?.toUserIds), r.createdById]))];
     const productIds = [...new Set(rows.map((r) => r.productId).filter((id): id is string => !!id))];
     const activeIds = rows.filter((r) => r.isActive).map((r) => r.id);
-    const [users, stores, products, made, desk] = await Promise.all([
+    const [users, stores, products, made, desk, catalogue] = await Promise.all([
       seesNames && personIds.length ? db.user.findMany({ where: { id: { in: personIds }, companyId }, select: { id: true, name: true } }) : [],
       db.store.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
       productIds.length ? db.product.findMany({ where: { id: { in: productIds }, companyId }, select: { id: true, name: true } }) : [],
@@ -84,6 +89,8 @@ export async function GET() {
         ? db.auditLog.findMany({ where: { companyId, entity: 'ConfirmationRule', action: CREATED_ACTION, entityId: { in: activeIds } }, select: { entityId: true, newData: true } })
         : [],
       seesNames && storeId ? resolveAudience({ companyId, storeId, audience: { anyPermission: DESK_KEYS } }) : null,
+      // «على أي طلبات» of an order rule (Q4d): the company's products by name — names only, bounded.
+      db.product.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: PRODUCTS_OFFERED }),
     ]);
     const nameOf = new Map(users.map((u) => [u.id, u.name]));
     const storeOf = new Map(stores.map((s) => [s.id, s.name]));
@@ -127,6 +134,8 @@ export async function GET() {
       notActingYetAr: NOT_ACTING_YET_AR,
       days: RULE_DAYS,
       stores,
+      products: catalogue,
+      channels: CHANNEL_KINDS.map((k) => ({ value: k, label: CHANNEL_KIND_AR[k] ?? k })),
       people: desk ? desk.map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name, 'ar')) : null,
       canEdit: can(viewer, EDIT_KEY),
       editKeyLabel: catalogItem(EDIT_KEY)?.ar ?? EDIT_KEY,
@@ -155,6 +164,10 @@ export async function POST(req: Request) {
     // Every id the rule names is this company's.
     if (rule.storeId && !(await db.store.findFirst({ where: { id: rule.storeId, companyId }, select: { id: true } }))) {
       return refuse(400, 'RULE_SCOPE', 'هالمتجر مش من متاجرك.', { field: 'storeId' });
+    }
+    // Q4d: the product an order rule names is this company's.
+    if (rule.productId && !(await db.product.findFirst({ where: { id: rule.productId, companyId }, select: { id: true } }))) {
+      return refuse(400, 'RULE_SCOPE', 'هالمنتج مش من منتجاتك.', { field: 'productId' });
     }
     if (rule.userIds) {
       const found = await db.user.findMany({ where: { id: { in: rule.userIds }, companyId }, select: { id: true } });
@@ -205,7 +218,7 @@ export async function POST(req: Request) {
       companyId, userId: user.id, action: CREATED_ACTION, entity: 'ConfirmationRule', entityId: created.id,
       newData: {
         templateKey: templateKeyOf(body?.templateKey),
-        name: rule.name, kind: rule.kind, userIds: rule.userIds, storeId: rule.storeId, hoursFrom: rule.hoursFrom, hoursTo: rule.hoursTo,
+        name: rule.name, kind: rule.kind, userIds: rule.userIds, storeId: rule.storeId, productId: rule.productId, channelKind: rule.channelKind, hoursFrom: rule.hoursFrom, hoursTo: rule.hoursTo,
         effectiveFrom: rule.effectiveFrom.toISOString(), effectiveTo: rule.effectiveTo?.toISOString() ?? null, payload: rule.payload,
         boundCount: preview.bound.length, confirmedBindsNobody: preview.bindsNobody,
       },
