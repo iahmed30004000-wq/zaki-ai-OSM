@@ -1,0 +1,3937 @@
+[
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 0.0",
+    "referenceType": "TRANSFER",
+    "referenceId": "t0",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 0.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t0",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 0.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1012.5,
+    "balance": -912.5,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1000,
+    "balance": -900,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "OTHER",
+    "note": "ملاحظة 1.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 1.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t1",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 73.144,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 1.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 73.144,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "عكس حركة: ملاحظة 1.2",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m3",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 73.144
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1073.14,
+    "out": 74.14,
+    "balance": 1099,
+    "movements": 4
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 3.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 3.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t3",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "ملاحظة 3.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 12.5,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 0,
+    "balance": 1100,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 866.152,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 4.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 4.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 4.3",
+    "referenceType": "TRANSFER",
+    "referenceId": "t4",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 866.152,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "عكس حركة: ملاحظة 4.1",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 866.152
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 0,
+    "balance": 112.5,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 867.15,
+    "out": 866.15,
+    "balance": 101,
+    "movements": 3
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 6.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t6",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "عكس حركة: ملاحظة 6.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t6",
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "OTHER",
+    "note": "ملاحظة 7.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "OTHER",
+    "note": "عكس حركة: ملاحظة 7.0",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "ملاحظة 9.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 4",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 9.4",
+    "referenceType": "TRANSFER",
+    "referenceId": "t9",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "عكس حركة: ملاحظة 9.3",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 0,
+    "balance": 112.5,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 1000,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 970.355,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 10.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 10.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t10",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 4",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 10.4",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 970.355
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1,
+    "balance": 99,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 970.36,
+    "balance": -869.36,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 60.721,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 11.0",
+    "referenceType": "TRANSFER",
+    "referenceId": "t11",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 11.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 60.721
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 60.72,
+    "out": 12.5,
+    "balance": 148.22,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 12.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 12.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t12",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 12.3",
+    "referenceType": "TRANSFER",
+    "referenceId": "t12",
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 0,
+    "balance": 112.5,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1012.5,
+    "out": 0,
+    "balance": 1112.5,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "OTHER",
+    "note": "ملاحظة 15.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 15.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "OTHER",
+    "note": "عكس حركة: ملاحظة 15.1",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 0,
+    "balance": 101,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 17.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 12.5,
+    "balance": 87.5,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 19.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t19",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 19.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "عكس حركة: ملاحظة 19.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t19",
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 12.5,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 0,
+    "balance": 1100,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 20.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t20",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "عكس حركة: ملاحظة 20.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t20",
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 21.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 21.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1001,
+    "balance": -901,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 22.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 22.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t22",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 22.3",
+    "referenceType": "TRANSFER",
+    "referenceId": "t22",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 517.951,
+    "currencyCode": "USD",
+    "party": "طرف 4",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 22.4",
+    "referenceType": "TRANSFER",
+    "referenceId": "t22",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "عكس حركة: ملاحظة 22.1",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 517.951
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 1,
+    "balance": 1099,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 1517.95,
+    "balance": -417.95,
+    "movements": 3
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 23.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 23.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t23",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "ملاحظة 23.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1,
+    "balance": 99,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 24.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t24",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 24.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "عكس حركة: ملاحظة 24.2",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m2",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 0,
+    "balance": 1100,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 12.5,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 7.208,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 26.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 26.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t26",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "ملاحظة 26.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_OUT",
+    "note": "عكس حركة: ملاحظة 26.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t26",
+    "reversalOfId": "m2",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 7.208
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 8.21,
+    "out": 1,
+    "balance": 107.21,
+    "movements": 3
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 0,
+    "balance": 112.5,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 81.662,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 27.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t27",
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 81.662
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 81.66,
+    "balance": 18.34,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 28.0",
+    "referenceType": "TRANSFER",
+    "referenceId": "t28",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 28.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1000,
+    "balance": -899,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 235.224,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 29.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "OTHER",
+    "note": "ملاحظة 29.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 235.224,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "عكس حركة: ملاحظة 29.0",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 235.224
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 0,
+    "balance": 101,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 235.22,
+    "out": 235.22,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 30.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t30",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 30.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 30.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1,
+    "balance": 99,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 1000,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 31.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 12.5,
+    "balance": 87.5,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "OTHER",
+    "note": "ملاحظة 32.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1,
+    "balance": 99,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 33.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1000,
+    "balance": -900,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 659.39,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 35.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t35",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 35.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 35.3",
+    "referenceType": "TRANSFER",
+    "referenceId": "t35",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 750.77,
+    "currencyCode": "USD",
+    "party": "طرف 4",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 35.4",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 659.39
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 750.77
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 659.39,
+    "balance": -559.39,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1763.27,
+    "balance": -1663.27,
+    "movements": 3
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 38.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 694.588,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 38.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 694.588
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 694.59,
+    "out": 0,
+    "balance": 794.59,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 0,
+    "balance": 1100,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "OTHER",
+    "note": "ملاحظة 39.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "ملاحظة 39.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "OTHER",
+    "note": "عكس حركة: ملاحظة 39.2",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m2",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 1012.5,
+    "balance": -900,
+    "movements": 3
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 40.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "عكس حركة: ملاحظة 40.2",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 865.844,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 41.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 41.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 519.864,
+    "currencyCode": "USD",
+    "party": "طرف 4",
+    "category": "OTHER",
+    "note": "ملاحظة 41.4",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 865.844
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 519.864
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 519.86,
+    "out": 866.84,
+    "balance": -246.98,
+    "movements": 3
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 43.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 925.529,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "OTHER",
+    "note": "ملاحظة 43.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 925.529
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1,
+    "balance": 99,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 925.53,
+    "balance": -825.53,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 44.0",
+    "referenceType": "TRANSFER",
+    "referenceId": "t44",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 44.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t44",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 44.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "عكس حركة: ملاحظة 44.2",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m3",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 2000,
+    "balance": -1900,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 12.5,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 888.793,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 45.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 888.793,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "عكس حركة: ملاحظة 45.0",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 888.793
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 888.79,
+    "out": 888.79,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 46.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t46",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 46.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1001,
+    "out": 0,
+    "balance": 1101,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 47.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1000,
+    "balance": -900,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_OUT",
+    "note": "ملاحظة 48.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t48",
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 0,
+    "balance": 112.5,
+    "movements": 1
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 49.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "COURIER_SETTLEMENT",
+    "note": "عكس حركة: ملاحظة 49.0",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1000,
+    "out": 1000,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 50.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 50.3",
+    "referenceType": "TRANSFER",
+    "referenceId": "t50",
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1000,
+    "balance": -899,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "OTHER",
+    "note": "ملاحظة 52.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1.235,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 52.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t52",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 52.2",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1.235
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1.24,
+    "balance": 98.77,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1012.5,
+    "balance": -912.5,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 54.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 1000,
+    "balance": -900,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 55.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "ADJUSTMENT",
+    "note": "عكس حركة: ملاحظة 55.1",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 57.0",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1000,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 57.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t57",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 520.452,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 57.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t57",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 0",
+    "category": "ADJUSTMENT",
+    "note": "عكس حركة: ملاحظة 57.0",
+    "referenceType": null,
+    "referenceId": null,
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1000
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 520.452
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 1,
+    "out": 1,
+    "balance": 100,
+    "movements": 2
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 520.45,
+    "out": 1000,
+    "balance": -379.55,
+    "movements": 2
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w1",
+    "direction": "IN",
+    "amount": 845.066,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "COURIER_SETTLEMENT",
+    "note": "ملاحظة 58.1",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 44.332,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 58.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t58",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 1,
+    "currencyCode": "USD",
+    "party": "طرف 3",
+    "category": "ADJUSTMENT",
+    "note": "ملاحظة 58.3",
+    "referenceType": null,
+    "referenceId": null,
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 44.332,
+    "currencyCode": "USD",
+    "party": "طرف 2",
+    "category": "TRANSFER_IN",
+    "note": "عكس حركة: ملاحظة 58.2",
+    "referenceType": "TRANSFER",
+    "referenceId": "t58",
+    "reversalOfId": "m2",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": true,
+    "direction": "IN",
+    "amount": 845.066
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 44.332
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 1
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 845.07,
+    "out": 0,
+    "balance": 945.07,
+    "movements": 1
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 44.33,
+    "out": 45.33,
+    "balance": 99,
+    "movements": 3
+   }
+  ]
+ },
+ {
+  "writes": [
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "OUT",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "ملاحظة 59.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t59",
+    "createdById": "u1"
+   },
+   {
+    "companyId": "c1",
+    "walletId": "w2",
+    "direction": "IN",
+    "amount": 12.5,
+    "currencyCode": "USD",
+    "party": "طرف 1",
+    "category": "TRANSFER_IN",
+    "note": "عكس حركة: ملاحظة 59.1",
+    "referenceType": "TRANSFER",
+    "referenceId": "t59",
+    "reversalOfId": "m1",
+    "reversalReason": "تصحيح",
+    "createdById": "u2"
+   }
+  ],
+  "results": [
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "ok": true,
+    "direction": "OUT",
+    "amount": 12.5
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Wallet not found"
+   },
+   {
+    "ok": false,
+    "message": "Amount must be greater than zero"
+   },
+   {
+    "reversed": true
+   },
+   {
+    "walletId": "w1",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 0,
+    "out": 0,
+    "balance": 100,
+    "movements": 0
+   },
+   {
+    "walletId": "w2",
+    "currencyCode": "USD",
+    "opening": 100,
+    "in": 12.5,
+    "out": 12.5,
+    "balance": 100,
+    "movements": 2
+   }
+  ]
+ }
+]

@@ -3485,6 +3485,10 @@ model WalletMovement {
   valueInStoreCurrency Decimal? @db.Decimal(14, 3)
   createdById    String
   createdAt      DateTime @default(now())
+  /// THE REAL DATE (22/11, `lib/real-date.ts`): when the money really moved, as typed. NULL = the same as `createdAt` (no
+  /// backfill). Shown and sorted by, never added up: balances, closings, matching, profit and the partners' statement stay on
+  /// `createdAt`. Migration 20261122130000_wallet_real_dates.
+  occurredAt     DateTime?
 
   wallet     Wallet          @relation(fields: [walletId], references: [id], onDelete: Restrict)
   reversalOf WalletMovement? @relation("Reversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
@@ -3619,6 +3623,9 @@ model WalletTransfer {
   note         String
   createdById  String
   createdAt    DateTime @default(now())
+  /// THE REAL DATE (22/11, `lib/real-date.ts`): when the transfer really happened, as typed; its two legs carry the same.
+  /// NULL = the same as `createdAt`. Shown and sorted by, never added up.
+  occurredAt   DateTime?
 
   @@index([companyId, createdAt])
   @@index([companyId, kind])

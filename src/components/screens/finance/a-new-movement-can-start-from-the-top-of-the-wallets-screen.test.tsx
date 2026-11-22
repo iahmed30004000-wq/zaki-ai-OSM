@@ -292,7 +292,8 @@ describe('2 — it asks WHICH wallet, and only of the running ones', () => {
     send(dialog, 'adjustment-out');
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0].url).toBe('/api/finance/wallets/w2/movements');
-    expect(JSON.parse(sent[0].raw)).toStrictEqual({ direction: 'OUT', amount: 40, party: 'سامر', category: 'ADJUSTMENT', note: 'تصحيح رصيد' });
+    // UPDATED 22/11 (the real date): the body also carries «تاريخ الحركة الفعلي» (now, by default). Old: the five keys alone.
+    expect(JSON.parse(sent[0].raw)).toStrictEqual({ direction: 'OUT', amount: 40, party: 'سامر', category: 'ADJUSTMENT', note: 'تصحيح رصيد', occurredAt: expect.any(String) });
   });
 
   it('and what was typed stays when the wallet is changed — only the wallet moves', async () => {

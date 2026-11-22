@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
+import { assertOccurredAt } from './real-date';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -81,6 +82,12 @@ export interface MovementInput {
   /** A partner draw's partner, and what it is worth in the STORE's currency. Both are required on a `PARTNER_DRAW` and refused on every other kind. */
   partnerId?: string;
   valueInStoreCurrency?: number;
+  /**
+   * When the money REALLY moved (22/11, lib/real-date), when the person typed one. Absent = the registration moment, and the row
+   * is written exactly as before. Refused in the future (beyond a five-minute skew) and before 2020. Never added up: every balance
+   * and closing reads `createdAt`.
+   */
+  occurredAt?: Date | null;
   createdById: string;
 }
 
@@ -122,6 +129,7 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
   });
   if (!wallet) throw new Error('Wallet not found');
   if (input.amount <= 0) throw new Error('Amount must be greater than zero');
+  const occurredAt = assertOccurredAt(input.occurredAt, new Date());
 
   return tx.walletMovement.create({
     data: {
@@ -137,6 +145,8 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
       referenceId: input.referenceId ?? null,
       ...(input.statementReceiptId ? { statementReceiptId: input.statementReceiptId } : {}),
       ...(input.partnerId ? { partnerId: input.partnerId, valueInStoreCurrency: input.valueInStoreCurrency } : {}),
+      // Only when one was typed: a row without it is written byte for byte as before this change.
+      ...(occurredAt ? { occurredAt } : {}),
       createdById: input.createdById,
     },
   });

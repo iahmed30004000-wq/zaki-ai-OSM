@@ -627,6 +627,8 @@ describe('the movement flow is the flow it was', () => {
       party: 'سامر',
       category: 'ADJUSTMENT',
       note: 'تصحيح رصيد',
+      // UPDATED 22/11 (the real date): the body now also carries «تاريخ الحركة الفعلي» — the box's ISO moment, now by default.
+      occurredAt: expect.any(String),
     });
     expect(await screen.findByText('سُجِّلت الحركة')).toBeTruthy();
     expect(sent.some((s) => s.url === '/api/finance')).toBe(false);

@@ -201,10 +201,12 @@ describe('the requests and the figures — frozen from osm/main’s drawing', ()
     type(noteBox(), '  إيداع  ');
     fireEvent.click(submit());
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0]).toEqual([
-      '/api/finance/transfers',
-      { method: 'POST', body: '{"transferId":"00000000-0000-4000-8000-000000000001","fromWalletId":"w-usd","toWalletId":"w-usd2","amountOut":12.5,"note":"إيداع","expectKind":"INTERNAL"}' },
-    ]);
+    // UPDATED 22/11 (the real date): the body now also carries «تاريخ الحركة الفعلي» — the box's ISO moment, now by default.
+    // Old: the body string was compared whole. New: the same string with the real date, which is the only key added.
+    expect(writes()[0][0]).toBe('/api/finance/transfers');
+    const { occurredAt, ...rest } = JSON.parse((writes()[0][1] as { body: string }).body);
+    expect(occurredAt).toMatch(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00[.]000Z$/);
+    expect(JSON.stringify(rest)).toBe('{"transferId":"00000000-0000-4000-8000-000000000001","fromWalletId":"w-usd","toWalletId":"w-usd2","amountOut":12.5,"note":"إيداع","expectKind":"INTERNAL"}');
   });
 
   it('an exchange sends the amount that arrives, and the tiles say what main said', async () => {
@@ -223,6 +225,8 @@ describe('the requests and the figures — frozen from osm/main’s drawing', ()
     expect(JSON.parse((writes()[0][1] as { body: string }).body)).toEqual({
       transferId: '00000000-0000-4000-8000-000000000001', fromWalletId: 'w-usd', toWalletId: 'w-syp', amountOut: 100, amountIn: 1300000,
       note: 'صرف دولار', expectKind: 'EXCHANGE',
+      // UPDATED 22/11 (the real date): the body now also carries «تاريخ الحركة الفعلي» — the box's ISO moment, now by default.
+      occurredAt: expect.any(String),
     });
   });
 

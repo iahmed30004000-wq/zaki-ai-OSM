@@ -10,17 +10,19 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
 import { AdvancedGroup } from '@/components/ui/AdvancedGroup';
-import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiImageEditLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
+import { RiAddCircleLine, RiArrowGoBackLine, RiCheckLine, RiCloseLine, RiDeleteBinLine, RiEyeLine, RiImageEditLine, RiLoader4Line, RiPencilLine, RiScales3Line, RiShutDownLine, RiWallet3Line } from '@remixicon/react';
 import { useToast } from '@/components/ui/Toast';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { Money } from '@/components/ui/Money';
 import { WalletPicture } from '@/components/ui/WalletPicture';
 import { WalletLookDialog } from './WalletLookDialog';
+import { MovementDetails, RealDateCell } from './RealDateDetails';
+import { Input } from '@/components/ui/Input';
+import { boxMoment, fromBox } from '@/lib/real-date';
 import { useStoreCurrency } from '@/context/StoreCurrency';
 import { moneyDigits } from '@/lib/money';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { arDateTime } from '@/lib/format';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { COURIER_MONEY_HINT, EXPENSE_HERE_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
@@ -79,6 +81,13 @@ interface Movement {
   wasReversed: boolean;
   /** What wrote it: «EXPENSE» is a movement of an expense, whose reversal also cancels the expense. */
   referenceType?: string | null;
+  referenceId?: string | null;
+  /** The real date (22/11): the typed one, or the registration when none was typed — the server's answer, never worked out here. */
+  realDate?: string | null;
+  /** The registration fell on another day of the store than the real date: the row says «سُجّلت …» under it. */
+  registeredOnAnotherDay?: boolean;
+  reversalOf?: { id: string; note: string } | null;
+  reversedBy?: { id: string; reversalReason: string | null; createdAt: string } | null;
 }
 
 const CATEGORY_AR: Record<string, string> = {
@@ -161,6 +170,8 @@ export function WalletsScreen() {
   const [lookOpen, setLookOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reverseFor, setReverseFor] = useState<Movement | null>(null);
+  // The eye (22/11): which movement's details are open, read-only.
+  const [detailsId, setDetailsId] = useState<string | null>(null);
 
   const loadWallets = useCallback(async () => {
     try {
@@ -372,7 +383,7 @@ export function WalletsScreen() {
             </span>
           ),
         },
-        { key: 'c0', label: 'التاريخ', render: (m) => arDateTime(m.createdAt) },
+        { key: 'c0', label: 'التاريخ', render: (m) => <RealDateCell realDate={m.realDate} createdAt={m.createdAt} registeredOnAnotherDay={m.registeredOnAnotherDay} /> },
         { key: 'c2', label: 'البند', render: (m) => CATEGORY_AR[m.category] ?? m.category },
         {
           key: 'note',
@@ -391,7 +402,7 @@ export function WalletsScreen() {
     : [
         { key: 'c0', label: "التاريخ", primary: true,
           render: (m) => (
-            <>{arDateTime(m.createdAt)}</>
+            <RealDateCell realDate={m.realDate} createdAt={m.createdAt} registeredOnAnotherDay={m.registeredOnAnotherDay} />
           ) },
         { key: 'c1', label: "الطرف", primary: true,
           render: (m) => (
@@ -602,7 +613,11 @@ export function WalletsScreen() {
                   />
                 }
                 actions={(m) => (
-                  <>{m.wasReversed ? (
+                  <>
+                        <IconButton size="sm" label="تفاصيل الحركة" onClick={() => setDetailsId(m.id)}>
+                          <RiEyeLine className="w-4 h-4" />
+                        </IconButton>
+                        {m.wasReversed ? (
                           <span className="text-note text-[var(--sys-muted)]">عُكِست</span>
                         ) : m.isReversal ? (
                           <span className="text-note text-[var(--sys-muted)]">قيد عكسي</span>
@@ -681,6 +696,22 @@ export function WalletsScreen() {
           }}
         />
       )}
+
+      {/* The eye: one movement, read-only — both dates, who, how much, the full note, what wrote it, and its reversal. */}
+      {detailsId && wallet && movements?.some((m) => m.id === detailsId) && (() => {
+        const m = movements.find((x) => x.id === detailsId)!;
+        return (
+          <MovementDetails
+            movement={m}
+            currency={wallet.currencyCode}
+            minorUnit={digitsFor(wallet.currencyCode, m.amount)}
+            categoryLabel={CATEGORY_AR[m.category] ?? m.category}
+            listed={new Set(movements.map((x) => x.id))}
+            onOpen={setDetailsId}
+            onClose={() => setDetailsId(null)}
+          />
+        );
+      })()}
 
       {reverseFor && wallet && (
         <ReverseDialog
@@ -953,6 +984,8 @@ function RecordDialog({
   const [note, setNote] = useState('');
   const [expenseType, setExpenseType] = useState<ExpenseCategory>(DEFAULT_EXPENSE_TYPE);
   const [expenseDate, setExpenseDate] = useState(todayForTheBox);
+  // «تاريخ الحركة الفعلي» (22/11): now, unless the person moves it back. The registration is written by the server, never here.
+  const [occurredAt, setOccurredAt] = useState(() => boxMoment(new Date()));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -1050,6 +1083,7 @@ function RecordDialog({
                 party: party.trim(),
                 category,
                 note: note.trim(),
+                ...(fromBox(occurredAt) ? { occurredAt: fromBox(occurredAt) } : {}),
               }),
             });
             onSaved('سُجِّلت الحركة');
@@ -1285,6 +1319,19 @@ function RecordDialog({
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
           />
         </label>
+
+        {/* The real date, for a movement typed here. An expense keeps its own «التاريخ» above; a partner's draw is its door's. */}
+        {!isExpense && !isDraw && (
+          <Input
+            label="تاريخ الحركة الفعلي"
+            type="datetime-local"
+            dir="ltr"
+            value={occurredAt}
+            max={boxMoment(new Date())}
+            onChange={(e) => setOccurredAt(e.target.value)}
+            helperText="متى صارت الحركة فعلاً. تاريخ التسجيل بينحفظ لحالو."
+          />
+        )}
 
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
 
