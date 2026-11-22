@@ -2673,7 +2673,8 @@ model UserWarehouseAccess {
 ///   stock_transfers_difference_type_check (LOSS | DAMAGE),
 ///   stock_transfers_to_store_check (W7b: `toStoreId` null ⇔ INTERNAL; never the source store),
 ///   stock_transfer_lines_quantity_check (sent > 0; 0 ≤ received ≤ sent),
-///   stock_transfer_lines_cost_check (W7b: costOut, unitCostIn null or ≥ 0).
+///   stock_transfer_lines_cost_check (W7b: costOut, unitCostIn null or ≥ 0),
+///   stock_transfers_exchange_rate_check (F2: exchangeRate null or > 0).
 model StockTransfer {
   /// May be made by the client: the replay guard (same id + same deal = the same transfer).
   id                     String    @id @default(uuid())
@@ -2702,6 +2703,10 @@ model StockTransfer {
   /// 20/11 (W7b): the owner's press on a transfer to another country, before anything moves.
   approvedById           String?
   approvedAt             DateTime?
+  /// 22/11 (F2): ONLY between two stores whose countries keep their costs in different currencies — units of the
+  /// destination currency for 1 unit of the source currency, typed at the send and frozen (no door changes it). Null =
+  /// one currency, and the transfer costs exactly as before. Held by stock_transfers_exchange_rate_check (null or > 0).
+  exchangeRate           Float?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -2740,6 +2745,10 @@ model StockTransfer {
 ///                  nowhere — not in stock, not in a profit — and written here for the report. |remainder| ≤ received ×
 ///                  half a minor unit.
 ///   zeroCostReason why a unit cost of zero is real (`unit-cost.resolveUnitCost`: a zero needs a sentence).
+///   22/11 (F2) — when the transfer carries an `exchangeRate` (two currencies): landedCosts are in the SOURCE currency,
+///                  rounded to ITS minor unit; unitCostIn = roundMinor((received × costOut ÷ sent + Σ landedCosts) × rate
+///                  ÷ received, destination minor unit); costRemainder is that total × rate − received × unitCostIn, in the
+///                  destination currency (`stock-transfer-cost.convertedArrivalCost`).
 model StockTransferLine {
   id               String  @id @default(uuid())
   transferId       String

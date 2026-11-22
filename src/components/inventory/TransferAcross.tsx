@@ -12,6 +12,7 @@ import { StatTile } from '@/components/ui/StatTile';
 import { ProductPicker } from '@/components/ui/ProductPicker';
 import { useConfirm } from '@/components/ui/Confirm';
 import { amount, plainNumber, type Currency } from '@/lib/format';
+import { rateLooksOff, rateMirror, rateText } from '@/lib/exchange-rate-words';
 
 /**
  * THE PARTS OF «نقل البضاعة» THAT ONLY A TRANSFER ACROSS STORES HAS (the warehouse plan, request W7c):
@@ -235,19 +236,23 @@ export function LandedCostLines({
   currency,
   lines,
   onChange,
+  inSource = false,
 }: {
   productName: string;
   /** The receiving store's currency, when the door told it; otherwise the lines say «بعملة المتجر اللي استلم». */
   currency: Currency | null;
   lines: LandedDraft[];
   onChange: (lines: LandedDraft[]) => void;
+  /** 22/11 (F2): between two currencies the lines are in the SENDING store's currency (`currency` is then that one). */
+  inSource?: boolean;
 }) {
+  const fallback = inSource ? '(بعملة المتجر اللي بعت)' : '(بعملة المتجر اللي استلم)';
   const set = (key: number, patch: Partial<LandedDraft>) => onChange(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const add = () => onChange([...lines, { key: Math.max(0, ...lines.map((l) => l.key)) + 1, kind: 'TRANSPORT', amount: '', note: '' }]);
   return (
     <div className="space-y-1.5" data-landed={productName}>
       <span className="block text-sm font-medium text-[var(--sys-foreground)]">
-        مصاريف وصول «{productName}» {currency ? `(بـ${currency.code})` : '(بعملة المتجر اللي استلم)'}
+        مصاريف وصول «{productName}» {currency ? `(بـ${currency.code})` : fallback}
       </span>
       <p className={muted}>شحن، جمرك، أو غيره. بتنزاد على كلفة القطعة هون، وما بتنحسب مصروف.</p>
       {lines.map((l, i) => (
@@ -284,6 +289,75 @@ export function LandedCostLines({
         <RiAddLine className="h-4 w-4" /> زيد مصروف
       </Button>
     </div>
+  );
+}
+
+/* ───────────────────────────── the exchange rate (F2, 22/11) ───────────────────────────── */
+
+/** 22/11 (F2): the two currencies of a destination where they differ (the list door's `destinations[].rate`). */
+export interface RateCurrencies {
+  fromCode: string;
+  toCode: string;
+  /** 22/11 (F2, review): the usual order between the two (destination per 1 source); null = unknown. */
+  usual?: number | null;
+}
+
+/** A typed rate the form may send: a plain number above zero (the door judges it again, and its upper bound). */
+export const rateTyped = (text: string) => MONEY.test(text.trim()) && Number(text.trim()) > 0;
+
+/**
+ * «سعر الصرف» — asked ONLY when the two stores keep their costs in different currencies. One number: how much one unit
+ * of the sending store's currency is worth in the receiving store's. The server converts; nothing here multiplies.
+ */
+export function ExchangeRateField({ currencies, value, onChange }: { currencies: RateCurrencies; value: string; onChange: (v: string) => void }) {
+  const bad = value.trim() !== '' && !rateTyped(value);
+  return (
+    <div className="space-y-1.5" data-exchange-rate="ask">
+      <Input
+        label="سعر الصرف"
+        aria-label="سعر الصرف"
+        inputMode="decimal"
+        dir="ltr"
+        placeholder={`1 ${currencies.fromCode} = ؟ ${currencies.toCode}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <p className={muted}>
+        المتجرين بعملتين: كم بتساوي 1 {currencies.fromCode} بـ{currencies.toCode}؟ الكلفة ومصاريف الوصول بتنكتب بـ{currencies.fromCode}، وبتتحوّل
+        مرة وحدة لما ينستلم النقل. السعر بينحفظ مع النقل وما بيتغيّر.
+      </p>
+      {bad && <p className="text-note text-[var(--sys-destructive)]">سعر الصرف لازم يكون رقم أكبر من صفر.</p>}
+      {/* 22/11 (F2, review): the rate the other way round, so one typed upside down reads wrong at once. */}
+      {rateTyped(value) && (
+        <p className={muted} data-rate-mirror="ask" dir="rtl">
+          {rateMirror(Number(value.trim()), currencies.fromCode, currencies.toCode)}
+        </p>
+      )}
+      {rateTyped(value) && rateLooksOff(Number(value.trim()), currencies.usual) && (
+        <p data-rate-warning="yes" className="rounded-lg border border-[var(--sys-warning)]/50 bg-[var(--sys-warning-soft)] p-2.5 text-sm text-[var(--sys-warning)]">
+          انتبه: هالسعر بعيد كتير عن المعتاد بين {currencies.fromCode} و{currencies.toCode} (حوالي {rateText(currencies.usual!)}). يمكن انكتب بالمقلوب؟ راجعه قبل ما تبعت.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** «بسعر صرف R: X SYP = Y JOD» — the server's two figures of a received line between two currencies. */
+export function ConvertedLine({
+  converted,
+  from,
+  to,
+  productId,
+}: {
+  converted: { rate: number; sourceTotal: number; total: number };
+  from: Currency | null | undefined;
+  to: Currency | null | undefined;
+  productId: string;
+}) {
+  return (
+    <span className="block text-note text-[var(--sys-muted-foreground)]" data-converted={productId}>
+      بسعر صرف <span dir="ltr">{rateText(converted.rate)}</span>: {amount(converted.sourceTotal, from)} = {amount(converted.total, to)}
+    </span>
   );
 }
 
