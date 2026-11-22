@@ -15,6 +15,7 @@ import { apiJson } from '@/lib/api-client';
 import { arDate } from '@/lib/format';
 import { localDayKey } from '@/lib/local-day';
 import type { WithdrawalsBook } from '@/lib/partner-withdrawals';
+import { HistoryExport } from './HistoryExport';
 
 /**
  * «المسحوبات» — WHAT EACH PARTNER TOOK, PER STORE AND CURRENCY, FROM A STANDING AMOUNT TYPED ONCE (22/11).
@@ -368,6 +369,15 @@ export function WithdrawalsSection() {
       <Card>
         <CardHeader title="سجل المسحوبات" subtitle="كل مسحوب بتاريخه. «إلغاء» بيكتب سطر عكسي بالسبب — والمسحوب بيضل مكتوب «ملغى»." />
         <CardContent className="p-0">
+          {/* «سحب السجل» (22/11, F5): this store's withdrawals as Excel or a page to print, by the filters chosen here. */}
+          <HistoryExport
+            list="withdrawals"
+            realLabel="حسب يوم السحب"
+            choices={[
+              { key: 'partnerId', label: 'الشريك', options: book.partners.map((p) => ({ value: p.id, label: p.name })) },
+              { key: 'currency', label: 'العملة', options: book.currencies.map((c) => ({ value: c.code, label: c.code })) },
+            ]}
+          />
           <Rows
             rows={book.rows}
             keyOf={(r) => r.id}

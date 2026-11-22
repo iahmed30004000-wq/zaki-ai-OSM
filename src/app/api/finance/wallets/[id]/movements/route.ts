@@ -10,7 +10,9 @@ import { logAudit } from '@/lib/audit';
 import { ExpenseRefused, MOVEMENT_CATEGORIES, PartnerDrawRefused, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
 import { handMovementRefusal } from '@/lib/hand-movement-rules';
-import { byRealDateDesc, readOccurredAt, realDateOf, registeredOnAnotherDay } from '@/lib/real-date';
+import { readOccurredAt } from '@/lib/real-date';
+import { movementListRows } from '@/lib/history-export';
+import { NO_FILTERS, movementsWhere } from '@/lib/history-export-core';
 
 /**
  * Wallet movements.
@@ -71,39 +73,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
      * movement registered today with yesterday's date is on the list the moment it is written). In what order: the real date, then
      * the registration (lib/real-date `byRealDateDesc`). `reversedBy` carries the reversing entry's reason and moment for the panel.
      */
-    const registered = await db.walletMovement.findMany({
-      where: { walletId: id },
-      orderBy: { createdAt: 'desc' },
-      take,
-      include: {
-        reversalOf: { select: { id: true, note: true } },
-        reversedBy: { select: { id: true, reversalReason: true, createdAt: true } },
-      },
-    });
-    const movements = [...registered].sort(byRealDateDesc);
     // The STORE's day, which is the wallet's country's: «سُجّلت …» is said only when the two moments fall on different days there.
     const timeZone = wallet.country.timezone ?? 'Asia/Damascus';
-
-    const actorIds = [...new Set(movements.map((m) => m.createdById))];
-    const actors = actorIds.length
-      ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
-      : [];
-    const nameOf = new Map(actors.map((a) => [a.id, a.name]));
+    // The list's body lives in lib/history-export (22/11, F5) so the history file reads the same rows through the same code; this
+    // door's clause is the builder's with no filter: `{ walletId }`, as it always was.
+    const movements = await movementListRows(movementsWhere({ walletId: id }, NO_FILTERS, timeZone), take, timeZone);
 
     return NextResponse.json({
       balance: await walletBalance(db, id, wallet.country.minorUnit),
-      movements: movements.map((m) => ({
-        ...m,
-        amount: Number(m.amount),
-        // A partner draw's worth in the store's currency: a number, like the amount beside it (a Decimal is a string on the wire).
-        ...(m.valueInStoreCurrency != null ? { valueInStoreCurrency: Number(m.valueInStoreCurrency) } : {}),
-        createdByName: nameOf.get(m.createdById) ?? null,
-        isReversal: !!m.reversalOfId,
-        wasReversed: !!m.reversedBy,
-        // The real date (the registration when none was typed), and whether the registration fell on another day of the store.
-        realDate: realDateOf(m).toISOString(),
-        registeredOnAnotherDay: registeredOnAnotherDay(m, timeZone),
-      })),
+      movements,
     });
   } catch (error) {
     return apiErrorResponse(error);

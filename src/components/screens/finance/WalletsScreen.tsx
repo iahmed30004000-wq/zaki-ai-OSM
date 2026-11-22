@@ -20,6 +20,8 @@ import { MovementDetails, RealDateCell } from './RealDateDetails';
 import { Input } from '@/components/ui/Input';
 import { boxMoment, fromBox } from '@/lib/real-date';
 import { useStoreCurrency } from '@/context/StoreCurrency';
+import { MOVEMENT_CATEGORY_AR } from '@/lib/movement-category-words';
+import { HistoryExport } from './HistoryExport';
 import { moneyDigits } from '@/lib/money';
 import { useIsPhone } from '@/hooks/useIsPhone';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -90,17 +92,8 @@ interface Movement {
   reversedBy?: { id: string; reversalReason: string | null; createdAt: string } | null;
 }
 
-const CATEGORY_AR: Record<string, string> = {
-  COURIER_SETTLEMENT: 'تحصيل شركة شحن',
-  COMMISSION: 'عمولة',
-  EXPENSE: 'مصروف',
-  TRANSFER_IN: 'تحويل وارد',
-  TRANSFER_OUT: 'تحويل صادر',
-  ADJUSTMENT: 'تسوية',
-  OTHER: 'أخرى',
-  // «السحوبات لازم تنضاف بند» (13/11): a partner's withdrawal, written by its own door and counted in the partners' statement.
-  PARTNER_DRAW: 'سحب شريك',
-};
+// The words live in lib/movement-category-words (22/11, F5): the history file names a category exactly as this screen does.
+const CATEGORY_AR = MOVEMENT_CATEGORY_AR;
 
 /** The movement category the dialog opens the EXPENSE door for — the key `OWN_LEDGER` lists it under. */
 const EXPENSE = 'EXPENSE';
@@ -533,6 +526,18 @@ export function WalletsScreen() {
 
           {error && <p className="text-sm text-[var(--sys-destructive)] bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] rounded-lg p-3">{error}</p>}
           {done && <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">{done}</p>}
+
+          {/* «سحب السجل» (22/11, F5): the open wallet's movements as Excel or a page to print, by the filters chosen here. */}
+          {wallet && (
+            <HistoryExport
+              list="movements"
+              fixed={{ walletId: wallet.id }}
+              choices={[
+                { key: 'direction', label: 'الاتجاه', options: [{ value: 'IN', label: 'وارد' }, { value: 'OUT', label: 'صادر' }] },
+                { key: 'category', label: 'البند', options: Object.entries(MOVEMENT_CATEGORY_AR).map(([value, label]) => ({ value, label })) },
+              ]}
+            />
+          )}
 
           <Card plain className="overflow-hidden">
             {/* The wallet's own actions live here, on the one that is
