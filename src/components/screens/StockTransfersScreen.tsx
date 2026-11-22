@@ -24,6 +24,8 @@ import { routeLabel } from '@/lib/route-registry';
 import { amount, arDateTime, type Currency } from '@/lib/format';
 import { isAcross, needsOwnerApproval, readStockTransfer, stockTransferRefusal, type StockTransferEnd } from '@/lib/stock-transfer-kind';
 import {
+  ConvertedLine,
+  ExchangeRateField,
   LANDED_KIND_AR,
   LandedCostLines,
   Refusal,
@@ -32,8 +34,10 @@ import {
   badAmount,
   landedBody,
   landedReady,
+  rateTyped,
   usePairs,
   type LandedDraft,
+  type RateCurrencies,
   type RoadAnswer,
 } from '@/components/inventory/TransferAcross';
 // A client-made id, made once when the form opens: the same press sent twice is one transfer at the door.
@@ -104,6 +108,8 @@ interface Line {
   landedCosts?: { kind: string; amount: number; note?: string }[];
   unitCostIn?: number | null;
   missingValue?: number;
+  /** 22/11 (F2): between two currencies, the server's figures of a received line (`costs.view` only). */
+  converted?: { rate: number; sourceTotal: number; total: number };
 }
 
 export interface StockTransferItem {
@@ -137,6 +143,8 @@ export interface StockTransferItem {
   mayApprove?: boolean;
   fromCurrency?: Currency | null;
   toCurrency?: Currency | null;
+  /** 22/11 (F2): present only between two currencies — the rate typed at the send and the two currencies. */
+  exchange?: { rate: number; rateText?: string; mirror?: string; from: Currency | null; to: Currency | null };
 }
 
 /** 21/11 (W7c): another store she may send to, with its country's running warehouses. */
@@ -146,6 +154,8 @@ interface Destination {
   countryId: string;
   countryName: string | null;
   warehouses: Warehouse[];
+  /** 22/11 (F2): present only where the two stores keep their costs in different currencies — the form asks the rate. */
+  rate?: RateCurrencies;
 }
 
 interface ListAnswer {
@@ -198,10 +208,16 @@ function LineText({ l, t }: { l: Line; t?: StockTransferItem }) {
           {l.unitCostIn != null && <> · القطعة هناك {amount(l.unitCostIn, t?.toCurrency)}</>}
         </span>
       )}
+      {/* 22/11 (F2): between two currencies — the one conversion, as the server worked it out. */}
+      {l.converted && (
+        <span className="block ps-3">
+          <ConvertedLine converted={l.converted} from={t?.fromCurrency} to={t?.toCurrency} productId={l.productId} />
+        </span>
+      )}
       {(l.landedCosts ?? []).map((c, i) => (
         <span key={i} className="block ps-3 text-note text-[var(--sys-muted-foreground)]">
           {LANDED_KIND_AR[c.kind] ?? c.kind}
-          {c.note ? ` (${c.note})` : ''}: {amount(c.amount, t?.toCurrency)}
+          {c.note ? ` (${c.note})` : ''}: {amount(c.amount, t?.exchange ? t.fromCurrency : t?.toCurrency)}
         </span>
       ))}
       {l.missingValue != null && (
@@ -542,6 +558,8 @@ function SendDialog({
   const dest = destinations.find((d) => d.storeId === toStore) ?? null;
   const pairs = usePairs(dest ? dest.storeId : null);
   const [note, setNote] = useState('');
+  /** 22/11 (F2): «سعر الصرف», asked only when the chosen store keeps its costs in another currency. */
+  const [rate, setRate] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([{ key: 1, productId: '', quantity: '', combos: {} }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -584,7 +602,10 @@ function SendDialog({
   const linesReady = lines.every((l) => l.productId !== '' && WHOLE.test(l.quantity.trim()) && Number(l.quantity) > 0);
   // 21/11 (W7c): across stores, every product needs its twin there (the door asks again).
   const unpaired = goesAcross ? lines.filter((l) => l.productId !== '' && !pairs.twinOf.has(l.productId)) : [];
-  const ready = !!reading && !keyMissing && linesReady && unpaired.length === 0 && !badCombo && !busy;
+  // 22/11 (F2): between two currencies the press waits for a rate (the door judges it again).
+  const asksRate = goesAcross && !!dest?.rate;
+  const rateReady = !asksRate || rateTyped(rate);
+  const ready = !!reading && !keyMissing && linesReady && unpaired.length === 0 && !badCombo && rateReady && !busy;
 
   const setLine = (key: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -597,6 +618,7 @@ function SendDialog({
   const chooseStore = (value: string) => {
     setToStore(value);
     setTo('');
+    setRate('');
   };
   const productName = (productId: string) => products.find((p) => p.id === productId)?.name ?? 'منتج';
 
@@ -614,6 +636,8 @@ function SendDialog({
           toWarehouseId: to,
           // 21/11 (W7c): the other store, only when the goods go there.
           ...(dest ? { toStoreId: dest.storeId } : {}),
+          // 22/11 (F2): only between two currencies — a transfer of one currency carries no rate at all.
+          ...(asksRate ? { exchangeRate: Number(rate.trim()) } : {}),
           expectKind: reading.kind,
           note: note.trim() || null,
           lines: lines.map((l) => {
@@ -689,6 +713,7 @@ function SendDialog({
               </p>
             )}
             {keyMissing && <Refusal text="النقل لبلد تاني بدّو صلاحية «نقل بضاعة لبلد تاني». اطلبها من المالك." />}
+            {asksRate && dest?.rate && <ExchangeRateField currencies={dest.rate} value={rate} onChange={setRate} />}
           </div>
         ) : (
           <p className="text-note text-[var(--sys-muted-foreground)]">اختار المخزنين، والشاشة بتقلّك شو نوع هالنقل قبل ما تبعت.</p>
@@ -755,7 +780,12 @@ interface Answer {
   transfer: {
     status: string;
     statusAr: string;
-    lines: (Shown & { productId: string; variants?: (Shown & { variantId: string })[]; unitCostIn?: number | null })[];
+    lines: (Shown & {
+      productId: string;
+      variants?: (Shown & { variantId: string })[];
+      unitCostIn?: number | null;
+      converted?: { rate: number; sourceTotal: number; total: number };
+    })[];
   };
 }
 
@@ -879,6 +909,8 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
                   كلفة القطعة هون: {amount(l.unitCostIn, transfer.toCurrency)}
                 </span>
               )}
+              {/* 22/11 (F2): between two currencies — the one conversion, as the server worked it out. */}
+              {l.converted && <ConvertedLine converted={l.converted} from={transfer.fromCurrency} to={transfer.toCurrency} productId={l.productId} />}
             </Card>
           ))}
           {fromAfar && arrived === 'ALL' && answer.status === 'RECEIVED_WITH_DIFFERENCE' && (
@@ -940,7 +972,9 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
             {fromAfar && (
               <LandedCostLines
                 productName={p.name}
-                currency={transfer.toCurrency ?? null}
+                // 22/11 (F2): between two currencies the lines are typed in the SENDING store's currency.
+                currency={transfer.exchange ? transfer.exchange.from ?? null : transfer.toCurrency ?? null}
+                inSource={!!transfer.exchange}
                 lines={costLines(p.productId)}
                 onChange={(next) => setCosts((c) => ({ ...c, [p.productId]: next }))}
               />
@@ -955,6 +989,21 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
             )}
           </div>
         ))}
+        {transfer.exchange && (
+          <p data-exchange-rate="shown" className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-note text-[var(--sys-foreground)]">
+            سعر الصرف المحفوظ مع النقل:{' '}
+            <span dir="ltr">
+              1 {transfer.exchange.from?.code ?? ''} = {transfer.exchange.rateText ?? String(transfer.exchange.rate)} {transfer.exchange.to?.code ?? ''}
+            </span>
+            . المصاريف بتنكتب بعملة المتجر اللي بعت، والكلفة بتتحوّل مرة وحدة لما تضغط «استلمت».
+            {/* 22/11 (F2, review): the server's mirror of the rate — a rate typed upside down reads wrong here too. */}
+            {transfer.exchange.mirror && (
+              <span className="block" data-rate-mirror="shown">
+                {transfer.exchange.mirror}
+              </span>
+            )}
+          </p>
+        )}
         {fromAfar && (
           <div className="space-y-1.5">
             <span className="block text-sm font-medium text-[var(--sys-foreground)]">وصلت كلها ولا لأ؟</span>

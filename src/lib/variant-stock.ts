@@ -201,8 +201,12 @@ interface Who {
   referenceId?: string | null;
 }
 
-/** The combination rows, FOR UPDATE, in id order: every change of one combination waits for the one before it. */
-async function lockVariants(tx: Tx, ids: readonly string[]) {
+/**
+ * The combination rows, FOR UPDATE, in id order: every change of one combination waits for the one before it.
+ * 22/11 (F1): exported for the options door of a placed store, which locks every row it writes in this ONE statement
+ * before its first write (RV2597) — the order the delivery and the transfer keep.
+ */
+export async function lockVariants(tx: Tx, ids: readonly string[]) {
   const sorted = [...new Set(ids)].sort();
   if (sorted.length === 0) return;
   await tx.$queryRaw`SELECT "id" FROM "product_variants" WHERE "id" = ANY(${sorted}::text[]) ORDER BY "id" FOR UPDATE`;

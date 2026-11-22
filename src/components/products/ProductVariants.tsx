@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Checkbox } from '@/components/ui/Checkbox';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { Rows } from '@/components/ui/Rows';
 import { apiJson } from '@/lib/api-client';
 import { RiAddLine, RiCloseLine, RiInformationLine, RiPaletteLine } from '@remixicon/react';
@@ -18,6 +18,13 @@ import { RiAddLine, RiCloseLine, RiInformationLine, RiPaletteLine } from '@remix
  * and archives — never deletes — one that leaves the list, because an order may name it.
  *
  * A product with no options is a product without variants and sells exactly as before.
+ *
+ * 22/11 (F1) — A STORE PLACED IN WAREHOUSES. A combination's count is a WAREHOUSE's there (W8a), so the screen asks
+ * which warehouse was counted — the choices are the server's (`warehouses`, the list the count's own check accepts;
+ * `defaultWarehouseId` = the one she keeps) — and each box holds what THAT warehouse has of the combination, with a
+ * reason for a change. Without a warehouse the boxes are shut and the totals go back as they are, so a price, a SKU or
+ * a name still saves. Under each box: where the pieces are («بلا مكان», «بالطريق» for a transfer's road — never mixed).
+ * A store that is NOT placed: the screen and the request are the ones they were.
  */
 
 interface Value {
@@ -41,6 +48,17 @@ interface Combo {
   free?: number;
   status?: string;
   active?: boolean;
+  /** A placed store only: where the pieces are (`warehouseId` null = «بلا مكان»; `inTransit` = on a transfer's road). */
+  places?: Place[];
+}
+interface Place {
+  warehouseId: string | null;
+  onHand: number;
+  inTransit?: boolean;
+}
+interface Warehouse {
+  id: string;
+  name: string;
 }
 interface ComboRow {
   values: string[];
@@ -58,6 +76,25 @@ function cartesian(options: Option[]): string[][] {
 const keyOf = (values: string[]) => JSON.stringify(values);
 const blank = (values: string[]): Combo => ({ values, sku: null, priceDelta: 0, onHand: 0, active: true });
 
+/** What one warehouse holds of a combination — a shelf place, never the road. */
+const heldIn = (combo: Combo, warehouseId: string) =>
+  combo.places?.find((p) => p.warehouseId === warehouseId && !p.inTransit)?.onHand ?? 0;
+
+/** «مخزن أ 4 · بلا مكان 2 · بالطريق 1» — the server's places, by name. */
+function placesLine(combo: Combo, warehouses: readonly Warehouse[]): string {
+  const parts = (combo.places ?? [])
+    .filter((p) => p.onHand !== 0)
+    .map((p) => {
+      const name = p.inTransit
+        ? 'بالطريق'
+        : p.warehouseId === null
+          ? 'بلا مكان'
+          : (warehouses.find((w) => w.id === p.warehouseId)?.name ?? 'مخزن تاني');
+      return `${name} ${p.onHand}`;
+    });
+  return parts.length > 0 ? parts.join(' · ') : 'ولا قطعة';
+}
+
 export function ProductVariants({
   productId,
   canManage,
@@ -73,15 +110,36 @@ export function ProductVariants({
   const [combos, setCombos] = useState<Map<string, Combo>>(new Map());
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // 22/11 (F1): a placed store only — null for any other, and then nothing below is drawn or sent.
+  const [placed, setPlaced] = useState<{ warehouses: Warehouse[] } | null>(null);
+  const [warehouseId, setWarehouseId] = useState('');
+  const [reason, setReason] = useState('');
+  const [counted, setCounted] = useState<Map<string, number>>(new Map());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const v = await apiJson<{ options: Option[]; combinations: Combo[] }>(`/api/products/${productId}/variants`);
+      const v = await apiJson<{
+        options: Option[];
+        combinations: Combo[];
+        placed?: boolean;
+        warehouses?: Warehouse[];
+        defaultWarehouseId?: string | null;
+      }>(`/api/products/${productId}/variants`);
       // An answer without the two lists (an older server, a failed read) is a product without variants, never a crash.
       setOptions(Array.isArray(v?.options) ? v.options : []);
       const saved = Array.isArray(v?.combinations) ? v.combinations : [];
       setCombos(new Map(saved.map((c) => [keyOf(c.values), { ...c, active: c.status === 'ACTIVE' }])));
+      if (v?.placed === true) {
+        const warehouses = Array.isArray(v.warehouses) ? v.warehouses : [];
+        setPlaced({ warehouses });
+        // The warehouse she was counting stays chosen after a save; otherwise the server's choice for her, or none.
+        setWarehouseId((was) => (warehouses.some((w) => w.id === was) ? was : (v.defaultWarehouseId ?? '')));
+        setCounted(new Map());
+        setReason('');
+      } else {
+        setPlaced(null);
+      }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'تعذّر التحميل' });
     } finally {
@@ -116,12 +174,31 @@ export function ProductVariants({
   const setValue = (i: number, k: number, patch: Partial<Value>) =>
     setOption(i, { values: options[i].values.map((v, j) => (j === k ? { ...v, ...patch } : v)) });
 
+  /**
+   * 22/11 (F1): the placed store's PUT — the door's own shape (W8a). With a warehouse: each combination's number is what
+   * THAT warehouse holds of it, with the warehouse and the reason. Without one: the totals as the server gave them (a new
+   * combination: 0), so only the options, names, prices and SKUs change.
+   */
+  const placedBody = () =>
+    JSON.stringify({
+      options: options.map((o) => ({ ...o, name: o.name.trim(), values: o.values.map((v) => ({ ...v, label: v.label.trim() })) })),
+      combinations: rows.map((r) => ({
+        values: r.values,
+        sku: r.combo.sku || null,
+        priceDelta: Number(r.combo.priceDelta) || 0,
+        onHand: warehouseId ? Math.max(0, Math.trunc(Number(countOf(r)) || 0)) : r.combo.id ? r.combo.onHand : 0,
+        active: r.combo.active !== false,
+      })),
+      ...(warehouseId ? { warehouseId, reason: reason.trim() } : {}),
+    });
+  const countOf = (r: ComboRow) => counted.get(keyOf(r.values)) ?? heldIn(r.combo, warehouseId);
+
   async function save() {
     setMsg(null);
     try {
       await apiJson(`/api/products/${productId}/variants`, {
         method: 'PUT',
-        body: JSON.stringify({
+        body: placed ? placedBody() : JSON.stringify({
           options: options.map((o) => ({ ...o, name: o.name.trim(), values: o.values.map((v) => ({ ...v, label: v.label.trim() })) })),
           combinations: rows.map((r) => ({
             values: r.values,
@@ -220,6 +297,34 @@ export function ProductVariants({
 
       {rows.length > 0 && (
         <>
+          {placed && canManage && (
+            // 22/11 (F1): which warehouse was counted — only the ones the server says she may count in.
+            <div className="space-y-2">
+              {placed.warehouses.length === 0 ? (
+                <p className="text-sm text-[var(--sys-destructive)]">
+                  هالمتجر موزّع على مخازن، وما إلك وصول على ولا مخزن منها. بتقدر تغيّر الأسعار والأسماء، والعدّ بيعمله أمين المخزن.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Select
+                    label="المخزن اللي عدّيته"
+                    value={warehouseId}
+                    onChange={(e) => {
+                      setWarehouseId(e.target.value);
+                      setCounted(new Map());
+                    }}
+                    options={[
+                      { value: '', label: 'بلا عدّ — أسعار وأسماء بس' },
+                      ...placed.warehouses.map((w) => ({ value: w.id, label: w.name })),
+                    ]}
+                  />
+                  {warehouseId && (
+                    <Input label="سبب العدّ" value={reason} maxLength={300} placeholder="مثال: جرد آخر الشهر" onChange={(e) => setReason(e.target.value)} />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <Rows<ComboRow>
             rows={rows}
             keyOf={(r) => keyOf(r.values)}
@@ -254,7 +359,31 @@ export function ProductVariants({
               {
                 key: 'onHand',
                 label: 'المخزون',
-                render: (r) => (
+                render: (r) =>
+                  placed ? (
+                    // 22/11 (F1): a placed store — the chosen warehouse's count, and under it where every piece is.
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          aria-label={`عدد ${r.label} بالمخزن`}
+                          value={warehouseId ? countOf(r) : r.combo.onHand}
+                          disabled={!canManage || !warehouseId}
+                          onChange={(e) =>
+                            setCounted((m) => new Map(m).set(keyOf(r.values), e.target.value === '' ? 0 : Number(e.target.value)))
+                          }
+                        />
+                        {r.combo.free !== undefined && r.combo.free <= 0 && r.combo.active !== false && (
+                          <span className="text-sm font-bold text-[var(--sys-destructive)]">نفدت</span>
+                        )}
+                      </div>
+                      <p className="text-note text-[var(--sys-muted-foreground)]">
+                        الكل {r.combo.onHand}: {placesLine(r.combo, placed.warehouses)}
+                      </p>
+                    </div>
+                  ) : (
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
@@ -269,7 +398,7 @@ export function ProductVariants({
                       <span className="text-sm font-bold text-[var(--sys-destructive)]">نفدت</span>
                     )}
                   </div>
-                ),
+                  ),
               },
               { key: 'held', label: 'محجوز', align: 'end', render: (r) => <span className="tabular-nums">{r.combo.held ?? 0}</span> },
               {
@@ -287,6 +416,11 @@ export function ProductVariants({
               },
             ]}
           />
+          {placed && (
+            <p className="text-sm text-[var(--sys-muted-foreground)]">
+              هالمتجر موزّع على مخازن: كل خانة عدد هي اللي بالمخزن اللي اخترته. تغيير عدد بدّو سبب. «بلا مكان» قطع ما انعدّت بمخزن لسا، و«بالطريق» قطع بنقل ما وصل.
+            </p>
+          )}
           <p className="text-sm text-[var(--sys-muted-foreground)]">
             فرق السعر يُضاف على سعر العرض لكل قطعة من هذه التركيبة (القطع المجانية أيضًا). المخزون هو العدد الموجود على الرف لهذه التركيبة، و«محجوز» ما تحجزه الطلبات المؤكدة منها.
           </p>

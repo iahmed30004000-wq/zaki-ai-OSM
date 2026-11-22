@@ -9,7 +9,19 @@ import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { isAcross, needsOwnerApproval, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
 import { PENDING_EXIT } from './stock-exit-reasons';
 import { twinsIn } from './product-twins';
-import { arrivalCost, landedCostsField, missingValue, normalizeLanded, type LandedCost } from './stock-transfer-cost';
+import { rateWords } from './exchange-rate-words';
+import {
+  EXCHANGE_RATE_AR,
+  arrivalCost,
+  checkExchangeRate,
+  convertedArrivalCost,
+  landedCostsField,
+  missingValue,
+  needsExchangeRate,
+  normalizeLanded,
+  type ExchangeRateCode,
+  type LandedCost,
+} from './stock-transfer-cost';
 import {
   VARIANT_LINE_AR,
   VARIANT_LINE_STATUS,
@@ -156,6 +168,8 @@ export type StockTransferRefusalCode =
   | 'COUNT_OVER_SENT'
   // 21/11 (W5a): a count sheet of one of the two warehouses is open.
   | 'WAREHOUSE_COUNTING'
+  // 22/11 (F2): the exchange rate of a transfer between two currencies.
+  | ExchangeRateCode
   | VariantLineRefusalCode;
 
 const STATUS_OF: Record<StockTransferRefusalCode, number> = {
@@ -199,6 +213,10 @@ const STATUS_OF: Record<StockTransferRefusalCode, number> = {
   COUNTS_INVALID: 400,
   COUNT_OVER_SENT: 400,
   WAREHOUSE_COUNTING: 409,
+  RATE_MISSING: 400,
+  RATE_INVALID: 400,
+  RATE_TOO_BIG: 400,
+  RATE_NOT_HERE: 400,
 };
 
 const AR: Partial<Record<StockTransferRefusalCode, string>> = {
@@ -236,6 +254,7 @@ const AR: Partial<Record<StockTransferRefusalCode, string>> = {
   NO_DIFFERENCE: 'ما في فرق مستني اعتماد على هالنقل.',
   COUNTS_INVALID: 'لازم تكتب العدد لكل منتج بالنقل، مرة وحدة لكل منتج.',
   WAREHOUSE_COUNTING: WAREHOUSE_COUNTING_AR,
+  ...EXCHANGE_RATE_AR,
 };
 
 export class StockTransferRefused extends Error {
@@ -286,6 +305,11 @@ export const sendSchema = z.object(
     toStoreId: z.string({ message: 'المتجر اللي بتنقل عليه مش صحيح' }).min(1, 'المتجر اللي بتنقل عليه مش صحيح').optional(),
     expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES'], { message: 'نوع النقل مش معروف. حدّث الصفحة.' }).optional(),
     note: z.string({ message: 'الملاحظة لازم تكون كلام' }).trim().max(500, 'الملاحظة أطول من 500 حرف. اختصرها.').optional().nullable(),
+    /**
+     * 22/11 (F2): ONLY between two currencies — units of the destination currency for 1 unit of the source currency.
+     * The schema only asks that it is a number; the service judges it (`stock-transfer-cost.checkExchangeRate`).
+     */
+    exchangeRate: z.number({ message: 'سعر الصرف لازم يكون رقم' }).optional().nullable(),
     lines: z
       .array(
         z.object(
@@ -492,6 +516,8 @@ const TRANSFER_SELECT = {
   toStoreId: true,
   approvedById: true,
   approvedAt: true,
+  // 22/11 (F2): the rate typed at the send of a transfer between two currencies (null otherwise).
+  exchangeRate: true,
   lines: {
     select: {
       productId: true,
@@ -634,6 +660,9 @@ export interface SendInput {
   mayAbroad?: boolean;
 }
 
+/** 22/11 (F2): a store's name, country and the currency its costs are kept in. */
+const STORE_WITH_CURRENCY = { countryId: true, name: true, country: { select: { currencyCode: true } } } as const;
+
 /** 20/11 (W7b): the store the goods arrive in, when it is not the source store (null = INTERNAL). */
 const destinationOf = (storeId: string, toStoreId: string | null | undefined) => (toStoreId && toStoreId !== storeId ? toStoreId : null);
 
@@ -672,6 +701,8 @@ export async function replayOf(tx: Tx, input: Omit<SendInput, 'mayUse' | 'mayRea
     row.toWarehouseId === input.body.toWarehouseId &&
     // 20/11 (W7b): the same destination store (null on both sides = INTERNAL, as before).
     destinationOf(input.storeId, input.body.toStoreId) === (row.toStoreId ?? null) &&
+    // 22/11 (F2): the same rate (null on both sides for one currency, as before). A different rate is another deal.
+    (input.body.exchangeRate ?? null) === (row.exchangeRate ?? null) &&
     sameLines(input.body.lines, row.lines);
   if (!same) throw new StockTransferRefused('TRANSFER_EXISTS');
   return row;
@@ -699,7 +730,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
   const to = wh.get(body.toWarehouseId);
   if (!from || from.companyId !== companyId || !to || to.companyId !== companyId) throw new StockTransferRefused('WAREHOUSE_NOT_FOUND');
 
-  const store = await tx.store.findFirst({ where: { id: storeId, companyId }, select: { countryId: true, name: true } });
+  const store = await tx.store.findFirst({ where: { id: storeId, companyId }, select: STORE_WITH_CURRENCY });
   if (!store) throw new StockTransferRefused('NOT_FOUND');
   // The source holds THIS store's goods only if it is of the store's country (a warehouse holds the goods of its country's stores).
   if (from.countryId !== store.countryId) throw new StockTransferRefused('WAREHOUSE_OTHER_COUNTRY');
@@ -711,7 +742,7 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
    */
   const destStoreId = destinationOf(storeId, body.toStoreId);
   const destStore = destStoreId
-    ? await tx.store.findFirst({ where: { id: destStoreId, companyId }, select: { countryId: true, name: true } })
+    ? await tx.store.findFirst({ where: { id: destStoreId, companyId }, select: STORE_WITH_CURRENCY })
     : store;
   if (!destStore) throw new StockTransferRefused('TO_STORE_NOT_FOUND');
   if (to.countryId !== destStore.countryId) throw new StockTransferRefused('TO_OTHER_COUNTRY');
@@ -729,6 +760,12 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
   const across = isAcross(reading.kind);
   // The abroad key, before anything else of the destination is looked at.
   if (needsOwnerApproval(reading.kind) && input.mayAbroad !== true) throw new StockTransferRefused('ABROAD_KEY_MISSING');
+  /*
+   * 22/11 (F2): BETWEEN TWO CURRENCIES the send carries the rate (required, > 0, at most EXCHANGE_RATE_MAX); with one
+   * currency it carries none — the transfer is then written exactly as before (no rate key at all).
+   */
+  const rated = checkExchangeRate(body.exchangeRate, needsExchangeRate(store.country?.currencyCode, destStore.country?.currencyCode));
+  if (!rated.ok) throw new StockTransferRefused(rated.code, rated.message);
 
   if (!(await storeIsPlaced(storeId, tx))) throw new StockTransferRefused('STORE_NOT_PLACED');
   if (destStoreId && !(await storeIsPlaced(destStoreId, tx))) throw new StockTransferRefused('TO_STORE_NOT_PLACED');
@@ -804,6 +841,8 @@ export async function sendTransfer(tx: Tx, input: SendInput): Promise<{ transfer
       sentById: input.sentById,
       // 20/11 (W7b): written only for a transfer across stores, so an INTERNAL row is the row it always was.
       ...(destStoreId ? { toStoreId: destStoreId } : {}),
+      // 22/11 (F2): written only between two currencies, frozen from here on.
+      ...(rated.rate !== null ? { exchangeRate: rated.rate } : {}),
       lines: {
         create: body.lines.map((l) => ({
           productId: l.productId,
@@ -978,6 +1017,20 @@ async function minorUnitOf(tx: Tx, companyId: string, storeId: string): Promise<
   return s?.country?.minorUnit ?? 2;
 }
 
+/** 22/11 (F2): the two currencies of a transfer between two currencies, and the source's minor unit. */
+async function exchangeOf(tx: Tx, companyId: string, sourceStoreId: string, destStoreId: string) {
+  const read = (id: string) => tx.store.findFirst({ where: { id, companyId }, select: { country: { select: { currencyCode: true, minorUnit: true } } } });
+  const src = await read(sourceStoreId);
+  const dst = await read(destStoreId);
+  return {
+    fromCode: src?.country?.currencyCode ?? '',
+    toCode: dst?.country?.currencyCode ?? '',
+    sourceMinorUnit: src?.country?.minorUnit ?? 2,
+  };
+}
+
+// 22/11 (F2): «بسعر صرف R: 1 SYP = R JOD» — `exchange-rate-words.rateWords` (fixed decimals, never «1e-7»).
+
 /** The typed cost lines as stored (an INTERNAL line has none). */
 const storedLanded = (v: unknown): LandedCost[] => (Array.isArray(v) ? (v as LandedCost[]) : []);
 
@@ -991,7 +1044,8 @@ async function sameCosts(
   counts: readonly { productId: string; costs?: LandedCost[] | null }[]
 ): Promise<boolean> {
   if (!isAcross(t.kind) || !t.toStoreId) return true;
-  const minor = await minorUnitOf(tx, t.companyId, t.toStoreId);
+  // 22/11 (F2): between two currencies the lines were stored in the SOURCE's minor unit.
+  const minor = await minorUnitOf(tx, t.companyId, t.exchangeRate != null ? t.storeId : t.toStoreId);
   return t.lines.every((l) => {
     const typed = normalizeLanded(counts.find((c) => c.productId === l.productId)?.costs, minor);
     return JSON.stringify(typed) === JSON.stringify(storedLanded(l.landedCosts));
@@ -1038,6 +1092,13 @@ async function receiveAcross(
   if (counts.some(namesVariants)) throw new StockTransferRefused('VARIANTS_ACROSS');
 
   const minor = await minorUnitOf(tx, companyId, destStoreId);
+  /*
+   * 22/11 (F2): BETWEEN TWO CURRENCIES (a rate was stored at the send) the landed lines are typed in the SOURCE currency
+   * and rounded to ITS minor unit; the one conversion is `convertedArrivalCost`. Without a rate: exactly as before.
+   */
+  const rate = t.exchangeRate ?? null;
+  const exchange = rate !== null ? await exchangeOf(tx, companyId, t.storeId, destStoreId) : null;
+  const landedMinor = exchange ? exchange.sourceMinorUnit : minor;
   const from = await tx.warehouse.findFirst({ where: { id: t.fromWarehouseId, companyId }, select: { name: true } });
   const fromStore = await tx.store.findFirst({ where: { id: t.storeId, companyId }, select: { name: true } });
   const fromWords = `${fromStore?.name ?? 'متجر تاني'} — ${from?.name ?? 'مخزن'}`;
@@ -1049,7 +1110,7 @@ async function receiveAcross(
   let short = false;
   for (const c of counts) {
     const line = t.lines.find((l) => l.productId === c.productId)!;
-    const landed = normalizeLanded(c.costs, minor);
+    const landed = normalizeLanded(c.costs, landedMinor);
     if (c.quantity < line.quantitySent) short = true;
     if (c.quantity === 0) {
       if (landed.length > 0) throw new StockTransferRefused('COSTS_WITHOUT_UNITS', undefined, { productId: c.productId });
@@ -1057,14 +1118,26 @@ async function receiveAcross(
       continue;
     }
     if (line.costOut === null || line.costOut === undefined) throw new StockTransferRefused('MOVED_MEANWHILE');
-    const cost = arrivalCost({
-      costOut: line.costOut,
-      sent: line.quantitySent,
-      received: c.quantity,
-      landed,
-      minorUnit: minor,
-      zeroCostReason: c.zeroCostReason,
-    });
+    const cost =
+      exchange && rate !== null
+        ? convertedArrivalCost({
+            costOut: line.costOut,
+            sent: line.quantitySent,
+            received: c.quantity,
+            landed,
+            rate,
+            sourceMinorUnit: exchange.sourceMinorUnit,
+            minorUnit: minor,
+            zeroCostReason: c.zeroCostReason,
+          })
+        : arrivalCost({
+            costOut: line.costOut,
+            sent: line.quantitySent,
+            received: c.quantity,
+            landed,
+            minorUnit: minor,
+            zeroCostReason: c.zeroCostReason,
+          });
     if (!cost.ok) throw new StockTransferRefused('ZERO_COST_UNEXPLAINED', cost.message, { productId: c.productId, costCode: cost.code });
     await receiveStock(tx, {
       companyId,
@@ -1076,7 +1149,12 @@ async function receiveAcross(
       mayUse: input.mayUse,
       note: `نقل من ${fromWords}`,
       createdById: input.receivedById,
-      movement: { type: 'TRANSFER_IN', referenceId: transferId, reason: `استلام نقل من ${fromWords} على ${to.name}` },
+      movement: {
+        type: 'TRANSFER_IN',
+        referenceId: transferId,
+        // 22/11 (F2): the rate it was converted at — the rate only, never a cost figure (the ledger is read without `costs.view`).
+        reason: `استلام نقل من ${fromWords} على ${to.name}${exchange && rate !== null ? ` — ${rateWords(rate, exchange)}` : ''}`,
+      },
     });
     await tx.stockTransferLine.updateMany({
       where: { transferId, productId: c.productId },
@@ -1469,14 +1547,36 @@ export function shownTo<
             : {}),
         }
       : {};
+  /*
+   * 22/11 (F2): the rate of a transfer between two currencies is said to everyone who sees the transfer (it is not a
+   * sent figure); a transfer without one carries no `exchangeRate` key at all, exactly as before. To a viewer who may
+   * see cost, once the count is no longer blind, a received line also says what it cost in the SOURCE currency and what
+   * that became in the destination's — the server's own figures: total = received × unitCostIn + costRemainder.
+   */
+  const { exchangeRate, ...rest } = t as T & { exchangeRate?: number | null };
+  const rate = exchangeRate ?? null;
+  const converted = (l: T['lines'][number]) =>
+    rate !== null && l.toProductId && opts.seesCost && !blind && l.costOut != null && l.unitCostIn != null && (l.quantityReceived ?? 0) > 0
+      ? {
+          converted: {
+            rate,
+            sourceTotal:
+              (l.quantityReceived === l.quantitySent ? l.costOut : (l.costOut * l.quantityReceived!) / l.quantitySent) +
+              storedLanded(l.landedCosts).reduce((s, c) => s + c.amount, 0),
+            total: l.quantityReceived! * l.unitCostIn + (l.costRemainder ?? 0),
+          },
+        }
+      : {};
   return {
-    ...t,
+    ...(rest as Omit<T, 'exchangeRate'>),
+    ...(rate !== null ? { exchangeRate: rate } : {}),
     statusAr: STATUS_AR[t.status as StockTransferStatus] ?? t.status,
     blind,
     lines: t.lines.map((l) => ({
       productId: l.productId,
       ...shown(l),
       ...across(l),
+      ...converted(l),
       // 20/11 (W8b): the combinations, blind exactly as their line — WHICH were sent, never how many, until received.
       ...(l.variants && l.variants.length > 0 ? { variants: l.variants.map((v) => ({ variantId: v.variantId, ...shown(v) })) } : {}),
     })),
