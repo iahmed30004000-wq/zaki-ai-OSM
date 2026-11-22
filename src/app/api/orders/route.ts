@@ -30,6 +30,7 @@ import { projectOrder } from '@/lib/order-projection';
 import { heldFor } from '@/lib/order-reservation';
 import { flagRecentTwins } from '@/lib/recent-twin-order';
 import { responsibleModerator, MODERATOR_FORBIDDEN_AR } from '@/lib/responsible-moderator';
+import { withAppIdempotency } from '@/lib/app-idempotency';
 
 export async function GET(req: Request) {
   try {
@@ -181,7 +182,16 @@ export async function GET(req: Request) {
   }
 }
 
+/**
+ * A request carrying `Idempotency-Key` (the «Zaki Orders» app's queued order, sent again after a lost answer) is one
+ * order however many times it arrives — app-idempotency.ts. Without the header, exactly as before.
+ */
 export async function POST(req: Request) {
+  const key = req.headers.get('idempotency-key');
+  return key && key.trim() ? withAppIdempotency(req, key, createOrder) : createOrder(req);
+}
+
+async function createOrder(req: Request) {
   try {
     const { user, companyId, storeId, countryId, country } = await requireContext();
     await requirePermission('orders.create');

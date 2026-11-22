@@ -1167,6 +1167,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/AppErrorsScreen.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 6,
+    "cards": 2,
+    "modals": 0,
+    "icons": 1,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/AppStoreScreen.tsx": {
     "buttons": 10,
     "inputs": 5,

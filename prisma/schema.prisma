@@ -4940,11 +4940,41 @@ model UserSession {
   userAgent    String?
   /// REPLACED (a third device signed in) · STALE (unused longer than any cookie lives) · LOGOUT · IDLE.
   revokeReason String?
+  /// WEB (a browser, the cookie) · APP (the «Zaki Orders» Android app, the same token in a header). Each kind is
+  /// counted on its own (sign-in.ts): opening the app never signs the laptop out, and the reverse.
+  kind         String    @default("WEB")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@map("user_sessions")
+}
+
+/// «ZAKI ORDERS» — WHAT WENT WRONG ON A PHONE (22/11): a crash, a frozen screen (ANR / the app's own 4-second watchdog),
+/// or an error the app caught. Sent by the app (`POST /api/client-errors`), read by whoever holds `audit.view`.
+///
+/// NO CUSTOMER DATA: the app sends the screen name, the stack and the device — never an order, a name or a phone — and the
+/// door cuts every field to its length. Who sent it is the signed-in person, from the session, never from the body.
+model ClientError {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String?
+  /// CRASH · ANR · ERROR
+  kind        String
+  message     String
+  stack       String?
+  screen      String?
+  appVersion  String
+  versionCode Int?
+  device      String?
+  osVersion   String?
+  /// When it happened on the phone (it may arrive later: the app sends what it kept when it is back online).
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([companyId, kind, createdAt])
+  @@map("client_errors")
 }
 
 /// «السلات المهجورة» — A VISITOR WHO LEFT A NAME AND A PHONE ON A LANDING PAGE AND NO ORDER (contract oms-lp.v1 §9).

@@ -433,6 +433,8 @@ export const NAV: NavGroup[] = [
       // given to a customer. Two words from one root, one row apart.
       r('/control/penalties', 'خصومات الموظفين', 'ShieldQuestion', ['penalties.view']),
       r('/control/audit', 'سجل التدقيق', 'ScrollText', ['audit.view']),
+      // What went wrong on the «Zaki Orders» phones (22/11): read by whoever reads the audit trail.
+      r('/control/app-errors', 'أعطال التطبيق', 'ScrollText', ['audit.view']),
       r('/control/blacklist', 'القائمة السوداء', 'Ban', ['control.blacklist']),
       // Everybody's own page, so not a line of anybody's menu: its door is the name in the header and the
       // line in the phone's «المزيد» sheet. It stays in this group (and in the registry) for its guard and title.

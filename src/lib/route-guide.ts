@@ -98,6 +98,7 @@ export const GUIDED_PATHS: readonly string[] = [
   '/control/discount-alerts',
   '/control/penalties',
   '/control/audit',
+  '/control/app-errors',
   '/control/blacklist',
   // النمو والذكاء
   '/growth/performance',

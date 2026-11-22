@@ -477,6 +477,8 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/landing/chat/updates': 'صفحاتُ الهبوط تقرأ ردود الفريق وإيقاف البوت وإرجاعه كل بضع ثوانٍ (العقد §11) — المستدعي في مستودعٍ آخر',
   '/api/call-helper/pair':
     'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
+  '/api/orders/quote':
+    'تطبيقُ «Zaki Orders» على أندرويد يسأل عن سعر الطلب اليدوي قبل إرساله (شاشة «+ طلب») — المستدعي برنامج Kotlin في مستودعٍ آخر لا يقرؤه هذا المسح',
 };
 
 /**

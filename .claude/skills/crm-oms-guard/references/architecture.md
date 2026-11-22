@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **60 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **61 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -181,6 +181,7 @@ nothing they may open is not drawn. `/settings` is also where an ad platform's O
 تنبيهات الخصم             /control/discount-alerts   (a price cut given to a customer)
 خصومات الموظفين           /control/penalties         (money off a salary)
 سجل التدقيق               /control/audit
+أعطال التطبيق             /control/app-errors   (crashes the Zaki Orders Android app sends; audit.view)
 القائمة السوداء           /control/blacklist
 الملف الشخصي              /admin/profile     (every active user; off the menu — the name in the header, a line of «المزيد»)
 ```

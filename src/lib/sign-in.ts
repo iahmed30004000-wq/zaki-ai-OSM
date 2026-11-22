@@ -6,7 +6,8 @@ import { logAudit } from './audit';
 import { markLogin } from './attendance';
 import { createDeviceToken } from './auth';
 import { DEVICE_COOKIE, claimsFor, deviceCookieOptions, trustDays } from './trusted-device';
-import { longestSessionDays } from './session-length';
+import { longestSessionDays, sessionDays } from './session-length';
+import type { SignInClient } from './app-bearer';
 
 /**
  * ISSUING A SESSION — ONE PLACE, BECAUSE THERE ARE NOW TWO DOORS.
@@ -49,6 +50,23 @@ export const OWNER_DEVICES = 5;
 export function devicesAllowed(role: string): number {
   return role === 'SUPER_ADMIN' ? OWNER_DEVICES : DEVICES_PER_ACCOUNT;
 }
+
+/**
+ * THE «ZAKI ORDERS» APP HOLDS PLACES OF ITS OWN (the owner, 22/11: the app's session must not sign the laptop out).
+ *
+ * A browser sign-in and an app sign-in are counted apart, each against its own number: the two (or five) browser places
+ * stay the browsers', and the app gets one phone — two for the owner's account. A second phone signing in to the app
+ * ends the first phone's app session, and never a browser.
+ */
+export const APP_DEVICES = 1;
+export const OWNER_APP_DEVICES = 2;
+
+export function appDevicesAllowed(role: string): number {
+  return role === 'SUPER_ADMIN' ? OWNER_APP_DEVICES : APP_DEVICES;
+}
+
+/** Which door a sign-in came through — read by app-bearer.ts `signInClientOf`. */
+export type { SignInClient };
 
 /**
  * A session row unused for longer than the longest cookie can no longer be presented by any device: it is stamped STALE at
@@ -136,8 +154,17 @@ export async function issueSession(input: {
    * is a second chance to read a different one.
    */
   totpEnabledAt?: Date | null;
+  /**
+   * 'app' — the «Zaki Orders» Android app. The SAME session (the same token, the same row, the same `tv`/`sid` locks
+   * and the same grants per request); only two things differ: the row is kind APP and counted against the app's own
+   * places, and the token comes back in the answer's body instead of a cookie, because the app keeps it encrypted
+   * itself and sends it as `Authorization: Bearer` (proxy.ts turns it back into the cookie for the doors). No
+   * trusted-device cookie either: the app has its own fingerprint lock on the token.
+   */
+  client?: SignInClient;
 }): Promise<NextResponse> {
   const { user, remember, ip } = input;
+  const kind = input.client === 'app' ? 'APP' : 'WEB';
 
   /**
    * TWO DEVICES AT ONCE — THE OWNER'S RULING 4/11.
@@ -162,7 +189,7 @@ export async function issueSession(input: {
    */
   const now = new Date();
   const userAgent = await requestUserAgent();
-  const allowed = devicesAllowed(user.role);
+  const allowed = kind === 'APP' ? appDevicesAllowed(user.role) : devicesAllowed(user.role);
   const { refreshed, sid, replaced } = await db.$transaction(async (tx) => {
     const refreshed = await tx.user.update({
       where: { id: user.id },
@@ -170,7 +197,7 @@ export async function issueSession(input: {
       select: { tokenVersion: true },
     });
     const created = await tx.userSession.create({
-      data: { userId: user.id, createdAt: now, lastSeenAt: now, userAgent },
+      data: { userId: user.id, createdAt: now, lastSeenAt: now, userAgent, kind },
       select: { id: true },
     });
     /**
@@ -184,8 +211,9 @@ export async function issueSession(input: {
      * And a row nobody has used for longer than a cookie lives is no device at all: every cookie that could name it has
      * expired. It is stamped STALE and not counted, so it can never be what keeps a real device out.
      */
+    // Only this kind's rows: an app sign-in never counts, nor ends, a browser — and the reverse (22/11).
     const live = await tx.userSession.findMany({
-      where: { userId: user.id, revokedAt: null },
+      where: { userId: user.id, revokedAt: null, kind },
       orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       select: { id: true, lastSeenAt: true },
     });
@@ -222,7 +250,7 @@ export async function issueSession(input: {
     entity: 'User',
     entityId: user.id,
     // `replaced`: how many older devices this sign-in ended — «why was I signed out» has an answer in the trail too.
-    newData: { email: user.email, role: user.role, status: user.status, ip, factor: input.factor, replaced },
+    newData: { email: user.email, role: user.role, status: user.status, ip, factor: input.factor, replaced, kind },
   });
 
   const role = user.role as UserRole;
@@ -239,7 +267,7 @@ export async function issueSession(input: {
     remember,
   });
 
-  const response = NextResponse.json({
+  const body = {
     success: true,
     status,
     role,
@@ -254,8 +282,15 @@ export async function issueSession(input: {
       commissionRate: user.commissionRate,
       permissions: ROLE_PERMISSIONS[role] || [],
     },
-  });
+  };
 
+  if (kind === 'APP') {
+    // The app's token, in the body and nowhere else: no cookie, and no trusted-device cookie (see `client` above).
+    const expiresAt = new Date(now.getTime() + sessionDays(remember) * 24 * 60 * 60 * 1000).toISOString();
+    return NextResponse.json({ ...body, token, expiresAt });
+  }
+
+  const response = NextResponse.json(body);
   response.cookies.set({ name: COOKIE_NAME, value: token, ...sessionCookieOptions(remember) });
 
   /**
