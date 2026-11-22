@@ -396,7 +396,9 @@ describe('every OTHER kind still sends exactly what it sent', () => {
     expect(writes()[0]).toEqual({
       url: '/api/finance/wallets/w1/movements',
       method: 'POST',
-      body: { direction: 'OUT', amount: 25.5, party: 'مورّد', category: 'ADJUSTMENT', note: 'دفعة شهرية' },
+      // UPDATED 22/11 (the real date): the hand movement's body also carries «تاريخ الحركة الفعلي» (the box's ISO moment, now by
+      // default). Old: the five keys alone. The draw's own body is untouched — the box is not drawn for a draw.
+      body: { direction: 'OUT', amount: 25.5, party: 'مورّد', category: 'ADJUSTMENT', note: 'دفعة شهرية', occurredAt: expect.any(String) },
     });
   });
 

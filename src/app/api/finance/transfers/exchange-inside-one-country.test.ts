@@ -698,6 +698,8 @@ describe('the list reads an exchange as what it was', () => {
     ]) } as unknown as typeof db.wallet;
     // The list also reads which of the transfers were reversed (their legs): none here.
     db.walletMovement = { ...db.walletMovement, findMany: vi.fn().mockResolvedValue([]) } as unknown as typeof db.walletMovement;
+    // 22/11 (the real date and the eye): the list now also reads who registered each transfer, for the details panel.
+    (db as unknown as { user: unknown }).user = { findMany: vi.fn().mockResolvedValue([{ id: 'u1', name: 'سامر' }]) };
     const res = await GET();
     expect(res.status).toBe(200);
     const { transfers } = await res.json();

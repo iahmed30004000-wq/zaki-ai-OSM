@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/audit';
 import { ExpenseRefused, MOVEMENT_CATEGORIES, PartnerDrawRefused, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
 import { handMovementRefusal } from '@/lib/hand-movement-rules';
+import { byRealDateDesc, readOccurredAt, realDateOf, registeredOnAnotherDay } from '@/lib/real-date';
 
 /**
  * Wallet movements.
@@ -28,6 +29,11 @@ const createSchema = z.object({
   party: z.string().trim().min(2, 'اذكر الطرف').max(120),
   category: z.enum(MOVEMENT_CATEGORIES),
   note: z.string().trim().min(3, 'الملاحظة إلزامية').max(300),
+  /**
+   * «تاريخ الحركة الفعلي» (22/11): when the money really moved, an ISO moment. Absent = the registration moment. Read by
+   * `readOccurredAt` below (future beyond five minutes, malformed, or before 2020 → an Arabic refusal with its code).
+   */
+  occurredAt: z.unknown().optional(),
 });
 
 const reverseSchema = z.object({
@@ -45,7 +51,7 @@ const reverseSchema = z.object({
 async function walletOf(id: string, companyId: string, storeId: string | null) {
   return db.wallet.findFirst({
     where: { id, ...inStore(companyId, storeId) },
-    include: { country: { select: { minorUnit: true } } },
+    include: { country: { select: { minorUnit: true, timezone: true } } },
   });
 }
 
@@ -60,12 +66,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
 
     const take = readLimit(new URL(req.url).searchParams, 100, 300);
-    const movements = await db.walletMovement.findMany({
+    /*
+     * THE LATEST REGISTRATIONS, SHOWN BY THEIR REAL DATE (22/11). Which rows: the newest `take` by registration, as always (so a
+     * movement registered today with yesterday's date is on the list the moment it is written). In what order: the real date, then
+     * the registration (lib/real-date `byRealDateDesc`). `reversedBy` carries the reversing entry's reason and moment for the panel.
+     */
+    const registered = await db.walletMovement.findMany({
       where: { walletId: id },
       orderBy: { createdAt: 'desc' },
       take,
-      include: { reversalOf: { select: { id: true, note: true } }, reversedBy: { select: { id: true } } },
+      include: {
+        reversalOf: { select: { id: true, note: true } },
+        reversedBy: { select: { id: true, reversalReason: true, createdAt: true } },
+      },
     });
+    const movements = [...registered].sort(byRealDateDesc);
+    // The STORE's day, which is the wallet's country's: «سُجّلت …» is said only when the two moments fall on different days there.
+    const timeZone = wallet.country.timezone ?? 'Asia/Damascus';
 
     const actorIds = [...new Set(movements.map((m) => m.createdById))];
     const actors = actorIds.length
@@ -83,6 +100,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         createdByName: nameOf.get(m.createdById) ?? null,
         isReversal: !!m.reversalOfId,
         wasReversed: !!m.reversedBy,
+        // The real date (the registration when none was typed), and whether the registration fell on another day of the store.
+        realDate: realDateOf(m).toISOString(),
+        registeredOnAnotherDay: registeredOnAnotherDay(m, timeZone),
       })),
     });
   } catch (error) {
@@ -114,6 +134,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const refused = handMovementRefusal(parsed.data.category, parsed.data.direction);
     if (refused) return NextResponse.json(refused, { status: 409 });
 
+    // The real date, when one was typed. The registration (`createdAt`) is the database's own and cannot be sent.
+    const real = readOccurredAt(parsed.data.occurredAt, new Date());
+    if (!real.ok) return NextResponse.json({ error: real.errorAr, errorAr: real.errorAr, code: real.code }, { status: 400 });
+
     const movement = await recordMovement(db, {
       companyId,
       walletId: id,
@@ -122,13 +146,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       party: parsed.data.party,
       category: parsed.data.category,
       note: parsed.data.note,
+      ...(real.value ? { occurredAt: real.value } : {}),
       createdById: user.id,
     });
 
+    const { occurredAt: _typed, ...said } = parsed.data;
+    void _typed;
     await logAudit({
       companyId, userId: user.id, action: 'WALLET_MOVEMENT_RECORDED',
       entity: 'WalletMovement', entityId: movement.id,
-      newData: { wallet: wallet.name, ...parsed.data },
+      newData: { wallet: wallet.name, ...said, ...(real.value ? { occurredAt: real.value.toISOString() } : {}) },
     });
 
     return NextResponse.json(
