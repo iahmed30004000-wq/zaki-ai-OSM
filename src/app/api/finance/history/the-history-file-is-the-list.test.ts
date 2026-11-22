@@ -119,7 +119,7 @@ const W1 = '11111111-1111-4111-8111-111111111111';
 const W2 = '22222222-2222-4222-8222-222222222222';
 const W3 = '33333333-3333-4333-8333-333333333333'; // another store's wallet, same company
 
-async function as(user: Partial<SessionUser>, keys: string[], overrides: { permission: string; effect: 'ALLOW' | 'DENY' }[] = []) {
+async function as(user: Record<string, unknown>, keys: string[], overrides: { permission: string; effect: 'ALLOW' | 'DENY' }[] = []) {
   const base = { id: 'u1', email: 'u@x', name: 'سلوى', role: 'CUSTOM', roleId: 'r1', status: 'ACTIVE', companyId: 'c1', ...user } as unknown as SessionUser;
   current.user = attachGrants(
     base,

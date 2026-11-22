@@ -22,6 +22,13 @@ export interface HistoryQuery {
   partnerId?: string;
 }
 
+/** Each list's door, written out whole so a reader (and the unused-routes sweep) finds it by its name. */
+const DOOR: Record<HistoryList, string> = {
+  movements: '/api/finance/history/movements',
+  transfers: '/api/finance/history/transfers',
+  withdrawals: '/api/finance/history/withdrawals',
+};
+
 /** The order the names are written in, so one set of filters is always one address. */
 const KEYS = ['from', 'to', 'basis', 'walletId', 'currency', 'direction', 'category', 'partnerId'] as const;
 
@@ -32,7 +39,7 @@ export function historyExportUrl(list: HistoryList, query: HistoryQuery, format:
     if (value) params.set(key, value);
   }
   params.set('format', format);
-  return `/api/finance/history/${list}?${params.toString()}`;
+  return `${DOOR[list]}?${params.toString()}`;
 }
 
 /** The words under the two buttons: a PDF is the browser's own «حفظ كـ PDF», no server makes one. */
