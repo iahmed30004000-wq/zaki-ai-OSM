@@ -118,7 +118,9 @@ describe('the migration', () => {
       for (const c of creators) expect(c < NAME, `${c} must come before ${NAME}`).toBe(true);
     }
     const after = dirs.filter((d) => /^\d{14}_/.test(d)).slice(dirs.filter((d) => /^\d{14}_/.test(d)).indexOf(NAME) + 1);
-    for (const d of after) expect(sql(d), d).not.toMatch(/"partners"|valueInStoreCurrency|wallet_movements_partnerId/);
+    // 22/11 (F3): a later migration may POINT at a partner (a foreign key `REFERENCES "partners"("id")` — the withdrawals' tables),
+    // which neither alters nor drops the table; everything else that names it is still refused.
+    for (const d of after) expect(sql(d).replace(/REFERENCES "partners"\("id"\)/g, ''), d).not.toMatch(/"partners"|valueInStoreCurrency|wallet_movements_partnerId/);
   });
 });
 

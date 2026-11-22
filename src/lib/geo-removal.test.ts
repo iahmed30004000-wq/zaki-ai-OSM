@@ -251,7 +251,9 @@ describe('asking about many stores at once', () => {
     // store, so they are a stopper too: stopped, never deleted.
     // 21/11 (W5a): 38 → 39 — the count sheets of a store's goods in its warehouses (`stock_counts`) are a stopper too: a
     // document of what was counted and approved, never deleted.
-    expect(one.asked.length).toBe(39);
+    // 22/11 (F3): 39 → 40 — the partners' withdrawals (`partner_withdrawals`) have a storeId and no foreign key to the store, so
+    // they are a stopper too: a record of what a partner took from the store, never deleted.
+    expect(one.asked.length).toBe(40);
   });
 
   it('and no stores asks nothing at all', async () => {
