@@ -56,6 +56,7 @@ import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { memoryDb } from '@/lib/stock-transfers.memory-db.test';
 import * as list from './route';
 import * as approveDoor from './[id]/approve/route';
+import * as receiveDoor from './[id]/receive/route';
 
 const C1 = 'c1';
 
@@ -67,7 +68,11 @@ async function as(id: string, storeId = 's1') {
 const json = async (res: Response) => ({ status: res.status, body: await res.json() });
 const req = (body: unknown) => new Request('http://x/api', { method: 'POST', body: JSON.stringify(body) });
 const send = (body: Row) => list.POST(req({ fromWarehouseId: 'wA', toWarehouseId: 'wB', toStoreId: 's2', ...body })).then(json);
-const abroad = (body: Row) => send({ toWarehouseId: 'wJ', toStoreId: 's3', ...body });
+/*
+ * 22/11 (F2): k1 keeps JOD and k2 USD, so a send to s3 is between two currencies and now needs «سعر الصرف» (the owner's
+ * word of 22/11). Before: the body carried no rate. Now: it carries 1.41 — the deal under test is unchanged.
+ */
+const abroad = (body: Row) => send({ toWarehouseId: 'wJ', toStoreId: 's3', exchangeRate: 1.41, ...body });
 const internal = (body: Row) => list.POST(req({ fromWarehouseId: 'wA', toWarehouseId: 'wB', ...body })).then(json);
 const listOf = () => list.GET().then(json).then((r) => r.body);
 
@@ -153,8 +158,17 @@ describe('the destination picker', () => {
     const b = await listOf();
     expect(b.here).toEqual({ id: 's1', name: 'المتجر', countryId: 'k1', countryName: 'البلد الأول' });
     // In the order of their names (the store-entry rule's own order); the stopped warehouse is not offered.
+    // 22/11 (F2): s3 keeps USD and this store JOD — its entry now names the two currencies (`rate`), so the form asks the
+    // rate; s2 keeps JOD like this store and answers exactly what it answered. Before: no `rate` key on s3.
     expect(b.destinations).toEqual([
-      { storeId: 's3', storeName: 'متجر البلد التاني', countryId: 'k2', countryName: 'البلد التاني', warehouses: [{ id: 'wJ', name: 'ج', countryId: 'k2' }] },
+      {
+        storeId: 's3',
+        storeName: 'متجر البلد التاني',
+        countryId: 'k2',
+        countryName: 'البلد التاني',
+        warehouses: [{ id: 'wJ', name: 'ج', countryId: 'k2' }],
+        rate: { fromCode: 'JOD', toCode: 'USD' },
+      },
       { storeId: 's2', storeName: 'متجر تاني', countryId: 'k1', countryName: 'البلد الأول', warehouses: [{ id: 'wA', name: 'أ', countryId: 'k1' }, { id: 'wB', name: 'ب', countryId: 'k1' }] },
     ]);
   });
@@ -251,5 +265,80 @@ describe('«بضاعة بالطريق»', () => {
     await abroad({ lines: [{ productId: 'p1', quantity: 2 }] });
     await as('u-books');
     expect((await listOf()).road).toMatchObject({ onTheRoad: 0, across: 0, totals: [] });
+  });
+});
+
+/* ═════════════════════ 22/11 (F2): «سعر الصرف» through the doors (k1 = JOD, k2 = USD) ═════════════════════ */
+
+describe('F2 — the exchange rate at the doors', () => {
+  const noRate = (body: Row) => send({ toWarehouseId: 'wJ', toStoreId: 's3', ...body });
+  const receiveAt = (id: string, lines: Row[]) =>
+    receiveDoor.POST(new Request('http://x/api', { method: 'POST', body: JSON.stringify({ lines }) }), { params: Promise.resolve({ id }) }).then(json);
+
+  it('NEGATIVE: between two currencies the send is refused without a rate, at zero, below zero, above the bound — each in Arabic with its code', async () => {
+    await as('u-abroad');
+    for (const [rate, code] of [
+      [undefined, 'RATE_MISSING'],
+      [null, 'RATE_MISSING'],
+      [0, 'RATE_INVALID'],
+      [-1.41, 'RATE_INVALID'],
+      [1_000_001, 'RATE_TOO_BIG'],
+    ] as const) {
+      const r = await noRate({ lines: [{ productId: 'p1', quantity: 2 }], ...(rate !== undefined ? { exchangeRate: rate } : {}) });
+      expect([r.status, r.body.code], String(rate)).toEqual([400, code]);
+      expect(r.body.errorAr).toMatch(/سعر الصرف/);
+    }
+    // A rate that is not a number is refused by the schema, in Arabic too.
+    const text = await noRate({ lines: [{ productId: 'p1', quantity: 2 }], exchangeRate: '1.41' });
+    expect([text.status, text.body.code]).toEqual([400, 'INVALID']);
+    expect(text.body.errorAr).toMatch(/سعر الصرف/);
+    expect(S.m.data.stockTransfer).toEqual([]);
+  });
+
+  it('NEGATIVE: one currency (s1 → s2, both JOD) refuses a rate; without one it is written with no rate key at all', async () => {
+    await as('u-sender');
+    expect((await send({ lines: [{ productId: 'p1', quantity: 1 }], exchangeRate: 1 })).body.code).toBe('RATE_NOT_HERE');
+    expect((await internal({ lines: [{ productId: 'p1', quantity: 1 }], exchangeRate: 1 })).body.code).toBe('RATE_NOT_HERE');
+    const ok = await send({ lines: [{ productId: 'p1', quantity: 1 }] });
+    expect(ok.status).toBe(201);
+    expect(ok.body.transfer).not.toHaveProperty('exchangeRate');
+    expect(S.m.data.stockTransfer[0]).not.toHaveProperty('exchangeRate');
+    await as('u-books');
+    const row = (await listOf()).transfers[0];
+    expect(row).not.toHaveProperty('exchange');
+    expect(row).not.toHaveProperty('exchangeRate');
+  });
+
+  it('send → owner → receipt: the rate is stored, shown to every viewer, converted ONCE at the receipt; the ledger says the rate and no cost figure', async () => {
+    await as('u-abroad');
+    const sent = await abroad({ lines: [{ productId: 'p1', quantity: 2 }] });
+    expect([sent.status, sent.body.transfer.exchangeRate]).toEqual([201, 1.41]);
+    await as('u-owner');
+    const id = (await listOf()).transfers[0].id;
+    await approveDoor.POST(req({}), { params: Promise.resolve({ id }) });
+    // Every viewer sees the rate and the two currencies (a viewer without the cost key included) — never a cost.
+    await as('u-viewer', 's3');
+    const seen = (await listOf()).transfers[0];
+    expect(seen.exchange).toEqual({ rate: 1.41, from: { code: 'JOD', minorUnit: 3 }, to: { code: 'USD', minorUnit: 2 } });
+    expect(seen.lines[0]).not.toHaveProperty('costOut');
+    // Received by a cost holder standing in s3: 2 units that left at 2 JOD (costOut 4 JOD) + 0.5 JOD landed.
+    await as('u-receiver-cost', 's3');
+    const got = await receiveAt(id, [{ productId: 'p1', quantity: 2, costs: [{ kind: 'TRANSPORT', amount: 0.5 }] }]);
+    expect(got.status).toBe(200);
+    // By hand: (4 + 0.5) JOD × 1.41 = 6.345 USD; ÷ 2 = 3.1725 → 3.17 (USD, two decimals); remainder 6.345 − 6.34 = 0.005.
+    const line = got.body.transfer.lines[0];
+    expect(line.unitCostIn).toBe(3.17);
+    expect(line.costRemainder).toBeCloseTo(0.005, 12);
+    expect(line.converted.rate).toBe(1.41);
+    expect(line.converted.sourceTotal).toBeCloseTo(4.5, 12);
+    expect(line.converted.total).toBeCloseTo(6.345, 12);
+    const batch = S.m.data.productionBatch.find((b) => b.productId === 'r1')!;
+    expect([batch.quantityRemaining, batch.costPerUnit, batch.warehouseId]).toEqual([2, 3.17, 'wJ']);
+    const into = S.m.data.inventoryMovement.find((x) => x.type === 'TRANSFER_IN' && x.productId === 'r1')!;
+    expect(into.reason).toContain('بسعر صرف 1.41: 1 JOD = 1.41 USD');
+    for (const figure of ['4.5', '6.345', '3.17', '0.5 ']) expect(into.reason, figure).not.toContain(figure);
+    // NEGATIVE: the converted figures go only to the cost key.
+    await as('u-viewer', 's3');
+    expect((await listOf()).transfers[0].lines[0]).not.toHaveProperty('converted');
   });
 });

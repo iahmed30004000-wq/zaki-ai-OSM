@@ -8,7 +8,8 @@ import { resolveUnitCost } from './unit-cost';
  *
  *   THE GOODS KEEP THEIR COST. What left the source is the draw-down's own figure (`receiving.drawDownStock` — each
  *   batch at its price, a run and its twins costed once), kept on the line as `costOut` and never recomputed. There is
- *   NO exchange-rate step: the number travels as it is (the owner's decision 7 of 20/11).
+ *   NO exchange-rate step: the number travels as it is (the owner's decision 7 of 20/11) — 22/11 (F2): EXCEPT between
+ *   two currencies, where the owner reversed it; see `convertedArrivalCost` below. Same currency = this, unchanged.
  *
  *   LANDED COSTS are typed at receipt as lines — transport, customs, other — in the destination store's currency (the
  *   currency its product cost is kept in), each rounded to that currency's minor unit. Their total goes INTO the unit
@@ -109,6 +110,104 @@ export function arrivalCost(input: {
   if (!verdict.ok) return { ok: false, code: verdict.code, message: verdict.message };
   const remainder = total - received * unitCost;
   return { ok: true, carried, landed, total, unitCost: verdict.unitCost, remainder };
+}
+
+/* ───────────────────────────── two currencies (F2, 22/11) ───────────────────────────── */
+
+/**
+ * 22/11 (F2): THE EXCHANGE RATE — the owner's word of 22/11 «حط سعر الصرف سهلة», which REVERSES his decision 7 of 20/11
+ * («no exchange-rate step») for ONE case only: the two stores' countries keep their costs in DIFFERENT currencies
+ * (`Country.currencyCode`). Everything above this line is untouched and is still what every other transfer does.
+ *
+ *   THE RATE is typed once, at the send: units of the DESTINATION currency for ONE unit of the SOURCE currency. It is
+ *   stored on the transfer and never recomputed — no door changes it after the send.
+ *
+ *   EVERY FIGURE BEFORE THE RECEIPT IS IN THE SOURCE CURRENCY: the cost that left (`costOut`) and every typed landed
+ *   line (rounded to the SOURCE's minor unit, never the destination's). The conversion happens ONCE, at the receipt:
+ *       carried   = costOut × received ÷ sent                         (source, not rounded — as today)
+ *       landed    = roundMinor(Σ lines, sourceMinor)                   (each line already roundMinor(·, sourceMinor))
+ *       total     = (carried + landed) × rate                          (destination, not rounded — the one conversion)
+ *       unit      = roundMinor(total ÷ received, minor)                 (destination, half away from zero — as today)
+ *       remainder = total − received × unit                            (destination; booked nowhere — as today)
+ *   So rounding happens in exactly three places: each landed line and their sum (source minor unit), and the unit
+ *   (destination minor unit). |remainder| ≤ received × half a destination minor unit, as today.
+ */
+export const EXCHANGE_RATE_MAX = 1_000_000;
+
+export type ExchangeRateCode = 'RATE_MISSING' | 'RATE_INVALID' | 'RATE_TOO_BIG' | 'RATE_NOT_HERE';
+
+export const EXCHANGE_RATE_AR: Record<ExchangeRateCode, string> = {
+  RATE_MISSING: 'المتجرين بعملتين مختلفتين، فلازم تكتب سعر الصرف: كم بتساوي الوحدة من عملة المتجر اللي بيبعت بعملة المتجر اللي بيستلم.',
+  RATE_INVALID: 'سعر الصرف لازم يكون رقم أكبر من صفر.',
+  RATE_TOO_BIG: 'سعر الصرف كبير كتير (أكتر من مليون). راجعه.',
+  RATE_NOT_HERE: 'سعر الصرف بينكتب بس على نقل بين متجرين بعملتين مختلفتين.',
+};
+
+/** Do the two ends keep their costs in different currencies? An unknown code on either side is not a difference. */
+export function needsExchangeRate(fromCurrency: string | null | undefined, toCurrency: string | null | undefined): boolean {
+  return !!fromCurrency && !!toCurrency && fromCurrency !== toCurrency;
+}
+
+/** The service's judgement of a typed rate. `needed` = the two currencies differ. */
+export function checkExchangeRate(
+  rate: unknown,
+  needed: boolean
+): { ok: true; rate: number | null } | { ok: false; code: ExchangeRateCode; message: string } {
+  const refuse = (code: ExchangeRateCode) => ({ ok: false as const, code, message: EXCHANGE_RATE_AR[code] });
+  if (!needed) return rate === null || rate === undefined ? { ok: true, rate: null } : refuse('RATE_NOT_HERE');
+  if (rate === null || rate === undefined) return refuse('RATE_MISSING');
+  if (typeof rate !== 'number' || !Number.isFinite(rate) || rate <= 0) return refuse('RATE_INVALID');
+  if (rate > EXCHANGE_RATE_MAX) return refuse('RATE_TOO_BIG');
+  return { ok: true, rate };
+}
+
+export type ConvertedArrivalCost =
+  | {
+      ok: true;
+      /** Source currency, not rounded: the cost of the units that arrived, at the cost that left. */
+      carried: number;
+      /** Source currency: Σ landed lines, rounded to the source's minor unit. */
+      landed: number;
+      /** Source currency: carried + landed. */
+      sourceTotal: number;
+      /** Destination currency: sourceTotal × rate — the one conversion, not rounded. */
+      total: number;
+      unitCost: number;
+      /** Destination currency: total − received × unitCost. */
+      remainder: number;
+      rate: number;
+    }
+  | { ok: false; code: string; message: string };
+
+/**
+ * The destination's unit cost of a transfer between two currencies. `landed` must be normalized in the SOURCE's minor
+ * unit (`normalizeLanded(lines, sourceMinorUnit)`); `minorUnit` is the destination's.
+ */
+export function convertedArrivalCost(input: {
+  costOut: number;
+  sent: number;
+  received: number;
+  landed: readonly LandedCost[];
+  rate: number;
+  sourceMinorUnit: number;
+  minorUnit: number;
+  zeroCostReason?: string | null;
+}): ConvertedArrivalCost {
+  const { costOut, sent, received, rate, minorUnit } = input;
+  if (!(sent > 0) || !(received > 0) || received > sent || !Number.isFinite(costOut) || costOut < 0) {
+    return { ok: false, code: 'COUNTS_INVALID', message: 'العدد المستلم مش صحيح.' };
+  }
+  const judged = checkExchangeRate(rate, true);
+  if (!judged.ok) return { ok: false, code: judged.code, message: judged.message };
+  const carried = received === sent ? costOut : (costOut * received) / sent;
+  const landed = landedTotal(input.landed, input.sourceMinorUnit);
+  const sourceTotal = carried + landed;
+  const total = sourceTotal * rate;
+  const unitCost = roundMinor(total / received, minorUnit);
+  const verdict = resolveUnitCost({ given: unitCost, previous: null, zeroCostReason: input.zeroCostReason });
+  if (!verdict.ok) return { ok: false, code: verdict.code, message: verdict.message };
+  const remainder = total - received * unitCost;
+  return { ok: true, carried, landed, sourceTotal, total, unitCost: verdict.unitCost, remainder, rate };
 }
 
 /** What the units that did not arrive cost when they left — for the report of a shortfall. Not rounded. */

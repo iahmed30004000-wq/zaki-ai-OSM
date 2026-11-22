@@ -16,6 +16,7 @@ import { hasFullAccess } from '@/lib/authorization';
 import { maySeeCost } from '@/lib/cost-visibility';
 import { storesReachedBy } from '@/lib/product-pairs';
 import { roadReport, type RoadCurrency } from '@/lib/stock-transfer-road';
+import { needsExchangeRate } from '@/lib/stock-transfer-cost';
 
 /**
  * GET  /api/inventory/transfers (inventory.view)     — the store's transfers, newest first, and its warehouses
@@ -77,6 +78,8 @@ export async function GET() {
           toStoreId: true,
           approvedById: true,
           approvedAt: true,
+          // 22/11 (F2): the rate of a transfer between two currencies (null otherwise; `shownTo` then drops the key).
+          exchangeRate: true,
           lines: {
             select: {
               productId: true,
@@ -165,6 +168,10 @@ export async function GET() {
         countryId: s.countryId,
         countryName: storeRow.get(s.id)?.country?.name ?? null,
         warehouses: theirWarehouses.filter((w) => w.countryId === s.countryId).map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
+        // 22/11 (F2): the two currencies, only where they differ — the form then asks «سعر الصرف» (the door asks again).
+        ...(needsExchangeRate(here?.country?.currencyCode, storeRow.get(s.id)?.country?.currencyCode)
+          ? { rate: { fromCode: here!.country!.currencyCode, toCode: storeRow.get(s.id)!.country!.currencyCode } }
+          : {}),
       })),
       mayAbroad: can(user, ABROAD_KEY),
       road: roadReport(onRoad, { id: user.id, seesCost, mayReceive: can(user, 'inventory.transfer_receive') }, (id) => ({
@@ -201,6 +208,9 @@ export async function GET() {
                 mayApprove: owner && r.status === 'AWAITING_APPROVAL',
                 // 21/11 (W7c): the currencies the line costs are in — only to whom the costs are shown.
                 ...(seesCost ? { fromCurrency: currencyOf(r.storeId), toCurrency: currencyOf(r.toStoreId) } : {}),
+                // 22/11 (F2): between two currencies, the rate and the two currencies — to everyone who sees the row (a
+                // currency is not a cost figure, and the receiver types the landed lines in the SOURCE currency).
+                ...(r.exchangeRate != null ? { exchange: { rate: r.exchangeRate, from: currencyOf(r.storeId), to: currencyOf(r.toStoreId) } } : {}),
               }
             : {}),
           lines: shown.lines.map((l) =>
@@ -253,6 +263,8 @@ export async function POST(req: Request) {
             fromWarehouseId: out.transfer.fromWarehouseId,
             toWarehouseId: out.transfer.toWarehouseId,
             lines: auditLines(out.transfer.lines),
+            // 22/11 (F2): the rate, only between two currencies (a rate is not a cost figure).
+            ...(out.transfer.exchangeRate != null ? { exchangeRate: out.transfer.exchangeRate } : {}),
             by: user.name,
           },
         });

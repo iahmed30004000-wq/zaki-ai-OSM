@@ -358,7 +358,7 @@
   },
   "src/components/inventory/TransferAcross.tsx": {
     "buttons": 4,
-    "inputs": 2,
+    "inputs": 3,
     "columns": 0,
     "cards": 1,
     "modals": 0,
