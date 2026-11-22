@@ -2121,6 +2121,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/HistoryExport.tsx": {
+    "buttons": 2,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/LinkLineDialog.tsx": {
     "buttons": 7,
     "inputs": 1,
@@ -2255,7 +2265,7 @@
   "src/components/screens/finance/TransfersScreen.tsx": {
     "buttons": 3,
     "inputs": 5,
-    "columns": 9,
+    "columns": 11,
     "cards": 6,
     "modals": 0,
     "icons": 6,
@@ -2276,7 +2286,7 @@
   "src/components/screens/finance/WalletsScreen.tsx": {
     "buttons": 18,
     "inputs": 20,
-    "columns": 11,
+    "columns": 13,
     "cards": 5,
     "modals": 5,
     "icons": 16,
@@ -2287,7 +2297,7 @@
   "src/components/screens/finance/WithdrawalsSection.tsx": {
     "buttons": 10,
     "inputs": 7,
-    "columns": 7,
+    "columns": 9,
     "cards": 6,
     "modals": 3,
     "icons": 0,

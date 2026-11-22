@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { geoReach } from './geo-context';
 import { localDayKey } from './local-day';
+import { NO_FILTERS, withdrawalsWhere } from './history-export-core';
 import type { SessionUser } from '@/types/auth';
 import {
   amountOrRefusal,
@@ -94,7 +95,8 @@ export async function withdrawalsBook(scope: { user: SessionUser; companyId: str
   ]);
   const storeIds = [...new Set([storeId, ...stores.map((s) => s.id)])];
   const all = await db.partnerWithdrawal.findMany({
-    where: { companyId, storeId: { in: storeIds } },
+    // The book's own clause, from the one builder the history file adds its filters to (lib/history-export-core, 22/11 F5).
+    where: withdrawalsWhere(companyId, storeIds, NO_FILTERS, ''),
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, storeId: true, partnerId: true, currencyCode: true, amount: true, withdrawnOn: true, fromStanding: true,
@@ -106,11 +108,6 @@ export async function withdrawalsBook(scope: { user: SessionUser; companyId: str
   const byStore = withdrawalTotals(ledger, minorOf);
 
   const here = ledger.filter((r) => r.storeId === storeId);
-  const reversalOf = new Map(here.flatMap((r) => (r.reversalOfId ? [[r.reversalOfId, r] as const] : [])));
-  const originals = here.filter((r) => !r.reversalOfId).slice(0, LIST_LIMIT);
-  const actorIds = [...new Set([...originals.map((r) => r.createdById), ...[...reversalOf.values()].map((r) => r.createdById)])];
-  const actors = actorIds.length ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }) : [];
-  const nameOf = new Map(actors.map((a) => [a.id, a.name]));
   const partnerName = new Map(partners.map((p) => [p.id, p.name]));
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
 
@@ -119,23 +116,7 @@ export async function withdrawalsBook(scope: { user: SessionUser; companyId: str
     partners,
     currencies,
     standing: standing.map((s) => ({ partnerId: s.partnerId, currencyCode: s.currencyCode, amount: Number(s.amount) })),
-    rows: originals.map((r) => {
-      const cancel = reversalOf.get(r.id);
-      return {
-        id: r.id,
-        partnerId: r.partnerId,
-        partnerName: partnerName.get(r.partnerId) ?? '—',
-        currencyCode: r.currencyCode,
-        minorUnit: minorOf(r.currencyCode),
-        amount: r.amount,
-        withdrawnOn: r.withdrawnOn.toISOString().slice(0, 10),
-        fromStanding: r.fromStanding,
-        note: r.note,
-        createdAt: r.createdAt.toISOString(),
-        createdByName: nameOf.get(r.createdById) ?? null,
-        cancelled: cancel ? { reason: cancel.reversalReason ?? '', at: cancel.createdAt.toISOString(), byName: nameOf.get(cancel.createdById) ?? null } : null,
-      };
-    }),
+    rows: await describeWithdrawals(here, partnerName, minorOf, LIST_LIMIT),
     // This store, per partner and currency.
     totals: totalsByPartner(byStore.filter((t) => t.storeId === storeId), minorOf).map((t) => ({
       ...t,
@@ -153,6 +134,56 @@ export async function withdrawalsBook(scope: { user: SessionUser; companyId: str
 }
 
 export type WithdrawalsBook = Awaited<ReturnType<typeof withdrawalsBook>>;
+
+/** One row of the ledger as `describeWithdrawals` reads it. */
+interface LedgerRow {
+  id: string;
+  partnerId: string;
+  currencyCode: string;
+  amount: number;
+  withdrawnOn: Date;
+  fromStanding: boolean;
+  note: string | null;
+  reversalOfId: string | null;
+  reversalReason: string | null;
+  createdById: string;
+  createdAt: Date;
+}
+
+/**
+ * THE TAB'S ROWS, out of one store's ledger (originals and cancels, newest registration first): the newest `limit` originals, each
+ * with its cancel beside it. The tab calls it with its list's count; the history file (lib/history-export, 22/11 F5) with the file's
+ * cap — one description of a withdrawal for the screen and the file.
+ */
+export async function describeWithdrawals(
+  here: readonly LedgerRow[],
+  partnerName: Map<string, string>,
+  minorOf: (code: string) => number,
+  limit: number
+) {
+  const reversalOf = new Map(here.flatMap((r) => (r.reversalOfId ? [[r.reversalOfId, r] as const] : [])));
+  const originals = here.filter((r) => !r.reversalOfId).slice(0, limit);
+  const actorIds = [...new Set([...originals.map((r) => r.createdById), ...[...reversalOf.values()].map((r) => r.createdById)])];
+  const actors = actorIds.length ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } }) : [];
+  const nameOf = new Map(actors.map((a) => [a.id, a.name]));
+  return originals.map((r) => {
+    const cancel = reversalOf.get(r.id);
+    return {
+      id: r.id,
+      partnerId: r.partnerId,
+      partnerName: partnerName.get(r.partnerId) ?? '—',
+      currencyCode: r.currencyCode,
+      minorUnit: minorOf(r.currencyCode),
+      amount: r.amount,
+      withdrawnOn: r.withdrawnOn.toISOString().slice(0, 10),
+      fromStanding: r.fromStanding,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+      createdByName: nameOf.get(r.createdById) ?? null,
+      cancelled: cancel ? { reason: cancel.reversalReason ?? '', at: cancel.createdAt.toISOString(), byName: nameOf.get(cancel.createdById) ?? null } : null,
+    };
+  });
+}
 
 async function activePartner(companyId: string, partnerId: unknown, mustBeActive: boolean) {
   if (typeof partnerId !== 'string' || !partnerId) return no(400, 'PARTNER_REQUIRED', 'اختار الشريك.');

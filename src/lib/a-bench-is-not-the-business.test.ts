@@ -225,7 +225,9 @@ const ID_SCOPED: Record<string, Excuse> = {
  * aggregate appears, it is not here and the sweep fails.
  */
 const NO_STORE_COLUMN: Record<string, Excuse> = {
-  'app/api/finance/transfers/route.ts': { reason: 'walletTransfer — لا عمودَ متجرٍ في الجدول', sites: 1 },
+  // 22/11 (F5, «سحب السجل»): moved, unchanged — the transfers list's read left the route for `transferListRows` in
+  // lib/history-export, which the list door and the history file both call. Old: the route, 1 site. New: the lib, 1 site.
+  'lib/history-export.ts': { reason: 'walletTransfer — لا عمودَ متجرٍ في الجدول', sites: 1 },
 };
 
 describe('Ⅰ · every company-wide money read is on one side or the other', () => {

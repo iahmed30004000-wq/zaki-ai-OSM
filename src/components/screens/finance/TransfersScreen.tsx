@@ -36,6 +36,7 @@ import { WalletPicture } from '@/components/ui/WalletPicture';
 import { arDateTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { HistoryExport } from './HistoryExport';
 
 /**
  * /finance/transfers — moving money between wallets, or changing one currency
@@ -535,6 +536,14 @@ export function TransfersScreen() {
       </form>
       </Card>
 
+      {/* «سحب السجل» (22/11, F5): the transfers as Excel or a page to print, by the filters chosen here. */}
+      <HistoryExport
+        list="transfers"
+        choices={[
+          { key: 'walletId', label: 'المحفظة', options: wallets.map((w) => ({ value: w.id, label: `${w.name} · ${w.currencyCode}` })) },
+          { key: 'currency', label: 'العملة', options: [...new Set(wallets.map((w) => w.currencyCode))].map((c) => ({ value: c, label: c })) },
+        ]}
+      />
       <Card plain className="overflow-hidden">
         <h2 className="text-sm font-medium text-[var(--sys-heading)] px-4 py-3 border-b border-[var(--sys-border)]">آخر التحويلات</h2>
         {!rows ? (
