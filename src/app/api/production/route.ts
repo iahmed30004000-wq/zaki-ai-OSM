@@ -13,6 +13,7 @@ import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
 import { intakePlace, IntakePlaceRefused, intakeRefusalBody } from '@/lib/warehouse-intake';
 import { reachesWarehouse } from '@/lib/warehouses';
+import { placedWarehouseChoices } from '@/lib/placed-warehouse-choices';
 
 export async function GET(req: Request) {
   try {
@@ -50,7 +51,12 @@ export async function GET(req: Request) {
     // production cost in a system that runs pounds and dinars side by side,
     // so a batch costing 12,000 Syrian pounds read as twelve thousand
     // dollars.
-    return NextResponse.json({ batches: runs, currency: country.currencyCode });
+    /*
+     * 22/11 (F1): A PLACED STORE'S RUN NAMES ITS WAREHOUSE, so the screen is told which ones it may offer — the very list
+     * the POST below accepts (`placed-warehouse-choices.ts`). A store that is not placed: the answer is the one it was.
+     */
+    const choices = await placedWarehouseChoices(user, companyId, storeId);
+    return NextResponse.json({ batches: runs, currency: country.currencyCode, ...(choices ? { placed: true, ...choices } : {}) });
   } catch (error: any) {
     return apiErrorResponse(error);
   }
