@@ -319,6 +319,12 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/components/screens/StockCountsScreen.tsx',
     'src/app/api/inventory/counts/statement/route.ts',
     'src/lib/keeper-statement.ts',
+    // 22/11, F1 (the owner's «صلحها»: a placed store works from its screens): the choices a screen offers (the store's
+    // running warehouses this person reaches, and the one she keeps — `userWarehouseAccess`), and the two screens that send
+    // the doors' own body field `warehouseId` (production run, a combination's count). None reads or writes a stock column.
+    'src/lib/placed-warehouse-choices.ts',
+    'src/components/screens/ManufacturingScreen.tsx',
+    'src/components/products/ProductVariants.tsx',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

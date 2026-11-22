@@ -1106,7 +1106,7 @@
   },
   "src/components/products/ProductVariants.tsx": {
     "buttons": 3,
-    "inputs": 6,
+    "inputs": 9,
     "columns": 6,
     "cards": 0,
     "modals": 0,
@@ -1514,7 +1514,7 @@
   },
   "src/components/screens/ManufacturingScreen.tsx": {
     "buttons": 8,
-    "inputs": 10,
+    "inputs": 11,
     "columns": 12,
     "cards": 4,
     "modals": 1,
