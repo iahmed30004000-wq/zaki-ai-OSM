@@ -21,6 +21,8 @@ const S = vi.hoisted(() => ({
   seq: 0,
   reaches: true,
   asked: [] as string[],
+  // 22/11 (F1): every lock and every row write of the variants table, in the order they ran (RV2597's lock order).
+  log: [] as string[],
 }));
 
 vi.mock('@/lib/db', () => {
@@ -64,6 +66,7 @@ vi.mock('@/lib/db', () => {
         const r = rows().find((x) => matches(x, where));
         if (!r) throw new Error('No record was found for an update.');
         S.writes.push({ table: name, op: 'update', id: r.id, data });
+        if (name === 'productVariant') S.log.push(`update ${r.id}`);
         Object.assign(r, data);
         return { ...r };
       },
@@ -76,12 +79,14 @@ vi.mock('@/lib/db', () => {
     };
   };
   // 21/11 (W5a): 'stockCount' — a combination's count asks the intake, which asks whether the warehouse is under count; no sheet here (today's answer).
-  const names = ['product', 'productVariant', 'orderItemVariant', 'store', 'warehouse', 'warehousePlacement', 'productVariantStock', 'variantStockMovement', 'stockCount'];
+  // 22/11 (F1): 'userWarehouseAccess' — the placed GET names the warehouse this person keeps (`placed-warehouse-choices.ts`).
+  const names = ['product', 'productVariant', 'orderItemVariant', 'store', 'warehouse', 'warehousePlacement', 'productVariantStock', 'variantStockMovement', 'stockCount', 'userWarehouseAccess'];
   const db: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
   db.$executeRaw = async () => 1;
   db.$queryRaw = async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     if (sql.includes('FROM "warehouses"')) return (S.data.warehouse ?? []).filter((w) => w.id === values[0]);
+    if (sql.includes('FROM "product_variants"') && sql.includes('FOR UPDATE')) S.log.push(`lock ${(values[0] as string[]).join(',')}`);
     return [];
   };
   const tx = new Proxy(db, { has: (o, p) => p !== '$transaction' && p in o });
@@ -98,6 +103,17 @@ vi.mock('@/lib/warehouses', () => ({
     S.asked.push(w.id);
     return S.reaches;
   },
+  /*
+   * 22/11 (F1): the placed GET now also lists the warehouses this person may count in (`placed-warehouse-choices.ts`
+   * asks these two): the store's running warehouses of its country, then the same reach switch.
+   */
+  warehousesOfStore: async (companyId: string, storeId: string) => {
+    const country = (S.data.store ?? []).find((x) => x.id === storeId)?.countryId;
+    return (S.data.warehouse ?? [])
+      .filter((w) => w.companyId === companyId && w.countryId === country && w.isActive)
+      .map((w) => ({ id: w.id, name: w.name ?? w.id, countryId: w.countryId }));
+  },
+  warehousesReachedBy: async (_u: unknown, _c: string, ws: { id: string }[]) => (S.reaches ? ws : []),
 }));
 
 import { GET, PUT } from './route';
@@ -109,6 +125,7 @@ beforeEach(() => {
   S.writes = [];
   S.audit = [];
   S.asked = [];
+  S.log = [];
   S.reaches = true;
   S.data = {
     product: [{ id: 'p-1', companyId: 'c-1', storeId: 's-1', categoryId: null, name: 'قميص', basePrice: 10, variantOptions: JSON.stringify(OPTIONS) }],
@@ -118,13 +135,14 @@ beforeEach(() => {
     ],
     store: [{ id: 's-1', companyId: 'c-1', countryId: 'k-1' }],
     warehouse: [
-      { id: 'w-1', companyId: 'c-1', countryId: 'k-1', isActive: true },
-      { id: 'w-2', companyId: 'c-1', countryId: 'k-1', isActive: true },
+      { id: 'w-1', companyId: 'c-1', countryId: 'k-1', isActive: true, name: 'المخزن الأول' },
+      { id: 'w-2', companyId: 'c-1', countryId: 'k-1', isActive: true, name: 'المخزن التاني' },
       { id: 'w-off', companyId: 'c-1', countryId: 'k-1', isActive: false },
       { id: 'w-abroad', companyId: 'c-1', countryId: 'k-2', isActive: true },
       { id: 'w-other', companyId: 'c-2', countryId: 'k-1', isActive: true },
     ],
     warehousePlacement: [{ id: 'placing-1', storeId: 's-1' }],
+    userWarehouseAccess: [],
     productVariantStock: [],
     variantStockMovement: [],
   };
@@ -249,5 +267,68 @@ describe('PUT with a warehouse: a count, with a reason', () => {
     expect(S.data.productVariant.find((v) => v.id === 'v-m')!.status).toBe('ARCHIVED');
     expect(places('v-m')).toEqual([['w-1', 3], [null, 0]]);
     expect(total('v-m')).toBe(3);
+  });
+});
+
+/*
+ * 22/11 (F1): the screen is told which warehouses it may offer, and the save locks every row it writes FIRST.
+ */
+describe('GET: the warehouses a count may name (F1)', () => {
+  it("the running warehouses of the store's country this person reaches, by name; none chosen when she keeps none", async () => {
+    const json = await (await GET(new Request('http://x'), ctx)).json();
+    expect(json.warehouses).toEqual([
+      { id: 'w-1', name: 'المخزن الأول' },
+      { id: 'w-2', name: 'المخزن التاني' },
+    ]);
+    expect(json.defaultWarehouseId).toBeNull();
+  });
+
+  it('a keeper of exactly one of them has it chosen for her', async () => {
+    S.data.userWarehouseAccess = [{ id: 'k-1', userId: 'u-1', warehouseId: 'w-2' }];
+    expect((await (await GET(new Request('http://x'), ctx)).json()).defaultWarehouseId).toBe('w-2');
+  });
+
+  it('a keeper of two: a choice, not a guess', async () => {
+    S.data.userWarehouseAccess = [
+      { id: 'k-1', userId: 'u-1', warehouseId: 'w-2' },
+      { id: 'k-2', userId: 'u-1', warehouseId: 'w-1' },
+    ];
+    expect((await (await GET(new Request('http://x'), ctx)).json()).defaultWarehouseId).toBeNull();
+  });
+
+  it('nobody reached: an empty list, nothing chosen — the screen says why', async () => {
+    S.reaches = false;
+    const json = await (await GET(new Request('http://x'), ctx)).json();
+    expect(json.warehouses).toEqual([]);
+    expect(json.defaultWarehouseId).toBeNull();
+  });
+});
+
+describe('PUT: the rows are locked first, sorted, in one statement (F1, RV2597)', () => {
+  // The screen's order is M before S; the lock must still be in id order, and before the first row is written.
+  const screenOrder = (s: number, m: number) => [
+    { values: ['m'], priceDelta: 1, onHand: m, active: true },
+    { values: ['s'], priceDelta: 0, onHand: s, active: true },
+  ];
+
+  it.each([
+    ['with a warehouse (a count)', { warehouseId: 'w-1', reason: 'جرد' }, 4],
+    ['without a warehouse (prices only)', {}, 6],
+  ])('%s: one sorted lock of every row, before the first update', async (_n, extra, s) => {
+    S.data.productVariant.push({ id: 'v-a', companyId: 'c-1', productId: 'p-1', optionValues: '["x"]', label: 'X', sku: null, priceDelta: 0, onHand: 0, status: 'ARCHIVED', sortOrder: 9 });
+    const res = await put({ options: OPTIONS, combinations: screenOrder(s, 3), ...extra });
+    expect(res.status).toBe(200);
+    const firstUpdate = S.log.findIndex((l) => l.startsWith('update'));
+    expect(firstUpdate).toBeGreaterThan(0);
+    expect(S.log.slice(0, firstUpdate)).toEqual(['lock v-a,v-m,v-s']);
+    // The rows are still written in the screen's order — the lock in front of them is what changed.
+    expect(S.log.filter((l) => l.startsWith('update')).slice(0, 2)).toEqual(['update v-m', 'update v-s']);
+  });
+
+  it('a refused count (no reason) has locked, and written nothing', async () => {
+    const res = await put({ options: OPTIONS, combinations: screenOrder(5, 3), warehouseId: 'w-1' });
+    expect(res.status).toBe(400);
+    expect(S.writes).toEqual([]);
+    expect(S.log).toEqual(['lock v-m,v-s']);
   });
 });

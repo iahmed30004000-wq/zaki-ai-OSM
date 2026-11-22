@@ -112,6 +112,14 @@ export function ManufacturingScreen() {
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  /*
+   * 22/11 (F1): A STORE PLACED IN WAREHOUSES — a run names the warehouse its units landed in (the door requires it, W2a).
+   * The choices are the server's (`GET /api/production` → `warehouses`, the list the door accepts) and the one chosen
+   * for her is the server's too (`defaultWarehouseId`: the warehouse she keeps). null = a store not placed: nothing new
+   * is drawn and nothing new is sent.
+   */
+  const [placedWarehouses, setPlacedWarehouses] = useState<{ id: string; name: string }[] | null>(null);
+  const [warehouseId, setWarehouseId] = useState('');
 
   // Form State
   const [productId, setProductId] = useState('');
@@ -276,6 +284,13 @@ export function ManufacturingScreen() {
         // The country's currency, from the server that knows which country
         // this store is in.
         if (bData.currency) setCurrency(bData.currency);
+        if (bData.placed === true) {
+          const warehouses: { id: string; name: string }[] = Array.isArray(bData.warehouses) ? bData.warehouses : [];
+          setPlacedWarehouses(warehouses);
+          setWarehouseId((was) => (warehouses.some((w) => w.id === was) ? was : (bData.defaultWarehouseId ?? '')));
+        } else {
+          setPlacedWarehouses(null);
+        }
       }
       if (pRes.ok) {
         const pData = await pRes.json();
@@ -299,6 +314,7 @@ export function ManufacturingScreen() {
     e.preventDefault();
     // The picker carries no `required` — the form says so itself.
     if (!productId) { setModalError('اختر المنتج أوّلاً.'); return; }
+    if (placedWarehouses && !warehouseId) { setModalError('اختار المخزن اللي نزلت عليه التشغيلة.'); return; }
     setModalLoading(true);
     setModalError(null);
     try {
@@ -329,6 +345,7 @@ export function ManufacturingScreen() {
             .filter((l) => l.label.trim())
             .map((l) => ({ label: l.label, amount: onTheWire(l.amount) })),
           notes,
+          ...(placedWarehouses ? { warehouseId } : {}),
         }),
       });
       const data = await res.json();
@@ -754,6 +771,23 @@ export function ManufacturingScreen() {
               required
             />
           </div>
+
+          {placedWarehouses &&
+            (placedWarehouses.length === 0 ? (
+              <p className="text-sm text-[var(--sys-destructive)]">
+                هالمتجر موزّع على مخازن، وما إلك وصول على ولا مخزن منها. التشغيلة بيسجّلها أمين المخزن اللي نزلت عليه.
+              </p>
+            ) : (
+              <Select
+                label="المخزن اللي نزلت عليه التشغيلة *"
+                value={warehouseId}
+                onChange={(e) => setWarehouseId(e.target.value)}
+                options={[
+                  ...(placedWarehouses.length === 1 ? [] : [{ value: '', label: 'اختار المخزن' }]),
+                  ...placedWarehouses.map((w) => ({ value: w.id, label: w.name })),
+                ]}
+              />
+            ))}
 
           <Input
             label="الكمية المنتَجة (قطعة) *"

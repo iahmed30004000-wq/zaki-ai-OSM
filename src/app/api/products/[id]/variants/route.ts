@@ -22,11 +22,13 @@ import {
   countPlace,
   countPlacedVariants,
   countReason,
+  lockVariants,
   countRefusalBody,
   placesOfVariants,
   variantsArePlaced,
 } from '@/lib/variant-stock';
 import { reachesWarehouse } from '@/lib/warehouses';
+import { placedWarehouseChoices } from '@/lib/placed-warehouse-choices';
 
 /**
  * /api/products/[id]/variants — A PRODUCT'S OPTIONS AND COMBINATIONS (the owner, 2026-11-18).
@@ -52,6 +54,8 @@ import { reachesWarehouse } from '@/lib/warehouses';
  *        changed count needs a reason, and every change is a ledger line. Without `warehouseId` the PUT may still save
  *        options, labels, prices and status, but every `onHand` it sends must be the combination's present total (a new
  *        one: 0) — a changed number without a warehouse is refused (`WAREHOUSE_REQUIRED`), never written over the places.
+ * 22/11 (F1): the placed GET also says which warehouses this person may count in — `warehouses: [{ id, name }]` and
+ * `defaultWarehouseId` (`placed-warehouse-choices.ts`, the list the count's own check accepts) — so the screen offers them.
  * A store that is NOT placed answers and writes exactly as before: the fields above are neither read nor returned.
  */
 
@@ -92,7 +96,11 @@ async function productOf(id: string) {
   return { user, companyId, product };
 }
 
-async function view(companyId: string, product: { id: string; storeId: string | null; variantOptions: string | null }) {
+async function view(
+  companyId: string,
+  product: { id: string; storeId: string | null; variantOptions: string | null },
+  user: Awaited<ReturnType<typeof requireContext>>['user']
+) {
   const options = parseVariantOptions(product.variantOptions);
   const rows = await db.productVariant.findMany({
     where: { companyId, productId: product.id },
@@ -117,7 +125,15 @@ async function view(companyId: string, product: { id: string; storeId: string | 
   // 19/11 (W8a): a placed store's combinations say where their pieces are. Any other store: the answer above, unchanged.
   if (!(await variantsArePlaced(db, product.storeId))) return out;
   const places = await placesOfVariants(db, rows);
-  return { ...out, placed: true, combinations: out.combinations.map((c) => ({ ...c, places: places.get(c.id) ?? [] })) };
+  // 22/11 (F1): and which warehouses this person may count in — the list the PUT accepts (`placed-warehouse-choices.ts`).
+  const choices = await placedWarehouseChoices(user, companyId, product.storeId);
+  return {
+    ...out,
+    placed: true,
+    warehouses: choices?.warehouses ?? [],
+    defaultWarehouseId: choices?.defaultWarehouseId ?? null,
+    combinations: out.combinations.map((c) => ({ ...c, places: places.get(c.id) ?? [] })),
+  };
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -128,7 +144,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     if (!authorize(user, 'products.view', product).allowed) {
       return NextResponse.json({ error: 'عرض المنتجات ليس من صلاحيّاتك.' }, { status: 403 });
     }
-    return NextResponse.json(await view(companyId, product));
+    return NextResponse.json(await view(companyId, product, user));
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -203,7 +219,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
         },
       });
       const freshPlaced = await db.product.findFirst({ where: { id }, select: { id: true, storeId: true, variantOptions: true } });
-      return NextResponse.json(await view(companyId, freshPlaced ?? product));
+      return NextResponse.json(await view(companyId, freshPlaced ?? product, user));
     }
 
     await db.$transaction(async (tx) => {
@@ -245,7 +261,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
     });
 
     const fresh = await db.product.findFirst({ where: { id }, select: { id: true, storeId: true, variantOptions: true } });
-    return NextResponse.json(await view(companyId, fresh ?? product));
+    return NextResponse.json(await view(companyId, fresh ?? product, user));
   } catch (error) {
     if (error instanceof VariantCountRefused) return NextResponse.json(countRefusalBody(error), { status: error.status });
     return apiErrorResponse(error);
@@ -291,6 +307,13 @@ async function savePlaced(p: {
           mayUse: (w) => reachesWarehouse(p.user, p.companyId, w),
         })
       : null;
+    /*
+     * 22/11 (F1, RV2597): EVERY COMBINATION ROW THIS SAVE WRITES, LOCKED FIRST — in ONE sorted statement (`lockVariants`),
+     * after the product's stock lock (taken by `countPlace` when a warehouse is named) and before any read or write of a row. The loop below updates the rows in the
+     * SCREEN's order; without this a delivery or a transfer (which lock the same rows sorted by id) and this save could
+     * each hold one row the other waits for. The rows the loop creates are this transaction's own: nobody waits on them.
+     */
+    await lockVariants(tx, p.existing.map((r) => r.id));
     // A count that changes nothing needs no reason; one that changes a number does — asked before anything is written.
     if (warehouseId && !reason) {
       const places = await placesOfVariants(tx, p.existing);
