@@ -17,6 +17,8 @@ const root = process.cwd();
 const DOORS = [
   'src/app/api/finance/partners/route.ts',
   'src/app/api/finance/partners/draws/route.ts',
+  // 22/11 (F3, «المسحوبات»): the withdrawals door writes three actions of its own — swept like the other two doors.
+  'src/app/api/finance/partners/withdrawals/route.ts',
 ];
 const ARABIC = /[؀-ۿ]/;
 
@@ -42,7 +44,14 @@ describe('the partners’ actions are said in Arabic', () => {
     const written = DOORS.flatMap((file) =>
       [...stripComments(readFileSync(join(root, file), 'utf8')).matchAll(/action:\s*'([A-Z_]+)'/g)].map((m) => ({ file, action: m[1] }))
     );
-    expect(written.map((w) => w.action).sort(), 'the sweep found the two actions').toEqual(['PARTNERS_SAVED', 'PARTNER_DRAW_RECORDED']);
+    // 22/11 (F3): was the two actions [PARTNERS_SAVED, PARTNER_DRAW_RECORDED]; the withdrawals door adds its three.
+    expect(written.map((w) => w.action).sort(), 'the sweep found the five actions').toEqual([
+      'PARTNERS_SAVED',
+      'PARTNER_DRAW_RECORDED',
+      'PARTNER_STANDING_SAVED',
+      'PARTNER_WITHDRAWAL_CANCELLED',
+      'PARTNER_WITHDRAWAL_RECORDED',
+    ]);
     for (const { file, action } of written) {
       const said = describeAction(action, 'Partner');
       expect(said, `${file}: ${action}`).not.toBe(action);

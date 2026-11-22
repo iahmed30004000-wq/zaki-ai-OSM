@@ -27,7 +27,7 @@ export const ENTITY_AR: Record<string, string> = {
   Region: 'منطقة', Country: 'دولة', AdAccount: 'حساب إعلانات', Campaign: 'حملة', TrackingPixel: 'بكسل تتبّع',
   CustomConversion: 'تحويل مخصّص', TelegramSource: 'مصدر تلجرام', TelegramWebhook: 'ويب هوك تلجرام', WhatsAppConnection: 'ربط واتساب',
   WhatsAppConversation: 'محادثة واتساب', WhatsAppMessage: 'رسالة واتساب', SystemToken: 'مفتاح نظام', SystemSetting: 'إعداد نظام',
-  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك', Warehouse: 'مخزن',
+  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك', PartnerWithdrawal: 'مسحوب شريك', PartnerStandingAmount: 'مبلغ ثابت لمسحوبات شريك', Warehouse: 'مخزن',
 };
 
 /** The last word of an action code, as a verb. Applied to the row's own record kind. */
@@ -96,6 +96,8 @@ const ACTION_AR: Record<string, string> = {
   WALLET_TRANSFER_REVERSED: 'عكس تحويل بين محافظ',
   // «الشركاء والنسب» and «سحب شريك» (`/api/finance/partners`, `/api/finance/partners/draws`): the shares of the net profit, and a partner's withdrawal.
   PARTNERS_SAVED: 'حفظ الشركاء ونسبهم', PARTNER_DRAW_RECORDED: 'تسجيل سحب شريك',
+  // «المسحوبات» (`/api/finance/partners/withdrawals`, 22/11): a record of what a partner took, its cancel, and the standing amounts.
+  PARTNER_WITHDRAWAL_RECORDED: 'تسجيل مسحوب شريك', PARTNER_WITHDRAWAL_CANCELLED: 'إلغاء مسحوب شريك', PARTNER_STANDING_SAVED: 'حفظ المبالغ الثابتة لمسحوبات شريك',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
   STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',
