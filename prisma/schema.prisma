@@ -3526,10 +3526,69 @@ model Partner {
 
   company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   movements WalletMovement[]
+  standing    PartnerStandingAmount[]
+  withdrawals PartnerWithdrawal[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive, sortOrder])
   @@map("partners")
+}
+
+/// «المسحوبات» — THE AMOUNT A PARTNER USUALLY TAKES, PER CURRENCY, TYPED ONCE (22/11) — «حط شاشة مسحوبات وحط العملات».
+///
+/// One row per (partner, currency): the figure the «سجّل مسحوب» press fills in, so it is not typed again each time. A setting, not
+/// money: it moves nothing and nothing adds it up. Saved and cleared only by `lib/partner-withdrawals.ts` behind `finance.partners`.
+///   amount — > 0, in the currency's own decimals (held by a CHECK in the migration, which this file cannot express).
+model PartnerStandingAmount {
+  id           String   @id @default(uuid())
+  companyId    String
+  partnerId    String
+  currencyCode String
+  amount       Decimal  @db.Decimal(14, 3)
+  updatedById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+
+  @@unique([partnerId, currencyCode])
+  @@index([companyId])
+  @@map("partner_standing_amounts")
+}
+
+/// «المسحوبات» — A RECORD OF WHAT A PARTNER TOOK, BY STORE AND CURRENCY (22/11). RECORD ONLY: no wallet moves, nothing is an expense,
+/// and neither the profit nor the partners' statement (`lib/partner-statement.ts`, which reads PARTNER_DRAW wallet movements) reads it.
+///
+/// Never edited, never deleted. A cancel is a SECOND row pointing back at the original (`reversalOfId`, unique — held by the database,
+/// so an original is cancelled at most once) with the written reason; the pair counts as nothing. Totals are per currency only — two
+/// currencies are never added together.
+///   amount       — > 0 on every row (the original and its reversal alike; held by a CHECK in the migration), Decimal(14,3) like a
+///                  wallet movement, in the currency's own decimals (refused otherwise, never rounded behind the person's back).
+///   withdrawnOn  — the day the money was taken, as the person wrote it.
+///   fromStanding — the figure was the partner's standing amount for this currency at the press.
+///   storeId      — no foreign key (like the other keyless records); named in `geo-removal.ts`, so a store with one is not deleted.
+model PartnerWithdrawal {
+  id             String   @id @default(uuid())
+  companyId      String
+  storeId        String
+  partnerId      String
+  currencyCode   String
+  amount         Decimal  @db.Decimal(14, 3)
+  withdrawnOn    DateTime @db.Date
+  fromStanding   Boolean  @default(false)
+  note           String?
+  reversalOfId   String?  @unique
+  reversalReason String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  partner    Partner            @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  reversalOf PartnerWithdrawal? @relation("WithdrawalReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy PartnerWithdrawal? @relation("WithdrawalReversal")
+
+  @@index([companyId, storeId, createdAt])
+  @@index([partnerId])
+  @@map("partner_withdrawals")
 }
 
 // Wallet to wallet, same or different country. The exchange rate is entered

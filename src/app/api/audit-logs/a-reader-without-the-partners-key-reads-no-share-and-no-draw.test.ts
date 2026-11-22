@@ -295,3 +295,53 @@ describe('withoutPartners, on one row', () => {
     expect(withoutPartners(draw({ wallet: 'الصندوق', currencyCode: 'USD', storeCurrency: 'USD' })).partnersWithheld).toBeUndefined();
   });
 });
+
+/**
+ * «المسحوبات» (22/11, review of #458): the withdrawals door writes three rows — a withdrawal, its cancel (entity
+ * `PartnerWithdrawal`) and a partner's standing amounts (entity `PartnerStandingAmount`). Written here in exactly the
+ * shape `/api/finance/partners/withdrawals` gives `logAudit`, then read through the REAL audit door.
+ */
+describe('the withdrawals’ rows, for a reader without the partners key', () => {
+  const WD_AMOUNT = 7654.25;
+  const WD_NOTE = 'مسحوب الشهر';
+  const writeWithdrawalRows = async () => {
+    const { logAudit } = await import('@/lib/audit');
+    await logAudit({
+      companyId: 'c1', userId: 'u1', action: 'PARTNER_WITHDRAWAL_RECORDED', entity: 'PartnerWithdrawal', entityId: 'w1',
+      newData: { id: 'w1', partnerName: NAMES[0], currencyCode: 'USD', amount: WD_AMOUNT, withdrawnOn: '2026-11-22', fromStanding: true, storeId: 's1', note: WD_NOTE },
+    });
+    await logAudit({
+      companyId: 'c1', userId: 'u1', action: 'PARTNER_WITHDRAWAL_CANCELLED', entity: 'PartnerWithdrawal', entityId: 'w1',
+      newData: { id: 'w2', originalId: 'w1', partnerId: P1, currencyCode: 'USD', amount: WD_AMOUNT, reason: 'انسجّل بالغلط', storeId: 's1' },
+    });
+    await logAudit({
+      companyId: 'c1', userId: 'u1', action: 'PARTNER_STANDING_SAVED', entity: 'PartnerStandingAmount', entityId: P1,
+      newData: { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: WD_AMOUNT }] },
+    });
+  };
+
+  it('the rows stay; the partner, the amounts, the reason and the standing amounts do not — only the currency', async () => {
+    await writeWithdrawalRows();
+    const { rowOf, text } = await trailAs(ACCOUNTANT);
+    const recorded = rowOf('PARTNER_WITHDRAWAL_RECORDED');
+    const cancelled = rowOf('PARTNER_WITHDRAWAL_CANCELLED');
+    const standing = rowOf('PARTNER_STANDING_SAVED');
+    expect(JSON.parse(recorded.newData)).toEqual({ currencyCode: 'USD' });
+    expect(JSON.parse(cancelled.newData)).toEqual({ currencyCode: 'USD' });
+    expect(standing.newData).toBeNull();
+    for (const r of [recorded, cancelled, standing]) expect(r.partnersWithheld).toBe(true);
+    expect(text).not.toContain(NAMES[0]);
+    // (the standing row's entityId is the partner's opaque id — the record it is about, as a draw row carries its movement's id)
+    for (const r of [recorded, cancelled]) expect(r.newData).not.toContain(P1);
+    expect(text).not.toContain(String(WD_AMOUNT));
+    expect(text).not.toContain(WD_NOTE);
+    expect(text).not.toContain('انسجّل بالغلط');
+  });
+
+  it('the holder of the key reads them as written', async () => {
+    await writeWithdrawalRows();
+    const { rowOf } = await trailAs(['audit.view', 'finance.partners']);
+    expect(JSON.parse(rowOf('PARTNER_WITHDRAWAL_RECORDED').newData)).toMatchObject({ partnerName: NAMES[0], amount: WD_AMOUNT, note: WD_NOTE });
+    expect(rowOf('PARTNER_STANDING_SAVED').partnersWithheld).toBeUndefined();
+  });
+});

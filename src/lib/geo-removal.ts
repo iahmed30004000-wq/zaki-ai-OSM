@@ -104,6 +104,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'commissionRule', label: 'قواعد العمولة', how: 'blocks' },
   { model: 'penaltyRule', label: 'قواعد الجزاءات', how: 'blocks' },
   { model: 'penalty', label: 'الجزاءات', how: 'blocks' },
+  // «المسحوبات» (22/11): a record of what a partner took from this store — never deleted, no foreign key, so the store stays.
+  { model: 'partnerWithdrawal', label: 'مسحوبات الشركاء', how: 'blocks' },
   // Selling.
   { model: 'landingPage', label: 'صفحات الهبوط', how: 'blocks' },
   { model: 'landingPageView', label: 'زيارات صفحات الهبوط', how: 'blocks' },

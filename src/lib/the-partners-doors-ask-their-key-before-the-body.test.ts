@@ -17,6 +17,8 @@ const DOORS = [
   'src/app/api/finance/partners/route.ts',
   'src/app/api/finance/partners/statement/route.ts',
   'src/app/api/finance/partners/draws/route.ts',
+  // 22/11 (F3, «المسحوبات»): was three doors; the withdrawals door is the fourth and asks the same key first, in all four handlers.
+  'src/app/api/finance/partners/withdrawals/route.ts',
 ];
 const source = (rel: string) => stripComments(readFileSync(join(root, rel), 'utf8'));
 
