@@ -89,6 +89,12 @@ describe('the day', () => {
     expect(codeOf(dayOrRefusal(undefined, '2026-11-23'))).toBe('INVALID_DAY');
     expect(codeOf(dayOrRefusal('2026-11-24', '2026-11-23'))).toBe('DAY_IN_FUTURE');
   });
+  it('NEGATIVE: an impossible day is INVALID_DAY, never a thrown RangeError (review of #458)', () => {
+    for (const d of ['2026-13-01', '2026-00-10', '2026-11-99', '2026-11-00', '0000-00-00']) {
+      expect(() => dayOrRefusal(d, '2026-11-23'), d).not.toThrow();
+      expect(codeOf(dayOrRefusal(d, '2026-11-23')), d).toBe('INVALID_DAY');
+    }
+  });
 });
 
 const row = (id: string, partnerId: string, currencyCode: string, amount: number, extra: Partial<WithdrawalLedgerRow> = {}): WithdrawalLedgerRow => ({

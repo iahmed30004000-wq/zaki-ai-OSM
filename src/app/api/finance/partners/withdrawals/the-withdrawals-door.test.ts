@@ -79,8 +79,8 @@ const { state, db, requireContext, logAudit, current } = vi.hoisted(() => {
         }
         const row: W = {
           id: `w${++state.seq}`, note: null, reversalOfId: null, reversalReason: null, fromStanding: false,
-          createdAt: new Date(Date.now() + state.seq), ...(data as W), amount: Number(data.amount),
-        };
+          createdAt: new Date(Date.now() + state.seq), ...(data as Partial<W>), amount: Number(data.amount),
+        } as W;
         state.rows.push(row);
         state.writes += 1;
         return { id: row.id };
@@ -283,6 +283,47 @@ describe('«سجّل مسحوب» — one press', () => {
     // A different amount is a different withdrawal.
     expect((await send('POST', { ...body, amount: '101' })).status).toBe(201);
     expect(state.rows).toHaveLength(2);
+  });
+});
+
+describe('the twin check is narrow (review of #458)', () => {
+  const body = { partnerId: 'p1', currencyCode: 'USD', amount: '100', withdrawnOn: '2026-11-22' };
+
+  it('NEGATIVE: an impossible day through the door is a 400 INVALID_DAY in Arabic, not a 500', async () => {
+    for (const d of ['2026-13-01', '2026-00-10', '2026-11-99']) {
+      const res = await send('POST', { ...body, withdrawnOn: d });
+      expect(res.status, d).toBe(400);
+      expect(res.body.code, d).toBe('INVALID_DAY');
+      expect(res.body.errorAr).toMatch(/[؀-ۿ]/);
+    }
+    expect(state.rows).toHaveLength(0);
+  });
+
+  it('the same figure in a SECOND store within 30 seconds is its own withdrawal', async () => {
+    expect((await send('POST', body)).status).toBe(201);
+    requireContext.mockResolvedValue({ user: current.user, companyId: 'c1', storeId: 's2', country: { currencyCode: 'USD', minorUnit: 2 } });
+    expect((await send('POST', body)).status).toBe(201);
+    expect(state.rows.map((r) => r.storeId).sort()).toEqual(['s1', 's2']);
+  });
+
+  it('the same figure a minute apart is accepted', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-22T10:00:00Z'));
+      expect((await send('POST', body)).status).toBe(201);
+      vi.setSystemTime(new Date('2026-11-22T10:01:00Z'));
+      expect((await send('POST', body)).status).toBe(201);
+      expect(state.rows).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a cancelled withdrawal does not block recording it again', async () => {
+    expect((await send('POST', body)).status).toBe(201);
+    expect((await send('PATCH', { withdrawalId: state.rows[0].id, reason: 'انسجّل بالغلط' })).status).toBe(200);
+    expect((await send('POST', body)).status).toBe(201);
+    expect(state.rows.filter((r) => !r.reversalOfId)).toHaveLength(2);
   });
 });
 

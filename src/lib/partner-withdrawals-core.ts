@@ -88,7 +88,9 @@ export function amountOrRefusal(amount: unknown, currency: KnownCurrency): numbe
 export function dayOrRefusal(value: unknown, latest: string): string | Refusal {
   const s = typeof value === 'string' ? value.trim() : '';
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  const real = m && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+  // An impossible day (month 13, day 99) is an Invalid Date, whose `toISOString` THROWS — read its time first.
+  const at = m ? new Date(`${s}T00:00:00Z`) : null;
+  const real = !!at && !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === s;
   if (!real) return refusal(400, 'INVALID_DAY', 'اكتب تاريخ السحب.');
   if (s > latest) return refusal(400, 'DAY_IN_FUTURE', 'تاريخ السحب ما بيكون بالمستقبل.');
   return s;
