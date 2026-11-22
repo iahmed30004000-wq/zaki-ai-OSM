@@ -8,6 +8,7 @@ import { passwordMatchesNobody } from '@/lib/dummy-password';
 import { logAudit } from '@/lib/audit';
 import { UserStatus } from '@/types/auth';
 import { issueSession } from '@/lib/sign-in';
+import { signInClientOf } from '@/lib/app-bearer';
 import { issueChallenge } from '@/lib/two-factor-challenge';
 import { stepFor } from '@/lib/two-factor';
 import { DEVICE_COOKIE, judgeTrust, noteBadPassword, recentBadPassword } from '@/lib/trusted-device';
@@ -26,7 +27,11 @@ function waitWords(sec: number): string {
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { email: rawEmail, password, remember } = await req.json().catch(() => ({}));
+    const said = await req.json().catch(() => ({}));
+    const { email: rawEmail, password, remember } = said;
+    // The «Zaki Orders» app says `client: "android"`: its token comes back in the body (sign-in.ts). Everything
+    // before the session — the limits, the password, the second factor — is the browser's, line for line.
+    const client = signInClientOf(said);
 
     if (!rawEmail || !password) {
       return NextResponse.json({ error: 'البريد الإلكتروني وكلمة المرور مطلوبان' }, { status: 400 });
@@ -149,7 +154,7 @@ export async function POST(req: Request) {
       });
 
       if (verdict.trusted) {
-        return issueSession({ user, remember: !!remember, ip, factor: 'password+device' });
+        return issueSession({ user, remember: !!remember, ip, factor: 'password+device', client });
       }
 
       const challenge = await issueChallenge({ userId: user.id, purpose: step, remember: !!remember });
@@ -173,7 +178,7 @@ export async function POST(req: Request) {
       });
     }
 
-    return issueSession({ user, remember: !!remember, ip, factor: 'password' });
+    return issueSession({ user, remember: !!remember, ip, factor: 'password', client });
   } catch (error: any) {
     console.error('Login error:', error);
     return NextResponse.json({ error: 'حدث خطأ داخلي. حاول مرة أخرى' }, { status: 500 });

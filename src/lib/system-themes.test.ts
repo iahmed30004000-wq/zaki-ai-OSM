@@ -278,7 +278,9 @@ describe('legible in the theme it lives in', () => {
    * `surface`, the semantic colours, all of it — read by its exact name, so `border` is not
    * `sidebar-border`. `primary` and `primary-foreground` are allowed only as the lit row's pair:
    * every `--sys-primary` on a line must be a `bg-[var(--sys-primary)]` (so the arbitrary-colour form
-   * `text-[color:var(…primary)]` is caught too). The one other exception is the veil laid over the
+   * `text-[color: var(--sys-primary)]` form is caught too — written with a space here: Tailwind scans this file, and
+   * the unspaced form with an ellipsis became a class whose CSS did not parse, and every dev page answered 500). The one
+   * other exception is the veil laid over the
    * PAGE behind the phone's open drawer (`bg-[var(--sys-background)]/60`): it is not on the menu.
    */
   const CONTENT_TOKENS = new Set(SYS_VARS.filter((n) => !n.startsWith('sidebar') && n !== 'primary-foreground'));

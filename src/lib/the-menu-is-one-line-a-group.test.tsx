@@ -117,9 +117,12 @@ describe('the menu is ten lines', () => {
     // 1 + 6 + 5 + 5 + 6 + 9 + 5 + 2 + 20 = 59.
     // 21/11 (W5b): 60 with `/inventory/counts` «الجرد» — the count against the keeper (open a sheet, count blind, a second hand approves the difference, «كشف عهدة الأمين»), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; counting asks `inventory.count`, approving and the statement `inventory.count_approve`. Not one address moved. One more screen, no more line (a tab of an existing hub):
     // 1 + 6 + 5 + 5 + 7 + 9 + 5 + 2 + 20 = 60.
-    expect(ALL_ROUTES).toHaveLength(60);
+    // 22/11 («Zaki Orders»): 61 with `/control/app-errors` «أعطال التطبيق» — the Android app's crashes, a card line of «الرقابة» behind the
+    // «الإدارة» door, on `audit.view` like «سجل التدقيق». Not one address moved. One more screen, no more line (a card of an existing door):
+    // 1 + 6 + 5 + 5 + 7 + 9 + 5 + 2 + 21 = 61.
+    expect(ALL_ROUTES).toHaveLength(61);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 7, 9, 5, 2, 20]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 7, 9, 5, 2, 21]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
@@ -550,7 +553,8 @@ describe('the pills above a screen', () => {
     here.path = '/admin/users';
     const { container } = render(<HubTabs groups={menuOf('users.view', 'audit.view')} />);
     const nav = within(container).getByRole('navigation', { name: 'أقسام الإدارة' });
-    expect(within(nav).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/admin/users', '/control/audit']);
+    // 22/11: `audit.view` opens «أعطال التطبيق» too, so it is the third pill.
+    expect(within(nav).getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/admin/users', '/control/audit', '/control/app-errors']);
     expect(within(nav).queryByRole('link', { name: 'الإعدادات' })).toBeNull();
   });
 
@@ -580,7 +584,8 @@ describe('the settings front door', () => {
     // schedule + 2 staff + 5 control = 17) + «العمولات» (its line is «المال», its card stays: 18 paths).
     // 19/11 (R15a): 17 → 18 with «قواعد الموظفين» (`/admin/staff-rules`) on its own card: 7 settings + 2 apps + the schedule + the staff rules + 2 staff + 5 control = 18
     // (19 paths with «العمولات»).
-    expect(adminScreens()).toHaveLength(18);
+    // 22/11: 18 → 19 with «أعطال التطبيق» (`/control/app-errors`) on the control card: 6 control (20 paths with «العمولات»).
+    expect(adminScreens()).toHaveLength(19);
     expect([...onCards].sort()).toEqual([...adminScreens(), OUTSIDE].sort());
     expect(NAV.find((g) => g.key === 'finance')!.routes.map((r) => r.path)).toContain(OUTSIDE);
   });
@@ -620,6 +625,7 @@ describe('the settings front door', () => {
     };
     // Only `users.view`: «الإدارة» leads to the staff screen, not to a door they would be refused at.
     expect(line('users.view')).toEqual([['الإدارة', '/admin/users']]);
+    // 22/11: `audit.view` opens «أعطال التطبيق» too; the line still leads to the first of its screens, «سجل التدقيق».
     expect(line('audit.view')).toEqual([['الإدارة', '/control/audit']]);
     // Only `commission.view`: the commission is «المال»'s only screen for them (so the line takes its name), AND it opens the door
     // (its card is there) — two ways in.
