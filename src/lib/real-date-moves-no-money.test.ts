@@ -150,6 +150,11 @@ const MONEY_READERS = [
   'src/lib/manual-statement.ts',
   'src/lib/pay-from-wallet.ts',
   'src/lib/expense-void.ts',
+  // Added at review (22/11): the statement's own door, the partners' doors and the wallet's own door also add money up.
+  'src/app/api/finance/statements/[id]/route.ts',
+  'src/app/api/finance/partners/route.ts',
+  'src/app/api/finance/partners/draws/route.ts',
+  'src/app/api/finance/wallets/[id]/route.ts',
 ];
 const code = (p: string) =>
   readFileSync(join(process.cwd(), p), 'utf8')
@@ -187,6 +192,18 @@ describe('a typed real date changes no balance', () => {
     // And the only difference in what was written is the real date itself.
     expect(dated.writes.map((w) => Object.fromEntries(Object.entries(w).filter(([k]) => k !== 'occurredAt')))).toEqual(plain.writes);
     expect(dated.writes.every((w) => typeof w.occurredAt === 'string')).toBe(true);
+  });
+
+  it('a reversing entry does NOT copy the original’s real date: it happened when it was registered', async () => {
+    const ledger = fakeLedger();
+    const original = await wallets.recordMovement(ledger.tx as never, {
+      companyId: 'c1', walletId: 'w1', direction: 'IN', amount: 5, party: 'طرف', category: 'OTHER', note: 'ملاحظة', createdById: 'u1',
+      occurredAt: new Date(Date.UTC(2026, 9, 3)),
+    } as never);
+    await wallets.reverseMovement(ledger.tx as never, { companyId: 'c1', walletId: 'w1', movementId: original.id, reason: 'تصحيح', createdById: 'u2' } as never);
+    expect(ledger.writes).toHaveLength(2);
+    expect(ledger.writes[1].reversalOfId).toBe(original.id);
+    expect('occurredAt' in ledger.writes[1]).toBe(false);
   });
 
   it('NEGATIVE: a future real date is refused where every writer passes, and nothing is written', async () => {

@@ -43,6 +43,22 @@ export class OccurredAtRefused extends Error {
 /** An ISO moment with at least the minute: «2026-11-19T14:30», with seconds, a fraction and a zone optional. */
 const ISO_MOMENT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?$/;
 
+/**
+ * IS WHAT WAS TYPED A MOMENT THAT EXISTS? `new Date` rolls an impossible one forward without a word: «2026-02-30» became the 2nd of
+ * March and «T24:00» the next morning, and a wrong date was stored as if it had been typed. So the typed year, month, day, hour,
+ * minute and second are built back through `Date.UTC` and must come out as typed — the calendar alone, before any timezone.
+ */
+function isRealCalendarMoment(text: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(text);
+  if (!m) return false;
+  const [y, mo, d, h, mi, s] = m.slice(1).map((x) => (x === undefined ? 0 : Number(x)));
+  const back = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+  return (
+    back.getUTCFullYear() === y && back.getUTCMonth() === mo - 1 && back.getUTCDate() === d &&
+    back.getUTCHours() === h && back.getUTCMinutes() === mi && back.getUTCSeconds() === s
+  );
+}
+
 export type OccurredAtReading =
   | { ok: true; value: Date | null }
   | { ok: false; code: OccurredAtRefusal; errorAr: string };
@@ -56,7 +72,7 @@ export function readOccurredAt(raw: unknown, now: Date): OccurredAtReading {
   const refuse = (code: OccurredAtRefusal): OccurredAtReading => ({ ok: false, code, errorAr: OCCURRED_AT_REFUSAL_AR[code] });
   let at: Date;
   if (raw instanceof Date) at = raw;
-  else if (typeof raw === 'string' && ISO_MOMENT.test(raw.trim())) at = new Date(raw.trim());
+  else if (typeof raw === 'string' && ISO_MOMENT.test(raw.trim()) && isRealCalendarMoment(raw.trim())) at = new Date(raw.trim());
   else return refuse('OCCURRED_AT_MALFORMED');
   if (Number.isNaN(at.getTime())) return refuse('OCCURRED_AT_MALFORMED');
   if (at.getTime() > now.getTime() + OCCURRED_AT_SKEW_MS) return refuse('OCCURRED_AT_FUTURE');

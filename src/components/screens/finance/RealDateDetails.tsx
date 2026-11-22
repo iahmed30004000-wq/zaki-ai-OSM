@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Money } from '@/components/ui/Money';
 import { arDateTime } from '@/lib/format';
 import { TRANSFER_STATE_AR, type TransferState } from '@/lib/transfer-reversal';
+import { movementReferenceAr } from '@/lib/movement-reference';
 
 /**
  * THE REAL DATE ON A ROW, AND THE EYE THAT OPENS A ROW (22/11) — «ما في زر زي العين يعرضلك التفاصيل والملاحظات وتاريخ الحركة
@@ -53,16 +54,6 @@ function BothDates({ realDate, createdAt }: { realDate?: string | null; createdA
     </>
   );
 }
-
-/** What wrote a movement, said as a person reads it. */
-export const REFERENCE_AR: Record<string, string> = {
-  STATEMENT: 'كشف شركة الشحن',
-  TRANSFER: 'تحويل بين المحافظ',
-  COMMISSION_PERIOD: 'فترة عمولة',
-  ORDER: 'طلب',
-  PARTNER_DRAW: 'سحب شريك',
-  EXPENSE: 'مصروف',
-};
 
 export interface MovementForDetails {
   id: string;
@@ -120,7 +111,7 @@ export function MovementDetails({
         <Line name="المرجع">
           {m.referenceType ? (
             <>
-              {REFERENCE_AR[m.referenceType] ?? m.referenceType}
+              {movementReferenceAr(m.referenceType)}
               {m.referenceId && <span dir="ltr" className="block text-note text-[var(--sys-muted)]">{m.referenceId}</span>}
             </>
           ) : (

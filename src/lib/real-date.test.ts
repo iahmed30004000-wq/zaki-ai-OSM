@@ -59,6 +59,18 @@ describe('what a door accepts as the real date', () => {
     }
   );
 
+  it.each(['2026-02-30T10:00:00.000Z', '2026-02-29T10:00', '2026-11-19T24:00', '2026-11-19T10:60', '2026-11-19T10:00:60Z', '2026-00-10T10:00'])(
+    'NEGATIVE: %s does not exist on the calendar — malformed, never rolled forward to another day',
+    (raw) => {
+      expect(readOccurredAt(raw, NOW)).toMatchObject({ ok: false, code: 'OCCURRED_AT_MALFORMED' });
+    }
+  );
+
+  it('a real leap day and the last minute of a day are accepted', () => {
+    expect(readOccurredAt('2024-02-29T10:00:00.000Z', NOW).ok).toBe(true);
+    expect(readOccurredAt('2026-11-19T23:59', NOW).ok).toBe(true);
+  });
+
   it('NEGATIVE: a year typed wrong (0202) is refused as too old, not stored as a real date', () => {
     expect(readOccurredAt('0202-11-19T10:00', NOW)).toMatchObject({ ok: false, code: 'OCCURRED_AT_TOO_OLD' });
   });

@@ -165,6 +165,71 @@ describe('the movements door', () => {
   });
 });
 
+describe('a date that does not exist is refused, never rolled forward (review 22/11)', () => {
+  it.each(['2026-02-30T10:00:00.000Z', '2026-11-19T24:00', '2026-11-31T09:00', '2026-11-19T10:60'])(
+    'NEGATIVE: %s — the movements door refuses it as malformed and writes nothing',
+    async (at) => {
+      const res = await post({ occurredAt: at });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('OCCURRED_AT_MALFORMED');
+      expect(db.walletMovement.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['2026-02-30T10:00:00.000Z', '2026-11-19T24:00'])('NEGATIVE: %s — the transfers door refuses it and writes nothing', async (at) => {
+    const res = await send({ occurredAt: at });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('OCCURRED_AT_MALFORMED');
+    expect(db.walletTransfer.create).not.toHaveBeenCalled();
+    expect(db.walletMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('a real leap day (2024-02-29) is accepted as it is', async () => {
+    expect((await post({ occurredAt: '2024-02-29T10:00:00.000Z' })).status).toBe(201);
+    expect(tables.walletMovement[0].occurredAt).toEqual(new Date('2024-02-29T10:00:00.000Z'));
+  });
+});
+
+describe('the lists read the store’s day and carry the reversal (review pins 22/11)', () => {
+  it('«another day» is the STORE’s: 22:30 UTC on the 19th is the 20th in Damascus — one day, not two', async () => {
+    tables.walletMovement.push({
+      id: 'edge', walletId: W1, companyId: 'c1', direction: 'IN', amount: 1, createdById: 'u1',
+      createdAt: new Date('2026-11-20T08:00:00Z'), occurredAt: new Date('2026-11-19T22:30:00Z'),
+    });
+    const { movements } = await (await listMovements(new Request('http://x'), params)).json();
+    expect(movements[0].registeredOnAnotherDay).toBe(false);
+
+    tables.walletTransfer.push({
+      id: 'tx-edge', companyId: 'c1', fromWalletId: W1, toWalletId: W2, amountOut: 1, amountIn: 1, exchangeRate: 1, kind: 'INTERNAL', note: 'n',
+      createdById: 'u1', createdAt: new Date('2026-11-20T08:00:00Z'), occurredAt: new Date('2026-11-19T22:30:00Z'),
+    });
+    db.walletMovement.findMany.mockResolvedValueOnce([]);
+    const { transfers } = await (await listTransfers()).json();
+    expect(transfers[0].registeredOnAnotherDay).toBe(false);
+  });
+
+  it('the transfers list is ordered by the real date, then the registration', async () => {
+    const t = (id: string, createdAt: string, occurredAt: string | null) => ({
+      id, companyId: 'c1', fromWalletId: W1, toWalletId: W2, amountOut: 1, amountIn: 1, exchangeRate: 1, kind: 'INTERNAL', note: id,
+      createdById: 'u1', createdAt: new Date(createdAt), occurredAt: occurredAt ? new Date(occurredAt) : null,
+    });
+    tables.walletTransfer.push(
+      t('late', '2026-11-20T08:00:00Z', '2026-11-18T10:00:00Z'),
+      t('plain', '2026-11-20T07:00:00Z', null),
+      t('mid', '2026-11-19T12:00:00Z', null),
+    );
+    db.walletMovement.findMany.mockResolvedValueOnce([]);
+    const { transfers } = await (await listTransfers()).json();
+    expect(transfers.map((x: Row) => x.id)).toEqual(['plain', 'mid', 'late']);
+  });
+
+  it('the movements list asks for the reversing entry’s reason and moment (the panel says them)', async () => {
+    await listMovements(new Request('http://x'), params);
+    const { include } = db.walletMovement.findMany.mock.calls[0][0] as unknown as { include: Row };
+    expect(include.reversedBy).toEqual({ select: { id: true, reversalReason: true, createdAt: true } });
+  });
+});
+
 describe('the transfers door', () => {
   it('writes the real date on the transfer and on BOTH legs', async () => {
     const at = yesterday();
