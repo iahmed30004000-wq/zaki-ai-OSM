@@ -9,6 +9,7 @@ import { storeIsPlaced, type WarehouseRef } from './warehouse-intake';
 import { isAcross, needsOwnerApproval, readStockTransfer, stockTransferRefusal, type StockTransferKind } from './stock-transfer-kind';
 import { PENDING_EXIT } from './stock-exit-reasons';
 import { twinsIn } from './product-twins';
+import { rateWords } from './exchange-rate-words';
 import {
   EXCHANGE_RATE_AR,
   arrivalCost,
@@ -1028,10 +1029,7 @@ async function exchangeOf(tx: Tx, companyId: string, sourceStoreId: string, dest
   };
 }
 
-/** 22/11 (F2): «بسعر صرف R: 1 SYP = R JOD» — Western digits, the rate as it was typed. */
-export function rateWords(rate: number, c: { fromCode: string; toCode: string }): string {
-  return `بسعر صرف ${String(rate)}: 1 ${c.fromCode} = ${String(rate)} ${c.toCode}`;
-}
+// 22/11 (F2): «بسعر صرف R: 1 SYP = R JOD» — `exchange-rate-words.rateWords` (fixed decimals, never «1e-7»).
 
 /** The typed cost lines as stored (an INTERNAL line has none). */
 const storedLanded = (v: unknown): LandedCost[] => (Array.isArray(v) ? (v as LandedCost[]) : []);

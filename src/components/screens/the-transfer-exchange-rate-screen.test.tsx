@@ -146,7 +146,7 @@ const fillLine = async (dialog: HTMLElement, product = 'كريم اليدين', 
 
 const SYP = { code: 'SYP', minorUnit: 2 };
 const JOD = { code: 'JOD', minorUnit: 3 };
-const withRate = () => DEST.map((d) => (d.storeId === 's3' ? { ...d, rate: { fromCode: 'SYP', toCode: 'JOD' } } : d));
+const withRate = () => DEST.map((d) => (d.storeId === 's3' ? { ...d, rate: { fromCode: 'SYP', toCode: 'JOD', usual: 0.71 / 13000 } } : d));
 
 describe('the send form asks the rate only between two currencies', () => {
   const toAbroad = async () => {
@@ -179,6 +179,19 @@ describe('the send form asks the rate only between two currencies', () => {
     await screen.findByText('انكتب طلب النقل — مستني اعتماد المالك، والبضاعة لسا ما طلعت.');
     const [, body] = calls('POST').find(([u]) => u === '/api/inventory/transfers')!;
     expect(body).toMatchObject({ toStoreId: 's3', exchangeRate: 0.000071, expectKind: 'BETWEEN_COUNTRIES' });
+  });
+
+  it('the rate the other way round is said under the box; an upside-down rate WARNS but the press stays open (a warning, not a refusal)', async () => {
+    const dialog = await toAbroad();
+    const box = within(dialog).getByLabelText('سعر الصرف');
+    const press = within(dialog).getByRole('button', { name: 'اطلب الاعتماد' }) as HTMLButtonElement;
+    fireEvent.change(box, { target: { value: '0.000071' } });
+    expect(dialog.querySelector('[data-rate-mirror="ask"]')!.textContent).toBe('يعني 1 JOD = 14084.507042 SYP');
+    expect(dialog.querySelector('[data-rate-warning]')).toBeNull();
+    fireEvent.change(box, { target: { value: '14000' } });
+    expect(dialog.querySelector('[data-rate-mirror="ask"]')!.textContent).toBe('يعني 1 JOD = 0.0000714286 SYP');
+    expect(dialog.querySelector('[data-rate-warning]')!.textContent).toContain('يمكن انكتب بالمقلوب؟');
+    await waitFor(() => expect(press.disabled).toBe(false));
   });
 
   it('a rate typed for one store is forgotten when another store is chosen', async () => {
@@ -214,7 +227,7 @@ describe('the receipt of a transfer between two currencies', () => {
       kind: 'BETWEEN_COUNTRIES',
       kindAr: 'بين بلدين',
       toStoreName: 'متجر برّا',
-      exchange: { rate: 0.000071, from: SYP, to: JOD },
+      exchange: { rate: 0.000071, rateText: '0.000071', mirror: 'يعني 1 JOD = 14084.507042 SYP', from: SYP, to: JOD },
       ...over,
     });
   const openReceipt = async (row: T) => {
@@ -228,6 +241,7 @@ describe('the receipt of a transfer between two currencies', () => {
   it('says the stored rate, takes the landed lines in SYP, and prints the server’s conversion after the press', async () => {
     const dialog = await openReceipt(rated({ fromCurrency: SYP, toCurrency: JOD }));
     expect(dialog.querySelector('[data-exchange-rate="shown"]')!.textContent).toContain('1 SYP = 0.000071 JOD');
+    expect(dialog.querySelector('[data-rate-mirror="shown"]')!.textContent).toBe('يعني 1 JOD = 14084.507042 SYP');
     expect(dialog.textContent).toContain('مصاريف وصول «كريم اليدين» (بـSYP)');
     fireEvent.change(within(dialog).getByLabelText('عدد «كريم اليدين» اللي وصل'), { target: { value: '10' } });
     pick(dialog, 'وصلت كلها ولا لأ؟', 'وصلت كلها');

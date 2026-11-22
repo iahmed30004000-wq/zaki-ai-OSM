@@ -12,6 +12,7 @@ import { StatTile } from '@/components/ui/StatTile';
 import { ProductPicker } from '@/components/ui/ProductPicker';
 import { useConfirm } from '@/components/ui/Confirm';
 import { amount, plainNumber, type Currency } from '@/lib/format';
+import { rateLooksOff, rateMirror, rateText } from '@/lib/exchange-rate-words';
 
 /**
  * THE PARTS OF «نقل البضاعة» THAT ONLY A TRANSFER ACROSS STORES HAS (the warehouse plan, request W7c):
@@ -297,6 +298,8 @@ export function LandedCostLines({
 export interface RateCurrencies {
   fromCode: string;
   toCode: string;
+  /** 22/11 (F2, review): the usual order between the two (destination per 1 source); null = unknown. */
+  usual?: number | null;
 }
 
 /** A typed rate the form may send: a plain number above zero (the door judges it again, and its upper bound). */
@@ -324,6 +327,17 @@ export function ExchangeRateField({ currencies, value, onChange }: { currencies:
         مرة وحدة لما ينستلم النقل. السعر بينحفظ مع النقل وما بيتغيّر.
       </p>
       {bad && <p className="text-note text-[var(--sys-destructive)]">سعر الصرف لازم يكون رقم أكبر من صفر.</p>}
+      {/* 22/11 (F2, review): the rate the other way round, so one typed upside down reads wrong at once. */}
+      {rateTyped(value) && (
+        <p className={muted} data-rate-mirror="ask" dir="rtl">
+          {rateMirror(Number(value.trim()), currencies.fromCode, currencies.toCode)}
+        </p>
+      )}
+      {rateTyped(value) && rateLooksOff(Number(value.trim()), currencies.usual) && (
+        <p data-rate-warning="yes" className="rounded-lg border border-[var(--sys-warning)]/50 bg-[var(--sys-warning-soft)] p-2.5 text-sm text-[var(--sys-warning)]">
+          انتبه: هالسعر بعيد كتير عن المعتاد بين {currencies.fromCode} و{currencies.toCode} (حوالي {rateText(currencies.usual!)}). يمكن انكتب بالمقلوب؟ راجعه قبل ما تبعت.
+        </p>
+      )}
     </div>
   );
 }
@@ -342,7 +356,7 @@ export function ConvertedLine({
 }) {
   return (
     <span className="block text-note text-[var(--sys-muted-foreground)]" data-converted={productId}>
-      بسعر صرف <span dir="ltr">{String(converted.rate)}</span>: {amount(converted.sourceTotal, from)} = {amount(converted.total, to)}
+      بسعر صرف <span dir="ltr">{rateText(converted.rate)}</span>: {amount(converted.sourceTotal, from)} = {amount(converted.total, to)}
     </span>
   );
 }

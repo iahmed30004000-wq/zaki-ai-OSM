@@ -17,6 +17,24 @@ import { maySeeCost } from '@/lib/cost-visibility';
 import { storesReachedBy } from '@/lib/product-pairs';
 import { roadReport, type RoadCurrency } from '@/lib/stock-transfer-road';
 import { needsExchangeRate } from '@/lib/stock-transfer-cost';
+import { rateMirror, rateText } from '@/lib/exchange-rate-words';
+import { UNITS_PER_USD } from '@/lib/transfer-rate';
+
+/**
+ * 22/11 (F2, review): what the form needs to ask «سعر الصرف» between two currencies — the two codes, and the USUAL order
+ * between them (units of the destination per 1 of the source, from `transfer-rate.UNITS_PER_USD`, which only ever orders
+ * two currencies and converts no money). The form warns — never refuses — when a typed rate is 1000× off it.
+ */
+function rateAsked(fromCode: string, toCode: string) {
+  const from = UNITS_PER_USD[fromCode];
+  const to = UNITS_PER_USD[toCode];
+  return { fromCode, toCode, usual: from && to ? to / from : null };
+}
+
+/** 22/11 (F2, review): a stored rate as every viewer is told it — the figure, its fixed-decimal text, and the mirror. */
+function exchangeShown(rate: number, from: RoadCurrency | null, to: RoadCurrency | null) {
+  return { rate, rateText: rateText(rate), mirror: rateMirror(rate, from?.code ?? '', to?.code ?? ''), from, to };
+}
 
 /**
  * GET  /api/inventory/transfers (inventory.view)     — the store's transfers, newest first, and its warehouses
@@ -170,7 +188,7 @@ export async function GET() {
         warehouses: theirWarehouses.filter((w) => w.countryId === s.countryId).map((w) => ({ id: w.id, name: w.name, countryId: w.countryId })),
         // 22/11 (F2): the two currencies, only where they differ — the form then asks «سعر الصرف» (the door asks again).
         ...(needsExchangeRate(here?.country?.currencyCode, storeRow.get(s.id)?.country?.currencyCode)
-          ? { rate: { fromCode: here!.country!.currencyCode, toCode: storeRow.get(s.id)!.country!.currencyCode } }
+          ? { rate: rateAsked(here!.country!.currencyCode, storeRow.get(s.id)!.country!.currencyCode) }
           : {}),
       })),
       mayAbroad: can(user, ABROAD_KEY),
@@ -210,7 +228,7 @@ export async function GET() {
                 ...(seesCost ? { fromCurrency: currencyOf(r.storeId), toCurrency: currencyOf(r.toStoreId) } : {}),
                 // 22/11 (F2): between two currencies, the rate and the two currencies — to everyone who sees the row (a
                 // currency is not a cost figure, and the receiver types the landed lines in the SOURCE currency).
-                ...(r.exchangeRate != null ? { exchange: { rate: r.exchangeRate, from: currencyOf(r.storeId), to: currencyOf(r.toStoreId) } } : {}),
+                ...(r.exchangeRate != null ? { exchange: exchangeShown(r.exchangeRate, currencyOf(r.storeId), currencyOf(r.toStoreId)) } : {}),
               }
             : {}),
           lines: shown.lines.map((l) =>

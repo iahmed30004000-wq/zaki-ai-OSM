@@ -167,7 +167,8 @@ describe('the destination picker', () => {
         countryId: 'k2',
         countryName: 'البلد التاني',
         warehouses: [{ id: 'wJ', name: 'ج', countryId: 'k2' }],
-        rate: { fromCode: 'JOD', toCode: 'USD' },
+        // 22/11 (F2 review): and the usual order between them (USD per 1 JOD = 1 ÷ 0.71), for the form's warning only.
+        rate: { fromCode: 'JOD', toCode: 'USD', usual: 1 / 0.71 },
       },
       { storeId: 's2', storeName: 'متجر تاني', countryId: 'k1', countryName: 'البلد الأول', warehouses: [{ id: 'wA', name: 'أ', countryId: 'k1' }, { id: 'wB', name: 'ب', countryId: 'k1' }] },
     ]);
@@ -319,7 +320,7 @@ describe('F2 — the exchange rate at the doors', () => {
     // Every viewer sees the rate and the two currencies (a viewer without the cost key included) — never a cost.
     await as('u-viewer', 's3');
     const seen = (await listOf()).transfers[0];
-    expect(seen.exchange).toEqual({ rate: 1.41, from: { code: 'JOD', minorUnit: 3 }, to: { code: 'USD', minorUnit: 2 } });
+    expect(seen.exchange).toEqual({ rate: 1.41, rateText: '1.41', mirror: 'يعني 1 USD = 0.70922 JOD', from: { code: 'JOD', minorUnit: 3 }, to: { code: 'USD', minorUnit: 2 } });
     expect(seen.lines[0]).not.toHaveProperty('costOut');
     // Received by a cost holder standing in s3: 2 units that left at 2 JOD (costOut 4 JOD) + 0.5 JOD landed.
     await as('u-receiver-cost', 's3');

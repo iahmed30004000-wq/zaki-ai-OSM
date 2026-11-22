@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { memoryDb, type Row } from './stock-transfers.memory-db.test';
 import { approveAbroad, cancelTransfer, receiveTransfer, sendTransfer, shownTo, StockTransferRefused } from './stock-transfers';
+import { rateLooksOff, rateMirror, rateText, rateWords } from './exchange-rate-words';
 import { EXCHANGE_RATE_MAX, arrivalCost, checkExchangeRate, convertedArrivalCost, needsExchangeRate, normalizeLanded } from './stock-transfer-cost';
 
 /**
@@ -191,7 +192,7 @@ describe('F2 — the one conversion, at the receipt (worked by hand)', () => {
     expect(line.costRemainder).toBeCloseTo(0.00142, 12);
     expect(batchesOf(m, 'r1')[0].quantityRemaining).toBe(7);
     const seen = shownTo(out.transfer, 'u-books', { seesCost: true });
-    expect(seen.lines[0].missingValue).toBe(3000);
+    expect((seen.lines[0] as { missingValue?: number }).missingValue).toBe(3000);
     expect(seen.lines[0].converted!.sourceTotal).toBeCloseTo(7020, 9);
   });
 
@@ -307,5 +308,42 @@ describe('F2 — the pure arithmetic', () => {
       expect(Math.abs(got.remainder)).toBeLessThanOrEqual(received * (step / 2) + tol);
     }
     expect(halves).toBe(1000);
+  });
+});
+
+describe('F2 review — how the rate is said (exchange-rate-words)', () => {
+  it('fixed decimals, never an exponent, no trailing zeros', () => {
+    expect([rateText(0.000071), rateText(1e-7), rateText(1.41), rateText(14000), rateText(1 / 0.000071)]).toEqual([
+      '0.000071',
+      '0.0000001',
+      '1.41',
+      '14000',
+      '14084.507042',
+    ]);
+    expect(rateWords(1e-7, { fromCode: 'SYP', toCode: 'JOD' })).toBe('بسعر صرف 0.0000001: 1 SYP = 0.0000001 JOD');
+  });
+
+  it('the mirror says the rate the other way round', () => {
+    expect(rateMirror(0.000071, 'SYP', 'JOD')).toBe('يعني 1 JOD = 14084.507042 SYP');
+    expect(rateMirror(14000, 'SYP', 'JOD')).toBe('يعني 1 JOD = 0.0000714286 SYP');
+  });
+
+  it('a WARNING when the rate is over 1000× off the usual order — the upside-down rate is caught; NEGATIVE: a near rate, or an unknown order', () => {
+    const usual = 0.71 / 13000; // JOD per 1 SYP, the order only
+    expect(rateLooksOff(0.000071, usual)).toBe(false);
+    expect(rateLooksOff(14000, usual)).toBe(true);
+    expect(rateLooksOff(usual / 2000, usual)).toBe(true);
+    expect(rateLooksOff(usual * 999, usual)).toBe(false);
+    expect(rateLooksOff(14000, null)).toBe(false);
+  });
+
+  it('the ledger note of a receipt uses fixed decimals too (a rate of 1e-7)', async () => {
+    const m = world();
+    await send(m, { exchangeRate: 1e-7 });
+    await press(m);
+    await receive(m, [{ productId: 'p1', quantity: 10, zeroCostReason: 'هدية من المورد' }]);
+    const into = m.data.inventoryMovement.find((x) => x.type === 'TRANSFER_IN' && x.productId === 'r1')!;
+    expect(into.reason).toContain('بسعر صرف 0.0000001: 1 SYP = 0.0000001 JOD');
+    expect(into.reason).not.toMatch(/e-/);
   });
 });

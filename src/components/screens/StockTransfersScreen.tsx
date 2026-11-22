@@ -144,7 +144,7 @@ export interface StockTransferItem {
   fromCurrency?: Currency | null;
   toCurrency?: Currency | null;
   /** 22/11 (F2): present only between two currencies — the rate typed at the send and the two currencies. */
-  exchange?: { rate: number; from: Currency | null; to: Currency | null };
+  exchange?: { rate: number; rateText?: string; mirror?: string; from: Currency | null; to: Currency | null };
 }
 
 /** 21/11 (W7c): another store she may send to, with its country's running warehouses. */
@@ -993,9 +993,15 @@ export function ReceiveDialog({ transfer, onClose, onDone }: { transfer: StockTr
           <p data-exchange-rate="shown" className="rounded-lg bg-[var(--sys-surface)] p-2.5 text-note text-[var(--sys-foreground)]">
             سعر الصرف المحفوظ مع النقل:{' '}
             <span dir="ltr">
-              1 {transfer.exchange.from?.code ?? ''} = {String(transfer.exchange.rate)} {transfer.exchange.to?.code ?? ''}
+              1 {transfer.exchange.from?.code ?? ''} = {transfer.exchange.rateText ?? String(transfer.exchange.rate)} {transfer.exchange.to?.code ?? ''}
             </span>
             . المصاريف بتنكتب بعملة المتجر اللي بعت، والكلفة بتتحوّل مرة وحدة لما تضغط «استلمت».
+            {/* 22/11 (F2, review): the server's mirror of the rate — a rate typed upside down reads wrong here too. */}
+            {transfer.exchange.mirror && (
+              <span className="block" data-rate-mirror="shown">
+                {transfer.exchange.mirror}
+              </span>
+            )}
           </p>
         )}
         {fromAfar && (
