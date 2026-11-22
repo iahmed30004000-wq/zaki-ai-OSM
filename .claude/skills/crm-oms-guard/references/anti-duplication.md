@@ -127,6 +127,12 @@ name — `order-parser.foldForMatch` — and SAVED by a person; one twin per pro
 unique keys). Doors `/api/inventory/pairs` (key `inventory.transfer`). Nothing reads it yet — the transfer between stores
 (W7b) will; never link two stores' products another way.
 
+(22/11, F3) A PARTNER'S WITHDRAWAL has TWO records, on purpose for now: the cash one is the wallet movement of category
+PARTNER_DRAW (`/api/finance/partners/draws`, read by `partner-statement.ts`); the RECORD-ONLY one is `PartnerWithdrawal` +
+`PartnerStandingAmount` and `src/lib/partner-withdrawals.ts` (tab «المسحوبات» on «الأرباح», key `finance.partners`): per store and
+currency, totals never across currencies, a cancel is a reversing row. It moves no wallet, and no profit or statement reads it —
+linking it to the cash (a movement behind an approval) is the open follow-up. Never add a third.
+
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one
 of the false lines said the commission ledger did not exist, which is the
