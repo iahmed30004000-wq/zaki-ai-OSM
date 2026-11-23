@@ -205,6 +205,8 @@ describe('what the browser is allowed to remember', () => {
     'shell/InstallApp.tsx': 'when «ليس الآن» was pressed on the install strip — a timestamp, nothing about a person or a record',
     // 18/11 (R5): the one-time «جرّب الشكل الجديد» line, hidden on this device once answered.
     'shell/TryTheNewLook.tsx': 'that this device answered the «جرّب الشكل الجديد» line — the digit 1, nothing about a person or a record',
+    // 23/11 (F6, «إخفاء الشرح» on /settings/geo).
+    'screens/GeoSettingsScreen.tsx': 'one character, «0» or «1» — whether this page shows or hides its explanations; no customer data',
     'ui/SavedViews.tsx': 'a name and a query string — a question to re-ask, never an answer or a record id',
     /*
      * «شو صار؟» (the call sheet of «طلباتي» on a phone): the call she opened (order id, when, her id) so a reload finds the
