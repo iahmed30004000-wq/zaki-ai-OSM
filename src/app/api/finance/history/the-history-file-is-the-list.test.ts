@@ -28,6 +28,8 @@ const { db, tables, requireContext, current, reads } = vi.hoisted(() => {
     return Object.entries(where).every(([k, v]) => {
       if (k === 'OR') return (v as Row[]).some((w) => matches(row, w));
       if (k === 'AND') return (v as Row[]).every((w) => matches(row, w));
+      // A movement's wallet, read through the relation (23/11, F7: the draws clause is `wallet: { storeId: { in } }`).
+      if (k === 'wallet' && 'walletId' in row) return matches(tables.wallet.find((w) => w.id === row.walletId) ?? {}, v as Row);
       const cell = row[k];
       if (v === null) return cell === null || cell === undefined;
       if (v instanceof Date) return cell instanceof Date && cell.getTime() === v.getTime();
@@ -64,6 +66,7 @@ const { db, tables, requireContext, current, reads } = vi.hoisted(() => {
       ...m,
       reversalOf: of ? { id: of.id, note: of.note } : null,
       reversedBy: by ? { id: by.id, reversalReason: by.reversalReason, createdAt: by.createdAt } : null,
+      wallet: { storeId: tables.wallet.find((w) => w.id === m.walletId)?.storeId ?? null },
     };
   };
 
@@ -194,7 +197,10 @@ beforeEach(async () => {
   });
   tables.wallet.push(wallet(W1, 'صندوق', 's1', 'USD', 2), wallet(W2, 'ليرة', 's1', 'SYP', 0), wallet(W3, 'بعيد', 's2', 'USD', 2));
   tables.user.push({ id: 'u1', name: 'سلوى' }, { id: 'u2', name: 'رنا' });
-  tables.store.push({ id: 's1', companyId: 'c1', name: 'المتجر الأول', countryId: 'SY' }, { id: 's2', companyId: 'c1', name: 'المتجر التاني', countryId: 'SY' });
+  tables.store.push(
+    { id: 's1', companyId: 'c1', name: 'المتجر الأول', countryId: 'SY', country: { currencyCode: 'USD', minorUnit: 2 } },
+    { id: 's2', companyId: 'c1', name: 'المتجر التاني', countryId: 'SY', country: { currencyCode: 'USD', minorUnit: 2 } }
+  );
   tables.company.push({ id: 'c1', name: 'شركة التجربة' });
   tables.country.push({ id: 'SY', companyId: 'c1', currencyCode: 'SYP', minorUnit: 0 });
   tables.partner.push({ id: 'p1', companyId: 'c1', name: 'الشريك أ', isActive: true, sortOrder: 0, createdAt: new Date(DAY0) }, { id: 'p2', companyId: 'c1', name: 'الشريك ب', isActive: true, sortOrder: 1, createdAt: new Date(DAY0) });
@@ -286,39 +292,66 @@ describe('the transfers file is the transfers list', () => {
   });
 });
 
-describe('the withdrawals file is the withdrawals tab', () => {
-  it('DIFFERENTIAL: the tab\'s rows of this store, in its order, with the cancelled ones marked', async () => {
+/*
+ * 23/11 (F7) — UPDATED: the withdrawals tab and its file read PARTNER_DRAW wallet movements, not `partner_withdrawals`.
+ * Old: the file's rows were the tab's partner_withdrawals rows (cancelled ones «ملغى»). New: both are the store's PARTNER_DRAW
+ * movements (reversed ones «معكوس»), and an old partner_withdrawals row is in neither the file nor the totals. Why: the owner's
+ * «والحركات تكون من المحافظ … خلص مكان واحد».
+ */
+function seedDraws(seed: number, n: number) {
+  const r = rng(seed);
+  tables.walletMovement.length = 0;
+  for (let i = 0; i < n; i++) {
+    const createdAt = new Date(DAY0 + i * HOUR);
+    const walletId = r() < 0.15 ? W3 : r() < 0.6 ? W1 : W2;
+    tables.walletMovement.push({
+      id: `d${i}`, companyId: 'c1', walletId, direction: 'OUT', amount: 50 + i, currencyCode: walletId === W2 ? 'SYP' : 'USD',
+      party: 'شريك', category: 'PARTNER_DRAW', note: `d${i}`, referenceType: 'PARTNER_DRAW', partnerId: r() < 0.5 ? 'p1' : 'p2',
+      referenceId: null, valueInStoreCurrency: walletId === W2 ? 1 + i : 50 + i, reversalOfId: null, reversalReason: null,
+      createdById: 'u1', createdAt, occurredAt: r() < 0.3 ? new Date(createdAt.getTime() - 30 * HOUR) : null,
+    });
+  }
+  for (const m of tables.walletMovement.slice(0, 6)) {
+    if (r() < 0.5) continue;
+    tables.walletMovement.push({ ...m, id: `${m.id}r`, direction: 'IN', reversalOfId: m.id, reversalReason: 'غلط', occurredAt: null, createdAt: new Date(m.createdAt.getTime() + 99 * HOUR) });
+  }
+  // Another kind of movement in the same wallets is never a withdrawal.
+  tables.walletMovement.push({ ...tables.walletMovement[0], id: 'other', category: 'OTHER', partnerId: null, valueInStoreCurrency: null, note: 'ليس سحب' });
+}
+
+describe('the withdrawals file is the withdrawals dashboard', () => {
+  it('DIFFERENTIAL: the dashboard\'s rows of this store, in its order, with the reversed ones marked', async () => {
     for (let seed = 1; seed <= 20; seed++) {
+      seedDraws(seed, 15 + seed);
+      // An old record row: shown on the dashboard in its own block, in neither the file nor the totals.
       tables.partnerWithdrawal.length = 0;
-      const r = rng(seed);
-      for (let i = 0; i < 15 + seed; i++) {
-        const createdAt = new Date(DAY0 + i * HOUR);
-        tables.partnerWithdrawal.push({
-          id: `w${i}`, companyId: 'c1', storeId: r() < 0.8 ? 's1' : 's2', partnerId: r() < 0.5 ? 'p1' : 'p2', currencyCode: r() < 0.5 ? 'USD' : 'SYP',
-          amount: 50 + i, withdrawnOn: new Date(`2026-11-${String(1 + (i % 20)).padStart(2, '0')}T00:00:00Z`), fromStanding: false, note: `w${i}`,
-          reversalOfId: null, reversalReason: null, createdById: 'u1', createdAt,
-        });
-      }
-      for (const w of tables.partnerWithdrawal.slice(0, 5)) {
-        if (r() < 0.5) continue;
-        tables.partnerWithdrawal.push({ ...w, id: `${w.id}c`, note: null, reversalOfId: w.id, reversalReason: 'غلط', createdAt: new Date(w.createdAt.getTime() + 99 * HOUR) });
-      }
-      const book = await (await listWithdrawals()).json();
+      tables.partnerWithdrawal.push({
+        id: 'legacy', companyId: 'c1', storeId: 's1', partnerId: 'p1', currencyCode: 'USD', amount: 999, withdrawnOn: new Date('2026-11-02T00:00:00Z'),
+        fromStanding: false, note: 'قديم', reversalOfId: null, reversalReason: null, createdById: 'u1', createdAt: new Date(DAY0),
+      });
+      const book = await (await listWithdrawals(new Request('http://x/api/finance/partners/withdrawals'))).json();
       const file = dataRows(await fileRows(await withdrawalsFile(new Request(url('withdrawals')))));
+      const expected = tables.walletMovement.filter((m) => m.category === 'PARTNER_DRAW' && !m.reversalOfId && m.walletId !== W3);
+      expect(book.rows.map((x: Row) => x.note).sort(), `seed ${seed}`).toEqual(expected.map((m) => m.note).sort());
       expect(file.map((x) => x[WITHDRAWAL_HEADER.indexOf('ملاحظة')]), `seed ${seed}`).toEqual(book.rows.map((x: Row) => x.note));
-      expect(file.map((x) => x[WITHDRAWAL_HEADER.indexOf('الحالة')].startsWith('ملغى'))).toEqual(book.rows.map((x: Row) => !!x.cancelled));
+      expect(file.map((x) => x[WITHDRAWAL_HEADER.indexOf('الحالة')].startsWith('معكوس'))).toEqual(book.rows.map((x: Row) => !!x.wasReversed));
+      expect(file.some((x) => x.includes('قديم'))).toBe(false);
+      expect(book.legacy.map((x: Row) => x.id)).toEqual(['legacy']);
     }
   });
 
-  it('a span on the day of the withdrawal, and a partner', async () => {
+  it('a span on the real date of the movement, and a partner', async () => {
     for (let i = 0; i < 10; i++) {
-      tables.partnerWithdrawal.push({
-        id: `w${i}`, companyId: 'c1', storeId: 's1', partnerId: i % 2 ? 'p1' : 'p2', currencyCode: 'USD', amount: 10, fromStanding: false, note: `w${i}`,
-        withdrawnOn: new Date(`2026-11-${String(1 + i).padStart(2, '0')}T00:00:00Z`), reversalOfId: null, reversalReason: null, createdById: 'u1', createdAt: new Date(DAY0 + i * HOUR),
+      tables.walletMovement.push({
+        id: `d${i}`, companyId: 'c1', walletId: W1, direction: 'OUT', amount: 10, currencyCode: 'USD', party: 'شريك', category: 'PARTNER_DRAW',
+        note: `d${i}`, referenceType: 'PARTNER_DRAW', referenceId: null, partnerId: i % 2 ? 'p1' : 'p2', valueInStoreCurrency: 10,
+        reversalOfId: null, reversalReason: null, createdById: 'u1',
+        // Registered on the 20th; really on the (1 + i)th at noon, Damascus.
+        createdAt: new Date('2026-11-20T09:00:00Z'), occurredAt: new Date(`2026-11-${String(1 + i).padStart(2, '0')}T09:00:00Z`),
       });
     }
     const file = dataRows(await fileRows(await withdrawalsFile(new Request(url('withdrawals', { from: '2026-11-03', to: '2026-11-06', partnerId: 'p1' })))));
-    expect(file.map((x) => x[WITHDRAWAL_HEADER.indexOf('ملاحظة')]).sort()).toEqual(['w3', 'w5']);
+    expect(file.map((x) => x[WITHDRAWAL_HEADER.indexOf('ملاحظة')]).sort()).toEqual(['d3', 'd5']);
   });
 });
 

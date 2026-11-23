@@ -4,8 +4,7 @@ import { inStore } from './store-filter';
 import { byRealDateDesc, realDateOf, registeredOnAnotherDay } from './real-date';
 import { readTransferReversals } from './transfer-reversal';
 import { TRANSFER_KIND_LABEL } from './transfer-kind';
-import { companyCurrencies, describeWithdrawals } from './partner-withdrawals';
-import { DIRECTION_AR, HISTORY_ROW_CAP, TOO_MANY_ROWS, movementSheet, movementsWhere, transferSheet, transfersWhere, withdrawalSheet, withdrawalsWhere, type HistoryFilters, type HistoryRefusal, type HistorySheet } from './history-export-core';
+import { DIRECTION_AR, HISTORY_ROW_CAP, TOO_MANY_ROWS, movementSheet, movementsWhere, transferSheet, transfersWhere, withdrawalSheet, drawsWhere, type HistoryFilters, type HistoryRefusal, type HistorySheet } from './history-export-core';
 import { MOVEMENT_CATEGORY_AR } from './movement-category-words';
 
 /**
@@ -13,7 +12,7 @@ import { MOVEMENT_CATEGORY_AR } from './movement-category-words';
  *
  * `movementListRows` and `transferListRows` ARE the bodies the two list doors had: the doors call them with their own clause and
  * their own count, and answer exactly what they answered before. The history file calls the same functions with the filters'
- * clause (lib/history-export-core) and the row cap. The withdrawals tab's rows are `describeWithdrawals` (lib/partner-withdrawals),
+ * clause (lib/history-export-core) and the row cap. The withdrawals dashboard's rows are `drawListLines` below (F7),
  * which its book calls too. So a row on the screen and the same row in the file are made by one piece of code.
  */
 
@@ -121,6 +120,39 @@ export async function transferListRows(companyId: string, where: Prisma.WalletTr
   });
 }
 
+/**
+ * THE PARTNERS' WITHDRAWALS — PARTNER_DRAW wallet movements — as the «المسحوبات» dashboard and its file list them (23/11, F7).
+ * The movements list's own rows (`movementListRows`: the real date, who wrote it, its reversal), plus the names a person reads
+ * (partner, wallet, store) and the decimals of the wallet's currency and of the store's. Nothing is worked out: every figure is the
+ * movement's own.
+ */
+export async function drawListLines(scope: { companyId: string; storeId: string; timeZone: string }, where: Prisma.WalletMovementWhereInput, take: number) {
+  const { companyId, storeId, timeZone } = scope;
+  const rows = await movementListRows(where, take, timeZone);
+  const walletIds = [...new Set(rows.map((m) => m.walletId))];
+  const [wallets, partners, store] = await Promise.all([
+    walletIds.length
+      ? db.wallet.findMany({ where: { companyId, id: { in: walletIds } }, select: { id: true, name: true, country: { select: { minorUnit: true } } } })
+      : Promise.resolve([]),
+    db.partner.findMany({ where: { companyId }, select: { id: true, name: true } }),
+    db.store.findFirst({ where: { id: storeId, companyId }, select: { name: true, country: { select: { currencyCode: true, minorUnit: true } } } }),
+  ]);
+  const walletOf = new Map(wallets.map((w) => [w.id, w]));
+  const partnerOf = new Map(partners.map((p) => [p.id, p.name]));
+  return rows.map((m) => ({
+    ...m,
+    valueInStoreCurrency: typeof m.valueInStoreCurrency === 'number' ? m.valueInStoreCurrency : null,
+    partnerName: (m.partnerId ? partnerOf.get(m.partnerId) : undefined) ?? m.party,
+    walletName: walletOf.get(m.walletId)?.name ?? '—',
+    minorUnit: walletOf.get(m.walletId)?.country.minorUnit ?? 3,
+    storeName: store?.name ?? '—',
+    storeCurrency: store?.country.currencyCode ?? '',
+    storeMinor: store?.country.minorUnit ?? 3,
+  }));
+}
+
+export type DrawListLine = Awaited<ReturnType<typeof drawListLines>>[number];
+
 // ───────────────────────────── the files ─────────────────────────────
 
 export type HistoryAnswer = { ok: true; sheet: HistorySheet; filtersAr: string[] } | { ok: false; refusal: HistoryRefusal };
@@ -204,43 +236,22 @@ export async function transferHistory(scope: Scope, f: HistoryFilters): Promise<
 }
 
 /**
- * THE WITHDRAWALS FILE — the store the person stands in, as the tab's list (its rows are this store's only). The originals the
- * filters pick, and the cancel of each, whatever the cancel's own date.
+ * THE WITHDRAWALS FILE — the store the person stands in, as the «المسحوبات» dashboard lists it (23/11, F7): the PARTNER_DRAW wallet
+ * movements the filters pick (`drawsWhere`), through the dashboard's own `drawListLines` — one description for the screen and the
+ * file. A reversed draw is listed and marked «معكوس», and left out of the totals. The old record (partner_withdrawals, before F7)
+ * is not in the file: it is shown read-only on the dashboard, in a block of its own.
  */
 export async function withdrawalHistory(scope: Scope, f: HistoryFilters): Promise<HistoryAnswer> {
   const { companyId, storeId } = scope;
-  const originals = await db.partnerWithdrawal.findMany({
-    where: withdrawalsWhere(companyId, [storeId], f, scope.timeZone),
-    orderBy: { createdAt: 'desc' },
-    take: HISTORY_ROW_CAP + 1,
-    select: WITHDRAWAL_ROW,
-  });
-  if (originals.length > HISTORY_ROW_CAP) return { ok: false, refusal: TOO_MANY_ROWS };
-  const cancels = originals.length
-    ? await db.partnerWithdrawal.findMany({
-        where: { companyId, storeId, reversalOfId: { in: originals.map((r) => r.id) } },
-        select: WITHDRAWAL_ROW,
-      })
-    : [];
-  const [partners, currencies, store] = await Promise.all([
-    db.partner.findMany({ where: { companyId }, select: { id: true, name: true } }),
-    companyCurrencies(companyId),
-    db.store.findFirst({ where: { id: storeId, companyId }, select: { name: true } }),
-  ]);
-  const minorOf = (code: string) => currencies.find((c) => c.code === code)?.minorUnit ?? 3;
-  const ledger = [...originals, ...cancels].map((r) => ({ ...r, amount: Number(r.amount) }));
-  const rows = await describeWithdrawals(ledger, new Map(partners.map((p) => [p.id, p.name])), minorOf, HISTORY_ROW_CAP);
-  const storeName = store?.name ?? '—';
+  const lines = await drawListLines(scope, drawsWhere(companyId, [storeId], f, scope.timeZone), HISTORY_ROW_CAP + 1);
+  if (lines.length > HISTORY_ROW_CAP) return { ok: false, refusal: TOO_MANY_ROWS };
+  const storeName = lines[0]?.storeName ?? (await db.store.findFirst({ where: { id: storeId, companyId }, select: { name: true } }))?.name ?? '—';
+  const partner = f.partnerId ? await db.partner.findFirst({ where: { id: f.partnerId, companyId }, select: { name: true } }) : null;
   const filtersAr = [
-    ...spanWords(f).map((s) => s.replace('حسب تاريخ الحركة', 'حسب يوم السحب')),
+    ...spanWords(f),
     `المتجر: ${storeName}`,
-    ...(f.partnerId ? [`الشريك: ${partners.find((p) => p.id === f.partnerId)?.name ?? '—'}`] : []),
+    ...(f.partnerId ? [`الشريك: ${partner?.name ?? '—'}`] : []),
     ...(f.currency ? [`العملة: ${f.currency}`] : []),
   ];
-  return { ok: true, sheet: withdrawalSheet(rows.map((r) => ({ ...r, storeName })), scope.timeZone), filtersAr };
+  return { ok: true, sheet: withdrawalSheet(lines, scope.timeZone), filtersAr };
 }
-
-const WITHDRAWAL_ROW = {
-  id: true, storeId: true, partnerId: true, currencyCode: true, amount: true, withdrawnOn: true, fromStanding: true,
-  note: true, reversalOfId: true, reversalReason: true, createdById: true, createdAt: true,
-} as const;

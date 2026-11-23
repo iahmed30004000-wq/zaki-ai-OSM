@@ -29,6 +29,7 @@ import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { COURIER_MONEY_HINT, EXPENSE_HERE_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
 import { afterDraw, type PartnerStatement } from '@/lib/partner-statement-core';
+import { standingPrefill, type StandingRow } from '@/lib/partner-withdrawals-core';
 import { onTheWire, typedFigure } from '@/lib/typed-box';
 import {
   EXPENSE_CATEGORY_AR,
@@ -163,18 +164,27 @@ export function WalletsScreen() {
   const [lookOpen, setLookOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reverseFor, setReverseFor] = useState<Movement | null>(null);
+  /*
+   * «افتح الحركة بالمحفظة» (23/11, F7): the withdrawals dashboard links to `/finance/wallets?wallet=<id>&movement=<id>` — that wallet
+   * opens, and the movement's eye with it when it is on the wallet's list. Read once, from the address the screen was opened at.
+   */
+  const [linked] = useState(() => {
+    const q = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search);
+    return { wallet: q?.get('wallet') ?? '', movement: q?.get('movement') ?? '' };
+  });
   // The eye (22/11): which movement's details are open, read-only.
-  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(() => linked.movement || null);
 
   const loadWallets = useCallback(async () => {
     try {
       const data = await apiJson<{ wallets: WalletRow[] }>('/api/finance/wallets');
       setWallets(data.wallets);
-      setActive((current) => current || data.wallets[0]?.id || '');
+      const asked = data.wallets.some((w) => w.id === linked.wallet) ? linked.wallet : '';
+      setActive((current) => current || asked || data.wallets[0]?.id || '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, []);
+  }, [linked.wallet]);
 
   const loadMovements = useCallback(async (id: string) => {
     if (!id) return;
@@ -999,6 +1009,9 @@ function RecordDialog({
   const [storeValue, setStoreValue] = useState('');
   const [statement, setStatement] = useState<PartnerStatement | null>(null);
   const [statementFailed, setStatementFailed] = useState(false);
+  // The partners' standing amounts (23/11, F7): «من المبلغ الثابت للشريك» fills the amount — a shortcut, never a rule.
+  const [standing, setStanding] = useState<StandingRow[]>([]);
+  const [prefilled, setPrefilled] = useState(false);
   // Read once, when the dialog opens, and only for the people who are offered the kind: nobody else asks the partners' door anything.
   useEffect(() => {
     if (!mayPartners) return;
@@ -1011,6 +1024,12 @@ function RecordDialog({
       .catch(() => {
         if (alive) setStatementFailed(true);
       });
+    // Its failure is quiet: without them the boxes are typed, as they always were.
+    apiJson<{ standing: StandingRow[] }>('/api/finance/partners/withdrawals?part=standing')
+      .then((answer) => {
+        if (alive && answer && Array.isArray(answer.standing)) setStanding(answer.standing);
+      })
+      .catch(() => undefined);
     return () => {
       alive = false;
     };
@@ -1035,7 +1054,29 @@ function RecordDialog({
   const drawValue = drawOtherCurrency ? typedFigure(storeValue) : drawAmount;
   // «بعد هالسحب»: the statement's own subtraction (`afterDraw`), asked of the figures the server sent — nothing is worked out here.
   const hint = isDraw && statement && partner && drawValue !== undefined && drawValue > 0 ? afterDraw(partner, drawValue, statement.minorUnit) : null;
-  const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!drawOtherCurrency || (drawValue !== undefined && drawValue > 0));
+  // 23/11 (F7): «ما يعادله» is optional — empty never blocks; a figure typed there must still be above zero.
+  const valueTyped = drawOtherCurrency && storeValue.trim() !== '';
+  const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!valueTyped || (drawValue !== undefined && drawValue > 0));
+
+  /*
+   * THE PRE-FILL (23/11, F7) — `standingPrefill`. Asked again whenever the partner or the wallet's currency changes: a standing row
+   * of THIS partner in THIS wallet's currency fills the AMOUNT (never «ما يعادله», never a rate); none → the box is what it is today,
+   * emptied only if it was the pre-fill that wrote it. The person may change it; the door checks it exactly as before.
+   */
+  const prefillKey = isDraw ? `${partnerId}|${wallet.currencyCode}|${standing.length}` : '';
+  // Asked while rendering, when the key changes (React's «adjust state on a change of props»): no effect, no second paint.
+  const [seenKey, setSeenKey] = useState('');
+  if (prefillKey !== seenKey) {
+    setSeenKey(prefillKey);
+    const pre = prefillKey ? standingPrefill(standing, partnerId, wallet.currencyCode) : null;
+    if (pre) {
+      setAmount(pre);
+      setPrefilled(true);
+    } else if (prefillKey && prefilled) {
+      setAmount('');
+      setPrefilled(false);
+    }
+  }
 
   return (
     <Modal isOpen onClose={onClose} title={`حركة جديدة — ${wallet.name}`}>
@@ -1055,7 +1096,7 @@ function RecordDialog({
                   walletId: wallet.id,
                   partnerId,
                   amount: onTheWire(amount),
-                  ...(drawOtherCurrency ? { valueInStoreCurrency: onTheWire(storeValue) } : {}),
+                  ...(valueTyped ? { valueInStoreCurrency: onTheWire(storeValue) } : {}),
                   ...(note.trim() ? { note: note.trim() } : {}),
                 }),
               });
@@ -1145,11 +1186,15 @@ function RecordDialog({
             step="0.001"
             min="0.001"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              setPrefilled(false);
+            }}
             required
             className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
             dir="ltr"
           />
+          {isDraw && prefilled && <span className="block text-note text-[var(--sys-muted)] mt-1">من المبلغ الثابت للشريك — تقدر تعدّله</span>}
         </label>
 
         {otherCurrency && (
@@ -1162,19 +1207,18 @@ function RecordDialog({
             store's currency, and a silent 1:1 between dinars and dollars would put a wrong number in a partner's account. */}
         {isDraw && drawOtherCurrency && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ما يعادله بعملة المتجر ({storeCode})</span>
+            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ما يعادله بعملة المتجر ({storeCode}) — اختياري</span>
             <input
               type="number"
               step="0.001"
               min="0.001"
               value={storeValue}
               onChange={(e) => setStoreValue(e.target.value)}
-              required
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
-            <span className="block text-note text-[var(--sys-warning)] mt-1">
-              عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCode}) — اكتب كم بيساوي المبلغ بعملة المتجر، وهاد الرقم اللي بينحسب على نصيب الشريك.
+            <span className="block text-note text-[var(--sys-muted)] mt-1">
+              فاضي = السحب بينسجّل بعملة المحفظة ({wallet.currencyCode}) لحالها، وما بيدخل بحساب نصيب الشريك بعملة المتجر.
             </span>
           </label>
         )}

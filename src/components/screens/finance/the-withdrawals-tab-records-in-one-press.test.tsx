@@ -4,20 +4,28 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import React from 'react';
 
 /**
- * «المسحوبات» ON THE SCREEN (22/11) — jsdom, because nothing behind the login can be opened in a browser here.
+ * «المسحوبات» ON THE SCREEN — jsdom, because nothing behind the login can be opened in a browser here.
  *
- *   · one press «سجّل مسحوب» sends the standing amount (or the figure typed over it), the day, the partner and the currency;
- *   · the totals are the server's, each currency on its own line — the screen adds nothing;
- *   · «إلغاء» asks a reason and sends it; the cancelled row says «ملغى» and offers no second cancel;
- *   · the tab is drawn on «الأرباح» only for who holds `finance.partners`, and the profit tab is the default;
- *   · on a phone nothing carries a fixed width wider than the screen.
+ * 23/11 (F7) — REWRITTEN: a withdrawal is a WALLET MOVEMENT, recorded ONLY at the wallet, in its own currency. Old (22/11): the tab
+ * recorded rows of its own (POST /api/finance/partners/withdrawals, «moves no wallet»), with «المبالغ الثابتة», «مبلغ تاني» and
+ * «إلغاء». New: the tab is a READ-ONLY dashboard over the PARTNER_DRAW movements — per partner per currency, never summed across, a
+ * reversed one struck through, the draws with no store-currency worth said apart — and the old rows sit in a block of their own.
+ * Why: «السحوبات الأساسية بتتسجّل سحب من المحفظة بالعملة … بدون ما يجيني سعر الصرف» and «خلص مكان واحد».
+ *
+ *   · no recording control at all: no date box, no «سجّل مسحوب», no «مبلغ تاني», no «المبالغ الثابتة», and nothing is ever sent;
+ *   · the totals are the server's, each currency on its own line; a currency with draws of no worth carries the line that says so;
+ *   · the tab is drawn on «الأرباح» only for who holds finance.partners, and the profit tab is the default.
  */
 
 const { phone, api } = vi.hoisted(() => ({ phone: { value: true }, api: vi.fn() }));
 vi.mock('@/hooks/useIsPhone', () => ({ useIsPhone: () => phone.value }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => api(...a), apiFetch: vi.fn() }));
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
+  default: ({ children, href, className }: { children: React.ReactNode; href: string; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
 }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -38,51 +46,73 @@ vi.mock('@/hooks/useLiveRefresh', () => ({
   },
 }));
 
-import { WithdrawalsSection } from './WithdrawalsSection';
+import { WithdrawalsSection, UNVALUED_LINE } from './WithdrawalsSection';
 import { FinanceProfitScreen } from '../FinanceProfitScreen';
+
+const movement = (over: Record<string, unknown>) => ({
+  id: 'm1', walletId: 'wu', direction: 'OUT', amount: 250, currencyCode: 'USD', party: 'شريك أ', category: 'PARTNER_DRAW',
+  note: 'سحب شريك أ', partnerId: 'p1', valueInStoreCurrency: 250, createdAt: '2026-11-20T10:00:00.000Z', realDate: '2026-11-20T10:00:00.000Z',
+  registeredOnAnotherDay: false, createdByName: 'سارة', isReversal: false, wasReversed: false, reversalOf: null, reversedBy: null,
+  reversalReason: null, reversalOfId: null, referenceType: 'PARTNER_DRAW', referenceId: 'p1', partnerName: 'شريك أ', walletName: 'صندوق دولار',
+  minorUnit: 2, storeName: 'المتجر الأول', storeCurrency: 'USD', storeMinor: 2, ...over,
+});
+const total = (over: Record<string, unknown>) => ({
+  storeId: 's1', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 0, count: 0, minorUnit: 2,
+  valueTotal: 0, valueCount: 0, unvaluedTotal: 0, unvaluedCount: 0, ...over,
+});
 
 const BOOK = {
   storeId: 's1',
+  storeCurrency: { code: 'USD', minorUnit: 2 },
   partners: [
     { id: 'p1', name: 'شريك أ', isActive: true },
     { id: 'p2', name: 'شريك ب', isActive: true },
   ],
   currencies: [
     { code: 'JOD', ar: 'دينار أردني', minorUnit: 3 },
-    { code: 'SYP', ar: 'ليرة سورية', minorUnit: 2 },
     { code: 'USD', ar: 'دولار أمريكي', minorUnit: 2 },
-  ],
-  standing: [
-    { partnerId: 'p1', currencyCode: 'USD', amount: 250 },
-    { partnerId: 'p1', currencyCode: 'JOD', amount: 70 },
+    { code: 'USDT', ar: 'USDT', minorUnit: 2 },
   ],
   rows: [
-    { id: 'w1', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', minorUnit: 2, amount: 250, withdrawnOn: '2026-11-20', fromStanding: true, note: null, createdAt: '2026-11-20T10:00:00.000Z', createdByName: 'سارة', cancelled: null },
-    { id: 'w2', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'JOD', minorUnit: 3, amount: 30, withdrawnOn: '2026-11-21', fromStanding: false, note: null, createdAt: '2026-11-21T10:00:00.000Z', createdByName: 'سارة', cancelled: { reason: 'غلط', at: '2026-11-21T11:00:00.000Z', byName: 'سارة' } },
+    movement({}),
+    movement({
+      id: 'm2', walletId: 'wj', amount: 30, currencyCode: 'JOD', minorUnit: 3, valueInStoreCurrency: 42.3, walletName: 'دينار', wasReversed: true,
+      reversedBy: { id: 'm3', reversalReason: 'غلط', createdAt: '2026-11-21T11:00:00.000Z' },
+    }),
+    movement({ id: 'm4', walletId: 'wt', amount: 1000, currencyCode: 'USDT', valueInStoreCurrency: null, walletName: 'محفظة USDT' }),
   ],
   totals: [
-    { partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 250, count: 1, minorUnit: 2 },
-    { partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'JOD', total: 70, count: 1, minorUnit: 3 },
+    total({ currencyCode: 'USD', total: 250, count: 1, valueTotal: 250, valueCount: 1 }),
+    total({ currencyCode: 'JOD', total: 1070, count: 2, minorUnit: 3, valueTotal: 98.7, valueCount: 1, unvaluedTotal: 1000, unvaluedCount: 1 }),
+    total({ currencyCode: 'USDT', total: 1000, count: 1, unvaluedTotal: 1000, unvaluedCount: 1 }),
   ],
   byStore: [
-    { storeId: 's1', storeName: 'المتجر الأول', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 250, count: 1, minorUnit: 2 },
-    { storeId: 's2', storeName: 'المتجر التاني', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 5, count: 1, minorUnit: 2 },
+    { ...total({ currencyCode: 'USD', total: 250, count: 1 }), storeName: 'المتجر الأول', storeCurrency: 'USD', storeMinor: 2 },
+    { ...total({ storeId: 's2', currencyCode: 'USD', total: 5, count: 1 }), storeName: 'المتجر التاني', storeCurrency: 'USD', storeMinor: 2 },
+    { ...total({ storeId: 's2', currencyCode: 'USDT', total: 700, count: 1, unvaluedTotal: 700, unvaluedCount: 1 }), storeName: 'المتجر التاني', storeCurrency: 'USD', storeMinor: 2 },
+  ],
+  legacyTotals: [{ partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 999, count: 1, minorUnit: 2 }],
+  legacy: [
+    { id: 'L1', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', minorUnit: 2, amount: 999, withdrawnOn: '2026-11-22', fromStanding: true, note: 'سجل قديم', createdAt: '2026-11-22T10:00:00.000Z', createdByName: 'سارة', cancelled: null },
   ],
 };
 
-let sent: { url: string; method: string; body: Record<string, unknown> }[] = [];
+let sent: { url: string; method: string }[] = [];
+let gets: string[] = [];
 
 beforeEach(() => {
   vi.clearAllMocks();
   sent = [];
+  gets = [];
   phone.value = true;
   user = { role: 'SUPER_ADMIN', permissions: [] };
-  api.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+  api.mockImplementation(async (url: string, init?: { method?: string }) => {
     if (init?.method) {
-      sent.push({ url, method: init.method, body: JSON.parse(String(init.body ?? 'null')) });
+      sent.push({ url, method: init.method });
       return {};
     }
-    if (url === '/api/finance/partners/withdrawals') return BOOK;
+    gets.push(url);
+    if (url.startsWith('/api/finance/partners/withdrawals')) return BOOK;
     if (url === '/api/finance/partners/statement') return { state: 'NO_PARTNERS', lines: [], draws: [], trust: { level: 'STATED', ar: '' }, totals: {}, netProfit: 0, uncounted: 0 };
     throw new Error('unexpected ' + url);
   });
@@ -103,110 +133,87 @@ const draw = async () => {
   render(<WithdrawalsSection />);
   await screen.findByText('سجل المسحوبات');
 };
+const totalsCard = () => {
+  let card = screen.getByText('مجموع المسحوبات بهالمتجر') as HTMLElement;
+  while (!card.querySelector('ul')) card = card.parentElement!;
+  return card;
+};
 
-describe('«سجّل مسحوب» — one press', () => {
-  it('sends the standing amount as it stands, with the day, the partner and the currency', async () => {
+describe('the tab records nothing — a withdrawal is recorded at its wallet', () => {
+  it('NEGATIVE: no date box, no «سجّل مسحوب», no «مبلغ تاني», no «المبالغ الثابتة», no «إلغاء» — and nothing is ever sent', async () => {
     await draw();
-    const presses = screen.getAllByRole('button', { name: 'سجّل مسحوب' });
-    expect(presses).toHaveLength(2); // one per standing currency of «شريك أ»; «شريك ب» has none
-    fireEvent.change(screen.getByLabelText('تاريخ السحب'), { target: { value: '2026-11-22' } });
-    fireEvent.click(presses[0]);
-    await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]).toEqual({
-      url: '/api/finance/partners/withdrawals',
-      method: 'POST',
-      body: { partnerId: 'p1', currencyCode: 'USD', amount: '250', withdrawnOn: '2026-11-22' },
-    });
+    for (const name of ['سجّل مسحوب', 'مبلغ تاني', 'المبالغ الثابتة', 'إلغاء']) expect(screen.queryAllByRole('button', { name })).toHaveLength(0);
+    expect(screen.queryByLabelText('تاريخ السحب')).toBeNull();
+    expect(screen.queryByLabelText('تاريخ الحركة الفعلي')).toBeNull();
+    expect(screen.queryByText(/ما في مبلغ ثابت/)).toBeNull();
+    expect(document.querySelectorAll('input[type="number"]')).toHaveLength(0);
+    expect(sent).toHaveLength(0);
   });
 
-  it('a figure typed over the standing one is what is sent for that press', async () => {
+  it('it says where a withdrawal is recorded, and links there', async () => {
     await draw();
-    fireEvent.change(screen.getByLabelText('المبلغ (JOD)'), { target: { value: '80.5' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'سجّل مسحوب' })[1]);
-    await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0].body).toMatchObject({ partnerId: 'p1', currencyCode: 'JOD', amount: '80.5' });
-  });
-
-  it('a partner with no standing amount is told so, and «مبلغ تاني» opens a form for any currency of the stores', async () => {
-    await draw();
-    expect(screen.getByText('ما في مبلغ ثابت — حطّه من «المبالغ الثابتة» أو سجّل «مبلغ تاني».')).toBeTruthy();
-    fireEvent.click(screen.getAllByRole('button', { name: 'مبلغ تاني' })[1]);
-    const dialog = await screen.findByRole('dialog');
-    const options = within(dialog).getAllByRole('option').map((o) => o.getAttribute('value'));
-    expect(options).toEqual(['JOD', 'SYP', 'USD']);
-    fireEvent.change(within(dialog).getByLabelText('العملة *'), { target: { value: 'SYP' } });
-    fireEvent.change(within(dialog).getByLabelText('المبلغ *'), { target: { value: '500000' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'سجّل المسحوب' }));
-    await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0].body).toMatchObject({ partnerId: 'p2', currencyCode: 'SYP', amount: '500000' });
-  });
-
-  it('a refusal from the server is said on the screen', async () => {
-    await draw();
-    api.mockImplementationOnce(async () => {
-      throw new Error('المبلغ لازم يكون أكبر من صفر.');
-    });
-    fireEvent.click(screen.getAllByRole('button', { name: 'سجّل مسحوب' })[0]);
-    expect(await screen.findByText('المبلغ لازم يكون أكبر من صفر.')).toBeTruthy();
+    expect(screen.getByText(/كل مسحوب حركة صادرة من محفظة/)).toBeTruthy();
+    expect((screen.getByText('المحافظ') as HTMLAnchorElement).getAttribute('href')).toBe('/finance/wallets');
   });
 });
 
-describe('the standing amounts', () => {
-  it('one box per currency of the stores; the empty one is sent empty (it clears)', async () => {
+describe('the dashboard', () => {
+  it('each partner PER CURRENCY, on its own line — dollars, dinars and USDT never summed', async () => {
     await draw();
-    fireEvent.click(screen.getAllByRole('button', { name: 'المبالغ الثابتة' })[0]);
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('دولار أمريكي (USD)'), { target: { value: '300' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'احفظ المبالغ' }));
-    await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]).toEqual({
-      url: '/api/finance/partners/withdrawals',
-      method: 'PUT',
-      body: {
-        partnerId: 'p1',
-        amounts: [
-          { currencyCode: 'JOD', amount: '70' },
-          { currencyCode: 'SYP', amount: '' },
-          { currencyCode: 'USD', amount: '300' },
-        ],
-      },
-    });
-  });
-});
-
-describe('the totals and the list', () => {
-  it('each currency on its own line — the screen adds nothing across currencies', async () => {
-    await draw();
-    let card = screen.getByText('مجموع المسحوبات بهالمتجر') as HTMLElement;
-    while (!card.querySelector('ul')) card = card.parentElement!;
-    const lines = within(card).getAllByRole('listitem');
-    expect(lines).toHaveLength(2);
-    expect(lines[0].textContent).toContain('USD');
-    expect(lines[1].textContent).toContain('JOD');
+    const lines = within(totalsCard()).getAllByRole('listitem');
+    expect(lines).toHaveLength(3);
+    expect(lines.map((l) => (l.textContent!.match(/USDT|JOD|USD/) ?? [''])[0])).toEqual(['USD', 'JOD', 'USDT']);
+    expect(totalsCard().textContent).not.toContain('2,320');
     expect(screen.getByText('المتجر التاني')).toBeTruthy();
   });
 
-  it('«إلغاء» asks a reason and sends it; a cancelled row says «ملغى» and offers no second cancel', async () => {
+  it('a currency with draws of no store-currency worth carries the line, per currency; the one with a worth says it', async () => {
     await draw();
-    expect(screen.getAllByText('ملغى').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('أُلغي: غلط').length).toBeGreaterThan(0);
-    const cancels = screen.getAllByRole('button', { name: 'إلغاء' });
-    // The list is drawn as a table and as cards (the kit's `Rows`): every «إلغاء» is the live row's, none the cancelled one's.
-    expect(cancels.length).toBeGreaterThan(0);
-    for (const b of cancels) expect((b.closest('tr, li, article') as HTMLElement | null)?.textContent ?? '').not.toContain('ملغى');
-    fireEvent.click(cancels[0]);
-    const dialog = await screen.findByRole('dialog');
-    const press = within(dialog).getByRole('button', { name: 'ألغِ المسحوب' }) as HTMLButtonElement;
-    expect(press.disabled).toBe(true);
-    fireEvent.change(within(dialog).getByLabelText('سبب الإلغاء *'), { target: { value: 'انسجّل بالغلط' } });
-    fireEvent.click(press);
-    await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]).toEqual({ url: '/api/finance/partners/withdrawals', method: 'PATCH', body: { withdrawalId: 'w1', reason: 'انسجّل بالغلط' } });
+    const [usd, jod, usdt] = within(totalsCard()).getAllByRole('listitem');
+    expect(usd.textContent).not.toContain(UNVALUED_LINE);
+    expect(jod.textContent).toContain(UNVALUED_LINE);
+    expect(jod.textContent).toContain('مكتوب جنبها ما يعادلها');
+    expect(usdt.textContent).toContain(UNVALUED_LINE);
+    expect(usdt.textContent).not.toContain('مكتوب جنبها');
   });
 
-  it('says it is a record: no wallet moves and the profit is unchanged', async () => {
+  it('«المسحوبات بكل المتاجر» marks the draws with no store value too, per store and currency', async () => {
     await draw();
-    expect(screen.getByText('سجلّ لِلّي أخده كل شريك، بالمتجر والعملة. ما بيحرّك محفظة، وما بيغيّر الربح ولا حساب الشركاء.')).toBeTruthy();
+    let card = screen.getByText('المسحوبات بكل المتاجر') as HTMLElement;
+    while (!card.querySelector('ul')) card = card.parentElement!;
+    const rows = [...card.querySelectorAll('li > div')] as HTMLElement[];
+    const usdt = rows.find((r) => r.textContent!.includes('USDT'))!;
+    expect(usdt.textContent).toContain(UNVALUED_LINE);
+    expect(rows.filter((r) => r.textContent!.includes(UNVALUED_LINE))).toHaveLength(1);
+  });
+
+  it('a reversed draw is listed struck through and marked, the eye opens it, and a link opens it in its wallet', async () => {
+    await draw();
+    expect(screen.getAllByText('معكوس').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('انعكس: غلط').length).toBeGreaterThan(0);
+    expect(document.querySelector('.line-through')?.textContent).toContain('30');
+    const links = screen.getAllByText('افتح الحركة بالمحفظة') as HTMLAnchorElement[];
+    expect(links[0].getAttribute('href')).toBe('/finance/wallets?wallet=wu&movement=m1');
+    fireEvent.click(screen.getAllByRole('button', { name: 'تفاصيل الحركة' })[0]);
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('تفاصيل الحركة')).toBeTruthy();
+    expect(panel.textContent).toContain('سحب شريك');
+  });
+
+  it('the old record sits in its own block, read-only, said to be counted nowhere', async () => {
+    await draw();
+    expect(screen.getByText('قديمة — غير مربوطة بمحفظة')).toBeTruthy();
+    expect(screen.getByText(/ما بتنحسب بأي مجموع/)).toBeTruthy();
+    expect(screen.getAllByText('سجل قديم').length).toBeGreaterThan(0);
+    expect(screen.getByText('شريك أ — مكتوب بالسجل القديم')).toBeTruthy();
+    expect(totalsCard().textContent).not.toContain('999');
+  });
+
+  it('a span on the real date asks the server for it; «كل السجل» asks for everything', async () => {
+    await draw();
+    expect(gets[0]).toBe('/api/finance/partners/withdrawals');
+    fireEvent.click(screen.getByRole('radio', { name: 'فترة' }));
+    await waitFor(() => expect(gets.some((g) => /\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(g))).toBe(true));
   });
 
   it('on a phone nothing carries a fixed width wider than the screen', async () => {

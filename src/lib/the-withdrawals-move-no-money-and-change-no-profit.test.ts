@@ -10,6 +10,10 @@ import { stripComments } from './guard-source';
  *   · the profit and the partners' statement do not read them: their figures are what they were (the golden and statement tests
  *     beside them are unchanged, and none of their files is edited by this work);
  *   · a withdrawal is never edited or deleted — only created; a standing amount may be cleared (it is a setting, not money).
+ *
+ * 23/11 (F7): a withdrawal is now a wallet movement, written ONLY by the draws door (`/api/finance/partners/draws`, lib/wallets
+ * `recordMovement`). These modules still move no money themselves: the dashboard reads the movements, the tab's press asks the draws
+ * door over the network, and the lib writes nothing but the standing amounts.
  */
 
 const root = process.cwd();
@@ -40,12 +44,18 @@ describe('a withdrawal moves no money', () => {
     expect(s).not.toMatch(/recordMovement|reverseMovement/);
   });
 
-  it('the new modules write only their own two tables — and a withdrawal is only ever created', () => {
+  /*
+   * 23/11 (F7) — UPDATED. Old: the lib wrote `partnerWithdrawal.create` (the record) and the standing amounts. New: the lib writes
+   * ONLY the standing amounts — a withdrawal is a wallet movement written by the draws door, and the old record is never written
+   * again (its two doors are retired). Why: «والحركات تكون من المحافظ … خلص مكان واحد».
+   */
+  it('the new modules write only the standing amounts — the old record is never written again', () => {
     const lib = src('src/lib/partner-withdrawals.ts');
     const writes = [...lib.matchAll(/\b(\w+)\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/g)].map((m) => `${m[1]}.${m[2]}`);
     expect(writes.length).toBeGreaterThan(0);
-    for (const w of writes) expect(w).toMatch(/^(partnerWithdrawal\.create|partnerStandingAmount\.(upsert|deleteMany))$/);
-    expect(lib).not.toMatch(/partnerWithdrawal\.(update|updateMany|upsert|delete|deleteMany)\(/);
+    for (const w of writes) expect(w).toMatch(/^partnerStandingAmount\.(upsert|deleteMany)$/);
+    expect(lib).not.toMatch(/partnerWithdrawal\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(/);
+    expect(src('src/app/api/finance/partners/withdrawals/route.ts')).not.toMatch(/partnerWithdrawal/);
     expect(lib).not.toMatch(/\$executeRaw/);
   });
 

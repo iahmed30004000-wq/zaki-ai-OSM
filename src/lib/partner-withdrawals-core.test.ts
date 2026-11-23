@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   amountOrRefusal,
   currencyOrRefusal,
-  dayOrRefusal,
   isRefusal,
   knownCurrencies,
   standingRows,
@@ -81,21 +80,7 @@ describe('the currency', () => {
   });
 });
 
-describe('the day', () => {
-  it('a real yyyy-MM-dd not after the latest', () => {
-    expect(dayOrRefusal('2026-11-22', '2026-11-23')).toBe('2026-11-22');
-    expect(codeOf(dayOrRefusal('2026-02-30', '2026-11-23'))).toBe('INVALID_DAY');
-    expect(codeOf(dayOrRefusal('22/11/2026', '2026-11-23'))).toBe('INVALID_DAY');
-    expect(codeOf(dayOrRefusal(undefined, '2026-11-23'))).toBe('INVALID_DAY');
-    expect(codeOf(dayOrRefusal('2026-11-24', '2026-11-23'))).toBe('DAY_IN_FUTURE');
-  });
-  it('NEGATIVE: an impossible day is INVALID_DAY, never a thrown RangeError (review of #458)', () => {
-    for (const d of ['2026-13-01', '2026-00-10', '2026-11-99', '2026-11-00', '0000-00-00']) {
-      expect(() => dayOrRefusal(d, '2026-11-23'), d).not.toThrow();
-      expect(codeOf(dayOrRefusal(d, '2026-11-23')), d).toBe('INVALID_DAY');
-    }
-  });
-});
+// 23/11 (F7): «the day» (`dayOrRefusal`) went with the retired POST of the old record — a draw carries its wallet movement's dates.
 
 const row = (id: string, partnerId: string, currencyCode: string, amount: number, extra: Partial<WithdrawalLedgerRow> = {}): WithdrawalLedgerRow => ({
   id,

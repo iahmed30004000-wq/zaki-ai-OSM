@@ -84,18 +84,6 @@ export function amountOrRefusal(amount: unknown, currency: KnownCurrency): numbe
   return n;
 }
 
-/** `yyyy-MM-dd`, a real day, and not after `latest` (tomorrow, so a time zone never refuses today). */
-export function dayOrRefusal(value: unknown, latest: string): string | Refusal {
-  const s = typeof value === 'string' ? value.trim() : '';
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  // An impossible day (month 13, day 99) is an Invalid Date, whose `toISOString` THROWS — read its time first.
-  const at = m ? new Date(`${s}T00:00:00Z`) : null;
-  const real = !!at && !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === s;
-  if (!real) return refusal(400, 'INVALID_DAY', 'اكتب تاريخ السحب.');
-  if (s > latest) return refusal(400, 'DAY_IN_FUTURE', 'تاريخ السحب ما بيكون بالمستقبل.');
-  return s;
-}
-
 export const isRefusal = (x: unknown): x is Refusal =>
   typeof x === 'object' && x !== null && 'errorAr' in x && 'code' in x && 'status' in x;
 
@@ -149,6 +137,100 @@ export function withdrawalTotals(rows: readonly WithdrawalLedgerRow[], minorOf: 
     currencyCode: t.currencyCode,
     total: fromMinorUnits(t.units, minorOf(t.currencyCode)),
     count: t.count,
+  }));
+}
+
+// ─────────────── 23/11 (F7): a withdrawal IS a wallet movement, in the wallet's own currency ───────────────
+//
+// «السحوبات الأساسية بتتسجّل سحب من المحفظة بالعملة. مثال أحمد سحب 1000 USDT و1000 دينار و1000 ليرة وهكذا، بدون ما يجيني سعر الصرف»
+// (the owner). The standing amount is only a shortcut for the AMOUNT; no equivalent is kept or worked out here.
+
+/** A standing amount as the wallet form reads it: per (partner, currency). */
+export interface StandingRow {
+  partnerId: string;
+  currencyCode: string;
+  amount: number;
+}
+
+/**
+ * «من المبلغ الثابت للشريك — تقدر تعدّله» — THE ONE RULE OF THE PRE-FILL: the standing row of THIS partner in THE WALLET's currency
+ * fills the amount; none → null, and the box stays as today (typed). A row in another currency is not this one and is ignored — a
+ * dinar figure never fills a dollar wallet. Never a rate, never an equivalent.
+ */
+export function standingPrefill(standing: readonly StandingRow[], partnerId: string, walletCurrency: string): string | null {
+  if (!partnerId || !walletCurrency) return null;
+  const row = standing.find((s) => s.partnerId === partnerId && s.currencyCode === walletCurrency);
+  return row && row.amount > 0 ? String(row.amount) : null;
+}
+
+/** One draw (a PARTNER_DRAW wallet movement, the original OUT row) as the dashboard's totals read it. */
+export interface DrawLedgerRow {
+  storeId: string;
+  partnerId: string;
+  currencyCode: string;
+  amount: number;
+  /** What it is worth in the STORE's currency — only when one was typed; null = a draw in its own currency alone. */
+  valueInStoreCurrency: number | null | undefined;
+  /** Taken back through the wallet's reversal door: the pair counts as nothing (the partners' statement's own rule). */
+  reversed: boolean;
+}
+
+export interface DrawTotal {
+  storeId: string;
+  partnerId: string;
+  currencyCode: string;
+  /** In the WALLET's currency — every standing draw of the key. */
+  total: number;
+  count: number;
+  /** The draws of the key that carry a store-currency worth, and that worth — the figure the partners' statement counts. */
+  valueTotal: number;
+  valueCount: number;
+  /** The draws with NO worth in the store's currency, in the wallet's currency: counted in no share (the statement's «uncounted»). */
+  unvaluedTotal: number;
+  unvaluedCount: number;
+}
+
+/**
+ * THE DASHBOARD'S TOTALS — per (store, partner, wallet currency), in whole minor units; a reversed draw is left out. Two currencies
+ * are never added: the wallet currency is part of the key; the store-currency worth is summed beside it only over the draws that
+ * carry one, and the others are said apart (`unvalued…`) — nothing is converted.
+ */
+export function drawTotals(
+  rows: readonly DrawLedgerRow[],
+  minorOf: (code: string) => number,
+  storeMinorOf: (storeId: string) => number
+): DrawTotal[] {
+  type Acc = { storeId: string; partnerId: string; currencyCode: string; units: number; count: number; valueUnits: number; valueCount: number; unvaluedUnits: number; unvaluedCount: number };
+  const acc = new Map<string, Acc>();
+  for (const r of rows) {
+    if (r.reversed) continue;
+    const key = `${r.storeId}|${r.partnerId}|${r.currencyCode}`;
+    const cur =
+      acc.get(key) ??
+      { storeId: r.storeId, partnerId: r.partnerId, currencyCode: r.currencyCode, units: 0, count: 0, valueUnits: 0, valueCount: 0, unvaluedUnits: 0, unvaluedCount: 0 };
+    const units = toMinorUnits(r.amount, minorOf(r.currencyCode));
+    cur.units += units;
+    cur.count += 1;
+    // null or undefined = no worth typed: unvalued, as the partners' statement reads it.
+    if (r.valueInStoreCurrency === null || r.valueInStoreCurrency === undefined) {
+      cur.unvaluedUnits += units;
+      cur.unvaluedCount += 1;
+    } else {
+      cur.valueUnits += toMinorUnits(r.valueInStoreCurrency, storeMinorOf(r.storeId));
+      cur.valueCount += 1;
+    }
+    acc.set(key, cur);
+  }
+  return [...acc.values()].map((t) => ({
+    storeId: t.storeId,
+    partnerId: t.partnerId,
+    currencyCode: t.currencyCode,
+    total: fromMinorUnits(t.units, minorOf(t.currencyCode)),
+    count: t.count,
+    valueTotal: fromMinorUnits(t.valueUnits, storeMinorOf(t.storeId)),
+    valueCount: t.valueCount,
+    unvaluedTotal: fromMinorUnits(t.unvaluedUnits, minorOf(t.currencyCode)),
+    unvaluedCount: t.unvaluedCount,
   }));
 }
 
