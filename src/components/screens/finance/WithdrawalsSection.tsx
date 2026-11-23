@@ -252,6 +252,11 @@ export function WithdrawalsSection() {
                         <span className="ms-auto font-bold text-[var(--sys-heading)]">
                           <Money value={t.total} currency={t.currencyCode} minorUnit={t.minorUnit} />
                         </span>
+                        {t.unvaluedCount > 0 && (
+                          <span className="w-full text-end text-[var(--sys-warning)]">
+                            {UNVALUED_LINE} (<Money value={t.unvaluedTotal} currency={t.currencyCode} minorUnit={t.minorUnit} />)
+                          </span>
+                        )}
                       </div>
                     ))}
                   </li>

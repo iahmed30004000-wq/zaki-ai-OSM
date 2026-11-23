@@ -89,6 +89,7 @@ const BOOK = {
   byStore: [
     { ...total({ currencyCode: 'USD', total: 250, count: 1 }), storeName: 'المتجر الأول', storeCurrency: 'USD', storeMinor: 2 },
     { ...total({ storeId: 's2', currencyCode: 'USD', total: 5, count: 1 }), storeName: 'المتجر التاني', storeCurrency: 'USD', storeMinor: 2 },
+    { ...total({ storeId: 's2', currencyCode: 'USDT', total: 700, count: 1, unvaluedTotal: 700, unvaluedCount: 1 }), storeName: 'المتجر التاني', storeCurrency: 'USD', storeMinor: 2 },
   ],
   legacyTotals: [{ partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'USD', total: 999, count: 1, minorUnit: 2 }],
   legacy: [
@@ -174,6 +175,16 @@ describe('the dashboard', () => {
     expect(jod.textContent).toContain('مكتوب جنبها ما يعادلها');
     expect(usdt.textContent).toContain(UNVALUED_LINE);
     expect(usdt.textContent).not.toContain('مكتوب جنبها');
+  });
+
+  it('«المسحوبات بكل المتاجر» marks the draws with no store value too, per store and currency', async () => {
+    await draw();
+    let card = screen.getByText('المسحوبات بكل المتاجر') as HTMLElement;
+    while (!card.querySelector('ul')) card = card.parentElement!;
+    const rows = [...card.querySelectorAll('li > div')] as HTMLElement[];
+    const usdt = rows.find((r) => r.textContent!.includes('USDT'))!;
+    expect(usdt.textContent).toContain(UNVALUED_LINE);
+    expect(rows.filter((r) => r.textContent!.includes(UNVALUED_LINE))).toHaveLength(1);
   });
 
   it('a reversed draw is listed struck through and marked, the eye opens it, and a link opens it in its wallet', async () => {

@@ -45,7 +45,7 @@ const no = (status: number, code: string, errorAr: string): { ok: false; refusal
 export const WITHDRAWALS_MOVED: Refusal = {
   status: 410,
   code: 'WITHDRAWALS_MOVED_TO_WALLET',
-  errorAr: 'المسحوب صار حركة محفظة: سجّله من «سجّل مسحوب» هون أو من المحفظة («حركة جديدة» ← «سحب شريك»)، وإلغاؤه بقيد عكسي من المحفظة.',
+  errorAr: 'المسحوب صار حركة محفظة: سجّله من المحفظة («حركة جديدة» ← «سحب شريك»)، وإلغاؤه بقيد عكسي من المحفظة.',
 };
 
 /** The currencies the company's stores use: its countries' and its wallets'. */
@@ -133,7 +133,7 @@ export async function withdrawalsBook(scope: {
             partnerId: m.partnerId,
             currencyCode: m.currencyCode,
             amount: Number(m.amount),
-            valueInStoreCurrency: m.valueInStoreCurrency === null ? null : Number(m.valueInStoreCurrency),
+            valueInStoreCurrency: m.valueInStoreCurrency === null || m.valueInStoreCurrency === undefined ? null : Number(m.valueInStoreCurrency),
             reversed: !!m.reversedBy,
           }]
         : []

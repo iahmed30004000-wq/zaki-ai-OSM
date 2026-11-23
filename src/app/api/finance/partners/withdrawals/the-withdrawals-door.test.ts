@@ -107,14 +107,14 @@ const { tables, db, requireContext, logAudit, current, writes } = vi.hoisted(() 
   for (const name of Object.keys(tables) as (keyof typeof tables)[]) db[name] = model(name);
   db.$queryRaw = async () => [];
   db.$transaction = async (fn: (tx: unknown) => unknown) => fn(db);
-  return { tables, db, writes, requireContext: vi.fn(), logAudit: vi.fn(), current: { user: null as unknown as SessionUser } };
+  return { tables, db, writes, requireContext: vi.fn(), logAudit: vi.fn(), current: { user: null as unknown as SessionUser, reach: null as null | { countryIds: string[]; storeIds?: string[] } } };
 });
 
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/geo-context', () => ({
   requireContext: (...a: unknown[]) => requireContext(...a),
-  geoReach: async () => null,
+  geoReach: async () => current.reach,
 }));
 vi.mock('@/lib/profit-to-date', () => ({
   profitToDate: async () => ({ summary: { netProfit: 1000 }, deliveredOrders: [] }),
@@ -202,6 +202,7 @@ const seeded = (over: Row) => {
 beforeEach(async () => {
   vi.clearAllMocks();
   for (const k of Object.keys(tables) as (keyof typeof tables)[]) tables[k] = [] as never;
+  current.reach = null;
   writes.count = 0;
   tables.partner.push(
     { id: P1, companyId: 'c1', name: 'شريك أ', isActive: true, sortOrder: 0, sharePercent: 60, createdAt: new Date(0) },
@@ -350,6 +351,34 @@ describe('the dashboard reads the wallet movements', () => {
     expect(early.totals.map((t: Row) => t.total)).toEqual([11]);
     const late = (await book('?from=2026-11-20&to=2026-11-20')).body;
     expect(late.rows.map((r: Row) => r.id)).toEqual(['b']);
+  });
+
+  it('NEGATIVE: a person limited to store A never sees store B’s totals (the reach rule of the pickers, geoReach)', async () => {
+    seeded({ amount: 10, valueInStoreCurrency: 10 });
+    seeded({ walletId: WX, amount: 5, valueInStoreCurrency: 5 }); // store B
+    expect((await book()).body.byStore.map((t: Row) => t.storeId).sort()).toEqual(['s1', 's2']);
+    current.reach = { countryIds: ['US'], storeIds: ['s1'] };
+    const { body } = await book();
+    expect(body.byStore.map((t: Row) => t.storeId)).toEqual(['s1']);
+    expect(JSON.stringify(body)).not.toContain('المتجر التاني');
+  });
+
+  it('the store value is summed in whole minor units: 0.1 + 0.2 is exactly 0.3, here and in the statement', async () => {
+    seeded({ amount: 0.1, valueInStoreCurrency: 0.1 });
+    seeded({ amount: 0.2, valueInStoreCurrency: 0.2 });
+    const t = (await book()).body.totals[0];
+    expect(t.total).toBe(0.3);
+    expect(t.valueTotal).toBe(0.3);
+    const statement = await partnerStatement({ companyId: 'c1', storeId: 's1', currency: 'USD', minorUnit: 2 });
+    expect(statement.lines.find((l) => l.id === P1)!.draws).toBe(0.3);
+  });
+
+  it('each value is turned to whole cents FIRST, as the statement does: two old 0.005 values are 1 cent each — 0.32, never a float 0.31', async () => {
+    // The column holds three decimals; a dollar store keeps two. Per row: 1 + 1 + 10 + 20 cents = 0.32 (a float sum would round 31.0…).
+    for (const v of [0.005, 0.005, 0.1, 0.2]) seeded({ amount: v, valueInStoreCurrency: v });
+    expect((await book()).body.totals[0].valueTotal).toBe(0.32);
+    const statement = await partnerStatement({ companyId: 'c1', storeId: 's1', currency: 'USD', minorUnit: 2 });
+    expect(statement.lines.find((l) => l.id === P1)!.draws).toBe(0.32);
   });
 
   it('NEGATIVE: a span that runs backwards is an Arabic refusal, and nothing is read as a book', async () => {
