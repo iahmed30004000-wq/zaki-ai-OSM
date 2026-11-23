@@ -153,6 +153,25 @@ describe('«إخفاء الشرح» on /settings/geo', () => {
     keptAlways();
   });
 
+  it('NEGATIVE: a write that throws on the press escapes nowhere — the page folds and the next press unfolds', async () => {
+    await draw();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    const escaped: unknown[] = [];
+    const onError = (e: ErrorEvent) => { escaped.push(e.error); e.preventDefault(); };
+    window.addEventListener('error', onError);
+    try {
+      expect(() => fireEvent.click(toggle('إخفاء الشرح'))).not.toThrow();
+      expect(screen.queryByText(DELIVERY_SAID)).toBeNull();
+      expect(screen.queryByText(BENCH_SAID)).toBeNull();
+      keptAlways();
+      expect(() => fireEvent.click(toggle('إظهار الشرح'))).not.toThrow();
+      expect(screen.getByText(DELIVERY_SAID)).toBeTruthy();
+    } finally {
+      window.removeEventListener('error', onError);
+    }
+    expect(escaped).toEqual([]);
+  });
+
   it('the add-store form keeps its «منصّة تجريب» sentence: the fold is for the store rows', async () => {
     await draw();
     fireEvent.click(toggle('إخفاء الشرح'));
