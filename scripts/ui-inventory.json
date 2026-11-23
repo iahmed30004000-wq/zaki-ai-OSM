@@ -1399,7 +1399,7 @@
     "tabs": 0
   },
   "src/components/screens/GeoSettingsScreen.tsx": {
-    "buttons": 13,
+    "buttons": 14,
     "inputs": 7,
     "columns": 0,
     "cards": 6,
