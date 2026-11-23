@@ -2305,13 +2305,13 @@
     "iconButtons": 6
   },
   "src/components/screens/finance/WithdrawalsSection.tsx": {
-    "buttons": 7,
-    "inputs": 9,
+    "buttons": 0,
+    "inputs": 0,
     "columns": 14,
     "cards": 7,
-    "modals": 2,
+    "modals": 0,
     "icons": 1,
-    "links": 1,
+    "links": 2,
     "tabs": 0,
     "iconButtons": 1
   },

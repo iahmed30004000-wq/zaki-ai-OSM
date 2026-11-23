@@ -25,9 +25,11 @@ import { recordMovement, walletBalance } from '@/lib/wallets';
  * asks `finance.partners` again for this category.
  *
  * THE CURRENCY. The profit is in the STORE's currency and a wallet may hold another one. A draw from a wallet in the store's own
- * currency is worth its amount. From any other it MUST carry «ما يعادله بعملة المتجر», and without it nothing is written: a silent
- * 1:1 between dinars and dollars would put a wrong number in a partner's ledger. Neither figure is rounded behind the person's back:
- * one with more decimals than its currency has is refused.
+ * currency is worth its amount. From any other, «ما يعادله بعملة المتجر» is OPTIONAL (23/11, F7 — «أحمد سحب 1000 USDT و1000 دينار
+ * و1000 ليرة … بدون ما يجيني سعر الصرف», the owner): with it, the draw counts against the partner's share as before; without it, the
+ * draw is written in its own currency with NO store value, and the partners' statement counts it in no share (its «uncounted») —
+ * never a silent 1:1 between dinars and dollars. Neither figure is rounded behind the person's back: one with more decimals than its
+ * currency has is refused.
  *
  * THE SAME PRESS TWICE. Two identical requests (a double tap, a retry after a slow answer) must not draw twice. The wallet row is
  * locked for the length of the transaction, and a draw by the same person, of the same amount, for the same partner out of the same
@@ -105,7 +107,7 @@ export async function POST(req: Request) {
     const storeCode = country.currencyCode;
     const storeMinor = country.minorUnit;
     const typed = parsed.data.valueInStoreCurrency;
-    let value: number;
+    let value: number | undefined;
     if (wallet.currencyCode === storeCode) {
       if (typed !== undefined && toMinorUnits(typed, storeMinor) !== toMinorUnits(amount, storeMinor)) {
         return refuse(
@@ -116,14 +118,8 @@ export async function POST(req: Request) {
       }
       value = amount;
     } else {
-      if (typed === undefined) {
-        return refuse(
-          400,
-          'STORE_VALUE_REQUIRED',
-          `اكتب «ما يعادله بعملة المتجر (${storeCode})» — عملة هالمحفظة (${wallet.currencyCode}) غير عملة المتجر، ورقم بلا تحويل بيغلّط حساب الشريك.`
-        );
-      }
-      if (roundMinor(typed, storeMinor) !== typed) {
+      // 23/11 (F7): absent = a draw in its own currency alone (no store value). Was: refused as STORE_VALUE_REQUIRED.
+      if (typed !== undefined && roundMinor(typed, storeMinor) !== typed) {
         return refuse(400, 'VALUE_DECIMALS', `«ما يعادله» بأكثر من ${storeMinor} خانات عشرية — عملة المتجر (${storeCode}) بخانات ${storeMinor} بس.`);
       }
       value = typed;

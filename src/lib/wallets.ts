@@ -79,7 +79,7 @@ export interface MovementInput {
   referenceId?: string;
   /** The statement receipt this IN is the money of: one movement per receipt, held by a unique index. */
   statementReceiptId?: string;
-  /** A partner draw's partner, and what it is worth in the STORE's currency. Both are required on a `PARTNER_DRAW` and refused on every other kind. */
+  /** A partner draw's partner, and what it is worth in the STORE's currency. The partner is required on a `PARTNER_DRAW` and the value optional there (23/11, F7); both are refused on every other kind. */
   partnerId?: string;
   valueInStoreCurrency?: number;
   /**
@@ -106,7 +106,9 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
     if (!input.partnerId || input.referenceType !== 'PARTNER_DRAW' || input.referenceId !== input.partnerId) {
       throw new Error('A partner draw must name its partner');
     }
-    if (!(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
+    // 23/11 (F7): the value is OPTIONAL — a draw may be in its wallet's currency alone («بدون ما يجيني سعر الصرف», the owner), and
+    // the partners' statement counts such a draw in no share. When one IS given it must be a real figure above zero, as before.
+    if (input.valueInStoreCurrency !== undefined && !(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
       throw new Error('A partner draw must carry its value in the store currency');
     }
   } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined) {

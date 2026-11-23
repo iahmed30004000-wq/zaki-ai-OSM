@@ -1,6 +1,5 @@
 import { db } from './db';
 import { geoReach } from './geo-context';
-import { inStore } from './store-filter';
 import { NO_FILTERS, drawsWhere, withdrawalsWhere, type HistoryFilters } from './history-export-core';
 import { drawListLines } from './history-export';
 import type { SessionUser } from '@/types/auth';
@@ -24,8 +23,9 @@ import {
  *
  * A WITHDRAWAL IS ONE THING: an OUT wallet movement of category PARTNER_DRAW, written by `POST /api/finance/partners/draws` through
  * `recordMovement` — the wallet's own rules, keys and reversal. This file READS those movements (the same clause the partners'
- * statement uses) and writes nothing but the standing amounts, which are a SHORTCUT: the figure a partner usually takes per currency,
- * and what it is worth in the store's currency, typed once — they fill the boxes, the person may change them, and nothing adds them.
+ * statement uses) and writes nothing but the standing amounts, which are a SHORTCUT: the figure a partner usually takes per currency
+ * fills the AMOUNT of the wallet form, and nothing adds it. A draw is in the wallet's own currency; its worth in the store's currency
+ * is optional («بدون ما يجيني سعر الصرف» — the owner), and a draw without it is counted in no share (the statement's «uncounted»).
  *
  * THE OLD RECORD. From 22/11 to 23/11 the tab wrote its own rows (`partner_withdrawals`) that moved no wallet. They are shown, read-only,
  * in a block of their own («قديمة — غير مربوطة بمحفظة»), and counted in NO total. Nothing writes that table any more: its doors are
@@ -79,19 +79,13 @@ async function reachedStores(user: SessionUser, companyId: string) {
   });
 }
 
-/** The standing amounts of the company, as the boxes read them. */
+/** The standing amounts of the company, as the wallet form reads them: an amount per (partner, currency), nothing else. */
 export async function standingFor(companyId: string): Promise<StandingRow[]> {
   const rows = await db.partnerStandingAmount.findMany({
     where: { companyId },
-    select: { partnerId: true, currencyCode: true, amount: true, storeValue: true, storeCurrencyCode: true },
+    select: { partnerId: true, currencyCode: true, amount: true },
   });
-  return rows.map((s) => ({
-    partnerId: s.partnerId,
-    currencyCode: s.currencyCode,
-    amount: Number(s.amount),
-    storeValue: s.storeValue === null || s.storeValue === undefined ? null : Number(s.storeValue),
-    storeCurrencyCode: s.storeCurrencyCode ?? null,
-  }));
+  return rows.map((s) => ({ partnerId: s.partnerId, currencyCode: s.currencyCode, amount: Number(s.amount) }));
 }
 
 /**
@@ -108,21 +102,14 @@ export async function withdrawalsBook(scope: {
 }) {
   const { user, companyId, storeId, country, filters } = scope;
   const timeZone = country.timezone ?? 'Asia/Damascus';
-  const [partners, currencies, standing, stores, wallets] = await Promise.all([
+  const [partners, currencies, stores] = await Promise.all([
     db.partner.findMany({
       where: { companyId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       select: { id: true, name: true, isActive: true },
     }),
     companyCurrencies(companyId),
-    standingFor(companyId),
     reachedStores(user, companyId),
-    // The wallets the one press may take the cash out of: this store's, switched on — the draws door's own rule (`inStore`).
-    db.wallet.findMany({
-      where: { ...inStore(companyId, storeId), isActive: true },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, currencyCode: true, country: { select: { minorUnit: true } } },
-    }),
   ]);
   const storeIds = [...new Set([storeId, ...stores.map((s) => s.id)])];
   const minorOf = minorOfList(currencies);
@@ -134,7 +121,7 @@ export async function withdrawalsBook(scope: {
     where: drawsWhere(companyId, storeIds, filters, timeZone),
     orderBy: { createdAt: 'desc' },
     select: {
-      walletId: true, partnerId: true, amount: true, currencyCode: true, valueInStoreCurrency: true,
+      partnerId: true, amount: true, currencyCode: true, valueInStoreCurrency: true,
       reversedBy: { select: { id: true } }, wallet: { select: { storeId: true } },
     },
   });
@@ -155,14 +142,6 @@ export async function withdrawalsBook(scope: {
     storeMinorOf
   );
 
-  // The wallet the one press offers first for a (partner, currency): the one his newest draw here came out of.
-  const lastWallet: Record<string, string> = {};
-  for (const m of ledger) {
-    if (m.wallet.storeId !== storeId || !m.partnerId) continue;
-    const key = `${m.partnerId}|${m.currencyCode}`;
-    if (!lastWallet[key]) lastWallet[key] = m.walletId;
-  }
-
   const partnerName = new Map(partners.map((p) => [p.id, p.name]));
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
 
@@ -181,11 +160,8 @@ export async function withdrawalsBook(scope: {
     storeCurrency: { code: country.currencyCode, minorUnit: country.minorUnit },
     partners,
     currencies,
-    standing,
-    wallets: wallets.map((w) => ({ id: w.id, name: w.name, currencyCode: w.currencyCode, minorUnit: w.country.minorUnit })),
-    lastWallet,
     rows: await drawListLines({ companyId, storeId, timeZone }, drawsWhere(companyId, [storeId], filters, timeZone), LIST_LIMIT),
-    // This store, per partner and wallet currency, with what it is worth in the store's currency.
+    // This store, per partner and WALLET currency — never summed across currencies; the store-currency worth only where one was typed.
     totals: byStore
       .filter((t) => t.storeId === storeId)
       .map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
@@ -272,29 +248,24 @@ async function partnerOf(companyId: string, partnerId: unknown) {
 
 /**
  * THE STANDING AMOUNTS OF ONE PARTNER, SAVED AS A WHOLE: one figure per currency; an empty box clears that currency. Each currency
- * at most once, each one the stores', each figure > 0 in its decimals.
- *
- * «ما يعادله بعملة المتجر» (23/11, F7): beside a currency that is NOT the store's, what the figure is worth in the STORE's currency
- * (the store the person stands in), checked like any amount of that currency. It is kept with that store currency's code, and fills
- * the box only where the store's currency is the same. For the store's own currency there is nothing to say, so nothing is kept.
+ * at most once, each one the stores', each figure > 0 in its decimals. (22/11; unchanged by F7 — the door stays, no screen of this
+ * tab edits it any more: the wallet form only reads the figure to fill its amount.)
  */
 export async function saveStanding(input: {
   user: SessionUser;
   companyId: string;
-  storeCurrency: string;
   body: { partnerId?: unknown; amounts?: unknown };
-}): Promise<Answer<{ partnerId: string; amounts: { currencyCode: string; amount: number; storeValue: number | null }[] }>> {
+}): Promise<Answer<{ partnerId: string; amounts: { currencyCode: string; amount: number }[] }>> {
   const { user, companyId, body } = input;
   const partner = await partnerOf(companyId, body.partnerId);
   if (!partner.ok) return partner;
   if (!Array.isArray(body.amounts) || body.amounts.length > 50) return no(400, 'INVALID_AMOUNTS', 'قائمة المبالغ مش مفهومة.');
 
   const known = await companyCurrencies(companyId);
-  const storeCurrency = known.find((c) => c.code === input.storeCurrency.trim().toUpperCase()) ?? null;
-  const keep: { currencyCode: string; amount: number; storeValue: number | null }[] = [];
+  const keep: { currencyCode: string; amount: number }[] = [];
   const clear: string[] = [];
   const seen = new Set<string>();
-  for (const raw of body.amounts as { currencyCode?: unknown; amount?: unknown; storeValue?: unknown }[]) {
+  for (const raw of body.amounts as { currencyCode?: unknown; amount?: unknown }[]) {
     const currency = currencyOrRefusal(raw?.currencyCode, known);
     if (isRefusal(currency)) return { ok: false, refusal: currency };
     if (seen.has(currency.code)) return no(400, 'CURRENCY_TWICE', `العملة ${currency.code} مكتوبة مرتين.`);
@@ -305,16 +276,7 @@ export async function saveStanding(input: {
     }
     const amount = amountOrRefusal(raw.amount, currency);
     if (isRefusal(amount)) return { ok: false, refusal: amount };
-    let storeValue: number | null = null;
-    const typed = raw.storeValue;
-    if (storeCurrency && storeCurrency.code !== currency.code && !(typed === undefined || typed === null || typed === '')) {
-      const value = amountOrRefusal(typed, storeCurrency);
-      if (isRefusal(value)) {
-        return no(value.status, value.code.replace('AMOUNT', 'STORE_VALUE'), `«ما يعادله بعملة المتجر (${storeCurrency.code})» لـ${currency.code}: ${value.errorAr}`);
-      }
-      storeValue = value;
-    }
-    keep.push({ currencyCode: currency.code, amount, storeValue });
+    keep.push({ currencyCode: currency.code, amount });
   }
 
   await db.$transaction(async (tx) => {
@@ -322,15 +284,10 @@ export async function saveStanding(input: {
       await tx.partnerStandingAmount.deleteMany({ where: { companyId, partnerId: partner.value.id, currencyCode: { in: clear } } });
     }
     for (const k of keep) {
-      const where = { partnerId_currencyCode: { partnerId: partner.value.id, currencyCode: k.currencyCode } };
-      const value = { storeValue: k.storeValue, storeCurrencyCode: k.storeValue === null ? null : storeCurrency?.code ?? null };
-      // An empty «ما يعادله» clears only THIS store currency's equivalent: one typed in a store of another currency is not this box's.
-      const before = k.storeValue === null ? await tx.partnerStandingAmount.findUnique({ where, select: { storeCurrencyCode: true } }) : null;
-      const keepOther = !!before?.storeCurrencyCode && before.storeCurrencyCode !== storeCurrency?.code;
       await tx.partnerStandingAmount.upsert({
-        where,
-        create: { companyId, partnerId: partner.value.id, currencyCode: k.currencyCode, amount: k.amount, ...value, updatedById: user.id },
-        update: { amount: k.amount, ...(keepOther ? {} : value), updatedById: user.id },
+        where: { partnerId_currencyCode: { partnerId: partner.value.id, currencyCode: k.currencyCode } },
+        create: { companyId, partnerId: partner.value.id, currencyCode: k.currencyCode, amount: k.amount, updatedById: user.id },
+        update: { amount: k.amount, updatedById: user.id },
       });
     }
   });

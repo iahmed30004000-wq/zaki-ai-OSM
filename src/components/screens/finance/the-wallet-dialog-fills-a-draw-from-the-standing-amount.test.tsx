@@ -8,8 +8,9 @@ import React from 'react';
  *
  * «ليش ما تتثبت كم المسحوبات تبعتي بالدولار والدينار وكل عملة بدل ما كل مرة اسجل كم المبلغ؟» (the owner, over a screenshot of this
  * dialog: «كاش دينار أردني», صادر, 50 JOD, and the empty «ما يعادله بعملة المتجر (USD)»). Once the partner is chosen, the standing
- * row of THAT partner in THE WALLET's currency fills the amount — and «ما يعادله» when it was typed for this store's currency — with
- * the line «من المبلغ الثابت للشريك — تقدر تعدّله». Both boxes stay editable; what is sent is what they hold; the door is unchanged.
+ * row of THAT partner in THE WALLET's currency fills the AMOUNT, with the line «من المبلغ الثابت للشريك — تقدر تعدّله». «ما يعادله» is
+ * never filled and never required («بدون ما يجيني سعر الصرف»): the draw goes in the wallet's own currency. What is sent is what the
+ * boxes hold.
  */
 
 const { who, sent, reads, answers } = vi.hoisted(() => ({
@@ -43,9 +44,7 @@ const STATEMENT = {
   totals: { entitlement: 1000, draws: 0, broken: 0 },
   lines: [line('pa', 'شريك أ'), line('pd', 'شريك د'), line('pn', 'شريك بلا مبلغ')],
 };
-const S = (partnerId: string, currencyCode: string, amount: number, storeValue: number | null = null, storeCurrencyCode: string | null = null) => ({
-  partnerId, currencyCode, amount, storeValue, storeCurrencyCode,
-});
+const S = (partnerId: string, currencyCode: string, amount: number) => ({ partnerId, currencyCode, amount });
 const LINE = 'من المبلغ الثابت للشريك — تقدر تعدّله';
 
 beforeEach(() => {
@@ -54,7 +53,7 @@ beforeEach(() => {
   who.keys = ['finance.cashbox_view', 'finance.cashbox', 'finance.partners'];
   sent.length = 0;
   reads.length = 0;
-  answers.standing = [S('pa', 'USD', 250), S('pa', 'JOD', 50, 70.5, 'USD'), S('pd', 'USD', 100), S('pd', 'JOD', 40, 56, 'SYP')];
+  answers.standing = [S('pa', 'USD', 250), S('pa', 'JOD', 50), S('pd', 'USD', 100), S('pd', 'JOD', 40)];
   answers.wallet = USD_WALLET;
   vi.stubGlobal(
     'fetch',
@@ -68,7 +67,7 @@ beforeEach(() => {
       reads.push(url);
       if (url === '/api/finance/partners/statement') return json(STATEMENT);
       if (url === '/api/finance/partners/withdrawals?part=standing') {
-        return answers.standing instanceof Error ? json({ error: 'x' }, 500) : json({ standing: answers.standing, storeCurrency: 'USD' });
+        return answers.standing instanceof Error ? json({ error: 'x' }, 500) : json({ standing: answers.standing });
       }
       if (url.includes('/movements')) return json({ movements: [] });
       return json({ wallets: [answers.wallet] });
@@ -162,32 +161,26 @@ describe('a wallet in another currency (the owner’s screenshot: a dinar wallet
     answers.wallet = JOD_WALLET;
   });
 
-  it('fills the amount AND «ما يعادله بعملة المتجر (USD)» — both sent as they stand', async () => {
+  it('fills the amount in the wallet’s own currency; «ما يعادله» stays EMPTY and optional — the draw goes without it', async () => {
     const d = await openDraw();
     pick(d, 'pa');
     await waitFor(() => expect(amountBox(d).value).toBe('50'));
-    expect(valueBox(d)!.value).toBe('70.5');
+    expect(valueBox(d)!.value).toBe('');
+    expect(valueBox(d)!.required).toBe(false);
+    expect(send(d).disabled).toBe(false);
     fireEvent.click(send(d));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'pa', amount: '50', valueInStoreCurrency: '70.5' });
+    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'pa', amount: '50' });
   });
 
-  it('the equivalent is editable too, and the edit is what is sent', async () => {
+  it('a figure typed in «ما يعادله» is sent as typed', async () => {
     const d = await openDraw();
     pick(d, 'pa');
-    await waitFor(() => expect(valueBox(d)!.value).toBe('70.5'));
+    await waitFor(() => expect(amountBox(d).value).toBe('50'));
     fireEvent.change(valueBox(d)!, { target: { value: '71' } });
     fireEvent.click(send(d));
     await waitFor(() => expect(writes()).toHaveLength(1));
-    expect(writes()[0].body).toMatchObject({ amount: '50', valueInStoreCurrency: '71' });
-  });
-
-  it('NEGATIVE: an equivalent typed for another store currency is not used — the amount fills, «ما يعادله» stays required and empty', async () => {
-    const d = await openDraw();
-    pick(d, 'pd');
-    await waitFor(() => expect(amountBox(d).value).toBe('40'));
-    expect(valueBox(d)!.value).toBe('');
-    expect(send(d).disabled).toBe(true);
+    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'pa', amount: '50', valueInStoreCurrency: '71' });
   });
 
   it('NEGATIVE: a standing row in ANOTHER currency is ignored — a dollar figure never fills a dinar wallet', async () => {

@@ -140,46 +140,27 @@ export function withdrawalTotals(rows: readonly WithdrawalLedgerRow[], minorOf: 
   }));
 }
 
-// ─────────────── 23/11 (F7): a withdrawal IS a wallet movement — the standing amount is a shortcut that fills its boxes ───────────────
+// ─────────────── 23/11 (F7): a withdrawal IS a wallet movement, in the wallet's own currency ───────────────
+//
+// «السحوبات الأساسية بتتسجّل سحب من المحفظة بالعملة. مثال أحمد سحب 1000 USDT و1000 دينار و1000 ليرة وهكذا، بدون ما يجيني سعر الصرف»
+// (the owner). The standing amount is only a shortcut for the AMOUNT; no equivalent is kept or worked out here.
 
-/** A standing amount as the boxes read it: per (partner, currency), and perhaps what it is worth in one store's currency. */
+/** A standing amount as the wallet form reads it: per (partner, currency). */
 export interface StandingRow {
   partnerId: string;
   currencyCode: string;
   amount: number;
-  storeValue: number | null;
-  storeCurrencyCode: string | null;
-}
-
-/** What the boxes are filled with: the amount, and «ما يعادله» when the wallet's currency is not the store's and one was typed. */
-export interface Prefill {
-  amount: string;
-  storeValue: string | null;
 }
 
 /**
- * «من المبلغ الثابت للشريك — تقدر تعدّله» — THE ONE RULE OF THE PRE-FILL, for the wallet dialog and the one press alike.
- *
- *   · no standing row for THIS partner in THE WALLET's currency → null: the boxes stay as today (typed). A row in another currency
- *     is not this one and is ignored — a dinar figure never fills a dollar wallet;
- *   · the wallet is in the store's currency → only the amount (no «ما يعادله» is asked there);
- *   · otherwise the equivalent too, but only when it was typed for THIS store currency; else it stays empty, to be typed.
- * Never a rate worked out here: there is no standing rate in this system, and a guessed one would put a wrong number in a partner's
- * account.
+ * «من المبلغ الثابت للشريك — تقدر تعدّله» — THE ONE RULE OF THE PRE-FILL: the standing row of THIS partner in THE WALLET's currency
+ * fills the amount; none → null, and the box stays as today (typed). A row in another currency is not this one and is ignored — a
+ * dinar figure never fills a dollar wallet. Never a rate, never an equivalent.
  */
-export function standingPrefill(
-  standing: readonly StandingRow[],
-  partnerId: string,
-  walletCurrency: string,
-  storeCurrency: string | null
-): Prefill | null {
+export function standingPrefill(standing: readonly StandingRow[], partnerId: string, walletCurrency: string): string | null {
   if (!partnerId || !walletCurrency) return null;
   const row = standing.find((s) => s.partnerId === partnerId && s.currencyCode === walletCurrency);
-  if (!row || !(row.amount > 0)) return null;
-  const asked = !!storeCurrency && storeCurrency !== walletCurrency;
-  const value =
-    asked && row.storeCurrencyCode === storeCurrency && row.storeValue !== null && row.storeValue > 0 ? String(row.storeValue) : null;
-  return { amount: String(row.amount), storeValue: value };
+  return row && row.amount > 0 ? String(row.amount) : null;
 }
 
 /** One draw (a PARTNER_DRAW wallet movement, the original OUT row) as the dashboard's totals read it. */
@@ -188,6 +169,7 @@ export interface DrawLedgerRow {
   partnerId: string;
   currencyCode: string;
   amount: number;
+  /** What it is worth in the STORE's currency — only when one was typed; null = a draw in its own currency alone. */
   valueInStoreCurrency: number | null;
   /** Taken back through the wallet's reversal door: the pair counts as nothing (the partners' statement's own rule). */
   reversed: boolean;
@@ -197,30 +179,45 @@ export interface DrawTotal {
   storeId: string;
   partnerId: string;
   currencyCode: string;
-  /** In the WALLET's currency. */
+  /** In the WALLET's currency — every standing draw of the key. */
   total: number;
-  /** What the same draws are worth in the STORE's currency — the figure the partners' statement counts. */
-  valueTotal: number;
   count: number;
+  /** The draws of the key that carry a store-currency worth, and that worth — the figure the partners' statement counts. */
+  valueTotal: number;
+  valueCount: number;
+  /** The draws with NO worth in the store's currency, in the wallet's currency: counted in no share (the statement's «uncounted»). */
+  unvaluedTotal: number;
+  unvaluedCount: number;
 }
 
 /**
  * THE DASHBOARD'S TOTALS — per (store, partner, wallet currency), in whole minor units; a reversed draw is left out. Two currencies
- * are never added: the wallet currency is part of the key, and the store-currency worth is summed beside it in the store's decimals.
+ * are never added: the wallet currency is part of the key; the store-currency worth is summed beside it only over the draws that
+ * carry one, and the others are said apart (`unvalued…`) — nothing is converted.
  */
 export function drawTotals(
   rows: readonly DrawLedgerRow[],
   minorOf: (code: string) => number,
   storeMinorOf: (storeId: string) => number
 ): DrawTotal[] {
-  const acc = new Map<string, { storeId: string; partnerId: string; currencyCode: string; units: number; valueUnits: number; count: number }>();
+  type Acc = { storeId: string; partnerId: string; currencyCode: string; units: number; count: number; valueUnits: number; valueCount: number; unvaluedUnits: number; unvaluedCount: number };
+  const acc = new Map<string, Acc>();
   for (const r of rows) {
     if (r.reversed) continue;
     const key = `${r.storeId}|${r.partnerId}|${r.currencyCode}`;
-    const cur = acc.get(key) ?? { storeId: r.storeId, partnerId: r.partnerId, currencyCode: r.currencyCode, units: 0, valueUnits: 0, count: 0 };
-    cur.units += toMinorUnits(r.amount, minorOf(r.currencyCode));
-    cur.valueUnits += toMinorUnits(r.valueInStoreCurrency ?? 0, storeMinorOf(r.storeId));
+    const cur =
+      acc.get(key) ??
+      { storeId: r.storeId, partnerId: r.partnerId, currencyCode: r.currencyCode, units: 0, count: 0, valueUnits: 0, valueCount: 0, unvaluedUnits: 0, unvaluedCount: 0 };
+    const units = toMinorUnits(r.amount, minorOf(r.currencyCode));
+    cur.units += units;
     cur.count += 1;
+    if (r.valueInStoreCurrency === null) {
+      cur.unvaluedUnits += units;
+      cur.unvaluedCount += 1;
+    } else {
+      cur.valueUnits += toMinorUnits(r.valueInStoreCurrency, storeMinorOf(r.storeId));
+      cur.valueCount += 1;
+    }
     acc.set(key, cur);
   }
   return [...acc.values()].map((t) => ({
@@ -228,8 +225,11 @@ export function drawTotals(
     partnerId: t.partnerId,
     currencyCode: t.currencyCode,
     total: fromMinorUnits(t.units, minorOf(t.currencyCode)),
-    valueTotal: fromMinorUnits(t.valueUnits, storeMinorOf(t.storeId)),
     count: t.count,
+    valueTotal: fromMinorUnits(t.valueUnits, storeMinorOf(t.storeId)),
+    valueCount: t.valueCount,
+    unvaluedTotal: fromMinorUnits(t.unvaluedUnits, minorOf(t.currencyCode)),
+    unvaluedCount: t.unvaluedCount,
   }));
 }
 

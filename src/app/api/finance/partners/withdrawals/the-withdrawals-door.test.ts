@@ -9,8 +9,8 @@ import { ROLE_PERMISSIONS, type UserRole } from '@/types/auth';
  * 23/11 (F7) — REWRITTEN: a withdrawal IS a wallet movement. Old (22/11): POST wrote a `partner_withdrawals` row («moves no wallet»),
  * PATCH wrote its cancel, GET totalled those rows. New: GET is a dashboard over the PARTNER_DRAW wallet movements (the partners'
  * statement's own rows — the same figures, proven below), the old rows are listed apart and counted nowhere, POST and PATCH are
- * RETIRED (an Arabic sentence pointing at the wallet, nothing written), and PUT saves the standing amounts with their worth in the
- * store's currency. The draw itself goes through `POST /api/finance/partners/draws` — the wallet's own rules, driven here too.
+ * RETIRED (an Arabic sentence pointing at the wallet, nothing written), and PUT saves the standing amounts (an amount per currency).
+ * The one change at the draws door: «ما يعادله» is optional — a draw in its own currency alone is counted in no share. The draw itself goes through `POST /api/finance/partners/draws` — the wallet's own rules, driven here too.
  * Why: «والحركات تكون من المحافظ … ما بدي الحركات المالية بكل مكان، خلص مكان واحد».
  * ═══════════════════════════════════════════════════════════════════════
  */
@@ -135,7 +135,7 @@ import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { PERMISSION_MODULES } from '@/lib/permission-catalog';
 import { partnerStatement } from '@/lib/partner-statement';
-import { reverseMovement } from '@/lib/wallets';
+import { recordMovement, reverseMovement } from '@/lib/wallets';
 import { GET, PATCH, POST, PUT } from './route';
 import { POST as DRAW } from '../draws/route';
 
@@ -359,45 +359,49 @@ describe('the dashboard reads the wallet movements', () => {
     expect(body.errorAr).toMatch(/[؀-ۿ]/);
   });
 
-  it('who may press: «mayRecord» is the cash box’s key, read the way a session reads it', async () => {
-    expect((await book()).body.mayRecord).toBe(false);
+  it('READ-ONLY: the book offers no wallet, no press and no standing figure — nothing on this tab records a withdrawal', async () => {
     await as(await person(CASHIER_PARTNER));
-    expect((await book()).body.mayRecord).toBe(true);
-    await as(await person(CASHIER_PARTNER, [{ permission: 'finance.cashbox', effect: 'DENY' }]));
-    expect((await book()).body.mayRecord).toBe(false);
-  });
-
-  it('the wallets offered are this store’s, switched on; the last one a partner drew from is remembered per currency', async () => {
-    tables.wallet.push({ id: 'stopped', companyId: 'c1', storeId: 's1', countryId: 'US', name: 'موقوفة', currencyCode: 'USD', isActive: false, openingBalance: 0, createdAt: new Date(4) });
-    seeded({ walletId: WJ, currencyCode: 'JOD', createdAt: new Date('2026-11-21T09:00:00Z') });
     const { body } = await book();
-    expect(body.wallets.map((w: Row) => w.id)).toEqual([WU, WJ]);
-    expect(body.lastWallet).toEqual({ [`${P1}|JOD`]: WJ });
+    expect(Object.keys(body).sort()).toEqual(['byStore', 'currencies', 'legacy', 'legacyTotals', 'partners', 'rows', 'storeCurrency', 'storeId', 'totals']);
   });
 
-  it('`?part=standing` answers the standing amounts alone, with the store’s currency', async () => {
-    tables.partnerStandingAmount.push({ id: 's', companyId: 'c1', partnerId: P1, currencyCode: 'JOD', amount: 50, storeValue: 70.5, storeCurrencyCode: 'USD' });
+  it('`?part=standing` answers the standing amounts alone — an amount per currency, nothing else', async () => {
+    tables.partnerStandingAmount.push({ id: 's', companyId: 'c1', partnerId: P1, currencyCode: 'JOD', amount: 50 });
     const { body } = await book('?part=standing');
-    expect(body).toEqual({ standing: [{ partnerId: P1, currencyCode: 'JOD', amount: 50, storeValue: 70.5, storeCurrencyCode: 'USD' }], storeCurrency: 'USD' });
+    expect(body).toEqual({ standing: [{ partnerId: P1, currencyCode: 'JOD', amount: 50 }] });
+  });
+
+  it('draws in their own currency (USDT, dinars, lira) with NO store value: each currency on its own, said apart, in no share', async () => {
+    seeded({ walletId: WJ, currencyCode: 'JOD', amount: 1000, valueInStoreCurrency: null });
+    seeded({ walletId: WJ, currencyCode: 'JOD', amount: 70, valueInStoreCurrency: 98.7 });
+    seeded({ amount: 1000, valueInStoreCurrency: 1000 });
+    const { body } = await book();
+    const jod = body.totals.find((t: Row) => t.currencyCode === 'JOD');
+    expect([jod.total, jod.count, jod.valueTotal, jod.valueCount, jod.unvaluedTotal, jod.unvaluedCount]).toEqual([1070, 2, 98.7, 1, 1000, 1]);
+    const usd = body.totals.find((t: Row) => t.currencyCode === 'USD');
+    expect([usd.total, usd.unvaluedCount]).toEqual([1000, 0]);
+    // The statement counts only the draws with a worth; the one without is «uncounted», never added at 1:1.
+    const statement = await partnerStatement({ companyId: 'c1', storeId: 's1', currency: 'USD', minorUnit: 2 });
+    expect(statement.lines.find((l) => l.id === P1)!.draws).toBe(1098.7);
+    expect(statement.uncounted).toBe(1);
   });
 });
 
-describe('the standing amounts — a shortcut, with their worth in the store’s currency', () => {
-  it('saved once per currency; beside a foreign one its equivalent, kept with the store currency it is in', async () => {
-    const res = await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: '250', storeValue: '999' }, { currencyCode: 'JOD', amount: '50', storeValue: '70.5' }] });
-    expect(res.status).toBe(200);
-    const rows = tables.partnerStandingAmount.map((s) => [s.currencyCode, Number(s.amount), s.storeValue, s.storeCurrencyCode]).sort();
-    // The store's own currency has nothing to be worth: what was sent beside it is not kept.
-    expect(rows).toEqual([['JOD', 50, 70.5, 'USD'], ['USD', 250, null, null]]);
+/*
+ * 23/11 (F7) — the standing amounts are back to an AMOUNT per currency, as on osm/main (22/11): the fixed store-currency equivalent of
+ * the first F7 draft (columns storeValue / storeCurrencyCode) is dropped with its migration — «بدون ما يجيني سعر الصرف» (the owner).
+ */
+describe('the standing amounts — an amount per currency', () => {
+  it('saved once per currency, changed in place, and an empty box clears one', async () => {
+    await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: '100' }, { currencyCode: 'JOD', amount: '70' }] });
+    await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: '120' }, { currencyCode: 'JOD', amount: '' }] });
+    expect(tables.partnerStandingAmount.map((s) => [s.currencyCode, Number(s.amount)])).toEqual([['USD', 120]]);
     expect(tables.walletMovement).toHaveLength(0);
   });
 
-  it('an empty box clears the currency; an empty equivalent clears only this store currency’s, never one typed in another store', async () => {
-    await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: '100' }, { currencyCode: 'JOD', amount: '70' }] });
-    tables.partnerStandingAmount.find((s) => s.currencyCode === 'JOD')!.storeValue = 50000;
-    tables.partnerStandingAmount.find((s) => s.currencyCode === 'JOD')!.storeCurrencyCode = 'SYP';
-    await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'USD', amount: '' }, { currencyCode: 'JOD', amount: '80', storeValue: '' }] });
-    expect(tables.partnerStandingAmount.map((s) => [s.currencyCode, Number(s.amount), s.storeValue, s.storeCurrencyCode])).toEqual([['JOD', 80, 50000, 'SYP']]);
+  it('NEGATIVE: a store value sent beside an amount is not kept — there is no such column', async () => {
+    await send('PUT', { partnerId: P1, amounts: [{ currencyCode: 'JOD', amount: '50', storeValue: '70.5' }] });
+    expect(Object.keys(tables.partnerStandingAmount[0])).not.toContain('storeValue');
   });
 
   it.each([
@@ -405,9 +409,6 @@ describe('the standing amounts — a shortcut, with their worth in the store’s
     ['unknown currency', [{ currencyCode: 'EUR', amount: '5' }], 'UNKNOWN_CURRENCY'],
     ['one currency twice', [{ currencyCode: 'USD', amount: '5' }, { currencyCode: 'usd', amount: '6' }], 'CURRENCY_TWICE'],
     ['not a list', 'USD', 'INVALID_AMOUNTS'],
-    ['an equivalent with more decimals than the store’s currency', [{ currencyCode: 'JOD', amount: '5', storeValue: '7.051' }], 'STORE_VALUE_DECIMALS'],
-    ['an equivalent of zero', [{ currencyCode: 'JOD', amount: '5', storeValue: '0' }], 'STORE_VALUE_NOT_POSITIVE'],
-    ['an equivalent that is not a number', [{ currencyCode: 'JOD', amount: '5', storeValue: 'سبعين' }], 'STORE_VALUE_NOT_A_NUMBER'],
   ])('NEGATIVE: %s → refused in Arabic, nothing saved', async (_n, amounts, code) => {
     const res = await send('PUT', { partnerId: P1, amounts });
     expect(res.body.code).toBe(code);
@@ -421,7 +422,7 @@ describe('the standing amounts — a shortcut, with their worth in the store’s
   });
 });
 
-describe('THE ONE PRESS IS THE DRAWS DOOR — the wallet’s rules, unchanged', () => {
+describe('THE DRAW IS WRITTEN AT THE WALLET — the draws door, its rules unchanged but one', () => {
   beforeEach(async () => {
     await as(await person(CASHIER_PARTNER));
   });
@@ -435,8 +436,18 @@ describe('THE ONE PRESS IS THE DRAWS DOOR — the wallet’s rules, unchanged', 
     });
     expect(tables.partnerWithdrawal).toHaveLength(0);
     expect(tables.expense).toHaveLength(0);
-    // And the dashboard shows it, at once.
     expect((await book()).body.totals).toEqual([expect.objectContaining({ partnerId: P1, currencyCode: 'JOD', total: 50, valueTotal: 70.5 })]);
+  });
+
+  it('THE ONE CHANGE: a foreign-currency draw without «ما يعادله» is written in its own currency with NO store value (was STORE_VALUE_REQUIRED)', async () => {
+    const res = await drawOf({ walletId: WJ, partnerId: P1, amount: '1000' });
+    expect(res.status).toBe(201);
+    expect(tables.walletMovement[0]).toMatchObject({ currencyCode: 'JOD', amount: 1000, category: 'PARTNER_DRAW', partnerId: P1 });
+    expect(tables.walletMovement[0].valueInStoreCurrency ?? null).toBeNull();
+    // Counted in no share: the statement's draws for him stay at zero, and it says one draw is uncounted.
+    const statement = await partnerStatement({ companyId: 'c1', storeId: 's1', currency: 'USD', minorUnit: 2 });
+    expect(statement.lines.find((l) => l.id === P1)!.draws).toBe(0);
+    expect(statement.uncounted).toBe(1);
   });
 
   it('NEGATIVE: «الشركاء والسحوبات» without the cash box’s key — a clear refusal, the body unread, NOTHING written', async () => {
@@ -454,14 +465,26 @@ describe('THE ONE PRESS IS THE DRAWS DOOR — the wallet’s rules, unchanged', 
     expect(tables.walletMovement).toHaveLength(0);
   });
 
-  it('NEGATIVE: a foreign-currency wallet without «ما يعادله» → STORE_VALUE_REQUIRED; with more decimals than the wallet holds → refused', async () => {
-    expect((await drawOf({ walletId: WJ, partnerId: P1, amount: '50' })).body.code).toBe('STORE_VALUE_REQUIRED');
+  it('NEGATIVE: the bounds are unchanged — a typed equivalent with too many decimals, or a zero one, is refused; so is an amount past the wallet’s decimals', async () => {
+    expect((await drawOf({ walletId: WJ, partnerId: P1, amount: '50', valueInStoreCurrency: '70.505' })).body.code).toBe('VALUE_DECIMALS');
+    expect((await drawOf({ walletId: WJ, partnerId: P1, amount: '50', valueInStoreCurrency: '0' })).status).toBe(400);
     expect((await drawOf({ walletId: WU, partnerId: P1, amount: '1.001' })).body.code).toBe('AMOUNT_DECIMALS');
+    expect((await drawOf({ walletId: WU, partnerId: P1, amount: '10', valueInStoreCurrency: '11' })).body.code).toBe('VALUE_NOT_ALLOWED');
+    expect(tables.walletMovement).toHaveLength(0);
+  });
+
+  it('NEGATIVE: another category still refuses a store value, and «مصروف» still needs its reference — the relaxation is PARTNER_DRAW’s only', async () => {
+    await expect(
+      recordMovement(db as never, { companyId: 'c1', walletId: WU, direction: 'OUT', amount: 5, party: 'x', category: 'OTHER', note: 'x', valueInStoreCurrency: 5, createdById: 'u1' })
+    ).rejects.toThrow(/Only a partner draw/);
+    await expect(
+      recordMovement(db as never, { companyId: 'c1', walletId: WU, direction: 'OUT', amount: 5, party: 'x', category: 'EXPENSE', note: 'x', createdById: 'u1' })
+    ).rejects.toThrow(/reference/);
     expect(tables.walletMovement).toHaveLength(0);
   });
 
   it('NEGATIVE: the standing amount is never taken behind the person’s back — no amount sent is a refusal, even with a standing row', async () => {
-    tables.partnerStandingAmount.push({ id: 's', companyId: 'c1', partnerId: P1, currencyCode: 'USD', amount: 250, storeValue: null, storeCurrencyCode: null });
+    tables.partnerStandingAmount.push({ id: 's', companyId: 'c1', partnerId: P1, currencyCode: 'USD', amount: 250 });
     const res = await drawOf({ walletId: WU, partnerId: P1 });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_DRAW');

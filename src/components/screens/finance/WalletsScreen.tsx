@@ -1009,7 +1009,7 @@ function RecordDialog({
   const [storeValue, setStoreValue] = useState('');
   const [statement, setStatement] = useState<PartnerStatement | null>(null);
   const [statementFailed, setStatementFailed] = useState(false);
-  // The partners' standing amounts (23/11, F7): «من المبلغ الثابت للشريك» fills the amount and «ما يعادله» — a shortcut, never a rule.
+  // The partners' standing amounts (23/11, F7): «من المبلغ الثابت للشريك» fills the amount — a shortcut, never a rule.
   const [standing, setStanding] = useState<StandingRow[]>([]);
   const [prefilled, setPrefilled] = useState(false);
   // Read once, when the dialog opens, and only for the people who are offered the kind: nobody else asks the partners' door anything.
@@ -1054,27 +1054,26 @@ function RecordDialog({
   const drawValue = drawOtherCurrency ? typedFigure(storeValue) : drawAmount;
   // «بعد هالسحب»: the statement's own subtraction (`afterDraw`), asked of the figures the server sent — nothing is worked out here.
   const hint = isDraw && statement && partner && drawValue !== undefined && drawValue > 0 ? afterDraw(partner, drawValue, statement.minorUnit) : null;
-  const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!drawOtherCurrency || (drawValue !== undefined && drawValue > 0));
+  // 23/11 (F7): «ما يعادله» is optional — empty never blocks; a figure typed there must still be above zero.
+  const valueTyped = drawOtherCurrency && storeValue.trim() !== '';
+  const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!valueTyped || (drawValue !== undefined && drawValue > 0));
 
   /*
-   * THE PRE-FILL (23/11, F7) — `standingPrefill`, the one rule the withdrawals tab uses too. Asked again whenever the partner, the
-   * wallet's currency or the store's changes: a standing row of THIS partner in THIS wallet's currency fills the amount (and
-   * «ما يعادله» when one was typed for this store's currency); none → the boxes are what they are today, emptied only if it was
-   * the pre-fill that wrote them. The person may change both; the door checks them exactly as before.
+   * THE PRE-FILL (23/11, F7) — `standingPrefill`. Asked again whenever the partner or the wallet's currency changes: a standing row
+   * of THIS partner in THIS wallet's currency fills the AMOUNT (never «ما يعادله», never a rate); none → the box is what it is today,
+   * emptied only if it was the pre-fill that wrote it. The person may change it; the door checks it exactly as before.
    */
-  const prefillKey = isDraw ? `${partnerId}|${wallet.currencyCode}|${storeCode ?? ''}|${standing.length}` : '';
+  const prefillKey = isDraw ? `${partnerId}|${wallet.currencyCode}|${standing.length}` : '';
   // Asked while rendering, when the key changes (React's «adjust state on a change of props»): no effect, no second paint.
   const [seenKey, setSeenKey] = useState('');
   if (prefillKey !== seenKey) {
     setSeenKey(prefillKey);
-    const pre = prefillKey ? standingPrefill(standing, partnerId, wallet.currencyCode, storeCode ?? null) : null;
+    const pre = prefillKey ? standingPrefill(standing, partnerId, wallet.currencyCode) : null;
     if (pre) {
-      setAmount(pre.amount);
-      setStoreValue(pre.storeValue ?? '');
+      setAmount(pre);
       setPrefilled(true);
     } else if (prefillKey && prefilled) {
       setAmount('');
-      setStoreValue('');
       setPrefilled(false);
     }
   }
@@ -1097,7 +1096,7 @@ function RecordDialog({
                   walletId: wallet.id,
                   partnerId,
                   amount: onTheWire(amount),
-                  ...(drawOtherCurrency ? { valueInStoreCurrency: onTheWire(storeValue) } : {}),
+                  ...(valueTyped ? { valueInStoreCurrency: onTheWire(storeValue) } : {}),
                   ...(note.trim() ? { note: note.trim() } : {}),
                 }),
               });
@@ -1208,19 +1207,18 @@ function RecordDialog({
             store's currency, and a silent 1:1 between dinars and dollars would put a wrong number in a partner's account. */}
         {isDraw && drawOtherCurrency && (
           <label className="block">
-            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ما يعادله بعملة المتجر ({storeCode})</span>
+            <span className="block text-xs font-medium text-[var(--sys-foreground)] mb-1">ما يعادله بعملة المتجر ({storeCode}) — اختياري</span>
             <input
               type="number"
               step="0.001"
               min="0.001"
               value={storeValue}
               onChange={(e) => setStoreValue(e.target.value)}
-              required
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
-            <span className="block text-note text-[var(--sys-warning)] mt-1">
-              عملة هالمحفظة ({wallet.currencyCode}) غير عملة المتجر ({storeCode}) — اكتب كم بيساوي المبلغ بعملة المتجر، وهاد الرقم اللي بينحسب على نصيب الشريك.
+            <span className="block text-note text-[var(--sys-muted)] mt-1">
+              فاضي = السحب بينسجّل بعملة المحفظة ({wallet.currencyCode}) لحالها، وما بيدخل بحساب نصيب الشريك بعملة المتجر.
             </span>
           </label>
         )}
