@@ -12,6 +12,8 @@ import { zodMessage } from '@/lib/zod-message';
 import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
 import { inStoreOrShared } from '@/lib/store-filter';
 import { collectTotalRefusal, statementNamingRefusal } from '@/lib/settlement-gates';
+import { courierOrdersRefusal, walletCountryRefusal } from '@/lib/handover';
+import { handoverTakes } from '@/lib/handover-takes';
 
 /**
  * POST /api/ops/tracking/collect — settle by hand.
@@ -57,9 +59,12 @@ export async function POST(req: Request) {
     // store whose orders these are (the orders are read with `storeId` below).
     const wallet = await db.wallet.findFirst({
       where: { id: parsed.data.walletId, isActive: true, ...inStoreOrShared(companyId, storeId) },
-      select: { id: true, name: true, currencyCode: true },
+      select: { id: true, name: true, currencyCode: true, countryId: true, country: { select: { name: true } } },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
+    // And of this store's country (F9): an unplaced wallet passes the store rule whatever its country.
+    const otherCountry = walletCountryRefusal(wallet, country.id);
+    if (otherCountry) return NextResponse.json(otherCountry, { status: 409 });
 
     const orders = await db.order.findMany({
       where: { id: { in: parsed.data.orderIds }, companyId, storeId },
@@ -76,6 +81,17 @@ export async function POST(req: Request) {
       },
     });
     if (orders.length === 0) return NextResponse.json({ error: 'لا توجد طلبات' }, { status: 404 });
+
+    /*
+     * A MARKED RETIREMENT, NOT A REMOVAL (F9, 23/11).
+     *
+     * «تسوية يدوية للمندوب مش تمام … بدنا نصحح الموضوع زي الكشوفات». An order WITH a courier is now handed over through the
+     * manual statement — its draft, its receipts (any wallet of the country, any currency with its rate) and its approval,
+     * which writes the money once. This door stays for the one case that path refuses (`NO_COURIER`): an order nobody
+     * carried — and for a courier's order the statement can never take (no reference, another currency: `handoverTakes`). Its old MANUAL_COLLECTION rows stay where they are and read as they always did.
+     */
+    const handover = courierOrdersRefusal(orders, (o) => handoverTakes(o, country.currencyCode));
+    if (handover) return NextResponse.json(handover, { status: 409 });
 
     const alreadySettled = orders.filter((o) => o.settlementStatus === 'SETTLED');
     if (alreadySettled.length > 0) {

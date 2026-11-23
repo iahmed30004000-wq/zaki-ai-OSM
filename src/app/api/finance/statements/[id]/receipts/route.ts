@@ -12,6 +12,7 @@ import { inStoreOrShared } from '@/lib/store-filter';
 import { zodMessage } from '@/lib/zod-message';
 import { receiptEditRefusal } from '@/lib/settlement-gates';
 import { isManualDraftHash, MANUAL_DRAFT_SENTENCE } from '@/lib/manual-statement-rules';
+import { walletCountryRefusal } from '@/lib/handover';
 import {
   MAX_PROOF_BYTES,
   describeProof,
@@ -132,9 +133,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // of a store goes into that store's drawer, not into another store's of the same company.
     const wallet = await db.wallet.findFirst({
       where: { id: parsed.data.walletId, isActive: true, ...inStoreOrShared(companyId, storeId) },
-      select: { id: true, name: true, currencyCode: true },
+      select: { id: true, name: true, currencyCode: true, countryId: true, country: { select: { name: true } } },
     });
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
+    /*
+     * AND OF THIS STORE'S COUNTRY (F9, 23/11 — «بحطلي محافظ الأردن وأنا بسوريا»). An unplaced wallet (no store) passes the
+     * store rule above whatever its country; the statement is this store's, and the store stands in the session's country.
+     * Asked after the lookup, so the lookup's own rule is the one it always was.
+     */
+    const otherCountry = walletCountryRefusal(wallet, country.id);
+    if (otherCountry) return NextResponse.json(otherCountry, { status: 409 });
 
     // A different currency needs the rate the money actually changed at.
     if (wallet.currencyCode !== statement.currencyCode && !parsed.data.exchangeRate) {

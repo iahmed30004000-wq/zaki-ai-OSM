@@ -248,7 +248,9 @@ const WALKS: Record<string, () => Promise<Walk>> = {
       deliveryFee: 3,
       expectedCollection: expected,
       customer: { fullName: 'زبون تجريبي' },
-      deliveryProvider: { id: 'p1', name: 'مندوب تجريبي', kind: 'AGENT' },
+      // 23/11 (F9): was courier «مندوب تجريبي». A courier's orders now open «تسليم مندوب» (its own test:
+      // the-handover-panel); this walk is the old hand form, which is now the door for orders with NO courier.
+      deliveryProvider: null,
     });
     render(<CollectDialog orders={[row('a', 37.5), row('b', 20.25)]} onClose={() => {}} onDone={onDone} />);
     const steps: Record<string, Step> = {};
@@ -420,6 +422,9 @@ const WALKS: Record<string, () => Promise<Walk>> = {
 
 // BEFORE:START
 // Recorded on osm/main 8a683213 (19/11), before R11d2 touched the eight dialogs.
+// 23/11 (F9): «collect» re-recorded on purpose — the walk is now an order with NO courier (a courier's orders open «تسليم
+// مندوب»), the hint sentence says so (both textPrints moved), and the wallets are asked with ?scope=collect (this country's
+// active ones). Its figures, controls and the POST body are unchanged.
 const BEFORE: Record<string, Walk> = {
   "deliver": {
     "steps": {
@@ -509,7 +514,7 @@ const BEFORE: Record<string, Walk> = {
   "collect": {
     "steps": {
       "opened": {
-        "textPrint": "9c71efd519561782",
+        "textPrint": "4477b68bc1ade0b2",
         "figures": [
           "57.75 USD"
         ],
@@ -523,7 +528,7 @@ const BEFORE: Record<string, Walk> = {
         ]
       },
       "typed": {
-        "textPrint": "75eddfdc08ab4641",
+        "textPrint": "de7b02c284b10ab2",
         "figures": [
           "57.75 USD"
         ],
@@ -538,7 +543,7 @@ const BEFORE: Record<string, Walk> = {
       }
     },
     "requests": [
-      "GET /api/finance/wallets ",
+      "GET /api/finance/wallets?scope=collect ",
       "POST /api/ops/tracking/collect {\"orderIds\":[\"a\",\"b\"],\"walletId\":\"w1\",\"amount\":50,\"note\":\"استلمت نقداً\"}"
     ]
   },

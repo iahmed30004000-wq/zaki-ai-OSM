@@ -93,12 +93,18 @@ const press = (orderIds: string[] = [ORDER_A]) =>
     })
   );
 
+/*
+ * 23/11 (F9, «تسليم المندوب متل الكشف»): the order used to carry courier p1. This door now answers USE_HANDOVER for a courier's order the handover can take (it has a
+ * reference) — before anything below is asked (the handover's own add door,
+ * `addOrdersToDraft`, asks the same naming question). So the order here has NO courier, and every guard below is asked of
+ * the door's one remaining case. The statements keep their courier: a statement is always somebody's.
+ */
 const order = (over: Record<string, unknown> = {}) => ({
-  id: ORDER_A, orderNumber: 'SY-2026-0001', merchantRef: 'SY-2026-0001', trackingNumber: null, deliveryProviderId: 'p1',
+  id: ORDER_A, orderNumber: 'SY-2026-0001', merchantRef: 'SY-2026-0001', trackingNumber: null, deliveryProviderId: null,
   currency: 'USD', shippingStatus: 'DELIVERED', settlementStatus: 'PENDING_COLLECTION',
   totalAmount: 20, deliveryFee: 3, collectedAmount: null, priceIncludesDelivery: false, returnReceipt: null,
   items: [{ quantity: 1, freeQuantity: 0, unitPrice: 20, lineTotal: 20, discountShare: 0, deliveredQty: null }],
-  deliveryProvider: { id: 'p1', name: 'أبو علي', kind: 'AGENT' },
+  deliveryProvider: null,
   ...over,
 });
 
@@ -172,8 +178,12 @@ describe('an order a statement speaks for is not collected by hand', () => {
     expect((await (await press()).json()).code).toBe('IN_APPROVED_STATEMENT');
   });
 
+  /*
+   * 23/11 (F9): a courier's order with NO reference can never enter the handover (`handoverTakes`: NO_REFERENCE), so it keeps
+   * this door exactly as on main — these two are main's tests, with the courier written out on the order.
+   */
   it('by the courier’s barcode, within that courier', async () => {
-    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100' })]);
+    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100', deliveryProviderId: 'p1' })]);
     world.lines = [line({ merchantRef: null, barcode: 'B-100' })];
     const res = await press();
     expect(res.status).toBe(409);
@@ -182,11 +192,21 @@ describe('an order a statement speaks for is not collected by hand', () => {
   });
 
   it('…but the same barcode on ANOTHER courier’s statement is another parcel', async () => {
-    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100' })]);
+    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100', deliveryProviderId: 'p1' })]);
     world.lines = [line({ merchantRef: null, barcode: 'B-100' }, { deliveryProviderId: 'p2' })];
     const res = await press();
     expect(res.status).toBe(200);
     expect(recordMovement).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEGATIVE: a courier’s order WITH a reference is the handover’s — USE_HANDOVER before the question, nothing read or booked', async () => {
+    db.order.findMany.mockResolvedValue([order({ deliveryProviderId: 'p1' })]);
+    world.lines = [line()];
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('USE_HANDOVER');
+    nothingBooked();
+    expect(db.order.updateMany).not.toHaveBeenCalled();
   });
 
   it('an order named by NO statement is collected as before', async () => {

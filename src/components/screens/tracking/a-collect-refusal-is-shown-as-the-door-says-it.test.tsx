@@ -19,7 +19,9 @@ import { join } from 'node:path';
 
 const order = {
   id: 'o1', orderNumber: 'SY-2026-0001', totalAmount: 20, currency: 'USD', deliveryFee: 3, expectedCollection: 17,
-  customer: { fullName: 'سامر' }, deliveryProvider: { id: 'p1', name: 'أبو علي', kind: 'AGENT' },
+  // 23/11 (F9): was courier «أبو علي». A courier's orders open «تسليم مندوب» now; the hand form — and its door's
+  // refusals, shown as the door says them — is for orders with no courier.
+  customer: { fullName: 'سامر' }, deliveryProvider: null,
 };
 
 const DOOR_SAYS = 'الطلب SY-2026-0001 بكشف ما انعتمد بعد — مصاريه بتنسجّل لما ينعتمد الكشف';

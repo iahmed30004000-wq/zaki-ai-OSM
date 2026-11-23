@@ -304,7 +304,21 @@ describe('an unplaced store — the doors answer what they answered before, byte
       for (const q of Object.keys(QUESTIONS) as Ask[]) {
         world = scenario(seed, 10 + seed * 3);
         calls.length = 0;
-        const body = await ask(q);
+        const answered = await ask(q);
+        /*
+         * 23/11 (F9, «تسليم المندوب»): the follow-up list gained ONE additive field per row, `handover` (may the manual statement
+         * take this order — `handoverTakes`, a pure function that asks the database nothing). It is checked to be a boolean on
+         * every row and then taken off before hashing, so every other byte of the body — and `asked` and `rows` — is still held
+         * to osm/main's golden, unchanged. Nothing else is stripped; the delivery door's body is untouched.
+         */
+        let body = answered;
+        if (q.startsWith('tracking')) {
+          for (const row of answered.orders as Record<string, unknown>[]) expect(typeof row.handover, `${seed} ${q}`).toBe('boolean');
+          body = {
+            ...answered,
+            orders: (answered.orders as Record<string, unknown>[]).map(({ handover: _handover, ...rest }) => rest),
+          };
+        }
         now[`${seed} ${q}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('base64url'), rows: body.orders.length, asked: [...calls] };
       }
     }
