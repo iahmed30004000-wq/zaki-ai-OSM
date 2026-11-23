@@ -3,21 +3,23 @@ import { requireContext } from '@/lib/geo-context';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
-import { cancelWithdrawal, recordWithdrawal, saveStanding, withdrawalsBook } from '@/lib/partner-withdrawals';
+import { WITHDRAWALS_MOVED, saveStanding, standingFor, withdrawalsBook } from '@/lib/partner-withdrawals';
+import { readHistoryFilters } from '@/lib/history-export-core';
 import type { Refusal } from '@/lib/partner-withdrawals-core';
 
 /**
- * «المسحوبات» — THE PARTNERS' WITHDRAWALS, RECORDED PER STORE AND CURRENCY (22/11).
+ * «المسحوبات» — THE PARTNERS' WITHDRAWALS DASHBOARD (23/11, F7; the record of 22/11 before it).
  *
- *   GET   the tab: the partners, the stores' currencies, the standing amounts, this store's rows and the totals
- *   POST  «سجّل مسحوب» — one row (from the standing amount, or a typed one)
- *   PATCH «إلغاء» — a reversing row with the written reason, never a delete
- *   PUT   the standing amounts of one partner, one per currency
+ *   GET   the dashboard, READ-ONLY: the PARTNER_DRAW wallet movements of this store (?from=&to= on the real date), the totals per
+ *         partner and wallet currency, per store, and the old record read-only. `?part=standing` answers the standing amounts alone
+ *         (the wallet form's amount pre-fill).
+ *   POST  RETIRED — a withdrawal is a wallet movement now (`POST /api/finance/partners/draws`). Refused, nothing written.
+ *   PATCH RETIRED — a withdrawal is taken back by the wallet's reversing entry. Refused, nothing written.
+ *   PUT   the standing amounts of one partner, one per currency (unchanged; no screen of this tab edits them any more).
  *
- * «الأرباح: حط شاشة مسحوبات وحط العملات» (the owner). EVERY handler asks `finance.partners` («الشركاء والسحوبات») FIRST, before the
- * body is read: the key that already holds the partners' whole business, granted to nobody by any migration — the owner's full access
- * holds it and he ticks it for whoever he wants. No second key is asked because no cash moves: this is a record, not a wallet movement
- * (the wallet dialog's draw asks the cash box's key because cash leaves a wallet there).
+ * «والحركات تكون من المحافظ … ما بدي الحركات المالية بكل مكان، خلص مكان واحد» (the owner). EVERY handler asks `finance.partners`
+ * («الشركاء والسحوبات») FIRST, before the body is read. No money is written here: the dashboard reads, the standing amounts are a
+ * setting, and the cash leaves a wallet only through the draws door, which asks the cash box's key as well.
  */
 
 const refuse = (r: Refusal) => NextResponse.json({ error: r.errorAr, errorAr: r.errorAr, code: r.code }, { status: r.status });
@@ -27,60 +29,40 @@ const readBody = async (req: Request) => {
 };
 const BAD_BODY: Refusal = { status: 400, code: 'INVALID_BODY', errorAr: 'الطلب مش مفهوم.' };
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('finance.partners');
 
-    return NextResponse.json(await withdrawalsBook({ user, companyId, storeId }));
+    const params = new URL(req.url).searchParams;
+    if (params.get('part') === 'standing') {
+      return NextResponse.json({ standing: await standingFor(companyId) });
+    }
+    const filters = readHistoryFilters(params);
+    if (!filters.ok) return refuse(filters.refusal);
+    return NextResponse.json(await withdrawalsBook({ user, companyId, storeId, country, filters: filters.value }));
   } catch (error) {
     return apiErrorResponse(error);
   }
 }
 
-export async function POST(req: Request) {
+/** RETIRED (23/11, F7) — marked, not removed: the key is still asked first, then the sentence that says where it went. */
+export async function POST() {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    await requireContext();
     await requirePermission('finance.partners');
-
-    const body = await readBody(req);
-    if (!body) return refuse(BAD_BODY);
-    const done = await recordWithdrawal({ user, companyId, storeId, body });
-    if (!done.ok) return refuse(done.refusal);
-
-    await logAudit({
-      companyId,
-      userId: user.id,
-      action: 'PARTNER_WITHDRAWAL_RECORDED',
-      entity: 'PartnerWithdrawal',
-      entityId: done.value.id,
-      newData: { ...done.value, storeId },
-    });
-    return NextResponse.json({ withdrawal: done.value }, { status: 201 });
+    return refuse(WITHDRAWALS_MOVED);
   } catch (error) {
     return apiErrorResponse(error);
   }
 }
 
-export async function PATCH(req: Request) {
+/** RETIRED (23/11, F7) — an old record row is read-only; a draw is taken back at its wallet. */
+export async function PATCH() {
   try {
-    const { user, companyId, storeId } = await requireContext();
+    await requireContext();
     await requirePermission('finance.partners');
-
-    const body = await readBody(req);
-    if (!body) return refuse(BAD_BODY);
-    const done = await cancelWithdrawal({ user, companyId, storeId, body });
-    if (!done.ok) return refuse(done.refusal);
-
-    await logAudit({
-      companyId,
-      userId: user.id,
-      action: 'PARTNER_WITHDRAWAL_CANCELLED',
-      entity: 'PartnerWithdrawal',
-      entityId: done.value.originalId,
-      newData: { ...done.value, storeId },
-    });
-    return NextResponse.json({ cancel: done.value });
+    return refuse(WITHDRAWALS_MOVED);
   } catch (error) {
     return apiErrorResponse(error);
   }

@@ -1,173 +1,63 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import Link from 'next/link';
+import { RiEyeLine } from '@remixicon/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Input, Select, Textarea } from '@/components/ui/Input';
-import { Modal } from '@/components/ui/Modal';
+import { IconButton } from '@/components/ui/IconButton';
 import { Rows, type Column } from '@/components/ui/Rows';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonRows } from '@/components/ui/Skeleton';
+import { Segmented } from '@/components/ui/Segmented';
+import { DateRange, initialRange, type Range } from '@/components/ui/DateRange';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { apiJson } from '@/lib/api-client';
 import { arDate } from '@/lib/format';
-import { localDayKey } from '@/lib/local-day';
+import { MOVEMENT_CATEGORY_AR } from '@/lib/movement-category-words';
 import type { WithdrawalsBook } from '@/lib/partner-withdrawals';
 import { HistoryExport } from './HistoryExport';
+import { MovementDetails, RealDateCell } from './RealDateDetails';
 
 /**
- * «المسحوبات» — WHAT EACH PARTNER TOOK, PER STORE AND CURRENCY, FROM A STANDING AMOUNT TYPED ONCE (22/11).
+ * «المسحوبات» — ONE PLACE TO READ THE PARTNERS' WITHDRAWALS, WHICH ARE WALLET MOVEMENTS (23/11, F7). READ-ONLY.
  *
- * «الأرباح: حط شاشة مسحوبات وحط العملات» (the owner). Each partner's usual figure per currency is saved once («المبالغ الثابتة»);
- * beside each one, a box already filled with it and ONE press «سجّل مسحوب». The box may be changed for that press; «مبلغ تاني» takes
- * a figure in any currency of the stores.
+ * «والحركات تكون من المحافظ، وآخر شي تكون زي داشبورد للشركاء والسحوبات… ما بدي الحركات المالية بكل مكان، خلص مكان واحد» — and
+ * «السحوبات الأساسية بتتسجّل سحب من المحفظة بالعملة. مثال أحمد سحب 1000 USDT و1000 دينار و1000 ليرة وهكذا، بدون ما يجيني سعر الصرف»
+ * (the owner). A withdrawal is recorded in ONE place: the wallet («حركة جديدة» ← «سحب شريك»), in the wallet's own currency. This tab
+ * only reads them: per partner PER CURRENCY (never summed across currencies), per store, over a span on the real date, with the eye
+ * and a way to the movement in its wallet. A reversed draw is struck through and counted nowhere — it is reversed at its wallet.
  *
- * THE FIGURES ARE THE SERVER'S: every total is `GET /api/finance/partners/withdrawals`'s, per currency — two currencies are never
- * added here or there. RECORD ONLY: nothing moves a wallet and the profit and the partners' account above are unchanged — the tab
- * says so in its first line. Drawn only for who holds `finance.partners`.
+ * Every figure is the server's (`GET /api/finance/partners/withdrawals`). Nothing here writes.
  */
 
 type Row = WithdrawalsBook['rows'][number];
-type Draft = { partnerId: string; currencyCode: string; amount: string; note: string };
+type Legacy = WithdrawalsBook['legacy'][number];
 
-const ERROR_BOX = 'rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]';
+/** Said beside a currency whose draws carry no worth in the store's currency: they are not in the partner's share yet. */
+export const UNVALUED_LINE = 'سحوبات بعملة تانية — لا تدخل بحساب نصيب الشريك بالدولار بعد';
 
 export function WithdrawalsSection() {
   const [book, setBook] = useState<WithdrawalsBook | null>(null);
   const [failed, setFailed] = useState(false);
+  const [span, setSpan] = useState<'all' | 'range'>('all');
+  const [range, setRange] = useState<Range>(() => initialRange('30d'));
+  const [detailsId, setDetailsId] = useState<string | null>(null);
 
+  const query = span === 'range' ? `?from=${range.from}&to=${range.to}` : '';
   const load = useCallback(async () => {
     try {
-      const answer = await apiJson<WithdrawalsBook>('/api/finance/partners/withdrawals');
+      const answer = await apiJson<WithdrawalsBook>(`/api/finance/partners/withdrawals${query}`);
       if (!answer || !Array.isArray(answer.partners) || !Array.isArray(answer.rows) || !Array.isArray(answer.totals)) throw new Error('not a book');
       setBook(answer);
       setFailed(false);
     } catch {
       setFailed(true);
     }
-  }, []);
-  useLiveRefresh(load);
-
-  const [day, setDay] = useState(() => localDayKey(new Date()));
-  const [boxes, setBoxes] = useState<Record<string, string>>({});
-  const [pressing, setPressing] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [draftBusy, setDraftBusy] = useState(false);
-
-  const [standingOf, setStandingOf] = useState<string | null>(null);
-  const [standingBoxes, setStandingBoxes] = useState<Record<string, string>>({});
-  const [standingError, setStandingError] = useState<string | null>(null);
-  const [standingBusy, setStandingBusy] = useState(false);
-
-  const [cancelling, setCancelling] = useState<Row | null>(null);
-  const [reason, setReason] = useState('');
-  const [cancelError, setCancelError] = useState<string | null>(null);
-  const [cancelBusy, setCancelBusy] = useState(false);
-
-  const post = async (body: Record<string, unknown>) =>
-    apiJson('/api/finance/partners/withdrawals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-  /** The one press: the box beside the standing amount, as it reads now. */
-  const pressStanding = async (partnerId: string, currencyCode: string, standing: number) => {
-    const key = `${partnerId}|${currencyCode}`;
-    setPressing(key);
-    setError(null);
-    setDone(null);
-    try {
-      const typed = boxes[key];
-      await post({ partnerId, currencyCode, amount: typed === undefined ? String(standing) : typed, withdrawnOn: day });
-      setDone('انسجّل المسحوب.');
-      setBoxes((b) => {
-        const next = { ...b };
-        delete next[key];
-        return next;
-      });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذّر تسجيل المسحوب');
-    } finally {
-      setPressing(null);
-    }
-  };
-
-  const submitDraft = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!draft) return;
-    setDraftBusy(true);
-    setDraftError(null);
-    try {
-      await post({ ...draft, withdrawnOn: day });
-      setDraft(null);
-      setDone('انسجّل المسحوب.');
-      await load();
-    } catch (err) {
-      setDraftError(err instanceof Error ? err.message : 'تعذّر تسجيل المسحوب');
-    } finally {
-      setDraftBusy(false);
-    }
-  };
-
-  const openStanding = (partnerId: string) => {
-    if (!book) return;
-    const mine = Object.fromEntries(book.standing.filter((s) => s.partnerId === partnerId).map((s) => [s.currencyCode, String(s.amount)]));
-    setStandingBoxes(mine);
-    setStandingError(null);
-    setStandingOf(partnerId);
-  };
-
-  const submitStanding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!book || !standingOf) return;
-    setStandingBusy(true);
-    setStandingError(null);
-    try {
-      await apiJson('/api/finance/partners/withdrawals', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          partnerId: standingOf,
-          amounts: book.currencies.map((c) => ({ currencyCode: c.code, amount: (standingBoxes[c.code] ?? '').trim() })),
-        }),
-      });
-      setStandingOf(null);
-      await load();
-    } catch (err) {
-      setStandingError(err instanceof Error ? err.message : 'تعذّر حفظ المبالغ');
-    } finally {
-      setStandingBusy(false);
-    }
-  };
-
-  const submitCancel = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cancelling) return;
-    setCancelBusy(true);
-    setCancelError(null);
-    try {
-      await apiJson('/api/finance/partners/withdrawals', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ withdrawalId: cancelling.id, reason: reason.trim() }),
-      });
-      setCancelling(null);
-      setReason('');
-      await load();
-    } catch (err) {
-      setCancelError(err instanceof Error ? err.message : 'تعذّر إلغاء المسحوب');
-    } finally {
-      setCancelBusy(false);
-    }
-  };
+  }, [query]);
+  // A new span is a new question: the key makes the hook ask it (the load itself is read through its ref).
+  useLiveRefresh(load, { key: query });
 
   if (failed && !book) {
     return (
@@ -190,11 +80,73 @@ export function WithdrawalsSection() {
     );
   }
 
-  const active = book.partners.filter((p) => p.isActive);
-  const minorOf = (code: string) => book.currencies.find((c) => c.code === code)?.minorUnit ?? 2;
-  const partnerName = (id: string | null) => book.partners.find((p) => p.id === id)?.name ?? '—';
+  const store = book.storeCurrency.code;
 
   const columns: Column<Row>[] = [
+    {
+      key: 'day',
+      label: 'التاريخ',
+      primary: true,
+      render: (r) => <RealDateCell realDate={r.realDate} createdAt={String(r.createdAt)} registeredOnAnotherDay={r.registeredOnAnotherDay} />,
+    },
+    {
+      key: 'partner',
+      label: 'الشريك',
+      primary: true,
+      render: (r) => (
+        <>
+          {r.partnerName}
+          {r.wasReversed && (
+            <>
+              {' '}
+              <Badge variant="danger">معكوس</Badge>
+            </>
+          )}
+        </>
+      ),
+    },
+    { key: 'wallet', label: 'المحفظة', render: (r) => r.walletName },
+    {
+      key: 'amount',
+      label: 'المبلغ',
+      render: (r) => (
+        <span className={r.wasReversed ? 'line-through text-[var(--sys-muted)]' : undefined}>
+          <Money value={r.amount} currency={r.currencyCode} minorUnit={r.minorUnit} />
+          {r.valueInStoreCurrency !== null && r.currencyCode !== r.storeCurrency && (
+            <span className="block text-note text-[var(--sys-muted)]">
+              يعادل <Money value={r.valueInStoreCurrency} currency={r.storeCurrency} minorUnit={r.storeMinor} />
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'note',
+      label: 'ملاحظة',
+      wide: true,
+      render: (r) => (r.wasReversed ? `انعكس: ${r.reversedBy?.reversalReason ?? ''}` : r.note || '—'),
+    },
+    { key: 'by', label: 'سجّله', render: (r) => r.createdByName ?? '—' },
+    {
+      key: 'act',
+      label: 'إجراء',
+      render: (r) => (
+        <span className="flex flex-wrap items-center gap-2">
+          <IconButton size="sm" label="تفاصيل الحركة" onClick={() => setDetailsId(r.id)}>
+            <RiEyeLine className="w-4 h-4" />
+          </IconButton>
+          <Link
+            href={`/finance/wallets?wallet=${encodeURIComponent(r.walletId)}&movement=${encodeURIComponent(r.id)}`}
+            className="text-note font-medium text-[var(--sys-primary)] hover:underline"
+          >
+            افتح الحركة بالمحفظة
+          </Link>
+        </span>
+      ),
+    },
+  ];
+
+  const legacyColumns: Column<Legacy>[] = [
     { key: 'day', label: 'التاريخ', primary: true, render: (r) => arDate(r.withdrawnOn) },
     {
       key: 'partner',
@@ -213,117 +165,51 @@ export function WithdrawalsSection() {
       ),
     },
     { key: 'amount', label: 'المبلغ', render: (r) => <Money value={r.amount} currency={r.currencyCode} minorUnit={r.minorUnit} /> },
-    { key: 'kind', label: 'من', render: (r) => (r.fromStanding ? 'المبلغ الثابت' : 'مبلغ مكتوب') },
-    {
-      key: 'note',
-      label: 'ملاحظة',
-      wide: true,
-      render: (r) => (r.cancelled ? `أُلغي: ${r.cancelled.reason}` : r.note || '—'),
-    },
+    { key: 'note', label: 'ملاحظة', wide: true, render: (r) => (r.cancelled ? `أُلغي: ${r.cancelled.reason}` : r.note || '—') },
     { key: 'by', label: 'سجّله', render: (r) => r.createdByName ?? '—' },
-    {
-      key: 'act',
-      label: 'إجراء',
-      render: (r) =>
-        r.cancelled ? null : (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              setCancelError(null);
-              setReason('');
-              setCancelling(r);
-            }}
-          >
-            إلغاء
-          </Button>
-        ),
-    },
   ];
 
   const stores = [...new Set(book.byStore.map((t) => t.storeId))];
+  const detail = detailsId ? book.rows.find((r) => r.id === detailsId) ?? null : null;
 
   return (
     <>
       <Card>
         <CardHeader
           title="المسحوبات"
-          subtitle="سجلّ لِلّي أخده كل شريك، بالمتجر والعملة. ما بيحرّك محفظة، وما بيغيّر الربح ولا حساب الشركاء."
+          subtitle="كل مسحوب حركة صادرة من محفظة («سحب شريك») بعملة المحفظة، وهون بتشوفهم كلهم بمكان واحد. التسجيل من المحفظة بس."
         />
         <CardContent className="space-y-4">
-          <div className="w-56">
-            <Input label="تاريخ السحب" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-          </div>
-          {error && <p className={ERROR_BOX}>{error}</p>}
-          {done && <p className="text-note text-[var(--sys-success)]">{done}</p>}
-
-          {active.length === 0 ? (
-            <EmptyState
-              title="ما في شركاء محفوظين"
-              why="سجّل الشركاء من «قواعد المال» — بعدها بتحط لكل واحد مبلغه الثابت بكل عملة."
-              action={{ label: 'افتح قواعد المال', href: '/finance/rules' }}
+          <div className="flex flex-wrap items-end gap-3">
+            <Segmented
+              aria-label="الفترة"
+              options={[
+                { value: 'all', label: 'كل السجل' },
+                { value: 'range', label: 'فترة' },
+              ]}
+              value={span}
+              onChange={(v) => setSpan(v === 'range' ? 'range' : 'all')}
             />
-          ) : (
-            <ul className="divide-y divide-[var(--sys-border)]">
-              {active.map((p) => {
-                const mine = book.standing.filter((s) => s.partnerId === p.id);
-                return (
-                  <li key={p.id} className="space-y-2 py-3">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span className="text-sm font-bold text-[var(--sys-heading)]">{p.name}</span>
-                      <Button type="button" size="sm" variant="secondary" onClick={() => openStanding(p.id)}>
-                        المبالغ الثابتة
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setDraftError(null);
-                          setDraft({ partnerId: p.id, currencyCode: book.currencies[0]?.code ?? '', amount: '', note: '' });
-                        }}
-                      >
-                        مبلغ تاني
-                      </Button>
-                    </div>
-                    {mine.length === 0 ? (
-                      <p className="text-note text-[var(--sys-muted)]">ما في مبلغ ثابت — حطّه من «المبالغ الثابتة» أو سجّل «مبلغ تاني».</p>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {mine.map((s) => {
-                          const key = `${p.id}|${s.currencyCode}`;
-                          return (
-                            <div key={key} className="flex flex-wrap items-end gap-2">
-                              <Input
-                                label={`المبلغ (${s.currencyCode})`}
-                                type="number"
-                                inputMode="decimal"
-                                step="any"
-                                value={boxes[key] ?? String(s.amount)}
-                                onChange={(e) => setBoxes((b) => ({ ...b, [key]: e.target.value }))}
-                              />
-                              <Button type="button" size="sm" loading={pressing === key} onClick={() => pressStanding(p.id, s.currencyCode, s.amount)}>
-                                سجّل مسحوب
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+            {span === 'range' && <DateRange label="حسب تاريخ الحركة" value={range} onChange={setRange} />}
+          </div>
+          <p className="text-note text-[var(--sys-muted)]">
+            لتسجيل مسحوب: افتح{' '}
+            <Link href="/finance/wallets" className="font-medium text-[var(--sys-primary)] hover:underline">
+              المحافظ
+            </Link>{' '}
+            ← «حركة جديدة» ← «سحب شريك».
+          </p>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader title="مجموع المسحوبات بهالمتجر" subtitle="لكل شريك بكل عملة لحالها — العملات ما بتنجمع مع بعض." />
+        <CardHeader
+          title="مجموع المسحوبات بهالمتجر"
+          subtitle="لكل شريك بكل عملة لحالها — العملات ما بتنجمع مع بعض. المعكوس ما بينحسب."
+        />
         <CardContent>
           {book.totals.length === 0 ? (
-            <p className="text-note text-[var(--sys-muted)]">ما في مسحوبات بهالمتجر.</p>
+            <p className="text-note text-[var(--sys-muted)]">ما في مسحوبات بهالمتجر{span === 'range' ? ' بهالفترة' : ''}.</p>
           ) : (
             <ul className="divide-y divide-[var(--sys-border)]">
               {book.totals.map((t) => (
@@ -333,6 +219,16 @@ export function WithdrawalsSection() {
                   <span className="ms-auto text-sm font-bold text-[var(--sys-heading)]">
                     <Money value={t.total} currency={t.currencyCode} minorUnit={t.minorUnit} />
                   </span>
+                  {t.currencyCode !== store && t.valueCount > 0 && (
+                    <span className="w-full text-end text-note text-[var(--sys-muted)]">
+                      منها {t.valueCount} مكتوب جنبها ما يعادلها: <Money value={t.valueTotal} currency={store} minorUnit={book.storeCurrency.minorUnit} />
+                    </span>
+                  )}
+                  {t.unvaluedCount > 0 && (
+                    <span className="w-full text-end text-note text-[var(--sys-warning)]">
+                      {UNVALUED_LINE} (<Money value={t.unvaluedTotal} currency={t.currencyCode} minorUnit={t.minorUnit} />)
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -367,12 +263,15 @@ export function WithdrawalsSection() {
       )}
 
       <Card>
-        <CardHeader title="سجل المسحوبات" subtitle="كل مسحوب بتاريخه. «إلغاء» بيكتب سطر عكسي بالسبب — والمسحوب بيضل مكتوب «ملغى»." />
+        <CardHeader
+          title="سجل المسحوبات"
+          subtitle="كل مسحوب بتاريخ حركته. العين بتفتح التفاصيل، والعكس بيصير من المحفظة بقيد عكسي — والمعكوس بيضل مكتوب ومشطوب."
+        />
         <CardContent className="p-0">
-          {/* «سحب السجل» (22/11, F5): this store's withdrawals as Excel or a page to print, by the filters chosen here. */}
+          {/* «سحب السجل» (F5): the same movements as this list, as Excel or a page to print, by the filters chosen here. */}
           <HistoryExport
             list="withdrawals"
-            realLabel="حسب يوم السحب"
+            realLabel="حسب تاريخ الحركة"
             choices={[
               { key: 'partnerId', label: 'الشريك', options: book.partners.map((p) => ({ value: p.id, label: p.name })) },
               { key: 'currency', label: 'العملة', options: book.currencies.map((c) => ({ value: c.code, label: c.code })) },
@@ -382,98 +281,51 @@ export function WithdrawalsSection() {
             rows={book.rows}
             keyOf={(r) => r.id}
             columns={columns}
-            empty={<EmptyState title="ما في مسحوبات مسجَّلة بهالمتجر" why="اضغط «سجّل مسحوب» جنب مبلغ الشريك الثابت، أو «مبلغ تاني»." />}
+            empty={<EmptyState title="ما في مسحوبات بهالمتجر" why="المسحوب بينسجّل من المحفظة: «حركة جديدة» ← «سحب شريك»." />}
           />
         </CardContent>
       </Card>
 
-      {/* A figure typed for this press, in any currency of the stores. */}
-      <Modal isOpen={!!draft} onClose={() => setDraft(null)} title="مسحوب بمبلغ تاني" subtitle={`لـ${partnerName(draft?.partnerId ?? null)} — بتاريخ ${day}`}>
-        {draft && (
-          <form onSubmit={submitDraft} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Select label="العملة *" value={draft.currencyCode} onChange={(e) => setDraft({ ...draft, currencyCode: e.target.value })} required>
-                {book.currencies.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.ar} ({c.code})
-                  </option>
+      {book.legacy.length > 0 && (
+        <Card>
+          <CardHeader
+            title="قديمة — غير مربوطة بمحفظة"
+            subtitle="انسجّلت قبل ما يصير المسحوب حركة محفظة. للقراءة بس: ما بتنحسب بأي مجموع ولا على نصيب حدا، وما بتنمسح."
+          />
+          <CardContent className="p-0">
+            {book.legacyTotals.length > 0 && (
+              <ul className="divide-y divide-[var(--sys-border)] px-4">
+                {book.legacyTotals.map((t) => (
+                  <li key={`${t.partnerId}|${t.currencyCode}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 text-note">
+                    <span className="text-[var(--sys-muted-foreground)]">{t.partnerName} — مكتوب بالسجل القديم</span>
+                    <span className="ms-auto font-bold text-[var(--sys-heading)]">
+                      <Money value={t.total} currency={t.currencyCode} minorUnit={t.minorUnit} />
+                    </span>
+                  </li>
                 ))}
-              </Select>
-              <Input
-                label="المبلغ *"
-                type="number"
-                inputMode="decimal"
-                step="any"
-                value={draft.amount}
-                onChange={(e) => setDraft({ ...draft, amount: e.target.value })}
-                required
-              />
-            </div>
-            <Textarea label="ملاحظة" rows={2} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} />
-            {draftError && <p className={ERROR_BOX}>{draftError}</p>}
-            <div className="flex justify-end space-x-2 pt-2">
-              <Button type="button" variant="secondary" onClick={() => setDraft(null)}>
-                تراجع
-              </Button>
-              <Button type="submit" loading={draftBusy}>
-                سجّل المسحوب
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+              </ul>
+            )}
+            <Rows rows={book.legacy} keyOf={(r) => r.id} columns={legacyColumns} empty={null} />
+          </CardContent>
+        </Card>
+      )}
 
-      {/* The standing amounts of one partner: one box per currency of the stores; an empty box clears it. */}
-      <Modal
-        isOpen={!!standingOf}
-        onClose={() => setStandingOf(null)}
-        title="المبالغ الثابتة"
-        subtitle={`لـ${partnerName(standingOf)} — بتنكتب مرة وحدة، وبتعبّي «سجّل مسحوب». الخانة الفاضية بتشيل العملة.`}
-      >
-        <form onSubmit={submitStanding} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {book.currencies.map((c) => (
-              <Input
-                key={c.code}
-                label={`${c.ar} (${c.code})`}
-                type="number"
-                inputMode="decimal"
-                step="any"
-                value={standingBoxes[c.code] ?? ''}
-                onChange={(e) => setStandingBoxes((b) => ({ ...b, [c.code]: e.target.value }))}
-              />
-            ))}
-          </div>
-          {standingError && <p className={ERROR_BOX}>{standingError}</p>}
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setStandingOf(null)}>
-              تراجع
-            </Button>
-            <Button type="submit" loading={standingBusy}>
-              احفظ المبالغ
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Cancel: a reversing row with the reason; the original stays, marked «ملغى». */}
-      <Modal isOpen={!!cancelling} onClose={() => setCancelling(null)} title="إلغاء مسحوب" subtitle="بيكتب سطر عكسي بالسبب — والمسحوب بيضل بالسجل مكتوب «ملغى»">
-        <form onSubmit={submitCancel} className="space-y-4">
-          <p className="text-sm text-[var(--sys-heading)]">
-            {cancelling?.partnerName} — {cancelling && <Money value={cancelling.amount} currency={cancelling.currencyCode} minorUnit={minorOf(cancelling.currencyCode)} />}
-          </p>
-          <Textarea label="سبب الإلغاء *" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} />
-          {cancelError && <p className={ERROR_BOX}>{cancelError}</p>}
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setCancelling(null)}>
-              تراجع
-            </Button>
-            <Button type="submit" variant="danger" loading={cancelBusy} disabled={reason.trim().length < 3}>
-              ألغِ المسحوب
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {detail && (
+        <MovementDetails
+          movement={{
+            ...detail,
+            direction: detail.direction === 'IN' ? 'IN' : 'OUT',
+            createdAt: String(detail.createdAt),
+            reversedBy: detail.reversedBy ? { ...detail.reversedBy, createdAt: String(detail.reversedBy.createdAt) } : null,
+          }}
+          currency={detail.currencyCode}
+          minorUnit={detail.minorUnit}
+          categoryLabel={MOVEMENT_CATEGORY_AR[detail.category] ?? detail.category}
+          listed={new Set<string>()}
+          onOpen={() => undefined}
+          onClose={() => setDetailsId(null)}
+        />
+      )}
     </>
   );
 }

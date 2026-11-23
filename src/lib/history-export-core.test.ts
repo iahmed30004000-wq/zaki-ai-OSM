@@ -25,6 +25,7 @@ import {
   transfersWhere,
   withdrawalSheet,
   withdrawalsWhere,
+  drawsWhere,
   type MovementLine,
   type TransferLine,
   type WithdrawalLine,
@@ -137,25 +138,36 @@ describe('the transfers sheet', () => {
   });
 });
 
+/*
+ * 23/11 (F7) — UPDATED: a withdrawal is a PARTNER_DRAW wallet movement. Old: rows of partner_withdrawals (day, «من المبلغ الثابت»,
+ * «ملغى»). New: the movement's real date and registration, its wallet, its amount and what it is worth in the store's currency,
+ * «معكوس» for a reversed one; the totals per wallet currency AND per store currency, never across. Why: «خلص مكان واحد».
+ */
 describe('the withdrawals sheet', () => {
   const w = (over: Partial<WithdrawalLine>): WithdrawalLine => ({
-    id: 'w', partnerName: 'الشريك أ', currencyCode: 'USD', minorUnit: 2, amount: 500, withdrawnOn: '2026-11-19', fromStanding: true, note: null,
-    createdAt: '2026-11-20T09:00:00.000Z', createdByName: 'المالك', cancelled: null, storeName: 'متجر', ...over,
+    id: 'w', partnerName: 'الشريك أ', walletName: 'صندوق', currencyCode: 'USD', minorUnit: 2, amount: 500, valueInStoreCurrency: 500,
+    storeCurrency: 'USD', storeMinor: 2, note: null, createdAt: '2026-11-20T09:00:00.000Z', realDate: '2026-11-19T20:30:00.000Z',
+    createdByName: 'المالك', reversedBy: null, storeName: 'متجر', ...over,
   });
   const sheet = withdrawalSheet(
-    [w({ id: '1' }), w({ id: '2', currencyCode: 'JOD', minorUnit: 3, amount: 70.1234, fromStanding: false, note: 'سلفة' }), w({ id: '3', cancelled: { reason: 'سجلتها غلط' } })],
+    [
+      w({ id: '1' }),
+      w({ id: '2', walletName: 'دينار', currencyCode: 'JOD', minorUnit: 3, amount: 70.1234, valueInStoreCurrency: 98.705, note: 'سلفة' }),
+      w({ id: '3', reversedBy: { reversalReason: 'سجلتها غلط' } }),
+    ],
     TZ
   );
 
-  it('golden rows and per-currency totals without the cancelled one', () => {
+  it('golden rows and per-currency totals without the reversed one', () => {
     expect(sheet.header).toEqual(WITHDRAWAL_HEADER);
     expect(sheet.rows.map((r) => r.cells)).toEqual([
-      ['2026-11-19', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 500, 'USD', 'نعم', '', 'ساري'],
-      ['2026-11-19', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 70.123, 'JOD', 'لا', 'سلفة', 'ساري'],
-      ['2026-11-19', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 500, 'USD', 'نعم', '', 'ملغى — سجلتها غلط'],
+      ['2026-11-19 23:30', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 'صندوق', 500, 'USD', 500, 'USD', '', 'ساري'],
+      ['2026-11-19 23:30', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 'دينار', 70.123, 'JOD', 98.71, 'USD', 'سلفة', 'ساري'],
+      ['2026-11-19 23:30', '2026-11-20 12:00', 'المالك', 'الشريك أ', 'متجر', 'صندوق', 500, 'USD', 500, 'USD', '', 'معكوس — سجلتها غلط'],
     ]);
     expect(sheet.totals).toEqual([
       { label: 'مسحوبات', currency: 'JOD', minorUnit: 3, amount: 70.123, count: 1 },
+      { label: 'ما يعادله بعملة المتجر', currency: 'USD', minorUnit: 2, amount: 598.71, count: 2 },
       { label: 'مسحوبات', currency: 'USD', minorUnit: 2, amount: 500, count: 1 },
     ]);
   });
@@ -231,6 +243,10 @@ describe('the lists keep their own clause (no filter = byte for byte what the do
     expect(movementsWhere({ walletId: 'w1' }, NO_FILTERS, TZ)).toEqual({ walletId: 'w1' });
     expect(transfersWhere('c1', NO_FILTERS, TZ)).toEqual({ companyId: 'c1' });
     expect(withdrawalsWhere('c1', ['s1', 's2'], NO_FILTERS, TZ)).toEqual({ companyId: 'c1', storeId: { in: ['s1', 's2'] } });
+    // 23/11 (F7): the dashboard's clause — the partners' statement's own rule (PARTNER_DRAW originals out of these stores' wallets).
+    expect(drawsWhere('c1', ['s1'], NO_FILTERS, TZ)).toEqual({
+      companyId: 'c1', category: 'PARTNER_DRAW', direction: 'OUT', reversalOfId: null, wallet: { storeId: { in: ['s1'] } },
+    });
   });
 
   it('the real date reads the typed moment, or the registration where none was typed', () => {

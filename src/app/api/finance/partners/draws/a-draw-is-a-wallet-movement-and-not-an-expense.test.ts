@@ -184,17 +184,15 @@ describe('a draw from a wallet in the store’s own currency', () => {
 });
 
 describe('THE CURRENCY: a wallet in another currency than the store’s', () => {
-  it('without «ما يعادله بعملة المتجر» NOTHING is written — a silent 1:1 between dinars and dollars is not acceptable', async () => {
+  // 23/11 (F7) — UPDATED. Old: without «ما يعادله» the draw was refused (STORE_VALUE_REQUIRED). New: it is written in the wallet's own
+  // currency with NO store value — never a silent 1:1 — and the partners' statement counts it in no share. Why: «أحمد سحب 1000 USDT
+  // و1000 دينار و1000 ليرة … بدون ما يجيني سعر الصرف» (the owner).
+  it('without «ما يعادله بعملة المتجر» the draw is written in its own currency with NO store value — never a silent 1:1', async () => {
     const res = await post(draw({ walletId: W_JOD, amount: 70 }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.code).toBe('STORE_VALUE_REQUIRED');
-    expect(body.error).toContain('ما يعادله');
-    expect(body.error).toContain('USD');
-    expect(body.error).toContain('JOD');
-    expect(written()).toHaveLength(0);
-    expect(db.$transaction).not.toHaveBeenCalled();
-    expect(logAudit).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(written()).toHaveLength(1);
+    expect(written()[0]).toMatchObject({ category: 'PARTNER_DRAW', direction: 'OUT', amount: 70, currencyCode: 'JOD' });
+    expect(written()[0].valueInStoreCurrency ?? null).toBeNull();
   });
 
   it('with it, the movement keeps the wallet’s amount and carries the store’s worth: 70 JOD = 98.70 USD', async () => {
