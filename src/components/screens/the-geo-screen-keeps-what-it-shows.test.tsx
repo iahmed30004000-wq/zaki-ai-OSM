@@ -95,38 +95,40 @@ const census = () => {
   };
 };
 
+// 23/11 (F6, «إخفاء الشرح»): every button count is ONE more than it was (8→9, 18→19, 12→13, 10→11, 9→10, 16→17) — the
+// page's one new button that folds the explanations under the store boxes. Ticks, fields, links and headings are unchanged.
 describe('the census, step by step (the same numbers before and after the kit)', () => {
   it('the screen as it opens: new country, two stores each with identity/pause, one delete, the add-store row', async () => {
     await draw();
-    expect(census()).toEqual({ buttons: 8, ticks: 4, fields: 0, links: 0, headings: 1 });
+    expect(census()).toEqual({ buttons: 9, ticks: 4, fields: 0, links: 0, headings: 1 });
   });
 
   it('with the country’s settings open: currency, two clocks, seven days, prefix, zone, two flags, the cities', async () => {
     await draw();
     fireEvent.click(screen.getByRole('button', { name: 'الإعدادات' }));
     await screen.findByText('دمشق');
-    expect(census()).toEqual({ buttons: 18, ticks: 6, fields: 7, links: 0, headings: 1 });
+    expect(census()).toEqual({ buttons: 19, ticks: 6, fields: 7, links: 0, headings: 1 });
   });
 
   it('with a store’s identity and storefront panel open (the real cards)', async () => {
     await draw();
     fireEvent.click(screen.getAllByRole('button', { name: 'الهوية والواجهة' })[0]);
     await screen.findByText('هوية المتجر');
-    expect(census()).toEqual({ buttons: 12, ticks: 4, fields: 4, links: 4, headings: 1 });
+    expect(census()).toEqual({ buttons: 13, ticks: 4, fields: 4, links: 4, headings: 1 });
   });
 
   it('with the new-country form open (one form at a time: the screen holds one «adding»)', async () => {
     await draw();
     fireEvent.click(screen.getByRole('button', { name: /بلد جديد/ }));
     expect(document.querySelectorAll('form').length).toBe(1);
-    expect(census()).toEqual({ buttons: 10, ticks: 4, fields: 4, links: 0, headings: 1 });
+    expect(census()).toEqual({ buttons: 11, ticks: 4, fields: 4, links: 0, headings: 1 });
   });
 
   it('with the new-store form open', async () => {
     await draw();
     fireEvent.click(screen.getByRole('button', { name: /متجر في سوريا/ }));
     expect(document.querySelectorAll('form').length).toBe(1);
-    expect(census()).toEqual({ buttons: 9, ticks: 5, fields: 2, links: 0, headings: 1 });
+    expect(census()).toEqual({ buttons: 10, ticks: 5, fields: 2, links: 0, headings: 1 });
   });
 
   it('NEGATIVE: a person who may only look gets no delete control and no cross on a city — and the same ticks', async () => {
@@ -138,7 +140,7 @@ describe('the census, step by step (the same numbers before and after the kit)',
     expect(screen.queryByRole('button', { name: /حذف المحافظة/ })).toBeNull();
     const c = census();
     expect(c.ticks).toBe(6);
-    expect(c.buttons).toBe(16);
+    expect(c.buttons).toBe(17);
   });
 
   it('the identity card saves the name only when it changed, and sends only that', async () => {
