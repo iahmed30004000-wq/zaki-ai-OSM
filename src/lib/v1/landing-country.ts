@@ -215,3 +215,27 @@ export async function relayInCountry(caller: LandingCaller, input: RelayInput): 
     productId: await productIdInCountry({ ...caller, countryId: c }, input.productId),
   };
 }
+
+/**
+ * THE STORES A LANDING KEY SEES (2026-11-23): what Zaki Pages offers when the owner adds a country or a store there â€” the
+ * company's real stores (never a test bench), kept to the key's country, and to its one store for a store-bound key.
+ * Each with its country and that country's currency, so the page system shows the same money the orders will carry.
+ */
+export async function landingStores(caller: LandingCaller) {
+  const c = bound(caller);
+  const s = boundStore(caller);
+  const rows = await db.store.findMany({
+    where: { companyId: caller.companyId, isTest: false, ...(c ? { countryId: c } : {}), ...(s ? { id: s } : {}) },
+    orderBy: [{ name: 'asc' }],
+    select: { id: true, name: true, status: true, country: { select: { code: true, name: true, currencyCode: true, minorUnit: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    active: r.status === 'ACTIVE',
+    country: r.country.code.toUpperCase(),
+    countryName: r.country.name,
+    currency: r.country.currencyCode,
+    minorUnit: r.country.minorUnit,
+  }));
+}

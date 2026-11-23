@@ -113,6 +113,8 @@ describe('the door was found at all — a sweep over nothing proves nothing', ()
       'src/app/api/v1/landing/products/[id]/route.ts',
       'src/app/api/v1/landing/products/route.ts',
       'src/app/api/v1/landing/quote/route.ts',
+      // 23/11: the stores the landing key sees, for «أضف بلد / أضف متجر» there — `a-landing-key-lists-its-stores.test.ts`.
+      'src/app/api/v1/landing/stores/route.ts',
       // The eighth (17/11, PR-B) is `notify`: one Telegram gateway for every system, scope `notify.send` — `the-notify-door.test.ts`.
       'src/app/api/v1/notify/route.ts',
       // The replies system's two (18/11): amend and cancel an order it created — `the-companion-doors.test.ts`.
