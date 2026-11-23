@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { RiEyeLine } from '@remixicon/react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import { Money } from '@/components/ui/Money';
+import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { IconButton } from '@/components/ui/IconButton';
 import { Rows, type Column } from '@/components/ui/Rows';
@@ -17,7 +18,8 @@ import { apiJson } from '@/lib/api-client';
 import { arDate } from '@/lib/format';
 import { MOVEMENT_CATEGORY_AR } from '@/lib/movement-category-words';
 import type { WithdrawalsBook } from '@/lib/partner-withdrawals';
-import { kindWord } from '@/lib/exchange-rates-core';
+import { BACKFILL_SOURCE, kindWord } from '@/lib/exchange-rates-core';
+import { BackfillOldDraws, EditBackfilled } from './BackfillOldDraws';
 import { HistoryExport } from './HistoryExport';
 import { MovementDetails, RealDateCell } from './RealDateDetails';
 
@@ -46,6 +48,8 @@ export function WithdrawalsSection() {
   const [span, setSpan] = useState<'all' | 'range'>('all');
   const [range, setRange] = useState<Range>(() => initialRange('30d'));
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  // F8: the row the owner is editing — one the exception «استثناء بسعر اليوم» filled.
+  const [editing, setEditing] = useState<Row | null>(null);
 
   const query = span === 'range' ? `?from=${range.from}&to=${range.to}` : '';
   const load = useCallback(async () => {
@@ -154,6 +158,11 @@ export function WithdrawalsSection() {
           >
             افتح الحركة بالمحفظة
           </Link>
+          {book.mayBackfill && r.equivalentRateSource === BACKFILL_SOURCE && !r.wasReversed && (
+            <Button variant="quiet" size="sm" onClick={() => setEditing(r)}>
+              عدّل السعر
+            </Button>
+          )}
         </span>
       ),
     },
@@ -177,7 +186,30 @@ export function WithdrawalsSection() {
         </>
       ),
     },
-    { key: 'amount', label: 'المبلغ', render: (r) => <Money value={r.amount} currency={r.currencyCode} minorUnit={r.minorUnit} /> },
+    {
+      key: 'amount',
+      label: 'المبلغ',
+      render: (r) => {
+        // F8: the per-currency figure first; then, for the owner's exception, today's estimate in the store's currency — display only.
+        const today = book.legacyToday?.byId[r.id];
+        return (
+          <>
+            <Money value={r.amount} currency={r.currencyCode} minorUnit={r.minorUnit} />
+            {!r.cancelled && r.currencyCode !== store && today !== undefined && (
+              <span className={`block text-note ${today === null ? 'text-[var(--sys-warning)]' : 'text-[var(--sys-muted)]'}`}>
+                {today === null ? (
+                  UNVALUED_LINE
+                ) : (
+                  <>
+                    ≈ <Money value={today} currency={store} minorUnit={book.storeCurrency.minorUnit} /> {book.legacyToday.label}
+                  </>
+                )}
+              </span>
+            )}
+          </>
+        );
+      },
+    },
     { key: 'note', label: 'ملاحظة', wide: true, render: (r) => (r.cancelled ? `أُلغي: ${r.cancelled.reason}` : r.note || '—') },
     { key: 'by', label: 'سجّله', render: (r) => r.createdByName ?? '—' },
   ];
@@ -341,9 +373,36 @@ export function WithdrawalsSection() {
                 ))}
               </ul>
             )}
+            {/* F8: the block's estimate at today's rate — display only, added to no other total; currencies with no rate are named. */}
+            {book.legacyToday && (book.legacyToday.count > 0 || book.legacyToday.noRate.length > 0) && (
+              <div className="space-y-1 px-4 py-2" data-legacy-today="">
+                {book.legacyToday.count > 0 && (
+                  <p className="text-note font-bold text-[var(--sys-heading)]">
+                    {book.legacyToday.label}: <Money value={book.legacyToday.total} currency={store} minorUnit={book.storeCurrency.minorUnit} /> ({book.legacyToday.count} مسحوب) — للعرض بس، ما بيدخل بأي مجموع.
+                  </p>
+                )}
+                {book.legacyToday.noRate.map((n) => (
+                  <p key={n.currencyCode} className="text-note text-[var(--sys-warning)]">
+                    {n.count} مسحوب بـ{n.currencyCode}: {n.sentence}
+                  </p>
+                ))}
+              </div>
+            )}
             <Rows rows={book.legacy} keyOf={(r) => r.id} columns={legacyColumns} empty={null} />
           </CardContent>
         </Card>
+      )}
+
+      {book.mayBackfill && <BackfillOldDraws onDone={() => void load()} />}
+
+      {editing && (
+        <EditBackfilled
+          movementId={editing.id}
+          current={editing.valueInStoreCurrency}
+          currency={editing.storeCurrency}
+          onClose={() => setEditing(null)}
+          onDone={() => void load()}
+        />
       )}
 
       {detail && (

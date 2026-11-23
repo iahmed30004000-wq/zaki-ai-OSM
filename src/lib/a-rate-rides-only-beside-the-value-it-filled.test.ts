@@ -16,7 +16,7 @@ const tx = () => {
   };
 };
 const DRAW = {
-  companyId: 'c1', walletId: 'w1', direction: 'OUT' as const, amount: 100, party: 'شريك', category: 'PARTNER_DRAW', note: 'سحب',
+  companyId: 'c1', walletId: 'w1', direction: 'OUT' as const, amount: 100, party: 'شريك', category: 'PARTNER_DRAW' as const, note: 'سحب',
   referenceType: 'PARTNER_DRAW', referenceId: 'p1', partnerId: 'p1', createdById: 'u1',
 };
 const RATE = { rate: 1.41, kind: 'AUTO' as const, source: 'open.er-api.com', at: new Date('2026-11-23T00:00:00Z') };
@@ -39,7 +39,7 @@ describe('a rate beside its value', () => {
     await expect(recordMovement(t as never, { ...DRAW, equivalentRate: RATE })).rejects.toThrow('A rate is stored only beside the value it filled');
     await expect(recordMovement(t as never, { ...DRAW, valueInStoreCurrency: 1, equivalentRate: { ...RATE, rate: 0 } })).rejects.toThrow();
     await expect(
-      recordMovement(t as never, { companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 5, party: 'x', category: 'OTHER', note: 'n', createdById: 'u1', equivalentRate: RATE })
+      recordMovement(t as never, { companyId: 'c1', walletId: 'w1', direction: 'OUT', amount: 5, party: 'x', category: 'OTHER' as const, note: 'n', createdById: 'u1', equivalentRate: RATE })
     ).rejects.toThrow('Only a partner draw carries a partner or a store value');
     expect(t.created).toHaveLength(0);
   });

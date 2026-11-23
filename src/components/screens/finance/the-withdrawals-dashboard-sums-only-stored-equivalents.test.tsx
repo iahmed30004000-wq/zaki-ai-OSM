@@ -117,3 +117,65 @@ describe('the rate of each draw', () => {
     expect(rates).toBe(text.split('بسعر 1.41044 · تلقائي').length - 1);
   });
 });
+
+/* ───────────── 23/11 (F8, the owner's exception): the old record at today's rate, and the owner's fill ───────────── */
+
+const LEGACY_BOOK = {
+  ...BOOK,
+  legacyTotals: [{ partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'JOD', total: 100, count: 1, minorUnit: 3 }],
+  legacy: [
+    { id: 'L1', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'JOD', minorUnit: 3, amount: 100, withdrawnOn: '2026-11-22', fromStanding: false, note: '', createdAt: '2026-11-22T10:00:00.000Z', createdByName: 'سارة', cancelled: null },
+    { id: 'L2', partnerId: 'p1', partnerName: 'شريك أ', currencyCode: 'SYP', minorUnit: 2, amount: 50000, withdrawnOn: '2026-11-22', fromStanding: false, note: '', createdAt: '2026-11-22T10:00:00.000Z', createdByName: 'سارة', cancelled: null },
+  ],
+  legacyToday: {
+    label: 'بسعر اليوم — استثناء للقديم',
+    byId: { L1: 141.04, L2: null },
+    total: 141.04,
+    count: 1,
+    noRate: [{ currencyCode: 'SYP', count: 1, sentence: 'ما في سعر — اكتب سعر الليرة بالإعدادات' }],
+  },
+};
+
+describe('the old record at today’s rate — display only', () => {
+  it('per-currency first, then «≈ … بسعر اليوم — استثناء للقديم» per row and for the block; the pound row says it has no rate', async () => {
+    api.mockResolvedValue({ ...LEGACY_BOOK, mayBackfill: false });
+    const { container } = render(<WithdrawalsSection />);
+    await screen.findByText('قديمة — غير مربوطة بمحفظة');
+    const block = container.querySelector('[data-legacy-today]')!;
+    expect(block.textContent).toContain('بسعر اليوم — استثناء للقديم');
+    expect(block.textContent).toContain('141.04');
+    expect(block.textContent).toContain('للعرض بس، ما بيدخل بأي مجموع');
+    expect(block.textContent).toContain('ما في سعر — اكتب سعر الليرة بالإعدادات');
+    // The dollar sum of the wallet draws is untouched by the old record: still 890.04.
+    expect(container.querySelector('[data-sum="store"]')!.textContent).toContain('890.04');
+  });
+
+  it('NEGATIVE: «عبّي السعر للقديم بسعر اليوم» is not drawn for anybody but the owner', async () => {
+    api.mockResolvedValue({ ...LEGACY_BOOK, mayBackfill: false });
+    render(<WithdrawalsSection />);
+    await screen.findByText('مجموع المسحوبات بهالمتجر');
+    expect(screen.queryByText('عبّي السعر للقديم بسعر اليوم')).toBeNull();
+  });
+
+  it('for the owner: preview first (nothing written), then one confirm carrying the previewed ids and total', async () => {
+    const plan = { storeCurrency: 'USD', source: 'استثناء بسعر اليوم', total: 241.04, skipped: [{ currencyCode: 'SYP', count: 1, sentence: 'ما في سعر — اكتب سعر الليرة بالإعدادات' }], rows: [
+      { id: 'a', walletId: 'w', partnerId: 'p1', amount: 100, currencyCode: 'JOD', createdAt: '2026-11-01T00:00:00.000Z', value: 141.04, rate: 1.41, kind: 'AUTO', asOf: null },
+      { id: 'b', walletId: 'w', partnerId: 'p1', amount: 70.9, currencyCode: 'JOD', createdAt: '2026-11-02T00:00:00.000Z', value: 100, rate: 1.41, kind: 'AUTO', asOf: null },
+    ] };
+    api.mockImplementation(async (url: string, init?: { method?: string; body?: string }) => {
+      if (url === '/api/finance/partners/draws/backfill') return init?.method === 'POST' ? { written: 2, total: 241.04 } : plan;
+      return { ...LEGACY_BOOK, mayBackfill: true };
+    });
+    const { container } = render(<WithdrawalsSection />);
+    const { fireEvent, waitFor } = await import('@testing-library/react');
+    fireEvent.click(await screen.findByRole('button', { name: 'اعرض المعاينة' }));
+    await waitFor(() => expect(container.querySelector('[data-total="backfill"]')!.textContent).toContain('241.04'));
+    expect(container.textContent).toContain('1 سحب بـSYP ما انحسبو');
+    expect(api.mock.calls.filter((c) => (c[1] as { method?: string } | undefined)?.method === 'POST')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'أكّد وعبّي' }));
+    await waitFor(() => expect(screen.getByText('انعبّى 2 سحب بسعر اليوم.')).toBeTruthy());
+    const posts = api.mock.calls.filter((c) => (c[1] as { method?: string } | undefined)?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse((posts[0][1] as { body: string }).body)).toEqual({ confirm: true, expectedIds: ['a', 'b'], expectedTotal: 241.04 });
+  });
+});

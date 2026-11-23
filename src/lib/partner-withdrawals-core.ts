@@ -1,6 +1,7 @@
 import { roundMinor, toMinorUnits, fromMinorUnits } from './money';
 import { CURRENCIES } from './currencies';
 import { readTypedFigure } from './numeric-input';
+import { equivalentOf, missingRateSentence, type AutoRates, type ManualRates } from './exchange-rates-core';
 
 /**
  * «المسحوبات» — THE ARITHMETIC AND THE REFUSALS, WITH NO DATABASE (22/11).
@@ -284,4 +285,44 @@ export function equivalentSums(
 /** «المجموع بالدولار» when the store counts in dollars; otherwise the store's own currency is named. */
 export function equivalentSumLabel(storeCode: string): string {
   return storeCode === 'USD' ? 'المجموع بالدولار' : `المجموع بعملة المتجر (${storeCode})`;
+}
+
+/** The label on every figure of the old record priced at today's rate. */
+export const LEGACY_TODAY_LABEL = 'بسعر اليوم — استثناء للقديم';
+
+/**
+ * THE OLD RECORD AT TODAY'S RATE (23/11, F8 — the owner's exception). DISPLAY ONLY: an estimate in the store's currency per row of
+ * the old `partner_withdrawals` and for the block, at today's effective rate (the owner's, else the automatic one). Never written,
+ * never added to any other total. A cancelled row is nothing; a currency with no rate is named and left out of the estimate.
+ */
+export function legacyAtToday(
+  rows: readonly { id: string; currencyCode: string; amount: number; cancelled: unknown }[],
+  storeCode: string,
+  storeMinor: number,
+  auto: AutoRates | undefined,
+  manual: ManualRates | undefined,
+  now: Date
+): { byId: Record<string, number | null>; total: number; count: number; noRate: { currencyCode: string; count: number; sentence: string }[] } {
+  const byId: Record<string, number | null> = {};
+  const missing = new Map<string, number>();
+  let units = 0;
+  let count = 0;
+  for (const r of rows) {
+    if (r.cancelled) continue;
+    const eq = r.currencyCode === storeCode ? null : equivalentOf(r.amount, r.currencyCode, storeCode, storeMinor, auto, manual, now);
+    const value = r.currencyCode === storeCode ? r.amount : eq && eq.ok ? eq.value : null;
+    byId[r.id] = value;
+    if (value === null) {
+      missing.set(r.currencyCode, (missing.get(r.currencyCode) ?? 0) + 1);
+      continue;
+    }
+    units += toMinorUnits(value, storeMinor);
+    count += 1;
+  }
+  return {
+    byId,
+    total: fromMinorUnits(units, storeMinor),
+    count,
+    noRate: [...missing.entries()].map(([currencyCode, n]) => ({ currencyCode, count: n, sentence: missingRateSentence([currencyCode]) })),
+  };
 }

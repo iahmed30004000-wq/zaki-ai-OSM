@@ -31,6 +31,8 @@ export const USDT_SOURCE = { name: 'api.kraken.com', url: 'https://api.kraken.co
 export const REFRESH_EVERY_MS = 24 * 60 * 60 * 1000;
 /** An automatic rate older than this many days is flagged on every screen that shows it. */
 export const STALE_DAYS = 3;
+/** The source written on an old draw the owner's exception filled at today's rate («عبّي السعر للقديم») — distinct from any source name. */
+export const BACKFILL_SOURCE = 'استثناء بسعر اليوم';
 /** Codes that a source is never asked for, whatever it lists. */
 export const NEVER_FROM_A_SOURCE: readonly string[] = ['SYP'];
 

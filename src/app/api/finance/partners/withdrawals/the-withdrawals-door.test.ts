@@ -112,7 +112,10 @@ const { tables, db, requireContext, logAudit, current, writes } = vi.hoisted(() 
 
 // 23/11 (F8): the draws door now fills «ما يعادله» from today's rate when it is left empty. These tests pin what happens with NO rate
 // (F7's rule: written in its own currency with no store value), so the rates read here answer «no rate». The filled case: the-draw-fills-its-equivalent-at-todays-rate.test.ts.
-vi.mock('@/lib/exchange-rates', () => ({ drawEquivalent: async () => ({ ok: false, missing: ['JOD'], sentence: 'ما في سعر — اكتب سعر JOD بالإعدادات' }) }));
+vi.mock('@/lib/exchange-rates', () => ({
+  drawEquivalent: async () => ({ ok: false, missing: ['JOD'], sentence: 'ما في سعر — اكتب سعر JOD بالإعدادات' }),
+  readRateTable: async () => ({ auto: undefined, manual: { rates: {} } }),
+}));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
 vi.mock('@/lib/geo-context', () => ({
@@ -365,8 +368,8 @@ describe('the dashboard reads the wallet movements', () => {
   it('READ-ONLY: the book offers no wallet, no press and no standing figure — nothing on this tab records a withdrawal', async () => {
     await as(await person(CASHIER_PARTNER));
     const { body } = await book();
-    // 23/11 (F8): + equivalentSumLabel, equivalentSums — «المجموع بالدولار», the sum of the STORED equivalents (still nothing to press).
-    expect(Object.keys(body).sort()).toEqual(['byStore', 'currencies', 'equivalentSumLabel', 'equivalentSums', 'legacy', 'legacyTotals', 'partners', 'rows', 'storeCurrency', 'storeId', 'totals']);
+    // 23/11 (F8): + equivalentSumLabel, equivalentSums, legacyToday (display only), mayBackfill (the owner's flag) — «المجموع بالدولار», the sum of the STORED equivalents (still nothing to press).
+    expect(Object.keys(body).sort()).toEqual(['byStore', 'currencies', 'equivalentSumLabel', 'equivalentSums', 'legacy', 'legacyToday', 'legacyTotals', 'mayBackfill', 'partners', 'rows', 'storeCurrency', 'storeId', 'totals']);
   });
 
   it('`?part=standing` answers the standing amounts alone — an amount per currency, nothing else', async () => {
