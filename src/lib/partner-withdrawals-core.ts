@@ -1,6 +1,7 @@
 import { roundMinor, toMinorUnits, fromMinorUnits } from './money';
 import { CURRENCIES } from './currencies';
 import { readTypedFigure } from './numeric-input';
+import { equivalentOf, missingRateSentence, type AutoRates, type ManualRates } from './exchange-rates-core';
 
 /**
  * «المسحوبات» — THE ARITHMETIC AND THE REFUSALS, WITH NO DATABASE (22/11).
@@ -250,4 +251,79 @@ export function totalsByPartner(byStore: readonly StoreWithdrawalTotal[], minorO
     total: fromMinorUnits(t.units, minorOf(t.currencyCode)),
     count: t.count,
   }));
+}
+
+/**
+ * «المجموع بالدولار» (23/11, F8) — THE SUM OF THE STORED EQUIVALENTS, AND NOTHING ELSE.
+ *
+ * Every stored equivalent is in the STORE's currency, so they may be added across the wallets' currencies; a draw with NO stored
+ * equivalent is not converted here or anywhere — it stays on its own currency's «بلا سعر» line. Per partner and for the store, in
+ * whole minor units of the store's currency.
+ */
+export function equivalentSums(
+  totals: readonly { partnerId: string; valueTotal: number; valueCount: number }[],
+  storeMinor: number
+): { byPartner: { partnerId: string; value: number; count: number }[]; store: { value: number; count: number } } {
+  const acc = new Map<string, { units: number; count: number }>();
+  let all = 0;
+  let allCount = 0;
+  for (const t of totals) {
+    if (t.valueCount === 0) continue;
+    const units = toMinorUnits(t.valueTotal, storeMinor);
+    const cur = acc.get(t.partnerId) ?? { units: 0, count: 0 };
+    cur.units += units;
+    cur.count += t.valueCount;
+    acc.set(t.partnerId, cur);
+    all += units;
+    allCount += t.valueCount;
+  }
+  return {
+    byPartner: [...acc.entries()].map(([partnerId, v]) => ({ partnerId, value: fromMinorUnits(v.units, storeMinor), count: v.count })),
+    store: { value: fromMinorUnits(all, storeMinor), count: allCount },
+  };
+}
+
+/** «المجموع بالدولار» when the store counts in dollars; otherwise the store's own currency is named. */
+export function equivalentSumLabel(storeCode: string): string {
+  return storeCode === 'USD' ? 'المجموع بالدولار' : `المجموع بعملة المتجر (${storeCode})`;
+}
+
+/** The label on every figure of the old record priced at today's rate. */
+export const LEGACY_TODAY_LABEL = 'بسعر اليوم — استثناء للقديم';
+
+/**
+ * THE OLD RECORD AT TODAY'S RATE (23/11, F8 — the owner's exception). DISPLAY ONLY: an estimate in the store's currency per row of
+ * the old `partner_withdrawals` and for the block, at today's effective rate (the owner's, else the automatic one). Never written,
+ * never added to any other total. A cancelled row is nothing; a currency with no rate is named and left out of the estimate.
+ */
+export function legacyAtToday(
+  rows: readonly { id: string; currencyCode: string; amount: number; cancelled: unknown }[],
+  storeCode: string,
+  storeMinor: number,
+  auto: AutoRates | undefined,
+  manual: ManualRates | undefined,
+  now: Date
+): { byId: Record<string, number | null>; total: number; count: number; noRate: { currencyCode: string; count: number; sentence: string }[] } {
+  const byId: Record<string, number | null> = {};
+  const missing = new Map<string, number>();
+  let units = 0;
+  let count = 0;
+  for (const r of rows) {
+    if (r.cancelled) continue;
+    const eq = r.currencyCode === storeCode ? null : equivalentOf(r.amount, r.currencyCode, storeCode, storeMinor, auto, manual, now);
+    const value = r.currencyCode === storeCode ? r.amount : eq && eq.ok ? eq.value : null;
+    byId[r.id] = value;
+    if (value === null) {
+      missing.set(r.currencyCode, (missing.get(r.currencyCode) ?? 0) + 1);
+      continue;
+    }
+    units += toMinorUnits(value, storeMinor);
+    count += 1;
+  }
+  return {
+    byId,
+    total: fromMinorUnits(units, storeMinor),
+    count,
+    noRate: [...missing.entries()].map(([currencyCode, n]) => ({ currencyCode, count: n, sentence: missingRateSentence([currencyCode]) })),
+  };
 }

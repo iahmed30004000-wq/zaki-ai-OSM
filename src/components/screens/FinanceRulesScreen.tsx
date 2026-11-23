@@ -5,6 +5,7 @@ import { PageShell } from '@/components/ui/PageShell';
 import { routeLabel } from '@/lib/route-registry';
 import { PerLineSettlementCard } from '@/components/settings/PerLineSettlementCard';
 import { PartnersCard } from '@/components/settings/PartnersCard';
+import { ExchangeRatesCard } from '@/components/settings/ExchangeRatesCard';
 
 /**
  * «قواعد المال» — THE MONEY RULES, IN «المال» (the owner's plan of 17/11, request R13i).
@@ -25,6 +26,9 @@ export function FinanceRulesScreen() {
 
         {/* «الشركاء والنسب» — each partner's share of the net profit. Drawn only for who holds `finance.partners` (the owner's to tick). */}
         <PartnersCard />
+
+        {/* «أسعار الصرف» (23/11, F8) — the rates a partner's draw is converted at; behind the same key as the partners card. */}
+        <ExchangeRatesCard />
       </div>
     </PageShell>
   );

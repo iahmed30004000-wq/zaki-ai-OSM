@@ -10,6 +10,7 @@ import { roundMinor, toMinorUnits } from '@/lib/money';
 import { numeric } from '@/lib/numeric-input';
 import { zodMessage } from '@/lib/zod-message';
 import { recordMovement, walletBalance } from '@/lib/wallets';
+import { drawEquivalent } from '@/lib/exchange-rates';
 
 /**
  * POST /api/finance/partners/draws — A PARTNER'S WITHDRAWAL (13/11).
@@ -125,6 +126,23 @@ export async function POST(req: Request) {
       value = typed;
     }
 
+    /*
+     * «بسعر اليوم» (23/11, F8). Left empty with the wallet in another currency → the server fills it from TODAY's rate (the rate of the
+     * day this is written, also for a draw dated in the past) and freezes the rate, its kind, its source and its date beside it. A value
+     * the person typed always wins. No rate → the draw is written with no value, as F7 allows, and the answer says which rate is missing.
+     */
+    let filled: { rate: number; kind: 'AUTO' | 'MANUAL'; source: string | null; at: Date | null } | undefined;
+    let noRate: string | null = null;
+    if (wallet.currencyCode !== storeCode && typed === undefined) {
+      const eq = await drawEquivalent({ companyId, amount, walletCode: wallet.currencyCode, storeCode, storeMinor });
+      if (eq.ok && eq.value > 0) {
+        value = eq.value;
+        filled = { rate: eq.rate, kind: eq.kind, source: eq.source, at: eq.asOf ? new Date(eq.asOf) : null };
+      } else if (!eq.ok) {
+        noRate = eq.sentence;
+      }
+    }
+
     const done = await db
       .$transaction(async (tx) => {
         // The wallet row is held until the transaction ends: a second press at the same instant waits here, then sees the first.
@@ -161,6 +179,7 @@ export async function POST(req: Request) {
           referenceId: partner.id,
           partnerId: partner.id,
           valueInStoreCurrency: value,
+          ...(filled ? { equivalentRate: filled } : {}),
           createdById: user.id,
         });
       })
@@ -184,11 +203,20 @@ export async function POST(req: Request) {
         currencyCode: wallet.currencyCode,
         valueInStoreCurrency: value,
         storeCurrency: storeCode,
+        ...(filled ? { rate: filled.rate, rateKind: filled.kind, rateSource: filled.source, rateAt: filled.at } : {}),
         note: movement.note,
       },
     });
 
-    return NextResponse.json({ movement, balance: await walletBalance(db, wallet.id, walletMinor) }, { status: 201 });
+    return NextResponse.json(
+      {
+        movement,
+        balance: await walletBalance(db, wallet.id, walletMinor),
+        // F8: how «ما يعادله» was settled — typed, filled from today's rate, or left empty because no rate exists (the sentence says which).
+        equivalent: { value: value ?? null, filled: filled ?? null, noRate },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     return apiErrorResponse(error);
   }

@@ -65,6 +65,9 @@ const { db, tx, tables, calls, current, requireContext, logAudit, commission, st
   return { db, tx, tables, calls, current: { keys: [] as string[] }, requireContext: vi.fn(), logAudit: vi.fn(), commission: vi.fn(async () => 12.7), statementCalled: vi.fn() };
 });
 
+// 23/11 (F8): the draws door now fills «ما يعادله» from today's rate when it is left empty. These tests pin what happens with NO rate
+// (F7's rule: written in its own currency with no store value), so the rates read here answer «no rate». The filled case: the-draw-fills-its-equivalent-at-todays-rate.test.ts.
+vi.mock('@/lib/exchange-rates', () => ({ drawEquivalent: async () => ({ ok: false, missing: ['JOD'], sentence: 'ما في سعر — اكتب سعر JOD بالإعدادات' }) }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));

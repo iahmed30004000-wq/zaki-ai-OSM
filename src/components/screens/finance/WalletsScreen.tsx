@@ -30,6 +30,10 @@ import { userCan } from '@/lib/can';
 import { COURIER_MONEY_HINT, EXPENSE_HERE_HINT, OWN_LEDGER, OWN_LEDGER_HINT, handCategoriesFor, ownLedgerCategories } from '@/lib/hand-movement-rules';
 import { afterDraw, type PartnerStatement } from '@/lib/partner-statement-core';
 import { standingPrefill, type StandingRow } from '@/lib/partner-withdrawals-core';
+import { STALE_SENTENCE, equivalentOf, kindWord, type AutoRates, type ManualRates } from '@/lib/exchange-rates-core';
+
+/** «أسعار الصرف» as the rates door sends them (F8): the two sides the server converts with. */
+type RateTable = { auto: AutoRates | null; manual: ManualRates };
 import { onTheWire, typedFigure } from '@/lib/typed-box';
 import {
   EXPENSE_CATEGORY_AR,
@@ -1012,6 +1016,9 @@ function RecordDialog({
   // The partners' standing amounts (23/11, F7): «من المبلغ الثابت للشريك» fills the amount — a shortcut, never a rule.
   const [standing, setStanding] = useState<StandingRow[]>([]);
   const [prefilled, setPrefilled] = useState(false);
+  // «بسعر اليوم» (23/11, F8): today's rates, and whether the person has touched «ما يعادله» (then the box is theirs).
+  const [rates, setRates] = useState<RateTable | null>(null);
+  const [valueTouched, setValueTouched] = useState(false);
   // Read once, when the dialog opens, and only for the people who are offered the kind: nobody else asks the partners' door anything.
   useEffect(() => {
     if (!mayPartners) return;
@@ -1028,6 +1035,12 @@ function RecordDialog({
     apiJson<{ standing: StandingRow[] }>('/api/finance/partners/withdrawals?part=standing')
       .then((answer) => {
         if (alive && answer && Array.isArray(answer.standing)) setStanding(answer.standing);
+      })
+      .catch(() => undefined);
+    // «بسعر اليوم» (23/11, F8): the rates the server converts with, for the pre-fill only. Quiet on failure: the box is then empty.
+    apiJson<{ table: RateTable }>('/api/finance/exchange-rates')
+      .then((answer) => {
+        if (alive && answer?.table) setRates(answer.table);
       })
       .catch(() => undefined);
     return () => {
@@ -1051,11 +1064,23 @@ function RecordDialog({
   const partners = (statement?.lines ?? []).filter((l) => l.isActive);
   const partner = partners.find((l) => l.id === partnerId) ?? null;
   const drawAmount = typedFigure(amount);
-  const drawValue = drawOtherCurrency ? typedFigure(storeValue) : drawAmount;
+  /*
+   * «بسعر اليوم — تقدر تعدّله» (23/11, F8). Until the person touches the box it shows what the server will write from today's rate
+   * (`equivalentOf`, the door's own function over the door's own table) and nothing is sent: the server fills it and freezes the rate.
+   * Once touched, the box is theirs: a typed figure is sent and wins; an emptied box sends nothing and the server fills it again.
+   */
+  const today =
+    drawOtherCurrency && rates && statement && drawAmount !== undefined && drawAmount > 0
+      ? equivalentOf(drawAmount, wallet.currencyCode, storeCode!, statement.minorUnit, rates.auto ?? undefined, rates.manual, new Date())
+      : null;
+  const todayText = today?.ok ? String(today.value) : '';
+  const shownValue = valueTouched ? storeValue : todayText;
+  const drawValue = drawOtherCurrency ? typedFigure(shownValue) : drawAmount;
   // «بعد هالسحب»: the statement's own subtraction (`afterDraw`), asked of the figures the server sent — nothing is worked out here.
   const hint = isDraw && statement && partner && drawValue !== undefined && drawValue > 0 ? afterDraw(partner, drawValue, statement.minorUnit) : null;
   // 23/11 (F7): «ما يعادله» is optional — empty never blocks; a figure typed there must still be above zero.
-  const valueTyped = drawOtherCurrency && storeValue.trim() !== '';
+  // F8: only a figure the person typed (and that is not just today's figure again) goes on the wire.
+  const valueTyped = drawOtherCurrency && valueTouched && storeValue.trim() !== '' && storeValue.trim() !== todayText;
   const drawReady = !!statement && !!partner && drawAmount !== undefined && drawAmount > 0 && (!valueTyped || (drawValue !== undefined && drawValue > 0));
 
   /*
@@ -1212,14 +1237,29 @@ function RecordDialog({
               type="number"
               step="0.001"
               min="0.001"
-              value={storeValue}
-              onChange={(e) => setStoreValue(e.target.value)}
+              value={shownValue}
+              onChange={(e) => {
+                setStoreValue(e.target.value);
+                setValueTouched(true);
+              }}
               className="w-full h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm"
               dir="ltr"
             />
-            <span className="block text-note text-[var(--sys-muted)] mt-1">
-              فاضي = السحب بينسجّل بعملة المحفظة ({wallet.currencyCode}) لحالها، وما بيدخل بحساب نصيب الشريك بعملة المتجر.
-            </span>
+            {/* F8: where the figure came from, said under the box — today's rate, the missing rate, or the old F7 sentence. */}
+            {today?.ok && !valueTouched ? (
+              <span className="block text-note text-[var(--sys-muted)] mt-1">
+                بسعر اليوم — تقدر تعدّله ({kindWord(today.kind)}
+                {today.source ? ` · ${today.source}` : ''}
+                {today.asOf ? ` · ${today.asOf.slice(0, 10).replace(/-/g, '/')}` : ''}) — بسعر يوم التسجيل، حتى لو السحب بتاريخ قديم.
+                {today.stale ? ` ${STALE_SENTENCE}` : ''}
+              </span>
+            ) : today && !today.ok ? (
+              <span className="block text-note text-[var(--sys-warning)] mt-1">{today.sentence}</span>
+            ) : (
+              <span className="block text-note text-[var(--sys-muted)] mt-1">
+                فاضي = بينحسب بسعر اليوم إذا في سعر؛ وإذا ما في، السحب بينسجّل بعملة المحفظة ({wallet.currencyCode}) لحالها، وما بيدخل بحساب نصيب الشريك بعملة المتجر.
+              </span>
+            )}
           </label>
         )}
 

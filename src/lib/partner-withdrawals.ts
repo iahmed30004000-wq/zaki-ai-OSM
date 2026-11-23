@@ -3,10 +3,16 @@ import { geoReach } from './geo-context';
 import { NO_FILTERS, drawsWhere, withdrawalsWhere, type HistoryFilters } from './history-export-core';
 import { drawListLines } from './history-export';
 import type { SessionUser } from '@/types/auth';
+import { hasFullAccess } from './authorization';
+import { readRateTable } from './exchange-rates';
 import {
   amountOrRefusal,
   currencyOrRefusal,
   drawTotals,
+  equivalentSumLabel,
+  equivalentSums,
+  legacyAtToday,
+  LEGACY_TODAY_LABEL,
   isRefusal,
   knownCurrencies,
   type KnownCurrency,
@@ -165,6 +171,9 @@ export async function withdrawalsBook(scope: {
     totals: byStore
       .filter((t) => t.storeId === storeId)
       .map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
+    // «المجموع بالدولار» (23/11, F8): this store's STORED equivalents only, per partner and in all — a draw with none is on its own currency's line.
+    equivalentSums: equivalentSums(byStore.filter((t) => t.storeId === storeId), country.minorUnit),
+    equivalentSumLabel: equivalentSumLabel(country.currencyCode),
     // Every store he reaches, per store, partner and wallet currency.
     byStore: byStore.map((t) => ({
       ...t,
@@ -179,6 +188,19 @@ export async function withdrawalsBook(scope: {
       withdrawalTotals(legacy.map((r) => ({ ...r, amount: Number(r.amount) })), minorOf),
       minorOf
     ).map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
+    /*
+     * «بسعر اليوم — استثناء للقديم» (23/11, F8, the owner's exception): the old record priced at TODAY's rate, per row and for the
+     * block. DISPLAY ONLY — written nowhere, added to no other total; the per-currency figures above stay first.
+     */
+    legacyToday: await (async () => {
+      // Display only: rates that cannot be read leave the estimate empty (named per currency), never the dashboard down.
+      const { auto, manual } = await readRateTable(companyId).catch(() => ({ auto: undefined, manual: { rates: {} } }));
+      const cancelled = new Set(legacy.flatMap((r) => (r.reversalOfId ? [r.reversalOfId] : [])));
+      const originals = legacy.filter((r) => !r.reversalOfId).map((r) => ({ id: r.id, currencyCode: r.currencyCode, amount: Number(r.amount), cancelled: cancelled.has(r.id) }));
+      return { label: LEGACY_TODAY_LABEL, ...legacyAtToday(originals, country.currencyCode, country.minorUnit, auto, manual, new Date()) };
+    })(),
+    // «عبّي السعر للقديم بسعر اليوم» is offered to the owner only (every key + the partners' key); its door asks again.
+    mayBackfill: hasFullAccess(user),
     legacy: await describeWithdrawals(
       legacy.map((r) => ({ ...r, amount: Number(r.amount) })),
       partnerName,

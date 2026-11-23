@@ -2071,6 +2071,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/BackfillOldDraws.tsx": {
+    "buttons": 5,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/BulkDecide.tsx": {
     "buttons": 1,
     "inputs": 3,
@@ -2305,7 +2315,7 @@
     "iconButtons": 6
   },
   "src/components/screens/finance/WithdrawalsSection.tsx": {
-    "buttons": 0,
+    "buttons": 1,
     "inputs": 0,
     "columns": 14,
     "cards": 7,
@@ -2564,6 +2574,16 @@
     "links": 1,
     "tabs": 0,
     "iconButtons": 2
+  },
+  "src/components/settings/ExchangeRatesCard.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
   },
   "src/components/settings/IntakeFilterCard.tsx": {
     "buttons": 0,

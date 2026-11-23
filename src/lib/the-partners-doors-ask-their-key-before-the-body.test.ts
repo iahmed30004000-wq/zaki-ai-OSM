@@ -19,6 +19,10 @@ const DOORS = [
   'src/app/api/finance/partners/draws/route.ts',
   // 22/11 (F3, «المسحوبات»): was three doors; the withdrawals door is the fourth and asks the same key first, in all four handlers.
   'src/app/api/finance/partners/withdrawals/route.ts',
+  // 23/11 (F8, «أسعار الصرف»): the rates the draws are converted at live behind the same key, asked first in both handlers.
+  'src/app/api/finance/exchange-rates/route.ts',
+  // 23/11 (F8): the owner's «عبّي السعر للقديم بسعر اليوم» — the same key first, then the owner's flag, in all three handlers.
+  'src/app/api/finance/partners/draws/backfill/route.ts',
 ];
 const source = (rel: string) => stripComments(readFileSync(join(root, rel), 'utf8'));
 

@@ -98,6 +98,10 @@ const ACTION_AR: Record<string, string> = {
   PARTNERS_SAVED: 'حفظ الشركاء ونسبهم', PARTNER_DRAW_RECORDED: 'تسجيل سحب شريك',
   // «المسحوبات» (`/api/finance/partners/withdrawals`, 22/11): a record of what a partner took, its cancel, and the standing amounts.
   PARTNER_WITHDRAWAL_RECORDED: 'تسجيل مسحوب شريك', PARTNER_WITHDRAWAL_CANCELLED: 'إلغاء مسحوب شريك', PARTNER_STANDING_SAVED: 'حفظ المبالغ الثابتة لمسحوبات شريك',
+  // «أسعار الصرف» (`/api/finance/exchange-rates`, 23/11 F8): the owner's typed rates (the Syrian pound, an override).
+  EXCHANGE_RATES_SAVED: 'حفظ أسعار الصرف اليدوية',
+  // «عبّي السعر للقديم بسعر اليوم» (F8, the owner's exception): old draws priced at today's rate, and one such row edited or cleared.
+  PARTNER_DRAWS_BACKFILLED: 'تعبئة «ما يعادله» لسحوبات قديمة بسعر اليوم (استثناء)', PARTNER_DRAW_EQUIVALENT_EDITED: 'تعديل أو مسح «ما يعادله» لسحب انعبّى بسعر اليوم',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
   STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',

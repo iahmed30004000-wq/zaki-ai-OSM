@@ -142,6 +142,11 @@ export async function drawListLines(scope: { companyId: string; storeId: string;
   return rows.map((m) => ({
     ...m,
     valueInStoreCurrency: typeof m.valueInStoreCurrency === 'number' ? m.valueInStoreCurrency : null,
+    // F8: the rate the server filled the equivalent at (frozen at write time), or nulls when it was typed or never filled.
+    equivalentRate: m.equivalentRate == null ? null : Number(m.equivalentRate),
+    equivalentRateKind: (m.equivalentRateKind ?? null) as 'AUTO' | 'MANUAL' | null,
+    equivalentRateSource: m.equivalentRateSource ?? null,
+    equivalentRateAt: m.equivalentRateAt ? new Date(m.equivalentRateAt).toISOString() : null,
     partnerName: (m.partnerId ? partnerOf.get(m.partnerId) : undefined) ?? m.party,
     walletName: walletOf.get(m.walletId)?.name ?? '—',
     minorUnit: walletOf.get(m.walletId)?.country.minorUnit ?? 3,
