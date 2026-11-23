@@ -100,9 +100,9 @@ function RatesForm() {
       />
       <CardContent>
         {failedToLoad ? (
-          <p className="text-xs text-[var(--sys-destructive)]">تعذّر تحميل الأسعار — حدّث الصفحة وجرّب من جديد.</p>
+          <p className="text-note text-[var(--sys-destructive)]">تعذّر تحميل الأسعار — حدّث الصفحة وجرّب من جديد.</p>
         ) : data === null ? (
-          <p className="text-xs text-[var(--sys-muted-foreground)]">جارٍ التحميل…</p>
+          <p className="text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل…</p>
         ) : (
           <form onSubmit={save} className="space-y-4">
             <ul className="divide-y divide-[var(--sys-border)]">
@@ -111,7 +111,7 @@ function RatesForm() {
                   <div className="min-w-[220px] flex-1 space-y-1">
                     <p className="text-sm font-medium">{r.label}</p>
                     {r.effective ? (
-                      <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+                      <p className="text-note text-[var(--sys-muted-foreground)] tabular-nums">
                         {r.code === 'USD'
                           ? 'ثابت — 1'
                           : `1 دولار = ${shown(r.effective.perUsd)} ${r.code} · ${kindWord(r.effective.kind)}${
@@ -119,11 +119,11 @@ function RatesForm() {
                             }${r.effective.asOf ? ` · ${formatDate(r.effective.asOf)}` : ''}`}
                       </p>
                     ) : (
-                      <p className="text-xs text-[var(--sys-warning)]">اكتب السعر</p>
+                      <p className="text-note text-[var(--sys-warning)]">اكتب السعر</p>
                     )}
-                    {r.effective?.stale && <p className="text-xs text-[var(--sys-warning)]">{data.staleSentence}</p>}
+                    {r.effective?.stale && <p className="text-note text-[var(--sys-warning)]">{data.staleSentence}</p>}
                     {r.manual && r.auto && (
-                      <p className="text-xs text-[var(--sys-muted-foreground)] tabular-nums">
+                      <p className="text-note text-[var(--sys-muted-foreground)] tabular-nums">
                         {`التلقائي: 1 دولار = ${shown(r.auto.perUsd)} ${r.code} — سعرك بيغلب`}
                       </p>
                     )}
@@ -146,16 +146,16 @@ function RatesForm() {
             </ul>
 
             {(data.failed.fiat || data.failed.usdt) && (
-              <p className="text-xs text-[var(--sys-warning)]">
+              <p className="text-note text-[var(--sys-warning)]">
                 آخر محاولة لجلب السعر من الإنترنت ما زبطت — بقي آخر سعر محفوظ.
               </p>
             )}
-            <p className="text-xs text-[var(--sys-muted-foreground)]">
+            <p className="text-note text-[var(--sys-muted-foreground)]">
               امسح السعر من الخانة ليرجع التلقائي. السعر بينحفظ مع كل سحب وقت تسجيله — تغيير السعر ما بيغيّر سحوبات قديمة.
             </p>
 
             {error && (
-              <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-xs text-[var(--sys-destructive)]">
+              <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-note text-[var(--sys-destructive)]">
                 {error}
               </p>
             )}

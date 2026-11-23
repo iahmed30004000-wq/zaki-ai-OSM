@@ -3489,7 +3489,7 @@ model WalletMovement {
   /// it) or MANUAL (the owner's typed rate); `…At` = when that rate was true. FROZEN at write time — a later rate never rewrites a row —
   /// and read by no sum: the ledger reads `valueInStoreCurrency` only. NULL on a typed equivalent, on every other movement, and on every
   /// row older than the migration (no backfill). Migration 20261123160000_wallet_movement_equivalent_rate holds two CHECKs this file
-  /// cannot express: wallet_movements_equivalent_rate_check (rate > 0, with a value and a kind) and
+  /// cannot express: wallet_movements_equivalent_rate_check (rate > 0, with a kind) and
   /// wallet_movements_equivalent_rate_kind_check (kind AUTO | MANUAL, with a rate).
   equivalentRate       Decimal?  @db.Decimal(24, 12)
   equivalentRateKind   String?
