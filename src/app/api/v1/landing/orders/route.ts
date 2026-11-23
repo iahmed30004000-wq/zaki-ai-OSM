@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
-import { LANDING_DOOR, idempotencySlot } from '@/lib/v1/landing-country';
+import { LANDING_DOOR, idempotencySlot, scopeOf } from '@/lib/v1/landing-country';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import {
   claimIdempotency,
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     if (replay) return v1Ok(requestId, replay.body as Record<string, unknown>, replay.status);
     claimed = { companyId: caller.companyId, key };
 
-    const result = await takeLandingOrder(caller.companyId, parsed.data, caller.countryId ?? null);
+    const result = await takeLandingOrder(caller.companyId, parsed.data, scopeOf(caller));
     if (!result.ok) {
       await releaseIdempotency(claimed.companyId, claimed.key);
       claimed = null;

@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
     systemToken: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
     // 2026-11-21: the list also offers «البلد» (the company's active countries) — a-landing-key-sees-one-country.test.ts.
     country: { findMany: vi.fn() },
+    // 2026-11-23: and آ«ط§ظ„ظ…طھط¬ط±آ» (the company's real stores) â€” a-landing-key-sees-one-store.test.ts.
+    store: { findMany: vi.fn() },
   },
   requireCompanyTenant: vi.fn(),
   requirePermission: vi.fn(),
@@ -67,6 +69,7 @@ beforeEach(() => {
   );
   h.db.systemToken.updateMany.mockResolvedValue({ count: 1 });
   h.db.country.findMany.mockResolvedValue([]);
+  h.db.store.findMany.mockResolvedValue([]);
 });
 
 describe('the permission, on every verb', () => {

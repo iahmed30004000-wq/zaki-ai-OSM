@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     claimed = { companyId: caller.companyId, key };
 
     // A key bound to one country: another country's thread is 404, its order or product is not linked (`landing-country.ts`).
-    const result = await relayChatLines(caller.companyId, await relayInCountry(caller, parsed.data), new Date(), caller.countryId ?? null);
+    const result = await relayChatLines(caller.companyId, await relayInCountry(caller, parsed.data), new Date(), caller.countryId ?? null, caller.storeId ?? null);
     await rememberIdempotency(caller.companyId, key, result.status, result.body);
     claimed = null;
     return v1Ok(requestId, result.body, result.status);

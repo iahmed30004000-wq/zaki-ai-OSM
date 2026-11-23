@@ -23,7 +23,8 @@ const h = vi.hoisted(() => ({
     country: { findFirst: vi.fn(), findMany: vi.fn() },
     region: { findMany: vi.fn() },
     deliveryFee: { findMany: vi.fn() },
-    store: { findFirst: vi.fn() },
+    // 2026-11-23: the key list also offers «المتجر» (a-landing-key-sees-one-store.test.ts).
+    store: { findFirst: vi.fn(), findMany: vi.fn() },
     orderChannel: { findFirst: vi.fn() },
     company: { findUnique: vi.fn() },
     abandonedCart: { findUnique: vi.fn() },

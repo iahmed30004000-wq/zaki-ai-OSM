@@ -182,6 +182,12 @@ export interface SystemCaller {
    * in one place (`landing-country.ts`).
    */
   countryId?: string | null;
+  /**
+   * The one store this key sees, or null (2026-11-23, Zaki Pages per store). A store-bound key always carries that
+   * store's country in `countryId` too, so a door keeping a key to its country keeps a store key to its country as well;
+   * the landing door also keeps it to its store (`landing-country.ts`).
+   */
+  storeId?: string | null;
 }
 
 /** How a door asks for its caller. */
@@ -258,6 +264,7 @@ export async function requireSystemToken(req: Request, scope: V1Scope, opts: Sys
       revokedAt: true,
       lastUsedAt: true,
       countryId: true,
+      storeId: true,
     },
   });
 
@@ -283,7 +290,9 @@ export async function requireSystemToken(req: Request, scope: V1Scope, opts: Sys
   // A key bound to one country, at a door that cannot keep it to that country: refused like a scope it was not granted
   // (2026-11-21). Never widened to the whole company.
   const countryId = row.countryId ?? null;
-  if (countryId && !opts.countryAware) {
+  // A store-bound key (2026-11-23) is bound like a country key: the same door, the same refusal elsewhere.
+  const storeId = row.storeId ?? null;
+  if ((countryId || storeId) && !opts.countryAware) {
     throw new V1Fault(403, V1_CODE.SCOPE_MISSING, 'The token is bound to one country and cannot use this endpoint', {
       required: scope,
       country_bound: true,
@@ -310,5 +319,5 @@ export async function requireSystemToken(req: Request, scope: V1Scope, opts: Sys
       .catch(() => undefined);
   }
 
-  return { tokenId: row.id, companyId: row.companyId, system: row.system, scopes, countryId };
+  return { tokenId: row.id, companyId: row.companyId, system: row.system, scopes, countryId, ...(storeId ? { storeId } : {}) };
 }

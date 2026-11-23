@@ -2461,6 +2461,7 @@ model Store {
   menus             StoreMenu[]
   redirects         StoreRedirect[]
   productReviews    ProductReview[]
+  systemTokens      SystemToken[]
 
   @@unique([companyId, slug])
   @@unique([domain])
@@ -4443,12 +4444,17 @@ model SystemToken {
   /// as every key made before this column. Only the landing door honours it (`landing-country.ts`); every other door
   /// refuses a country-bound key rather than let it read the whole company (`requireSystemToken`).
   countryId       String?
+  /// THE ONE STORE THIS KEY SEES (2026-11-23, Zaki Pages per store). NULL = every store of its country (or of the
+  /// company). A store-bound key always carries that store's country too, so every country rule holds for it as well;
+  /// only the landing door honours it (`landing-country.ts`).
+  storeId         String?
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   country Country? @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  store   Store?   @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, name])
   @@index([companyId, revokedAt])
@@ -5219,6 +5225,8 @@ model LandingChatThread {
   /// The country of the landing key that opened the thread (2026-11-21) — a country-bound key reads and writes only its
   /// own country's threads. NULL: opened by a key for every country. Plain id, like `productId`: a thread outlives a row.
   countryId          String?
+  /// The store of the landing key that opened the thread (2026-11-23). NULL: opened by a key not bound to a store.
+  storeId            String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -5228,6 +5236,7 @@ model LandingChatThread {
   @@unique([companyId, externalId])
   @@index([companyId, lastMessageAt])
   @@index([companyId, countryId])
+  @@index([companyId, storeId])
   @@map("landing_chat_threads")
 }
 
