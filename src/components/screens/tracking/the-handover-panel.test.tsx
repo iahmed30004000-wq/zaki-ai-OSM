@@ -239,6 +239,33 @@ describe('the panel', () => {
     expect(screen.queryByRole('button', { name: /^اعتماد$/ })).toBeNull();
   });
 
+  it('«شام كاش»: any wallet of the currency is offered, and the transfer number travels as the receipt’s note — optional, cash sends none', async () => {
+    WALLETS.push({ id: 'w-sham', name: 'شام كاش دولار', currencyCode: 'USD' });
+    try {
+      await startHandover();
+      fireEvent.change(screen.getByLabelText('العملة'), { target: { value: 'USD' } });
+      const names = [...(screen.getByLabelText('المحفظة') as HTMLSelectElement).options].map((o) => o.textContent);
+      expect(names).toEqual(['اختر…', 'صندوق الدولار', 'شام كاش دولار']);
+      fireEvent.change(screen.getByLabelText('المحفظة'), { target: { value: 'w-sham' } });
+      fireEvent.change(screen.getByLabelText('المبلغ (USD)'), { target: { value: '50' } });
+      fireEvent.change(screen.getByLabelText(/سعر الصرف/), { target: { value: '0.0001' } });
+      fireEvent.change(screen.getByLabelText('رقم الحوالة / إثبات (اختياري)'), { target: { value: 'SC-4471' } });
+      fireEvent.click(screen.getByRole('button', { name: /سجّل الدفعة/ }));
+      await screen.findByText(/انسجّلت الدفعة/);
+      fireEvent.change(screen.getByLabelText('العملة'), { target: { value: 'SYP' } });
+      fireEvent.change(screen.getByLabelText('المحفظة'), { target: { value: 'w-syp' } });
+      fireEvent.change(screen.getByLabelText('المبلغ (SYP)'), { target: { value: '800000' } });
+      fireEvent.click(screen.getByRole('button', { name: /سجّل الدفعة/ }));
+      await waitFor(() => expect(posted(`/api/finance/statements/${ST}/receipts`)).toHaveLength(2));
+      const [sham, cash] = posted(`/api/finance/statements/${ST}/receipts`).map((c) => JSON.parse(c[1].body as string));
+      expect(sham).toMatchObject({ walletId: 'w-sham', amount: 50, exchangeRate: 0.0001, note: 'SC-4471' });
+      expect(cash).toMatchObject({ walletId: 'w-syp', amount: 800000 });
+      expect(cash).not.toHaveProperty('note');
+    } finally {
+      WALLETS.pop();
+    }
+  });
+
   it('the proof ceiling is the server’s', () => {
     expect(HANDOVER_MAX_PROOF_MB * 1024 * 1024).toBe(MAX_PROOF_BYTES);
   });

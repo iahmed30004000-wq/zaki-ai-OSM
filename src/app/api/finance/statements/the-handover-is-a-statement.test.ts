@@ -249,6 +249,38 @@ describe('دولار وليرة على يومين — one statement, two receipt
   });
 });
 
+/*
+ * 23/11, the owner: some companies pay through «شام كاش» (a digital wallet), not cash. A line's wallet is ANY active wallet of
+ * the orders' country and of that line's currency — nothing assumes cash — and one handover mixes the two.
+ */
+describe('«شام كاش» beside cash — one handover, two kinds of wallet', () => {
+  const W_SHAM = '77777777-7777-4777-8777-777777777777';
+  const W_SHAM_JO = '99999999-9999-4999-8999-999999999999';
+
+  it('a Shamcash line (with its transaction number) and a cash line are both recorded, and the approval writes two movements, each into its own wallet', async () => {
+    S.wallets.push(wallet(W_SHAM, { name: 'شام كاش دولار', currencyCode: 'USD' }));
+    const sham = await receipt({ receiptId: R1, walletId: W_SHAM, amount: 50, exchangeRate: 0.0001, note: 'SC-20261123-4471' });
+    const cash = await receipt({ receiptId: R2, walletId: W_SYP, amount: 800_000 });
+    expect([sham.status, cash.status]).toEqual([201, 201]);
+    expect(S.receipts.map((r) => [r.walletId, r.note])).toEqual([[W_SHAM, 'SC-20261123-4471'], [W_SYP, null]]);
+    expect((await list())[0].standing.remaining).toBe(0);
+
+    expect((await approve()).status).toBe(200);
+    expect(S.movements.map((m) => [m.walletId, m.amount, m.statementReceiptId])).toEqual([
+      [W_SHAM, 50, R1],
+      [W_SYP, 800_000, R2],
+    ]);
+  });
+
+  it('NEGATIVE: a Shamcash wallet of another country is WALLET_OTHER_COUNTRY, and nothing is written', async () => {
+    S.wallets.push(wallet(W_SHAM_JO, { name: 'شام كاش الأردن', currencyCode: 'SYP', storeId: null, countryId: 'jo', countryName: 'الأردن' }));
+    const res = await receipt({ receiptId: R1, walletId: W_SHAM_JO, amount: 100, note: 'SC-1' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('WALLET_OTHER_COUNTRY');
+    expect(S.receipts).toHaveLength(0);
+  });
+});
+
 describe('a payment above the total — «زيادة», and no approval without a reason', () => {
   it('says «زيادة» and refuses the approval until a reason is written; nothing is written meanwhile', async () => {
     await receipt({ receiptId: R1, walletId: W_SYP, amount: 1_400_000 });

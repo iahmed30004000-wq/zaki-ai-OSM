@@ -2409,7 +2409,7 @@
   },
   "src/components/screens/tracking/HandoverPanel.tsx": {
     "buttons": 2,
-    "inputs": 6,
+    "inputs": 7,
     "columns": 0,
     "cards": 3,
     "modals": 0,

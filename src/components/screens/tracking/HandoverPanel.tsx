@@ -208,6 +208,12 @@ function ReceiptLine({ handover, wallets, onSaved }: { handover: HandoverView; w
   const [amount, setAmount] = useState('');
   const [rate, setRate] = useState('');
   const [proof, setProof] = useState<{ fileName: string; content: string } | null>(null);
+  /*
+   * «رقم الحوالة / إثبات» — plain text, optional for EVERY wallet (23/11, the owner: some companies pay through «شام كاش»).
+   * A transfer's reference (a Shamcash transaction number, a bank reference) travels in the receipts door's own `note` field;
+   * cash may leave it empty. No wallet is assumed to be cash: any active wallet of this country and this currency is offered.
+   */
+  const [reference, setReference] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
@@ -245,6 +251,7 @@ function ReceiptLine({ handover, wallets, onSaved }: { handover: HandoverView; w
               walletId,
               amount: Number(amount),
               ...(needsRate && rate ? { exchangeRate: Number(rate) } : {}),
+              ...(reference.trim() ? { note: reference.trim() } : {}),
               ...(proof ? { proof } : {}),
             }),
           });
@@ -252,6 +259,7 @@ function ReceiptLine({ handover, wallets, onSaved }: { handover: HandoverView; w
           setAmount('');
           setRate('');
           setProof(null);
+          setReference('');
           setSaid('انسجّلت الدفعة — المحفظة ما بتتحرك قبل «اعتماد».');
           await onSaved();
         } catch (err) {
@@ -312,8 +320,15 @@ function ReceiptLine({ handover, wallets, onSaved }: { handover: HandoverView; w
       {offered.length === 0 && (
         <p className="text-note text-[var(--sys-destructive)]">ما في محفظة فعّالة بعملة {currency} من بلد هالمتجر.</p>
       )}
+      <Input
+        label="رقم الحوالة / إثبات (اختياري)"
+        value={reference}
+        onChange={(e) => setReference(e.target.value)}
+        maxLength={300}
+        placeholder="مثال: رقم عملية شام كاش — أو فاضي للنقد"
+      />
       <label className="block">
-        <span className="mb-1 block text-note text-[var(--sys-muted-foreground)]">إثبات (اختياري) — صورة أو PDF</span>
+        <span className="mb-1 block text-note text-[var(--sys-muted-foreground)]">صورة أو PDF (اختياري)</span>
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp,application/pdf"
