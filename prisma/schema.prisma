@@ -3540,15 +3540,22 @@ model Partner {
 /// One row per (partner, currency): the figure the «سجّل مسحوب» press fills in, so it is not typed again each time. A setting, not
 /// money: it moves nothing and nothing adds it up. Saved and cleared only by `lib/partner-withdrawals.ts` behind `finance.partners`.
 ///   amount — > 0, in the currency's own decimals (held by a CHECK in the migration, which this file cannot express).
+///   storeValue / storeCurrencyCode (23/11, F7) — «ليش ما تتثبت كم المسحوبات تبعتي بالدولار»: what `amount` is worth in a store's
+///     currency, typed ONCE, so the wallet dialog and the one press fill «ما يعادله بعملة المتجر» too. Both or neither (CHECK
+///     `partner_standing_amounts_store_value_pair`, and storeValue > 0 by `partner_standing_amounts_store_value_positive` — both in
+///     migration 20261123120000_partner_standing_store_value, which this file cannot express). A pre-fill only: the person may change
+///     it, and it is used only where the store's currency is `storeCurrencyCode`.
 model PartnerStandingAmount {
-  id           String   @id @default(uuid())
-  companyId    String
-  partnerId    String
-  currencyCode String
-  amount       Decimal  @db.Decimal(14, 3)
-  updatedById  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(uuid())
+  companyId         String
+  partnerId         String
+  currencyCode      String
+  amount            Decimal  @db.Decimal(14, 3)
+  storeValue        Decimal? @db.Decimal(14, 3)
+  storeCurrencyCode String?
+  updatedById       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
 

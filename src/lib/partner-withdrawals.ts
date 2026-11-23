@@ -1,38 +1,38 @@
-import { Prisma } from '@prisma/client';
 import { db } from './db';
 import { geoReach } from './geo-context';
-import { localDayKey } from './local-day';
-import { NO_FILTERS, withdrawalsWhere } from './history-export-core';
+import { inStore } from './store-filter';
+import { NO_FILTERS, drawsWhere, withdrawalsWhere, type HistoryFilters } from './history-export-core';
+import { drawListLines } from './history-export';
 import type { SessionUser } from '@/types/auth';
 import {
   amountOrRefusal,
   currencyOrRefusal,
-  dayOrRefusal,
+  drawTotals,
   isRefusal,
   knownCurrencies,
-  totalsByPartner,
-  withdrawalTotals,
   type KnownCurrency,
   type Refusal,
+  type StandingRow,
+  totalsByPartner,
+  withdrawalTotals,
 } from './partner-withdrawals-core';
 
 /**
- * «المسحوبات» — THE RECORD OF WHAT EACH PARTNER TOOK, PER STORE AND CURRENCY (22/11).
+ * «المسحوبات» — A DASHBOARD OVER THE PARTNERS' WITHDRAWALS, WHICH ARE WALLET MOVEMENTS (23/11, F7).
  *
- * «الأرباح: حط شاشة مسحوبات وحط العملات» (the owner). He used to type each partner's figure in dollars per store every time; the
- * figure a partner usually takes is now typed ONCE per currency (`PartnerStandingAmount`) and one press records it.
+ * «والحركات تكون من المحافظ، وآخر شي تكون زي داشبورد للشركاء والسحوبات… ما بدي الحركات المالية بكل مكان، خلص مكان واحد» (the owner).
  *
- * RECORD ONLY. Nothing here moves a wallet, writes an expense, or is read by the profit or the partners' statement: those read the
- * PARTNER_DRAW wallet movements of the wallet dialog (`partner-statement.ts`) and their figures are byte for byte what they were.
- * Linking a withdrawal to the cash that left (a wallet movement, behind its approval path) is a follow-up, not this file.
+ * A WITHDRAWAL IS ONE THING: an OUT wallet movement of category PARTNER_DRAW, written by `POST /api/finance/partners/draws` through
+ * `recordMovement` — the wallet's own rules, keys and reversal. This file READS those movements (the same clause the partners'
+ * statement uses) and writes nothing but the standing amounts, which are a SHORTCUT: the figure a partner usually takes per currency,
+ * and what it is worth in the store's currency, typed once — they fill the boxes, the person may change them, and nothing adds them.
  *
- * NEVER EDITED, NEVER DELETED. A cancel is a second row pointing at the original, with the written reason; the database holds
- * «once» (`reversalOfId` UNIQUE) and the original's row is locked while it is checked.
+ * THE OLD RECORD. From 22/11 to 23/11 the tab wrote its own rows (`partner_withdrawals`) that moved no wallet. They are shown, read-only,
+ * in a block of their own («قديمة — غير مربوطة بمحفظة»), and counted in NO total. Nothing writes that table any more: its doors are
+ * retired with a sentence pointing at the wallet (`WITHDRAWALS_MOVED`). No row of it is changed or deleted.
  */
 
-/** A twin inside this window — same person, partner, store, currency, amount and day, not cancelled — is the same press twice. */
-const DUPLICATE_WINDOW_MS = 30_000;
-/** How many rows the list carries. The totals read them all. */
+/** How many rows each list carries. The totals read them all. */
 const LIST_LIMIT = 200;
 
 export type Answer<T> = { ok: true; value: T } | { ok: false; refusal: Refusal };
@@ -41,13 +41,12 @@ const no = (status: number, code: string, errorAr: string): { ok: false; refusal
   refusal: { status, code, errorAr },
 });
 
-/** A refusal found inside a transaction: it unwinds the lock and carries what the door answers. */
-class Refused extends Error {
-  constructor(public readonly refusal: Refusal) {
-    super(refusal.errorAr);
-    this.name = 'Refused';
-  }
-}
+/** The answer of the two retired doors (POST, PATCH of /api/finance/partners/withdrawals): nothing is written, and where to go. */
+export const WITHDRAWALS_MOVED: Refusal = {
+  status: 410,
+  code: 'WITHDRAWALS_MOVED_TO_WALLET',
+  errorAr: 'المسحوب صار حركة محفظة: سجّله من «سجّل مسحوب» هون أو من المحفظة («حركة جديدة» ← «سحب شريك»)، وإلغاؤه بقيد عكسي من المحفظة.',
+};
 
 /** The currencies the company's stores use: its countries' and its wallets'. */
 export async function companyCurrencies(companyId: string): Promise<KnownCurrency[]> {
@@ -67,7 +66,7 @@ export async function companyCurrencies(companyId: string): Promise<KnownCurrenc
 
 const minorOfList = (known: readonly KnownCurrency[]) => (code: string) => known.find((c) => c.code === code)?.minorUnit ?? 3;
 
-/** The stores of the company this person reaches — the same rule as the pickers. */
+/** The stores of the company this person reaches — the same rule as the pickers — with each one's currency. */
 async function reachedStores(user: SessionUser, companyId: string) {
   const reach = await geoReach(user, companyId);
   return db.store.findMany({
@@ -76,66 +75,146 @@ async function reachedStores(user: SessionUser, companyId: string) {
       ...(reach ? { countryId: { in: reach.countryIds }, ...(reach.storeIds ? { id: { in: reach.storeIds } } : {}) } : {}),
     },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true },
+    select: { id: true, name: true, country: { select: { currencyCode: true, minorUnit: true } } },
   });
 }
 
-/** Everything the «المسحوبات» tab draws, for the store the person stands in, and the totals of every store he reaches. */
-export async function withdrawalsBook(scope: { user: SessionUser; companyId: string; storeId: string }) {
-  const { user, companyId, storeId } = scope;
-  const [partners, currencies, standing, stores] = await Promise.all([
+/** The standing amounts of the company, as the boxes read them. */
+export async function standingFor(companyId: string): Promise<StandingRow[]> {
+  const rows = await db.partnerStandingAmount.findMany({
+    where: { companyId },
+    select: { partnerId: true, currencyCode: true, amount: true, storeValue: true, storeCurrencyCode: true },
+  });
+  return rows.map((s) => ({
+    partnerId: s.partnerId,
+    currencyCode: s.currencyCode,
+    amount: Number(s.amount),
+    storeValue: s.storeValue === null || s.storeValue === undefined ? null : Number(s.storeValue),
+    storeCurrencyCode: s.storeCurrencyCode ?? null,
+  }));
+}
+
+/**
+ * EVERYTHING THE «المسحوبات» DASHBOARD DRAWS, for the store the person stands in, and the totals of every store he reaches.
+ * `filters` = the span on the real date (lib/real-date), as the dashboard's date box asks; `NO_FILTERS` = since the beginning, which
+ * is what the partners' statement counts.
+ */
+export async function withdrawalsBook(scope: {
+  user: SessionUser;
+  companyId: string;
+  storeId: string;
+  country: { currencyCode: string; minorUnit: number; timezone?: string | null };
+  filters: HistoryFilters;
+}) {
+  const { user, companyId, storeId, country, filters } = scope;
+  const timeZone = country.timezone ?? 'Asia/Damascus';
+  const [partners, currencies, standing, stores, wallets] = await Promise.all([
     db.partner.findMany({
       where: { companyId },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       select: { id: true, name: true, isActive: true },
     }),
     companyCurrencies(companyId),
-    db.partnerStandingAmount.findMany({ where: { companyId }, select: { partnerId: true, currencyCode: true, amount: true } }),
+    standingFor(companyId),
     reachedStores(user, companyId),
+    // The wallets the one press may take the cash out of: this store's, switched on — the draws door's own rule (`inStore`).
+    db.wallet.findMany({
+      where: { ...inStore(companyId, storeId), isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, currencyCode: true, country: { select: { minorUnit: true } } },
+    }),
   ]);
   const storeIds = [...new Set([storeId, ...stores.map((s) => s.id)])];
-  const all = await db.partnerWithdrawal.findMany({
-    // The book's own clause, from the one builder the history file adds its filters to (lib/history-export-core, 22/11 F5).
-    where: withdrawalsWhere(companyId, storeIds, NO_FILTERS, ''),
+  const minorOf = minorOfList(currencies);
+  const storeOf = new Map(stores.map((s) => [s.id, s]));
+  const storeMinorOf = (id: string) => (id === storeId ? country.minorUnit : storeOf.get(id)?.country.minorUnit ?? 3);
+
+  // THE TOTALS: every draw of the span, of every store he reaches — a reversed one is read with its reversal and left out.
+  const ledger = await db.walletMovement.findMany({
+    where: drawsWhere(companyId, storeIds, filters, timeZone),
+    orderBy: { createdAt: 'desc' },
+    select: {
+      walletId: true, partnerId: true, amount: true, currencyCode: true, valueInStoreCurrency: true,
+      reversedBy: { select: { id: true } }, wallet: { select: { storeId: true } },
+    },
+  });
+  const byStore = drawTotals(
+    ledger.flatMap((m) =>
+      m.partnerId && m.wallet.storeId
+        ? [{
+            storeId: m.wallet.storeId,
+            partnerId: m.partnerId,
+            currencyCode: m.currencyCode,
+            amount: Number(m.amount),
+            valueInStoreCurrency: m.valueInStoreCurrency === null ? null : Number(m.valueInStoreCurrency),
+            reversed: !!m.reversedBy,
+          }]
+        : []
+    ),
+    minorOf,
+    storeMinorOf
+  );
+
+  // The wallet the one press offers first for a (partner, currency): the one his newest draw here came out of.
+  const lastWallet: Record<string, string> = {};
+  for (const m of ledger) {
+    if (m.wallet.storeId !== storeId || !m.partnerId) continue;
+    const key = `${m.partnerId}|${m.currencyCode}`;
+    if (!lastWallet[key]) lastWallet[key] = m.walletId;
+  }
+
+  const partnerName = new Map(partners.map((p) => [p.id, p.name]));
+  const storeName = new Map(stores.map((s) => [s.id, s.name]));
+
+  // THE OLD RECORD of this store (22/11–23/11): read-only, counted nowhere.
+  const legacy = await db.partnerWithdrawal.findMany({
+    where: withdrawalsWhere(companyId, [storeId], NO_FILTERS, ''),
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, storeId: true, partnerId: true, currencyCode: true, amount: true, withdrawnOn: true, fromStanding: true,
       note: true, reversalOfId: true, reversalReason: true, createdById: true, createdAt: true,
     },
   });
-  const minorOf = minorOfList(currencies);
-  const ledger = all.map((r) => ({ ...r, amount: Number(r.amount) }));
-  const byStore = withdrawalTotals(ledger, minorOf);
-
-  const here = ledger.filter((r) => r.storeId === storeId);
-  const partnerName = new Map(partners.map((p) => [p.id, p.name]));
-  const storeName = new Map(stores.map((s) => [s.id, s.name]));
 
   return {
     storeId,
+    storeCurrency: { code: country.currencyCode, minorUnit: country.minorUnit },
     partners,
     currencies,
-    standing: standing.map((s) => ({ partnerId: s.partnerId, currencyCode: s.currencyCode, amount: Number(s.amount) })),
-    rows: await describeWithdrawals(here, partnerName, minorOf, LIST_LIMIT),
-    // This store, per partner and currency.
-    totals: totalsByPartner(byStore.filter((t) => t.storeId === storeId), minorOf).map((t) => ({
-      ...t,
-      partnerName: partnerName.get(t.partnerId) ?? '—',
-      minorUnit: minorOf(t.currencyCode),
-    })),
-    // Every store he reaches, per store, partner and currency.
+    standing,
+    wallets: wallets.map((w) => ({ id: w.id, name: w.name, currencyCode: w.currencyCode, minorUnit: w.country.minorUnit })),
+    lastWallet,
+    rows: await drawListLines({ companyId, storeId, timeZone }, drawsWhere(companyId, [storeId], filters, timeZone), LIST_LIMIT),
+    // This store, per partner and wallet currency, with what it is worth in the store's currency.
+    totals: byStore
+      .filter((t) => t.storeId === storeId)
+      .map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
+    // Every store he reaches, per store, partner and wallet currency.
     byStore: byStore.map((t) => ({
       ...t,
       storeName: storeName.get(t.storeId) ?? '—',
       partnerName: partnerName.get(t.partnerId) ?? '—',
       minorUnit: minorOf(t.currencyCode),
+      storeCurrency: t.storeId === storeId ? country.currencyCode : storeOf.get(t.storeId)?.country.currencyCode ?? '',
+      storeMinor: storeMinorOf(t.storeId),
     })),
+    // The old record's own sums, per partner and currency (a cancelled row is nothing) — shown in its block, added to no other total.
+    legacyTotals: totalsByPartner(
+      withdrawalTotals(legacy.map((r) => ({ ...r, amount: Number(r.amount) })), minorOf),
+      minorOf
+    ).map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
+    legacy: await describeWithdrawals(
+      legacy.map((r) => ({ ...r, amount: Number(r.amount) })),
+      partnerName,
+      minorOf,
+      LIST_LIMIT
+    ),
   };
 }
 
 export type WithdrawalsBook = Awaited<ReturnType<typeof withdrawalsBook>>;
 
-/** One row of the ledger as `describeWithdrawals` reads it. */
+/** One row of the OLD record as `describeWithdrawals` reads it. */
 interface LedgerRow {
   id: string;
   partnerId: string;
@@ -151,9 +230,8 @@ interface LedgerRow {
 }
 
 /**
- * THE TAB'S ROWS, out of one store's ledger (originals and cancels, newest registration first): the newest `limit` originals, each
- * with its cancel beside it. The tab calls it with its list's count; the history file (lib/history-export, 22/11 F5) with the file's
- * cap — one description of a withdrawal for the screen and the file.
+ * THE OLD RECORD'S ROWS (partner_withdrawals, 22/11–23/11), out of one store's rows (originals and cancels, newest registration
+ * first): the newest `limit` originals, each with its cancel beside it. Read-only since F7; shown on the dashboard in its own block.
  */
 export async function describeWithdrawals(
   here: readonly LedgerRow[],
@@ -185,175 +263,38 @@ export async function describeWithdrawals(
   });
 }
 
-async function activePartner(companyId: string, partnerId: unknown, mustBeActive: boolean) {
+async function partnerOf(companyId: string, partnerId: unknown) {
   if (typeof partnerId !== 'string' || !partnerId) return no(400, 'PARTNER_REQUIRED', 'اختار الشريك.');
   const partner = await db.partner.findFirst({ where: { id: partnerId, companyId }, select: { id: true, name: true, isActive: true } });
   if (!partner) return no(404, 'PARTNER_NOT_FOUND', 'الشريك غير موجود.');
-  if (mustBeActive && !partner.isActive) return no(409, 'PARTNER_STOPPED', 'الشريك موقوف — ما بينسجّل عليه مسحوب جديد.');
   return { ok: true as const, value: partner };
-}
-
-/**
- * «سجّل مسحوب» — one row. The amount is the one sent (the box the press filled from the standing amount, perhaps changed for this
- * press); with no amount, the partner's standing amount for that currency, and without one either, a refusal.
- */
-export async function recordWithdrawal(input: {
-  user: SessionUser;
-  companyId: string;
-  storeId: string;
-  body: { partnerId?: unknown; currencyCode?: unknown; amount?: unknown; withdrawnOn?: unknown; note?: unknown };
-  now?: Date;
-}): Promise<Answer<{ id: string; partnerName: string; currencyCode: string; amount: number; withdrawnOn: string; fromStanding: boolean }>> {
-  const { user, companyId, storeId, body } = input;
-  const now = input.now ?? new Date();
-
-  const partner = await activePartner(companyId, body.partnerId, true);
-  if (!partner.ok) return partner;
-  const currency = currencyOrRefusal(body.currencyCode, await companyCurrencies(companyId));
-  if (isRefusal(currency)) return { ok: false, refusal: currency };
-
-  const standing = await db.partnerStandingAmount.findUnique({
-    where: { partnerId_currencyCode: { partnerId: partner.value.id, currencyCode: currency.code } },
-    select: { amount: true },
-  });
-  const standingAmount = standing ? Number(standing.amount) : null;
-  const absent = body.amount === undefined || body.amount === null || body.amount === '';
-  if (absent && standingAmount === null) {
-    return no(400, 'AMOUNT_REQUIRED', `اكتب المبلغ — ما في مبلغ ثابت محفوظ لـ${partner.value.name} بعملة ${currency.code}.`);
-  }
-  const amount = amountOrRefusal(absent ? standingAmount : body.amount, currency);
-  if (isRefusal(amount)) return { ok: false, refusal: amount };
-
-  const latest = localDayKey(new Date(now.getTime() + 24 * 60 * 60 * 1000));
-  const day = dayOrRefusal(body.withdrawnOn ?? localDayKey(now), latest);
-  if (isRefusal(day)) return { ok: false, refusal: day };
-
-  const note = typeof body.note === 'string' && body.note.trim() ? body.note.trim().slice(0, 300) : null;
-  const fromStanding = standingAmount !== null && standingAmount === amount;
-
-  try {
-    const row = await db.$transaction(async (tx) => {
-      // The partner's row is held until the transaction ends: a second press at the same instant waits here, then sees the first.
-      await tx.$queryRaw`SELECT "id" FROM "partners" WHERE "id" = ${partner.value.id} FOR UPDATE`;
-      const twin = await tx.partnerWithdrawal.findFirst({
-        where: {
-          companyId,
-          storeId,
-          partnerId: partner.value.id,
-          currencyCode: currency.code,
-          amount,
-          withdrawnOn: new Date(`${day}T00:00:00Z`),
-          createdById: user.id,
-          reversalOfId: null,
-          reversedBy: null,
-          createdAt: { gte: new Date(now.getTime() - DUPLICATE_WINDOW_MS) },
-        },
-        select: { id: true },
-      });
-      if (twin) {
-        throw new Refused({
-          status: 409,
-          code: 'DUPLICATE_WITHDRAWAL',
-          errorAr: 'سجّلت نفس المسحوب (نفس الشريك والعملة والمبلغ واليوم) قبل لحظات — ما انسجّل مرتين. إذا بدك واحد تاني بنفس الرقم، استنّى نص دقيقة.',
-        });
-      }
-      return tx.partnerWithdrawal.create({
-        data: {
-          companyId,
-          storeId,
-          partnerId: partner.value.id,
-          currencyCode: currency.code,
-          amount,
-          withdrawnOn: new Date(`${day}T00:00:00Z`),
-          fromStanding,
-          note,
-          createdById: user.id,
-        },
-        select: { id: true },
-      });
-    });
-    return {
-      ok: true,
-      value: { id: row.id, partnerName: partner.value.name, currencyCode: currency.code, amount, withdrawnOn: day, fromStanding },
-    };
-  } catch (e) {
-    if (e instanceof Refused) return { ok: false, refusal: e.refusal };
-    throw e;
-  }
-}
-
-/** «إلغاء» — a reversing row with the written reason. Never a delete, never an edit, and once. */
-export async function cancelWithdrawal(input: {
-  user: SessionUser;
-  companyId: string;
-  storeId: string;
-  body: { withdrawalId?: unknown; reason?: unknown };
-}): Promise<Answer<{ id: string; originalId: string; partnerId: string; currencyCode: string; amount: number; reason: string }>> {
-  const { user, companyId, storeId, body } = input;
-  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-  if (reason.length < 3) return no(400, 'REASON_REQUIRED', 'اكتب سبب الإلغاء.');
-  if (typeof body.withdrawalId !== 'string' || !body.withdrawalId) return no(400, 'WITHDRAWAL_REQUIRED', 'اختار المسحوب.');
-  const id = body.withdrawalId;
-
-  try {
-    return await db.$transaction(async (tx) => {
-      // The original's row is held: two cancels at the same instant queue here, and the second sees the first.
-      await tx.$queryRaw`SELECT "id" FROM "partner_withdrawals" WHERE "id" = ${id} FOR UPDATE`;
-      const original = await tx.partnerWithdrawal.findFirst({
-        where: { id, companyId, storeId },
-        select: { id: true, partnerId: true, currencyCode: true, amount: true, withdrawnOn: true, reversalOfId: true, reversedBy: { select: { id: true } } },
-      });
-      if (!original) throw new Refused({ status: 404, code: 'WITHDRAWAL_NOT_FOUND', errorAr: 'المسحوب غير موجود بهالمتجر.' });
-      if (original.reversalOfId) throw new Refused({ status: 409, code: 'IS_A_CANCEL', errorAr: 'هاد سطر إلغاء — ما بينلغى.' });
-      if (original.reversedBy) throw new Refused({ status: 409, code: 'ALREADY_CANCELLED', errorAr: 'هالمسحوب ملغى من قبل.' });
-      const row = await tx.partnerWithdrawal.create({
-        data: {
-          companyId,
-          storeId,
-          partnerId: original.partnerId,
-          currencyCode: original.currencyCode,
-          amount: original.amount,
-          withdrawnOn: original.withdrawnOn,
-          reversalOfId: original.id,
-          reversalReason: reason.slice(0, 300),
-          createdById: user.id,
-        },
-        select: { id: true },
-      });
-      return {
-        ok: true as const,
-        value: { id: row.id, originalId: original.id, partnerId: original.partnerId, currencyCode: original.currencyCode, amount: Number(original.amount), reason },
-      };
-    });
-  } catch (e) {
-    if (e instanceof Refused) return { ok: false, refusal: e.refusal };
-    // The database's own «once»: a second cancel that slipped past the check meets the unique key.
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      return no(409, 'ALREADY_CANCELLED', 'هالمسحوب ملغى من قبل.');
-    }
-    throw e;
-  }
 }
 
 /**
  * THE STANDING AMOUNTS OF ONE PARTNER, SAVED AS A WHOLE: one figure per currency; an empty box clears that currency. Each currency
  * at most once, each one the stores', each figure > 0 in its decimals.
+ *
+ * «ما يعادله بعملة المتجر» (23/11, F7): beside a currency that is NOT the store's, what the figure is worth in the STORE's currency
+ * (the store the person stands in), checked like any amount of that currency. It is kept with that store currency's code, and fills
+ * the box only where the store's currency is the same. For the store's own currency there is nothing to say, so nothing is kept.
  */
 export async function saveStanding(input: {
   user: SessionUser;
   companyId: string;
+  storeCurrency: string;
   body: { partnerId?: unknown; amounts?: unknown };
-}): Promise<Answer<{ partnerId: string; amounts: { currencyCode: string; amount: number }[] }>> {
+}): Promise<Answer<{ partnerId: string; amounts: { currencyCode: string; amount: number; storeValue: number | null }[] }>> {
   const { user, companyId, body } = input;
-  const partner = await activePartner(companyId, body.partnerId, false);
+  const partner = await partnerOf(companyId, body.partnerId);
   if (!partner.ok) return partner;
   if (!Array.isArray(body.amounts) || body.amounts.length > 50) return no(400, 'INVALID_AMOUNTS', 'قائمة المبالغ مش مفهومة.');
 
   const known = await companyCurrencies(companyId);
-  const keep: { currencyCode: string; amount: number }[] = [];
+  const storeCurrency = known.find((c) => c.code === input.storeCurrency.trim().toUpperCase()) ?? null;
+  const keep: { currencyCode: string; amount: number; storeValue: number | null }[] = [];
   const clear: string[] = [];
   const seen = new Set<string>();
-  for (const raw of body.amounts as { currencyCode?: unknown; amount?: unknown }[]) {
+  for (const raw of body.amounts as { currencyCode?: unknown; amount?: unknown; storeValue?: unknown }[]) {
     const currency = currencyOrRefusal(raw?.currencyCode, known);
     if (isRefusal(currency)) return { ok: false, refusal: currency };
     if (seen.has(currency.code)) return no(400, 'CURRENCY_TWICE', `العملة ${currency.code} مكتوبة مرتين.`);
@@ -364,7 +305,16 @@ export async function saveStanding(input: {
     }
     const amount = amountOrRefusal(raw.amount, currency);
     if (isRefusal(amount)) return { ok: false, refusal: amount };
-    keep.push({ currencyCode: currency.code, amount });
+    let storeValue: number | null = null;
+    const typed = raw.storeValue;
+    if (storeCurrency && storeCurrency.code !== currency.code && !(typed === undefined || typed === null || typed === '')) {
+      const value = amountOrRefusal(typed, storeCurrency);
+      if (isRefusal(value)) {
+        return no(value.status, value.code.replace('AMOUNT', 'STORE_VALUE'), `«ما يعادله بعملة المتجر (${storeCurrency.code})» لـ${currency.code}: ${value.errorAr}`);
+      }
+      storeValue = value;
+    }
+    keep.push({ currencyCode: currency.code, amount, storeValue });
   }
 
   await db.$transaction(async (tx) => {
@@ -372,10 +322,15 @@ export async function saveStanding(input: {
       await tx.partnerStandingAmount.deleteMany({ where: { companyId, partnerId: partner.value.id, currencyCode: { in: clear } } });
     }
     for (const k of keep) {
+      const where = { partnerId_currencyCode: { partnerId: partner.value.id, currencyCode: k.currencyCode } };
+      const value = { storeValue: k.storeValue, storeCurrencyCode: k.storeValue === null ? null : storeCurrency?.code ?? null };
+      // An empty «ما يعادله» clears only THIS store currency's equivalent: one typed in a store of another currency is not this box's.
+      const before = k.storeValue === null ? await tx.partnerStandingAmount.findUnique({ where, select: { storeCurrencyCode: true } }) : null;
+      const keepOther = !!before?.storeCurrencyCode && before.storeCurrencyCode !== storeCurrency?.code;
       await tx.partnerStandingAmount.upsert({
-        where: { partnerId_currencyCode: { partnerId: partner.value.id, currencyCode: k.currencyCode } },
-        create: { companyId, partnerId: partner.value.id, currencyCode: k.currencyCode, amount: k.amount, updatedById: user.id },
-        update: { amount: k.amount, updatedById: user.id },
+        where,
+        create: { companyId, partnerId: partner.value.id, currencyCode: k.currencyCode, amount: k.amount, ...value, updatedById: user.id },
+        update: { amount: k.amount, ...(keepOther ? {} : value), updatedById: user.id },
       });
     }
   });

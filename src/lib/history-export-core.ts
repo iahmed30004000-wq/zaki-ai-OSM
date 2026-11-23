@@ -198,6 +198,33 @@ export function withdrawalsWhere(
   return where;
 }
 
+/**
+ * THE PARTNERS' WITHDRAWALS AS WALLET MOVEMENTS (23/11, F7) — the ONE clause of the «المسحوبات» dashboard, its totals and its file.
+ *
+ * The originals only: an OUT movement of category PARTNER_DRAW out of a wallet of these stores (the partners' statement's own
+ * rule, `wallet: { storeId }`). A reversal is read beside its original (`reversedBy`), whatever its own date. The span is the real
+ * date (lib/real-date — the typed moment, or the registration) or the registration; the currency is the WALLET's.
+ */
+export function drawsWhere(
+  companyId: string,
+  storeIds: string[],
+  f: HistoryFilters,
+  timeZone: string
+): Prisma.WalletMovementWhereInput {
+  const where: Prisma.WalletMovementWhereInput = {
+    companyId,
+    category: 'PARTNER_DRAW',
+    direction: 'OUT',
+    reversalOfId: null,
+    wallet: { storeId: { in: storeIds } },
+  };
+  if (f.partnerId) where.partnerId = f.partnerId;
+  if (f.currency) where.currencyCode = f.currency;
+  const date = onDate(f, timeZone);
+  if (date) Object.assign(where, date);
+  return where;
+}
+
 /** A moment on the store's clock, Western digits: «2026-11-19 14:30». */
 export function storeMoment(at: Date | string, timeZone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -370,49 +397,64 @@ export function transferSheet(lines: TransferLine[], timeZone: string): HistoryS
   };
 }
 
-/** A withdrawal as the tab's list answers it (`describeWithdrawals`), plus the store's name. */
+/**
+ * A PARTNER'S WITHDRAWAL AS THE «المسحوبات» DASHBOARD LISTS IT (23/11, F7): a PARTNER_DRAW wallet movement — the row
+ * `movementListRows` answers — plus its wallet's and partner's names and the decimals of the two currencies. Since F7 the file
+ * reads THE SAME movements the dashboard and the partners' statement read; the old record (partner_withdrawals) is not in it.
+ */
 export interface WithdrawalLine {
   id: string;
   partnerName: string;
+  walletName: string;
   currencyCode: string;
   minorUnit: number;
   amount: number;
-  withdrawnOn: string;
-  fromStanding: boolean;
+  valueInStoreCurrency: number | null;
+  storeCurrency: string;
+  storeMinor: number;
   note: string | null;
-  createdAt: string;
+  createdAt: Date | string;
+  realDate: string;
   createdByName: string | null;
-  cancelled: { reason: string } | null;
+  reversedBy?: { reversalReason: string | null } | null;
   storeName: string;
 }
 
 export const WITHDRAWAL_HEADER = [
-  'يوم السحب', 'تاريخ التسجيل', 'سجّله', 'الشريك', 'المتجر', 'المبلغ', 'العملة', 'من المبلغ الثابت', 'ملاحظة', 'الحالة',
+  'تاريخ الحركة', 'تاريخ التسجيل', 'سجّلها', 'الشريك', 'المتجر', 'المحفظة', 'المبلغ', 'العملة', 'ما يعادله بعملة المتجر', 'عملة المتجر',
+  'ملاحظة', 'الحالة',
 ];
 
 export function withdrawalSheet(lines: WithdrawalLine[], timeZone: string): HistorySheet {
-  const AMOUNT = 5;
+  const AMOUNT = 6;
+  const VALUE = 8;
+  const standing = lines.filter((w) => !w.reversedBy);
   return {
     title: 'سجل مسحوبات الشركاء',
     header: WITHDRAWAL_HEADER,
     rows: lines.map((w) => ({
       cells: [
-        w.withdrawnOn,
+        storeMoment(w.realDate, timeZone),
         storeMoment(w.createdAt, timeZone),
         w.createdByName ?? '—',
         w.partnerName,
         w.storeName,
+        w.walletName,
         roundMinor(w.amount, w.minorUnit),
         w.currencyCode,
-        w.fromStanding ? 'نعم' : 'لا',
+        w.valueInStoreCurrency === null ? '' : roundMinor(w.valueInStoreCurrency, w.storeMinor),
+        w.storeCurrency,
         w.note ?? '',
-        w.cancelled ? `ملغى${w.cancelled.reason ? ` — ${w.cancelled.reason}` : ''}` : 'ساري',
+        w.reversedBy ? `معكوس${w.reversedBy.reversalReason ? ` — ${w.reversedBy.reversalReason}` : ''}` : 'ساري',
       ],
-      minors: { [AMOUNT]: w.minorUnit },
+      minors: { [AMOUNT]: w.minorUnit, [VALUE]: w.storeMinor },
     })),
-    totals: totalsOf(
-      lines.filter((w) => !w.cancelled).map((w) => ({ label: 'مسحوبات', currency: w.currencyCode, minorUnit: w.minorUnit, amount: w.amount }))
-    ),
+    totals: totalsOf([
+      ...standing.map((w) => ({ label: 'مسحوبات', currency: w.currencyCode, minorUnit: w.minorUnit, amount: w.amount })),
+      ...standing
+        .filter((w) => w.valueInStoreCurrency !== null)
+        .map((w) => ({ label: 'ما يعادله بعملة المتجر', currency: w.storeCurrency, minorUnit: w.storeMinor, amount: w.valueInStoreCurrency as number })),
+    ]),
   };
 }
 

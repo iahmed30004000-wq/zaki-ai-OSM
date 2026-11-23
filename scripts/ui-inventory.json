@@ -2305,14 +2305,15 @@
     "iconButtons": 6
   },
   "src/components/screens/finance/WithdrawalsSection.tsx": {
-    "buttons": 10,
-    "inputs": 7,
-    "columns": 9,
-    "cards": 6,
-    "modals": 3,
-    "icons": 0,
-    "links": 0,
-    "tabs": 0
+    "buttons": 7,
+    "inputs": 9,
+    "columns": 14,
+    "cards": 7,
+    "modals": 2,
+    "icons": 1,
+    "links": 1,
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/ops/PickingAssistant.tsx": {
     "buttons": 1,
