@@ -83,6 +83,11 @@ export interface MovementInput {
   partnerId?: string;
   valueInStoreCurrency?: number;
   /**
+   * «سعر الصرف التلقائي» (23/11, F8): the rate `valueInStoreCurrency` was FILLED at, when the draws door filled it from today's rate.
+   * Stored beside it and never read by a sum. Only on a `PARTNER_DRAW` that carries a value; absent = written byte for byte as before.
+   */
+  equivalentRate?: { rate: number; kind: 'AUTO' | 'MANUAL'; source: string | null; at: Date | null };
+  /**
    * When the money REALLY moved (22/11, lib/real-date), when the person typed one. Absent = the registration moment, and the row
    * is written exactly as before. Refused in the future (beyond a five-minute skew) and before 2020. Never added up: every balance
    * and closing reads `createdAt`.
@@ -111,7 +116,10 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
     if (input.valueInStoreCurrency !== undefined && !(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
       throw new Error('A partner draw must carry its value in the store currency');
     }
-  } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined) {
+    if (input.equivalentRate !== undefined && (input.valueInStoreCurrency === undefined || !(input.equivalentRate.rate > 0))) {
+      throw new Error('A rate is stored only beside the value it filled');
+    }
+  } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined || input.equivalentRate !== undefined) {
     throw new Error('Only a partner draw carries a partner or a store value');
   }
   /*
@@ -147,6 +155,15 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
       referenceId: input.referenceId ?? null,
       ...(input.statementReceiptId ? { statementReceiptId: input.statementReceiptId } : {}),
       ...(input.partnerId ? { partnerId: input.partnerId, valueInStoreCurrency: input.valueInStoreCurrency } : {}),
+      // F8: only when the door filled the value from today's rate — every other row is written byte for byte as before.
+      ...(input.equivalentRate
+        ? {
+            equivalentRate: input.equivalentRate.rate,
+            equivalentRateKind: input.equivalentRate.kind,
+            equivalentRateSource: input.equivalentRate.source,
+            equivalentRateAt: input.equivalentRate.at,
+          }
+        : {}),
       // Only when one was typed: a row without it is written byte for byte as before this change.
       ...(occurredAt ? { occurredAt } : {}),
       createdById: input.createdById,

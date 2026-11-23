@@ -250,3 +250,38 @@ export function totalsByPartner(byStore: readonly StoreWithdrawalTotal[], minorO
     count: t.count,
   }));
 }
+
+/**
+ * «المجموع بالدولار» (23/11, F8) — THE SUM OF THE STORED EQUIVALENTS, AND NOTHING ELSE.
+ *
+ * Every stored equivalent is in the STORE's currency, so they may be added across the wallets' currencies; a draw with NO stored
+ * equivalent is not converted here or anywhere — it stays on its own currency's «بلا سعر» line. Per partner and for the store, in
+ * whole minor units of the store's currency.
+ */
+export function equivalentSums(
+  totals: readonly { partnerId: string; valueTotal: number; valueCount: number }[],
+  storeMinor: number
+): { byPartner: { partnerId: string; value: number; count: number }[]; store: { value: number; count: number } } {
+  const acc = new Map<string, { units: number; count: number }>();
+  let all = 0;
+  let allCount = 0;
+  for (const t of totals) {
+    if (t.valueCount === 0) continue;
+    const units = toMinorUnits(t.valueTotal, storeMinor);
+    const cur = acc.get(t.partnerId) ?? { units: 0, count: 0 };
+    cur.units += units;
+    cur.count += t.valueCount;
+    acc.set(t.partnerId, cur);
+    all += units;
+    allCount += t.valueCount;
+  }
+  return {
+    byPartner: [...acc.entries()].map(([partnerId, v]) => ({ partnerId, value: fromMinorUnits(v.units, storeMinor), count: v.count })),
+    store: { value: fromMinorUnits(all, storeMinor), count: allCount },
+  };
+}
+
+/** «المجموع بالدولار» when the store counts in dollars; otherwise the store's own currency is named. */
+export function equivalentSumLabel(storeCode: string): string {
+  return storeCode === 'USD' ? 'المجموع بالدولار' : `المجموع بعملة المتجر (${storeCode})`;
+}

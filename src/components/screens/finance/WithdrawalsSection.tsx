@@ -17,6 +17,7 @@ import { apiJson } from '@/lib/api-client';
 import { arDate } from '@/lib/format';
 import { MOVEMENT_CATEGORY_AR } from '@/lib/movement-category-words';
 import type { WithdrawalsBook } from '@/lib/partner-withdrawals';
+import { kindWord } from '@/lib/exchange-rates-core';
 import { HistoryExport } from './HistoryExport';
 import { MovementDetails, RealDateCell } from './RealDateDetails';
 
@@ -36,7 +37,8 @@ type Row = WithdrawalsBook['rows'][number];
 type Legacy = WithdrawalsBook['legacy'][number];
 
 /** Said beside a currency whose draws carry no worth in the store's currency: they are not in the partner's share yet. */
-export const UNVALUED_LINE = 'سحوبات بعملة تانية — لا تدخل بحساب نصيب الشريك بالدولار بعد';
+// 23/11 (F8): was «سحوبات بعملة تانية — لا تدخل بحساب نصيب الشريك بالدولار بعد» — the owner's line for a draw with no stored equivalent.
+export const UNVALUED_LINE = 'بلا سعر — لا تدخل بالمجموع';
 
 export function WithdrawalsSection() {
   const [book, setBook] = useState<WithdrawalsBook | null>(null);
@@ -116,6 +118,17 @@ export function WithdrawalsSection() {
             <span className="block text-note text-[var(--sys-muted)]">
               يعادل <Money value={r.valueInStoreCurrency} currency={r.storeCurrency} minorUnit={r.storeMinor} />
             </span>
+          )}
+          {/* F8: the rate the server filled it at — frozen when the draw was written; a typed equivalent carries none. */}
+          {r.equivalentRate !== null && r.equivalentRateKind && (
+            <span className="block text-note text-[var(--sys-muted)] tabular-nums">
+              {`بسعر ${r.equivalentRate.toLocaleString('en-US', { maximumSignificantDigits: 6 })} · ${kindWord(r.equivalentRateKind)}${
+                r.equivalentRateSource ? ` · ${r.equivalentRateSource}` : ''
+              }${r.equivalentRateAt ? ` · ${r.equivalentRateAt.slice(0, 10).replace(/-/g, '/')}` : ''}`}
+            </span>
+          )}
+          {r.valueInStoreCurrency === null && r.currencyCode !== r.storeCurrency && (
+            <span className="block text-note text-[var(--sys-warning)]">{UNVALUED_LINE}</span>
           )}
         </span>
       ),
@@ -231,6 +244,29 @@ export function WithdrawalsSection() {
                   )}
                 </li>
               ))}
+            </ul>
+          )}
+          {/* «المجموع بالدولار» (23/11, F8): the STORED equivalents only, added across the wallets' currencies (they are all in the
+              store's); a draw with none stays on its currency's «بلا سعر» line above and is in no sum. */}
+          {(book.equivalentSums?.store.count ?? 0) > 0 && (
+            <ul className="mt-3 divide-y divide-[var(--sys-border)] border-t border-[var(--sys-border)]">
+              {book.equivalentSums.byPartner.map((p) => (
+                <li key={p.partnerId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                  <span className="text-sm font-bold text-[var(--sys-heading)]">
+                    {book.partners.find((x) => x.id === p.partnerId)?.name ?? '—'} — {book.equivalentSumLabel}
+                  </span>
+                  <span className="text-note text-[var(--sys-muted)] tabular-nums">{p.count} مسحوب</span>
+                  <span className="ms-auto text-sm font-bold text-[var(--sys-heading)]">
+                    <Money value={p.value} currency={store} minorUnit={book.storeCurrency.minorUnit} />
+                  </span>
+                </li>
+              ))}
+              <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2" data-sum="store">
+                <span className="text-sm font-bold text-[var(--sys-heading)]">{book.equivalentSumLabel} — كل الشركاء</span>
+                <span className="ms-auto text-sm font-bold text-[var(--sys-heading)]">
+                  <Money value={book.equivalentSums.store.value} currency={store} minorUnit={book.storeCurrency.minorUnit} />
+                </span>
+              </li>
             </ul>
           )}
         </CardContent>

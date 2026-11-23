@@ -7,6 +7,8 @@ import {
   amountOrRefusal,
   currencyOrRefusal,
   drawTotals,
+  equivalentSumLabel,
+  equivalentSums,
   isRefusal,
   knownCurrencies,
   type KnownCurrency,
@@ -165,6 +167,9 @@ export async function withdrawalsBook(scope: {
     totals: byStore
       .filter((t) => t.storeId === storeId)
       .map((t) => ({ ...t, partnerName: partnerName.get(t.partnerId) ?? '—', minorUnit: minorOf(t.currencyCode) })),
+    // «المجموع بالدولار» (23/11, F8): this store's STORED equivalents only, per partner and in all — a draw with none is on its own currency's line.
+    equivalentSums: equivalentSums(byStore.filter((t) => t.storeId === storeId), country.minorUnit),
+    equivalentSumLabel: equivalentSumLabel(country.currencyCode),
     // Every store he reaches, per store, partner and wallet currency.
     byStore: byStore.map((t) => ({
       ...t,

@@ -108,6 +108,8 @@ export type Equivalent =
       rate: number;
       /** MANUAL when either side was typed by the owner, AUTO otherwise. */
       kind: 'AUTO' | 'MANUAL';
+      /** The automatic sources the figure came through (« + » between two); null when nothing automatic was used. */
+      source: string | null;
       /** The older of the two sides' dates — the age of the figure. */
       asOf: string | null;
       stale: boolean;
@@ -139,6 +141,7 @@ export function equivalentOf(
     value,
     rate,
     kind: w.kind === 'MANUAL' || s.kind === 'MANUAL' ? 'MANUAL' : 'AUTO',
+    source: [...new Set([w, s].filter((x) => x.kind === 'AUTO' && x.source).map((x) => x.source as string))].join(' + ') || null,
     asOf: dates[0] ?? null,
     stale: w.stale || s.stale,
   };
