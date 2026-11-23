@@ -171,7 +171,7 @@ export interface DrawLedgerRow {
   currencyCode: string;
   amount: number;
   /** What it is worth in the STORE's currency — only when one was typed; null = a draw in its own currency alone. */
-  valueInStoreCurrency: number | null;
+  valueInStoreCurrency: number | null | undefined;
   /** Taken back through the wallet's reversal door: the pair counts as nothing (the partners' statement's own rule). */
   reversed: boolean;
 }
@@ -212,7 +212,8 @@ export function drawTotals(
     const units = toMinorUnits(r.amount, minorOf(r.currencyCode));
     cur.units += units;
     cur.count += 1;
-    if (r.valueInStoreCurrency === null) {
+    // null or undefined = no worth typed: unvalued, as the partners' statement reads it.
+    if (r.valueInStoreCurrency === null || r.valueInStoreCurrency === undefined) {
       cur.unvaluedUnits += units;
       cur.unvaluedCount += 1;
     } else {

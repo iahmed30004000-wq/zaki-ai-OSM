@@ -67,6 +67,32 @@ interface CountryRow {
 
 const DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
+/**
+ * THE LONG SENTENCES UNDER A STORE'S BOXES FOLD AWAY (F6, the owner 23/11: «زر لاخفاء واظهار كل هالحكي»).
+ *
+ * One button for the page. What folds is the explanation only — under «السعر المُعلن يشمل التوصيل» and under «منصّة تجريب».
+ * The boxes, the buttons, the reason a store may not be deleted, the warning about a store's orders and every error stay.
+ * Shown by default, and on the server: this browser's choice is read after mount, so a storage that throws or is empty
+ * changes nothing. Nothing about a customer is stored — one character.
+ */
+const EXPLAIN_KEY = 'salesflow.geoExplain';
+
+function readExplain(): boolean {
+  try {
+    return window.localStorage.getItem(EXPLAIN_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function writeExplain(on: boolean): void {
+  try {
+    window.localStorage.setItem(EXPLAIN_KEY, on ? '1' : '0');
+  } catch {
+    // A browser that refuses storage still folds the page; it only forgets on the next visit.
+  }
+}
+
 export function GeoSettingsScreen() {
   const toast = useToast();
   const ask = useAsk();
@@ -81,6 +107,14 @@ export function GeoSettingsScreen() {
   const [openCountry, setOpenCountry] = useState<string | null>(null);
   const [adding, setAdding] = useState<'country' | string | null>(null);
   const [storefrontFor, setStorefrontFor] = useState<string | null>(null);
+  /** The explanations under the store boxes — see `EXPLAIN_KEY`. */
+  const [explain, setExplain] = useState(true);
+  useEffect(() => setExplain(readExplain()), []);
+  const toggleExplain = () => {
+    const next = !explain;
+    setExplain(next);
+    writeExplain(next);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -202,9 +236,14 @@ export function GeoSettingsScreen() {
       description="المتجر يرث كل الإعدادات من بلده."
       width="medium"
       actions={
-        <Button type="button" onClick={() => setAdding('country')}>
-          <RiAddCircleLine className="w-4 h-4" /> بلد جديد
-        </Button>
+        <>
+          <Button type="button" variant="secondary" aria-expanded={explain} onClick={toggleExplain}>
+            {explain ? 'إخفاء الشرح' : 'إظهار الشرح'}
+          </Button>
+          <Button type="button" onClick={() => setAdding('country')}>
+            <RiAddCircleLine className="w-4 h-4" /> بلد جديد
+          </Button>
+        </>
       }
     >
 
@@ -330,15 +369,17 @@ export function GeoSettingsScreen() {
                     checked={!!s.priceIncludesDelivery}
                     onChange={(next) => patchStore(s.id, { priceIncludesDelivery: next })}
                     label="السعر المُعلن يشمل التوصيل"
-                    aria-describedby={`includes-delivery-${s.id}-said`}
+                    aria-describedby={explain ? `includes-delivery-${s.id}-said` : undefined}
                   />
-                  <p id={`includes-delivery-${s.id}-said`} className="max-w-prose text-note leading-relaxed text-[var(--sys-muted-foreground)]">
-                    شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام وطلبات الأنظمة الخارجية وصفحات البيع. بيغيّر ربحك، لأنو
-                    أجرة التوصيل بتنخصم من الإيراد. والاستثناء بإيدك: الطلب اللي بتضيفه يدوي أو بالذكاء أو من شيت (استيراد) بتحدد
-                    فيه «شامل» أو لأ بخانة «شامل التوصيل» (مفعّلة افتراضياً). وبصفحة البيع بتفك علامة «السعر شامل التوصيل» عن
-                    العرض: ولو كل عروض سلّة الزبون غير مؤشَّرة بتنضاف الأجرة. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
-                  </p>
-                  <BenchSwitch store={s} mayManage={mayManage} onSaved={load} />
+                  {explain && (
+                    <p id={`includes-delivery-${s.id}-said`} className="max-w-prose text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+                      شغّله إذا كل طلباتك توصيلها مجاني: بيشمل طلبات تلجرام وطلبات الأنظمة الخارجية وصفحات البيع. بيغيّر ربحك، لأنو
+                      أجرة التوصيل بتنخصم من الإيراد. والاستثناء بإيدك: الطلب اللي بتضيفه يدوي أو بالذكاء أو من شيت (استيراد) بتحدد
+                      فيه «شامل» أو لأ بخانة «شامل التوصيل» (مفعّلة افتراضياً). وبصفحة البيع بتفك علامة «السعر شامل التوصيل» عن
+                      العرض: ولو كل عروض سلّة الزبون غير مؤشَّرة بتنضاف الأجرة. الطلبات اللي انكتبت قبل ما تغيّره بتضل متل ما هي.
+                    </p>
+                  )}
+                  <BenchSwitch store={s} mayManage={mayManage} onSaved={load} explain={explain} />
                 </div>
                 <Button
                   type="button"
@@ -694,21 +735,33 @@ function BenchBox({
   checked,
   onChange,
   disabled,
+  explain = true,
   children,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
+  /** False folds the sentence away (the page's «إخفاء الشرح»); the warning and the error in `children` stay. */
+  explain?: boolean;
   children?: React.ReactNode;
 }) {
   const said = useId();
   const box = useId();
   return (
     <div>
-      <Checkbox id={box} checked={checked} disabled={disabled} aria-describedby={said} onChange={(next) => onChange(next)} label="منصّة تجريب" />
-      <p id={said} className="max-w-prose text-note text-[var(--sys-muted-foreground)]">
-        طلباتها بتنعمل وبتتأكد متل أي متجر، وبتنحكم بشاشة منصّة التجريب — وما بتنفتح للزوّار أبداً.
-      </p>
+      <Checkbox
+        id={box}
+        checked={checked}
+        disabled={disabled}
+        aria-describedby={explain ? said : undefined}
+        onChange={(next) => onChange(next)}
+        label="منصّة تجريب"
+      />
+      {explain && (
+        <p id={said} className="max-w-prose text-note text-[var(--sys-muted-foreground)]">
+          طلباتها بتنعمل وبتتأكد متل أي متجر، وبتنحكم بشاشة منصّة التجريب — وما بتنفتح للزوّار أبداً.
+        </p>
+      )}
       {children}
     </div>
   );
@@ -721,7 +774,17 @@ function BenchBox({
  * gone before it is read. A store that already holds orders says what the
  * switch will do to them before the press, as a sentence: no dialog.
  */
-function BenchSwitch({ store, mayManage, onSaved }: { store: StoreRow; mayManage: boolean; onSaved: () => Promise<void> | void }) {
+function BenchSwitch({
+  store,
+  mayManage,
+  onSaved,
+  explain,
+}: {
+  store: StoreRow;
+  mayManage: boolean;
+  onSaved: () => Promise<void> | void;
+  explain: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const orders = store._count?.orders ?? 0;
@@ -748,7 +811,7 @@ function BenchSwitch({ store, mayManage, onSaved }: { store: StoreRow; mayManage
 
   return (
     <div className="mt-2">
-      <BenchBox checked={isTest} disabled={!mayManage || busy} onChange={change}>
+      <BenchBox checked={isTest} disabled={!mayManage || busy} onChange={change} explain={explain}>
         {orders > 0 && (
           <p className="max-w-prose text-note text-[var(--sys-muted-foreground)]">
             {isTest

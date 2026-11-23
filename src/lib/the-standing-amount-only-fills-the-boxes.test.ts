@@ -67,6 +67,11 @@ describe('drawTotals', () => {
     });
   });
 
+  it('an undefined worth is no worth: unvalued, like null — never summed as zero into the store value', () => {
+    const [t] = drawTotals([D({ amount: 7, valueInStoreCurrency: undefined }), D({ amount: 3, valueInStoreCurrency: 3 })], minorOf, storeMinorOf);
+    expect([t.total, t.valueTotal, t.valueCount, t.unvaluedTotal, t.unvaluedCount]).toEqual([10, 3, 1, 7, 1]);
+  });
+
   it('NEGATIVE: only reversed draws → no line at all', () => {
     expect(drawTotals([D({ amount: 10, reversed: true }), D({ amount: 5, valueInStoreCurrency: null, reversed: true })], minorOf, storeMinorOf)).toEqual([]);
   });
