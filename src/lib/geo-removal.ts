@@ -123,6 +123,11 @@ export const STORE_TABLES: readonly StoreTable[] = [
   // «قواعد خاصة» of the confirmation desk (request Q4a, 20/11): stopped, never deleted, and no foreign key to the store — a store that has them is not empty.
   { model: 'confirmationRule', label: 'قواعد مركز التأكيد الخاصة', how: 'blocks' },
   { model: 'trackingPixel', label: 'بكسلات التتبّع', how: 'blocks' },
+  // A system key bound to this store (2026-11-23, Zaki Pages per store): RESTRICT — stopped on «توكنات الأنظمة», never
+  // widened to the whole country by the store going from under it.
+  { model: 'systemToken', label: 'مفاتيح أنظمة مربوطة بهذا المتجر', how: 'blocks' },
+  // The landing chat threads a store-bound key opened (2026-11-23): no foreign key, like every thread's link — kept.
+  { model: 'landingChatThread', label: 'محادثات صفحات الهبوط', how: 'blocks' },
   { model: 'telegramSource', label: 'مصادر تلجرام', how: 'blocks' },
   // «أسماء المنتجات» of the Telegram door (10/11): switched off, never deleted — a store that has them is not empty.
   { model: 'telegramUpsellProduct', label: 'أسماء منتجات تلجرام', how: 'blocks' },

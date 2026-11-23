@@ -23,6 +23,13 @@ import type { RelayInput } from './landing-chat-inbox';
  *   · chat — threads it opens carry its country; another country's thread is 404, another country's order or product is
  *     not linked; `/chat/updates` lists its own country's threads only.
  *
+ * ── AND ONE STORE PER LANDING KEY (2026-11-23) ──
+ *
+ * Zaki Pages may run several independent stores in one country, each linked with its own key. A key may be bound to one
+ * store (`SystemToken.storeId`); such a key always carries that store's country as well, so every rule above holds for
+ * it, and each one also keeps it to its store: products of its store only, orders of its store only, carts whose product
+ * is another store's are unknown, and chat threads it did not open itself are unknown. Its idempotency keys are its own.
+ *
  * Every refusal is the door's existing answer for «there is no such thing», so a key learns nothing about another country.
  * The idempotency ledger is per company: a bound key's keys are kept apart (`idempotencySlot`), so a replay never hands one
  * country the answer given to another.
@@ -31,20 +38,44 @@ import type { RelayInput } from './landing-chat-inbox';
 /** What every landing route asks `requireSystemToken` with: this door keeps a bound key to its country. */
 export const LANDING_DOOR: SystemTokenOptions = { countryAware: true };
 
-/** The part of the caller this file reads. `countryId` absent or null: every country, as before. */
-export type LandingCaller = Pick<SystemCaller, 'companyId'> & { countryId?: string | null };
+/**
+ * The part of the caller this file reads. `countryId` absent or null: every country, as before. `storeId` (2026-11-23,
+ * Zaki Pages per store): the one store of that country the key sees — a store-bound key always carries its store's
+ * country too (the key is made so, `settings/system-tokens`), so every country rule below holds for it, and each one
+ * also keeps it to its store.
+ */
+export type LandingCaller = Pick<SystemCaller, 'companyId'> & { countryId?: string | null; storeId?: string | null };
+
+/**
+ * What a landing read is kept to: a country, a store of it, or nothing. The door's functions take it (or, as before, a
+ * bare country id) so a route hands on `scopeOf(caller)` and every product query is narrowed in one place.
+ */
+export interface LandingScope { countryId: string | null; storeId?: string | null }
+export type LandingScopeArg = LandingScope | string | null | undefined;
+
+/** The scope of a caller — what a route hands to the door's functions. */
+export const scopeOf = (caller: LandingCaller): LandingScope => ({ countryId: caller.countryId ?? null, storeId: caller.storeId ?? null });
+
+const asScope = (s: LandingScopeArg): LandingScope => (typeof s === 'string' ? { countryId: s } : s ?? { countryId: null });
 
 const bound = (caller: LandingCaller): string | null => caller.countryId ?? null;
+const boundStore = (caller: LandingCaller): string | null => caller.storeId ?? null;
 
-/** A product's `where`, kept to the key's country — `{}` for a key of every country. */
-export function productsInCountry(countryId: string | null | undefined): { AND?: { store: { countryId: string } }[] } {
-  return countryId ? { AND: [{ store: { countryId } }] } : {};
+/** A product's `where`, kept to the key's country (and store) — `{}` for a key of every country. */
+export function productsInCountry(scope: LandingScopeArg): { AND?: { store: { countryId?: string; id?: string } }[] } {
+  const { countryId, storeId } = asScope(scope);
+  if (!countryId && !storeId) return {};
+  return { AND: [{ store: { ...(countryId ? { countryId } : {}), ...(storeId ? { id: storeId } : {}) } }] };
 }
 
-/** The `Idempotency-Key` as the ledger stores it: a bound key's are its country's own, a key of every country's unchanged. */
+/**
+ * The `Idempotency-Key` as the ledger stores it: a bound key's are its country's own (a store key's, its store's own),
+ * a key of every country's unchanged.
+ */
 export function idempotencySlot(caller: LandingCaller, key: string): string {
   const c = bound(caller);
-  return c ? `${c}:${key}` : key;
+  const s = boundStore(caller);
+  return s ? `${c ?? ''}:${s}:${key}` : c ? `${c}:${key}` : key;
 }
 
 /** The ISO code of the key's country; a country that is gone answers as nothing at all. */
@@ -54,14 +85,21 @@ async function codeOf(caller: LandingCaller & { countryId: string }): Promise<st
   return row.code.toUpperCase();
 }
 
-/** The country an order belongs to: its own, else its store's. */
-async function orderCountry(companyId: string, orderNumber: string): Promise<{ found: boolean; countryId: string | null }> {
+/** The country an order belongs to: its own, else its store's — and its store. */
+async function orderCountry(companyId: string, orderNumber: string): Promise<{ found: boolean; countryId: string | null; storeId: string | null }> {
   const o = await db.order.findFirst({
     where: { companyId, orderNumber },
-    select: { countryId: true, store: { select: { countryId: true } } },
+    select: { countryId: true, storeId: true, store: { select: { countryId: true } } },
   });
-  return { found: !!o, countryId: o ? (o.countryId ?? o.store?.countryId ?? null) : null };
+  return { found: !!o, countryId: o ? (o.countryId ?? o.store?.countryId ?? null) : null, storeId: o?.storeId ?? null };
 }
+
+/** Is this order outside the key's country or store? */
+const otherOrder = (caller: LandingCaller, o: { countryId: string | null; storeId: string | null }): boolean => {
+  const c = bound(caller);
+  const s = boundStore(caller);
+  return (!!c && o.countryId !== c) || (!!s && o.storeId !== s);
+};
 
 /**
  * GEO: a bound key asks for its own country's cities only. Another code answers as a code this company does not have.
@@ -79,42 +117,48 @@ export async function requireCountryCode(caller: LandingCaller, code: string): P
  * unknown number is left to the door's own answer, so nothing differs.
  */
 export async function requireOrderInCountry(caller: LandingCaller, orderNumber: string): Promise<void> {
-  const c = bound(caller);
-  if (!c) return;
+  if (!bound(caller) && !boundStore(caller)) return;
   const o = await orderCountry(caller.companyId, orderNumber);
-  if (o.found && o.countryId !== c) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');
+  if (o.found && otherOrder(caller, o)) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');
 }
 
 /** The order number when it is the key's country's, else null — for a link that is written only when it fits. */
 export async function orderNumberInCountry(caller: LandingCaller, orderNumber: string | null): Promise<string | null> {
-  const c = bound(caller);
-  if (!c || !orderNumber) return orderNumber;
+  if ((!bound(caller) && !boundStore(caller)) || !orderNumber) return orderNumber;
   const o = await orderCountry(caller.companyId, orderNumber);
-  return o.found && o.countryId !== c ? null : orderNumber;
+  return o.found && otherOrder(caller, o) ? null : orderNumber;
 }
 
-/** The product id when it is the key's country's (or not this company's at all), else null: another country's is unknown. */
+/**
+ * The product id when it is the key's country's — and store's, for a store key — (or not this company's at all), else
+ * null: another country's or store's is unknown.
+ */
 async function productIdInCountry(caller: LandingCaller & { countryId: string }, productId: string | null): Promise<string | null> {
   if (!productId) return productId;
   const p = await db.product.findFirst({
     where: { companyId: caller.companyId, id: productId },
-    select: { store: { select: { countryId: true } } },
+    select: { storeId: true, store: { select: { countryId: true } } },
   });
-  return p && p.store?.countryId !== caller.countryId ? null : productId;
+  const s = boundStore(caller);
+  return p && (p.store?.countryId !== caller.countryId || (!!s && p.storeId !== s)) ? null : productId;
 }
 
-/** The cart Zaki pages names, own or folded in as an alias, and its country code. */
-async function cartCountry(companyId: string, externalId: string): Promise<{ found: boolean; country: string | null }> {
+/**
+ * The cart Zaki pages names, own or folded in as an alias, its country code, and the store of its product (a cart has no
+ * store of its own: a store key links only its own store's products, so a cart's product names the store it came from).
+ */
+async function cartCountry(companyId: string, externalId: string): Promise<{ found: boolean; country: string | null; storeId: string | null }> {
+  const pick = { country: true, product: { select: { storeId: true } } } as const;
   const own = await db.abandonedCart.findUnique({
     where: { companyId_externalId: { companyId, externalId } },
-    select: { country: true },
+    select: pick,
   });
-  if (own) return { found: true, country: own.country };
+  if (own) return { found: true, country: own.country, storeId: own.product?.storeId ?? null };
   const alias = await db.abandonedCartAlias.findUnique({
     where: { companyId_externalId: { companyId, externalId } },
-    select: { cart: { select: { country: true } } },
+    select: { cart: { select: pick } },
   });
-  return alias ? { found: true, country: alias.cart.country } : { found: false, country: null };
+  return alias ? { found: true, country: alias.cart.country, storeId: alias.cart.product?.storeId ?? null } : { found: false, country: null, storeId: null };
 }
 
 /** The cart's sentence when its body names another country than the key's. */
@@ -145,6 +189,9 @@ export async function requireCartInCountry(caller: LandingCaller, externalId: st
   if (!cart.found) return;
   const code = knownCode ?? (await codeOf({ ...caller, countryId: c }));
   if ((cart.country ?? '').toUpperCase() !== code) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such abandoned cart');
+  // A store key: a cart whose product is another store's answers as an unknown cart too.
+  const s = boundStore(caller);
+  if (s && cart.storeId && cart.storeId !== s) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such abandoned cart');
 }
 
 /**
@@ -156,9 +203,12 @@ export async function relayInCountry(caller: LandingCaller, input: RelayInput): 
   if (!c) return input;
   const thread = await db.landingChatThread.findUnique({
     where: { companyId_externalId: { companyId: caller.companyId, externalId: input.sessionId } },
-    select: { countryId: true },
+    select: { countryId: true, storeId: true },
   });
   if (thread && thread.countryId !== c) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such chat thread');
+  // A store key: only the threads it opened itself (a thread of the country's other keys is not its).
+  const s = boundStore(caller);
+  if (thread && s && thread.storeId !== s) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such chat thread');
   return {
     ...input,
     orderNumber: await orderNumberInCountry(caller, input.orderNumber),

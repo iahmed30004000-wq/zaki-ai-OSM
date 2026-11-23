@@ -83,7 +83,7 @@
   },
   "src/components/apps/SystemTokensPanel.tsx": {
     "buttons": 5,
-    "inputs": 3,
+    "inputs": 4,
     "columns": 0,
     "cards": 3,
     "modals": 0,

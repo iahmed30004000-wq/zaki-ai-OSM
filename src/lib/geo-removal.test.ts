@@ -253,7 +253,9 @@ describe('asking about many stores at once', () => {
     // document of what was counted and approved, never deleted.
     // 22/11 (F3): 39 → 40 — the partners' withdrawals (`partner_withdrawals`) have a storeId and no foreign key to the store, so
     // they are a stopper too: a record of what a partner took from the store, never deleted.
-    expect(one.asked.length).toBe(40);
+    // 23/11 (landing key per store): 40 → 42 — a system key bound to the store (`system_tokens`, RESTRICT) and the landing
+    // chat threads such a key opened (`landing_chat_threads`, no foreign key) are stoppers too.
+    expect(one.asked.length).toBe(42);
   });
 
   it('and no stores asks nothing at all', async () => {

@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, held, actor } = vi.hoisted(() => ({
   // 2026-11-21: the list also offers آ«ط§ظ„ط¨ظ„ط¯آ» (the company's active countries) â€” a-landing-key-sees-one-country.test.ts.
-  db: { systemToken: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, country: { findMany: async () => [] } },
+  db: { systemToken: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() }, country: { findMany: async () => [] }, store: { findMany: async () => [] } },
   held: { keys: new Set<string>() },
   actor: { current: { id: 'u1', name: 'المالك', role: 'COMPANY_ADMIN', companyId: 'c1', status: 'ACTIVE' } },
 }));

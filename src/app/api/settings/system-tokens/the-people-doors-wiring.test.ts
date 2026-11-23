@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
     systemToken: { findMany: vi.fn(), create: vi.fn() },
     // 2026-11-21: the key list also offers آ«ط§ظ„ط¨ظ„ط¯آ» (the company's active countries).
     country: { findMany: async () => [] },
+    store: { findMany: async () => [] },
     auditLog: { count: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() },
     user: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), count: vi.fn() },
     role: { findFirst: vi.fn(), findUnique: vi.fn() },

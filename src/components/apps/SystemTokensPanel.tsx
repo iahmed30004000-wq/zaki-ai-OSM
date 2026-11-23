@@ -46,7 +46,15 @@ interface TokenRow {
   createdAt: string;
   /** The one country this key sees; null for every country of the company (2026-11-21). */
   country?: CountryChoice | null;
+  /** The one store this key sees; null for every store of its country (2026-11-23). */
+  store?: { id: string; name: string } | null;
   state: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+}
+
+interface StoreChoice {
+  id: string;
+  name: string;
+  countryId: string;
 }
 
 interface CountryChoice {
@@ -72,6 +80,8 @@ interface Shelf {
   defaultDays: number;
   /** The company's active countries — «البلد» offers each, after «كل البلدان». */
   countries?: CountryChoice[];
+  /** The company's real stores with their country — «المتجر» offers those of the country chosen. */
+  stores?: StoreChoice[];
   tokens: TokenRow[];
 }
 
@@ -81,6 +91,14 @@ export const ALL_COUNTRIES_AR = 'كل البلدان';
 /** «البلد: …» on a key's row. */
 export function countryLabel(country: CountryChoice | null | undefined): string {
   return `البلد: ${country ? country.name : ALL_COUNTRIES_AR}`;
+}
+
+/** What «المتجر» says for a key bound to no store. */
+export const ALL_STORES_AR = 'كل متاجر البلد';
+
+/** «المتجر: …» on a key's row — only for a key bound to one store. */
+export function storeLabel(store: { name: string } | null | undefined): string {
+  return store ? `المتجر: ${store.name}` : '';
 }
 
 const STATE_AR: Record<TokenRow['state'], string> = {
@@ -99,6 +117,8 @@ export function SystemTokensPanel() {
   const [chosen, setChosen] = useState<string[]>([]);
   /** '' = every country (the default, and what every key made before was). */
   const [countryId, setCountryId] = useState('');
+  /** '' = every store of the country (the default, and what every key made before was). */
+  const [storeId, setStoreId] = useState('');
   /** The one and only moment this value exists outside a header. */
   const [issued, setIssued] = useState<{ secret: string; notice: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -127,7 +147,7 @@ export function SystemTokensPanel() {
     try {
       const made = await apiJson<{ secret: string; notice: string }>('/api/settings/system-tokens', {
         method: 'POST',
-        body: JSON.stringify({ name, system, scopes: chosen, ...(countryId ? { countryId } : {}) }),
+        body: JSON.stringify({ name, system, scopes: chosen, ...(countryId ? { countryId } : {}), ...(countryId && storeId ? { storeId } : {}) }),
       });
       setIssued({ secret: made.secret, notice: made.notice });
       setCopied(false);
@@ -136,7 +156,7 @@ export function SystemTokensPanel() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر إنشاء المفتاح');
     }
-  }, [name, system, chosen, countryId, load]);
+  }, [name, system, chosen, countryId, storeId, load]);
 
   /** Picking the system resets the name and the scopes to that system's own — least privilege as the default. */
   const pickSystem = useCallback((s: SystemChoice) => {
@@ -279,7 +299,10 @@ export function SystemTokensPanel() {
                     name="systemTokenCountry"
                     value={c.id}
                     checked={countryId === c.id}
-                    onChange={() => setCountryId(c.id)}
+                    onChange={() => {
+                      setCountryId(c.id);
+                      setStoreId('');
+                    }}
                   />
                   {c.name}
                 </label>
@@ -291,6 +314,37 @@ export function SystemTokensPanel() {
               </p>
             )}
           </fieldset>
+          {countryId && (shelf.stores ?? []).some((st) => st.countryId === countryId) && (
+            <fieldset>
+              <legend className="mb-1 text-note font-semibold text-[var(--sys-muted-foreground)]">المتجر</legend>
+              <div className="flex flex-wrap gap-2">
+                {[{ id: '', name: ALL_STORES_AR, countryId }, ...(shelf.stores ?? []).filter((st) => st.countryId === countryId)].map((st) => (
+                  <label
+                    key={st.id || 'all'}
+                    className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm md:min-h-0 ${
+                      storeId === st.id
+                        ? 'border-[var(--sys-primary)] bg-[var(--sys-primary-soft)] font-bold text-[var(--sys-heading)]'
+                        : 'border-[var(--sys-border)]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="systemTokenStore"
+                      value={st.id}
+                      checked={storeId === st.id}
+                      onChange={() => setStoreId(st.id)}
+                    />
+                    {st.name}
+                  </label>
+                ))}
+              </div>
+              {storeId && (
+                <p className="mt-1 text-note text-[var(--sys-muted-foreground)]">
+                  صفحات الهبوط بهذا المفتاح تشوف وتكتب منتجات وطلبات وسلات ومحادثات هذا المتجر فقط.
+                </p>
+              )}
+            </fieldset>
+          )}
           <Input
             label="اسم المفتاح"
             name="systemTokenName"
@@ -374,6 +428,7 @@ export function SystemTokensPanel() {
                 {STATE_AR[t.state]}
               </span>
               <span className="text-note text-[var(--sys-muted)]">{countryLabel(t.country)}</span>
+              {t.store && <span className="text-note text-[var(--sys-muted)]">{storeLabel(t.store)}</span>}
               <span className="text-note text-[var(--sys-muted)]">
                 {t.lastUsedAt ? `آخر استخدام ${arDateTime(t.lastUsedAt)}` : 'لم يُستخدم بعد'}
               </span>
