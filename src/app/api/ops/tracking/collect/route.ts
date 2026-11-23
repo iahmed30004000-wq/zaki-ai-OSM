@@ -13,6 +13,7 @@ import { expectedAmountFor, SETTLEMENT_ORDER_SELECT } from '@/lib/settlement';
 import { inStoreOrShared } from '@/lib/store-filter';
 import { collectTotalRefusal, statementNamingRefusal } from '@/lib/settlement-gates';
 import { courierOrdersRefusal, walletCountryRefusal } from '@/lib/handover';
+import { handoverTakes } from '@/lib/handover-takes';
 
 /**
  * POST /api/ops/tracking/collect — settle by hand.
@@ -87,9 +88,9 @@ export async function POST(req: Request) {
      * «تسوية يدوية للمندوب مش تمام … بدنا نصحح الموضوع زي الكشوفات». An order WITH a courier is now handed over through the
      * manual statement — its draft, its receipts (any wallet of the country, any currency with its rate) and its approval,
      * which writes the money once. This door stays for the one case that path refuses (`NO_COURIER`): an order nobody
-     * carried. Its old MANUAL_COLLECTION rows stay where they are and read as they always did.
+     * carried — and for a courier's order the statement can never take (no reference, another currency: `handoverTakes`). Its old MANUAL_COLLECTION rows stay where they are and read as they always did.
      */
-    const handover = courierOrdersRefusal(orders);
+    const handover = courierOrdersRefusal(orders, (o) => handoverTakes(o, country.currencyCode));
     if (handover) return NextResponse.json(handover, { status: 409 });
 
     const alreadySettled = orders.filter((o) => o.settlementStatus === 'SETTLED');

@@ -2368,11 +2368,11 @@
     "checkboxes": 1
   },
   "src/components/screens/tracking/CollectDialog.tsx": {
-    "buttons": 4,
+    "buttons": 5,
     "inputs": 6,
     "columns": 0,
     "cards": 2,
-    "modals": 2,
+    "modals": 3,
     "icons": 2,
     "links": 0,
     "tabs": 0

@@ -281,6 +281,29 @@ describe('«شام كاش» beside cash — one handover, two kinds of wallet', 
   });
 });
 
+describe('the open handovers read (review, 23/11)', () => {
+  it('computes «باقي» at the country’s real minor unit, not at 0', async () => {
+    requireContext.mockResolvedValue({
+      user: { id: 'u1' }, companyId: 'c1', storeId: 's1', countryId: 'sy',
+      country: { id: 'sy', minorUnit: 3, currencyCode: 'SYP' },
+    });
+    S.statement.totalAmount = 10.5;
+    await receipt({ receiptId: R1, walletId: W_SYP, amount: 10.25 });
+    const [h] = await list();
+    // At 0 decimals this would read 11 claimed, 10 received, 1 left.
+    expect(h.standing).toEqual({ claimed: 10.5, received: 10.25, remaining: 0.25, over: 0 });
+  });
+
+  it('NEGATIVE: never lists an approved statement — it asks for unapproved ones only', async () => {
+    await list();
+    const where = db.courierStatement.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ approvedAt: null, status: { not: 'APPROVED' }, storeId: 's1', companyId: 'c1' });
+    S.statement.approvedAt = new Date();
+    S.statement.status = 'APPROVED';
+    expect(await list()).toEqual([]);
+  });
+});
+
 describe('a payment above the total — «زيادة», and no approval without a reason', () => {
   it('says «زيادة» and refuses the approval until a reason is written; nothing is written meanwhile', async () => {
     await receipt({ receiptId: R1, walletId: W_SYP, amount: 1_400_000 });

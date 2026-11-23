@@ -4,6 +4,7 @@ import {
   USE_HANDOVER_SENTENCE, courierOrdersRefusal, currencyTable, handoverReference, handoverStanding, walletCountryRefusal,
 } from './handover';
 import { judgeLine } from './settlement';
+import { ORDER_ITSELF_REFUSALS, handoverTakes } from './handover-takes';
 import { statementNamingRefusal } from './settlement-gates';
 import { manualAddRefusal } from './manual-statement-rules';
 import { findPossibleDoubles } from './possible-double';
@@ -88,23 +89,51 @@ describe('the country of the wallet', () => {
   });
 });
 
-describe('the old hand door takes only orders with no courier', () => {
-  it('NEGATIVE: any order with a courier is USE_HANDOVER, naming those orders', () => {
-    const r = courierOrdersRefusal([
-      { orderNumber: 'A', deliveryProviderId: 'p1' },
-      { orderNumber: 'B', deliveryProviderId: null },
-    ]);
+describe('which door an order takes — the statement’s own rule decides', () => {
+  const o = (over: Record<string, unknown> = {}) => ({
+    orderNumber: 'A', merchantRef: 'SY-1', currency: 'SYP', deliveryProviderId: 'p1', ...over,
+  });
+
+  it('a courier’s order with a reference, in the country’s currency, is the handover’s', () => {
+    expect(handoverTakes(o(), 'SYP')).toBe(true);
+  });
+
+  it.each([
+    ['no courier', { deliveryProviderId: null }],
+    ['no reference', { merchantRef: null }],
+    ['another currency', { currency: 'USD' }],
+  ])('NEGATIVE: %s — the handover can never take it, so it keeps the old door', (_why, over) => {
+    expect(handoverTakes(o(over), 'SYP')).toBe(false);
+  });
+
+  it('the grounds are exactly the order-itself refusals of `manualAddRefusal`; its state is never one', () => {
+    expect([...ORDER_ITSELF_REFUSALS]).toEqual(['NO_COURIER', 'NO_REFERENCE', 'CURRENCY_MISMATCH']);
+    // Not delivered yet, or settled already: still the handover's (both doors refuse those states anyway).
+    const src = stripComments(repoFile('src/lib/handover-takes.ts'));
+    expect(src).toContain("shippingStatus: 'DELIVERED', settlementStatus: null");
+    expect(src).toContain('manualAddRefusal(');
+  });
+
+  it('NEGATIVE: a press with any order the handover takes is USE_HANDOVER, naming those; the rest are not named', () => {
+    const r = courierOrdersRefusal([o({ orderNumber: 'A' }), o({ orderNumber: 'B', merchantRef: null })], (x) => handoverTakes(x, 'SYP'));
     expect(r).toEqual({ code: 'USE_HANDOVER', error: USE_HANDOVER_SENTENCE, orders: ['A'] });
   });
-  it('orders with no courier pass', () => {
-    expect(courierOrdersRefusal([{ orderNumber: 'B', deliveryProviderId: null }])).toBeNull();
+
+  it('a press of orders the handover cannot take passes', () => {
+    expect(courierOrdersRefusal([o({ merchantRef: null }), o({ deliveryProviderId: null })], (x) => handoverTakes(x, 'SYP'))).toBeNull();
   });
-  it('the door asks it, after the wallet and before the settled check, and keeps its old money writer', () => {
+
+  it('the door asks it with the statement’s rule, after the wallet and before the settled check, and keeps its old money writer', () => {
     const src = stripComments(repoFile('src/app/api/ops/tracking/collect/route.ts'));
-    const asked = src.indexOf('courierOrdersRefusal(orders)');
+    const asked = src.indexOf('courierOrdersRefusal(orders, (o) => handoverTakes(o, country.currencyCode))');
     expect(asked).toBeGreaterThan(src.indexOf('walletCountryRefusal(wallet, country.id)'));
     expect(asked).toBeLessThan(src.indexOf("code: 'ALREADY_SETTLED'"));
     expect(src).toContain("referenceType: 'MANUAL_COLLECTION'");
+  });
+
+  it('the follow-up list tells the screen the same answer, row by row', () => {
+    const src = stripComments(repoFile('src/app/api/ops/tracking/route.ts'));
+    expect(src).toContain('handover: handoverTakes(o, country.currencyCode)');
   });
 });
 

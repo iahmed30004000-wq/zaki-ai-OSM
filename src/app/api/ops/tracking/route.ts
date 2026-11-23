@@ -1,3 +1,4 @@
+import { handoverTakes } from '@/lib/handover-takes';
 import { NextResponse } from 'next/server';
 import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert } from '@/lib/parcel-tracking/alert';
 import { db } from '@/lib/db';
@@ -297,6 +298,8 @@ export async function GET(req: Request) {
         late: transit.late,
         // Delivery, settlement and collection stay three separate facts.
         collectionStatus: o.settlementStatus,
+        // «تسليم مندوب» or the old hand door (F9): the statement's own rule, judged here so the screen only reads it.
+        handover: handoverTakes(o, country.currencyCode),
         // What the company itself says, when it disagrees with our state: judged once for the whole list, only shown here.
         courierSaid: list.courierSaid.get(o.id) ?? null,
         /**

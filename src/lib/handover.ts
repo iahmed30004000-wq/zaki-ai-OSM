@@ -51,13 +51,21 @@ export function walletCountryRefusal(wallet: WalletCountryFacts, countryId: stri
 export const USE_HANDOVER_SENTENCE =
   'هالطلبات إلها مندوب أو شركة شحن — استلام مصاريها صار «تسليم مندوب» متل الكشف: افتح «استلمت منه» من المتابعة وسجّل الدفعات هناك.';
 
-/** The orders the old hand door may still take: only those with no courier named. Null when every one is such. */
-export function courierOrdersRefusal(
-  orders: { orderNumber: string; deliveryProviderId: string | null }[]
+/**
+ * The orders the old hand door may still take: those the handover CANNOT take. Null when every one is such.
+ *
+ * `takes` is the statement's own rule, asked by the caller (`handoverTakes` in `handover-takes.ts`, server-only): an order
+ * with no courier, no reference, or another currency can never enter a manual statement, so it keeps this door — no order is
+ * left with neither. A press that mixes the two kinds is refused WHOLE (nothing written), naming the orders the handover
+ * takes: the person takes those through «تسليم مندوب» and presses again for the rest.
+ */
+export function courierOrdersRefusal<O extends { orderNumber: string }>(
+  orders: O[],
+  takes: (o: O) => boolean
 ): (HandoverRefusal & { orders: string[] }) | null {
-  const withCourier = orders.filter((o) => !!o.deliveryProviderId);
-  if (withCourier.length === 0) return null;
-  return { code: 'USE_HANDOVER', error: USE_HANDOVER_SENTENCE, orders: withCourier.map((o) => o.orderNumber) };
+  const handover = orders.filter(takes);
+  if (handover.length === 0) return null;
+  return { code: 'USE_HANDOVER', error: USE_HANDOVER_SENTENCE, orders: handover.map((o) => o.orderNumber) };
 }
 
 /** The reference a handover is gathered under unless the person types another: «تسليم {المندوب} {التاريخ}». */

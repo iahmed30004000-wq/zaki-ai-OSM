@@ -32,6 +32,8 @@ interface Row {
   expectedCollection?: number | null;
   customer: { fullName: string };
   deliveryProvider: { id: string; name: string; kind?: string } | null;
+  /** May the handover (the manual statement) take this order? The follow-up list's answer (F9); absent = judged by courier. */
+  handover?: boolean;
 }
 
 /**
@@ -43,7 +45,37 @@ interface Row {
  * its door now answers USE_HANDOVER for any other. One dialog for both screens, as before.
  */
 export function CollectDialog(props: { orders: Row[]; onClose: () => void; onDone: (message: string) => void }) {
-  return props.orders.some((o) => o.deliveryProvider) ? <HandoverDialog {...props} /> : <HandCollectDialog {...props} />;
+  /*
+   * WHICH DOOR, AS THE SERVER JUDGED IT (F9 review, 23/11). The follow-up list says on each row whether the handover can take
+   * the order (`handover` — the statement's own rule, `handoverTakes`): a courier's order with no reference, or in another
+   * currency, can never enter a statement, so it keeps the hand form, exactly as the door answers. A row from an answer that
+   * does not say is read by its courier, as before.
+   */
+  const takes = (o: Row) => o.handover ?? !!o.deliveryProvider;
+  const handover = props.orders.filter(takes);
+  if (handover.length === props.orders.length) return <HandoverDialog {...props} />;
+  if (handover.length === 0) return <HandCollectDialog {...props} />;
+  return <MixedChoice orders={props.orders.filter((o) => !takes(o))} onClose={props.onClose} />;
+}
+
+/** A selection of both kinds: nothing is sent; the person takes each kind on its own. */
+function MixedChoice({ orders, onClose }: { orders: Row[]; onClose: () => void }) {
+  return (
+    <Modal isOpen onClose={onClose} title="استلام المبلغ">
+      <div className="space-y-3">
+        <p role="alert" className="text-note text-[var(--sys-destructive)]">
+          {`هالطلبات ما بتنضاف لتسليم مندوب (بلا مرجع أو بعملة تانية)، وبتنسجّل بـ«استلمت منه» لحالها: ${orders
+            .map((o) => o.orderNumber)
+            .join('، ')}. اختار طلبات التسليم لحالها، وهدول لحالهم.`}
+        </p>
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            إغلاق
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 /** What the manual statement's first press answers. */

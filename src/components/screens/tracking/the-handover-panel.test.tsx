@@ -286,6 +286,29 @@ describe('orders with no courier keep the old hand form', () => {
   });
 });
 
+describe('a courier’s order the handover cannot take (review, 23/11)', () => {
+  it('goes to the old hand form, as the list says (`handover: false` — no reference)', async () => {
+    render(<CollectDialog orders={[courierOrder('o1', { handover: false })]} onClose={vi.fn()} onDone={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /استلمت منه/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /افتح التسليم/ })).toBeNull();
+    await waitFor(() => expect(calls((u) => u === '/api/finance/wallets?scope=collect')).toHaveLength(1));
+  });
+
+  it('NEGATIVE: a selection of both kinds sends nothing, and names the orders that go by hand', () => {
+    render(
+      <CollectDialog
+        orders={[courierOrder('o1', { handover: true }), courierOrder('o2', { handover: false })]}
+        onClose={vi.fn()}
+        onDone={vi.fn()}
+      />
+    );
+    expect(screen.getByRole('alert').textContent).toContain('SY-o2');
+    expect(screen.getByRole('alert').textContent).not.toContain('SY-o1');
+    expect(screen.queryByRole('button', { name: /افتح التسليم|استلمت منه/ })).toBeNull();
+    expect(api).not.toHaveBeenCalled();
+  });
+});
+
 describe('the open handovers', () => {
   it('draw a card «{المندوب} — باقي X» with «سجّل دفعة», which opens the panel', async () => {
     render(<OpenHandovers />);

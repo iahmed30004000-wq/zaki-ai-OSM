@@ -94,8 +94,8 @@ const press = (orderIds: string[] = [ORDER_A]) =>
   );
 
 /*
- * 23/11 (F9, «تسليم المندوب متل الكشف»): the order used to carry courier p1. This door now takes ONLY orders with no courier —
- * one with a courier is answered USE_HANDOVER before anything below is asked (the handover's own add door,
+ * 23/11 (F9, «تسليم المندوب متل الكشف»): the order used to carry courier p1. This door now answers USE_HANDOVER for a courier's order the handover can take (it has a
+ * reference) — before anything below is asked (the handover's own add door,
  * `addOrdersToDraft`, asks the same naming question). So the order here has NO courier, and every guard below is asked of
  * the door's one remaining case. The statements keep their courier: a statement is always somebody's.
  */
@@ -179,28 +179,34 @@ describe('an order a statement speaks for is not collected by hand', () => {
   });
 
   /*
-   * 23/11 (F9): these two were «by the courier's barcode, within that courier» (409 ON_UNAPPROVED_STATEMENT) and «…the same
-   * barcode on ANOTHER courier's statement is another parcel» (200). A barcode is a courier's, and an order WITH a courier no
-   * longer reaches this door's naming question: it is answered USE_HANDOVER first, and nothing is read or booked. The
-   * barcode rule itself is unchanged and still asked — by the handover's add door (`addOrdersToDraft`).
+   * 23/11 (F9): a courier's order with NO reference can never enter the handover (`handoverTakes`: NO_REFERENCE), so it keeps
+   * this door exactly as on main — these two are main's tests, with the courier written out on the order.
    */
-  it('an order WITH a courier, named by that courier’s barcode, is sent to the handover before the question is asked', async () => {
+  it('by the courier’s barcode, within that courier', async () => {
     db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100', deliveryProviderId: 'p1' })]);
     world.lines = [line({ merchantRef: null, barcode: 'B-100' })];
+    const res = await press();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('ON_UNAPPROVED_STATEMENT');
+    nothingBooked();
+  });
+
+  it('…but the same barcode on ANOTHER courier’s statement is another parcel', async () => {
+    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100', deliveryProviderId: 'p1' })]);
+    world.lines = [line({ merchantRef: null, barcode: 'B-100' }, { deliveryProviderId: 'p2' })];
+    const res = await press();
+    expect(res.status).toBe(200);
+    expect(recordMovement).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEGATIVE: a courier’s order WITH a reference is the handover’s — USE_HANDOVER before the question, nothing read or booked', async () => {
+    db.order.findMany.mockResolvedValue([order({ deliveryProviderId: 'p1' })]);
+    world.lines = [line()];
     const res = await press();
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('USE_HANDOVER');
     nothingBooked();
     expect(db.order.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('…and so is one whose barcode another courier’s statement carries: it is a courier’s order all the same', async () => {
-    db.order.findMany.mockResolvedValue([order({ merchantRef: null, trackingNumber: 'B-100', deliveryProviderId: 'p1' })]);
-    world.lines = [line({ merchantRef: null, barcode: 'B-100' }, { deliveryProviderId: 'p2' })];
-    const res = await press();
-    expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('USE_HANDOVER');
-    nothingBooked();
   });
 
   it('an order named by NO statement is collected as before', async () => {
