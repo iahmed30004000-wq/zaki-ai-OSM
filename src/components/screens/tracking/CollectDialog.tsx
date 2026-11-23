@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { RiHandCoinLine } from '@remixicon/react';
 import { Money } from '@/components/ui/Money';
+import { userCan } from '@/lib/can';
+import { handoverReference } from '@/lib/handover';
+import { HandoverPanel, NO_UPLOAD_SENTENCE, useCurrentUserIfAny } from './HandoverPanel';
 
 /**
  * "استلمت منه" — settling a مندوب, or a company that sends no file, by hand.
@@ -31,7 +34,130 @@ interface Row {
   deliveryProvider: { id: string; name: string; kind?: string } | null;
 }
 
-export function CollectDialog({
+/**
+ * «استلمت منه» — WHICH OF THE TWO IT IS (F9, 23/11).
+ *
+ * «تسوية يدوية للمندوب مش تمام … بدنا نصحح الموضوع زي الكشوفات للمناديب والشركات اللي بدون API». Orders WITH a courier are
+ * handed over as a statement (`HandoverDialog`: the manual statement's two presses, then its receipts and its approval).
+ * Orders with NO courier keep the old hand door (`HandCollectDialog`), the one case the statement refuses (`NO_COURIER`);
+ * its door now answers USE_HANDOVER for any other. One dialog for both screens, as before.
+ */
+export function CollectDialog(props: { orders: Row[]; onClose: () => void; onDone: (message: string) => void }) {
+  return props.orders.some((o) => o.deliveryProvider) ? <HandoverDialog {...props} /> : <HandCollectDialog {...props} />;
+}
+
+/** What the manual statement's first press answers. */
+interface Added {
+  statementId: string;
+}
+
+function HandoverDialog({
+  orders,
+  onClose,
+  onDone,
+}: {
+  orders: Row[];
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const user = useCurrentUserIfAny();
+  // UX only: both presses ask `settlement.upload` again at the door.
+  const mayUpload = userCan(user, 'settlement.upload');
+  const party = orders[0]?.deliveryProvider?.name ?? '—';
+  const currency = orders[0]?.currency ?? '';
+  const [reference, setReference] = useState(() => handoverReference(party, new Date()));
+  /** The draft the first press filled — kept, so a retry after a refused reference does not press it again. */
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [statementId, setStatementId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // The server's figure per order, added up for the eye only — the statement's own total comes back from «تجميع».
+  const expected = Number(orders.reduce((sum, o) => sum + Number(o.expectedCollection ?? 0), 0).toFixed(3));
+
+  return (
+    <Modal isOpen onClose={onClose} title="تسليم المندوب" subtitle={`${party} · ${orders.length} طلب`}>
+      {statementId ? (
+        <HandoverPanel statementId={statementId} onApproved={onDone} />
+      ) : (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (saving) return;
+            setSaving(true);
+            setError(null);
+            try {
+              const draft =
+                draftId ??
+                (
+                  await apiJson<Added>('/api/finance/statements/manual', {
+                    method: 'POST',
+                    body: JSON.stringify({ orders: orders.map((o) => ({ orderId: o.id })) }),
+                  })
+                ).statementId;
+              setDraftId(draft);
+              await apiJson(`/api/finance/statements/${draft}/assemble`, {
+                method: 'POST',
+                body: JSON.stringify({ reference: reference.trim() }),
+              });
+              setStatementId(draft);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'تعذّر بدء التسليم');
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className="space-y-3"
+        >
+          <Card plain padding="sm" className="text-note space-y-1">
+            <p className="text-[var(--sys-foreground)]">
+              المتوقَّع منه: <b className="tabular-nums"><Money value={expected} currency={currency} /></b>
+            </p>
+            <p className="text-[var(--sys-muted)]">
+              التسليم صار متل الكشف: الطلبات بتنضاف لكشف باسمه، بتسجّل كل دفعة بعملتها ومحفظتها (ولو على كم يوم)، ولما تعتمد
+              بينكتب المبلغ بالمحافظ مرة وحدة.
+            </p>
+          </Card>
+
+          <div className="max-h-32 overflow-y-auto border border-[var(--sys-border)] rounded-lg divide-y divide-[var(--sys-border)]">
+            {orders.map((o) => (
+              <div key={o.id} className="flex items-center justify-between px-3 py-1.5 text-note">
+                <span className="text-[var(--sys-foreground)]">{o.orderNumber} · {o.customer.fullName}</span>
+                <span className="tabular-nums text-[var(--sys-muted-foreground)]">{Number(o.expectedCollection ?? 0)}</span>
+              </div>
+            ))}
+          </div>
+
+          <Input
+            label="مرجع التسليم"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            required
+            minLength={2}
+            maxLength={80}
+          />
+
+          {!mayUpload && (
+            <p role="alert" className="text-note text-[var(--sys-destructive)]">{NO_UPLOAD_SENTENCE}</p>
+          )}
+          {error && <p role="alert" className="text-sm text-[var(--sys-destructive)]">{error}</p>}
+
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              إلغاء
+            </Button>
+            <Button type="submit" variant="primary" disabled={saving || !mayUpload || reference.trim().length < 2}>
+              <RiHandCoinLine className="w-4 h-4" />
+              {saving ? 'جارٍ الفتح…' : 'افتح التسليم'}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+/** The old hand door, for the orders no courier carried. */
+function HandCollectDialog({
   orders,
   onClose,
   onDone,
@@ -68,7 +194,8 @@ export function CollectDialog({
   );
 
   useEffect(() => {
-    apiJson<{ wallets: { id: string; name: string; currencyCode: string }[] }>('/api/finance/wallets')
+    // This country's active wallets only (F9): the door refuses another country's, so the list does not offer one.
+    apiJson<{ wallets: { id: string; name: string; currencyCode: string }[] }>('/api/finance/wallets?scope=collect')
       .then((d) => {
         const usable = d.wallets.filter((w) => w.currencyCode === currency);
         setWallets(usable);
@@ -115,7 +242,7 @@ export function CollectDialog({
             وهو صافي ما يسلّمه بعد خصم أجرة التوصيل، لا المبلغ الذي دفعه العميل.
           </p>
           <p className="text-[var(--sys-muted)]">
-            «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية أو سعر صرف: «مطابق يدوي» ثم «تجميع».
+            هالطلبات بلا مندوب: بتنسجّل نقداً بعملة الطلب لمحفظة فعّالة من بلد هالمتجر. طلبات المندوب بتنسجّل «تسليم مندوب» متل الكشف.
           </p>
         </Card>
 

@@ -8,6 +8,7 @@ import { ContactButtons } from '@/components/orders/ContactButtons';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { TransferDialog } from '@/components/screens/tracking/TransferDialog';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
+import { OpenHandovers } from '@/components/screens/tracking/OpenHandovers';
 import { CourierSaidChip } from '@/components/screens/tracking/CourierSaidChip';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
@@ -749,6 +750,8 @@ export function TrackingScreen() {
           money waiting LAST — so on a board of late parcels the first page
           held none, and a bar saying «nothing to collect» hid fourteen
           delivered parcels. «اعرضها» asks the server for exactly them. */}
+      {/* The open handovers (F9): «{المندوب} — باقي X — سجّل دفعة». Draws itself only for «رفع تقارير الشحن». */}
+      <OpenHandovers />
       {access.collect && collectOwed > 0 && (
         <Card padding="sm" className="flex flex-wrap items-center gap-3">
           {/* On a desk this strip is what it always was: the count, the way out and the button, in a row above the

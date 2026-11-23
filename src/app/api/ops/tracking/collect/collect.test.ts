@@ -423,24 +423,36 @@ describe('one courier per handover, and a wallet of this store (29/10)', () => {
     expect(logAudit).not.toHaveBeenCalled();
   };
 
-  it('orders of two couriers are refused with MIXED_COURIER and nothing is written', async () => {
+  /*
+   * 23/11 (F9, «تسليم المندوب متل الكشف»): these three were «two couriers → MIXED_COURIER», «a courier and none →
+   * MIXED_COURIER» and «the same courier on every order is collected as before» (200). An order WITH a courier is now
+   * handed over through the manual statement, and this door answers USE_HANDOVER before the courier question — so the
+   * first two are now USE_HANDOVER, and the third is the door's one remaining case: orders with NO courier, collected as
+   * before. MIXED_COURIER stays in the door (and in the source) for a press that reaches it; it cannot be reached through
+   * a courier any more, which is the point.
+   */
+  it('orders of two couriers are sent to the handover, and nothing is written', async () => {
     two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p2', deliveryProvider: { id: 'p2', name: 'أبو خالد', kind: 'AGENT' } });
     const res = await POST(both());
     expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('MIXED_COURIER');
+    const body = await res.json();
+    expect(body.code).toBe('USE_HANDOVER');
+    expect(body.orders).toEqual(['SY-2026-0001', 'SY-2026-0002']);
     nothingWritten();
   });
 
-  it('a parcel with NO courier named is not the first courier’s either', async () => {
+  it('a parcel with NO courier beside one WITH a courier: the courier’s is named, and nothing is written', async () => {
     two({ deliveryProviderId: 'p1' }, { deliveryProviderId: null, deliveryProvider: null });
     const res = await POST(both());
     expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('MIXED_COURIER');
+    const body = await res.json();
+    expect(body.code).toBe('USE_HANDOVER');
+    expect(body.orders).toEqual(['SY-2026-0001']);
     nothingWritten();
   });
 
-  it('the same courier on every order is collected as before', async () => {
-    two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p1' });
+  it('orders with no courier at all are collected as before', async () => {
+    two({ deliveryProviderId: null, deliveryProvider: null }, { deliveryProviderId: null, deliveryProvider: null });
     const res = await POST(both());
     expect(res.status).toBe(200);
     expect(recordMovement).toHaveBeenCalledTimes(1);
