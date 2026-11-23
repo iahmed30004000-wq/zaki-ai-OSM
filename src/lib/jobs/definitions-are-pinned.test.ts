@@ -49,6 +49,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['pull-ad-spend-night', 86_400, '00:10'],
   // Appended 19/11: «سجل الرفض» — the confirmation desk's refusal rows older than 90 days go, in bounded passes. No clock time: a daily job with one is asked about every 45 s (tick.test.ts holds that count).
   ['prune-desk-refusals', 86_400, undefined],
+  // Appended 23/11 (F8): «سعر الصرف التلقائي» — the fiat rates and the USDT price once a day. No clock time (same reason as above).
+  ['refresh-exchange-rates', 86_400, undefined],
 ];
 
 describe('the jobs table', () => {

@@ -3484,6 +3484,17 @@ model WalletMovement {
   /// profit is in the store's currency and a wallet may hold another one, so a draw from a wallet in a different currency carries
   /// the equivalent the person typed; from a wallet in the store's own currency it is the amount. Null on every other movement.
   valueInStoreCurrency Decimal? @db.Decimal(14, 3)
+  /// «سعر الصرف التلقائي» (23/11, F8, `lib/exchange-rates-core.ts`): THE RATE `valueInStoreCurrency` WAS FILLED AT, when the server
+  /// filled it from today's rate because the person left it empty. Store units for ONE wallet unit; AUTO (the internet, `…Source` names
+  /// it) or MANUAL (the owner's typed rate); `…At` = when that rate was true. FROZEN at write time — a later rate never rewrites a row —
+  /// and read by no sum: the ledger reads `valueInStoreCurrency` only. NULL on a typed equivalent, on every other movement, and on every
+  /// row older than the migration (no backfill). Migration 20261123160000_wallet_movement_equivalent_rate holds two CHECKs this file
+  /// cannot express: wallet_movements_equivalent_rate_check (rate > 0, with a value and a kind) and
+  /// wallet_movements_equivalent_rate_kind_check (kind AUTO | MANUAL, with a rate).
+  equivalentRate       Decimal?  @db.Decimal(24, 12)
+  equivalentRateKind   String?
+  equivalentRateSource String?
+  equivalentRateAt     DateTime?
   createdById    String
   createdAt      DateTime @default(now())
   /// THE REAL DATE (22/11, `lib/real-date.ts`): when the money really moved, as typed. NULL = the same as `createdAt` (no

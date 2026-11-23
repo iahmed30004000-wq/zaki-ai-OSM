@@ -36,6 +36,8 @@ vi.mock('@/components/settings/PostOrderOfferCard', () => ({ PostOrderOfferCard:
 vi.mock('@/components/settings/AuthenticityCodesCard', () => ({ AuthenticityCodesCard: () => <div data-card="AuthenticityCodesCard" /> }));
 vi.mock('@/components/settings/PerLineSettlementCard', () => ({ PerLineSettlementCard: () => <div data-card="PerLineSettlementCard" /> }));
 vi.mock('@/components/settings/PartnersCard', () => ({ PartnersCard: () => <div data-card="PartnersCard" /> }));
+// 23/11 (F8): «أسعار الصرف» is new on «قواعد المال», not a card that left «إعدادات النظام» — drawn as nothing here (its own test holds it).
+vi.mock('@/components/settings/ExchangeRatesCard', () => ({ ExchangeRatesCard: () => null }));
 vi.mock('@/components/settings/CallProofCard', () => ({ CallProofCard: () => <div data-card="CallProofCard" /> }));
 vi.mock('@/components/settings/QueuePriorityCard', () => ({ QueuePriorityCard: () => <div data-card="QueuePriorityCard" /> }));
 vi.mock('@/components/settings/QueueModesCard', () => ({ QueueModesCard: () => <div data-card="QueueModesCard" /> }));
