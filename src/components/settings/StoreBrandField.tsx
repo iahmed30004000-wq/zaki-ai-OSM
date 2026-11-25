@@ -17,7 +17,8 @@ import { IconButton } from '@/components/ui/IconButton';
  * is a second place for them to be out of date.
  */
 
-type Kind = 'logo' | 'favicon';
+// F15 (25/11): «waybillLogo» — the store's own waybill logo, uploaded by the waybill card through its own door.
+type Kind = 'logo' | 'favicon' | 'waybillLogo';
 
 const COPY: Record<Kind, {
   title: string; hint: string; upload: string; failed: string;
@@ -31,6 +32,16 @@ const COPY: Record<Kind, {
     confirmTitle: 'إزالة الشعار؟',
     confirmBody: 'يختفي من واجهة المتجر ومن البوالص، ويبقى اسم المتجر وحده.',
     removeTitle: 'إزالة الشعار',
+    removeFailed: 'تعذر إزالة الشعار',
+  },
+  waybillLogo: {
+    title: 'شعار البوليصة',
+    hint: 'بينطبع على البوليصة بس، مش بالمتجر. بالأبيض والأسود أوضح على الطابعة الحرارية. JPG أو PNG أو WEBP، لحد 2 ميجابايت.',
+    upload: 'رفع شعار',
+    failed: 'تعذر رفع الشعار',
+    confirmTitle: 'إزالة شعار البوليصة؟',
+    confirmBody: 'البوليصة بترجع تطبع شعار المتجر.',
+    removeTitle: 'إزالة شعار البوليصة',
     removeFailed: 'تعذر إزالة الشعار',
   },
   favicon: {
@@ -61,7 +72,7 @@ export function StoreBrandField({
   const input = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   const copy = COPY[kind];
-  const endpoint = `/api/geo/stores/${storeId}/${kind}`;
+  const endpoint = kind === 'waybillLogo' ? `/api/geo/stores/${storeId}/waybill/logo` : `/api/geo/stores/${storeId}/${kind}`;
 
   async function upload(file: File) {
     setBusy(true);

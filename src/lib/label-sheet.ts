@@ -100,6 +100,25 @@ export interface SheetOptions {
   outsideTheRule?: { orderNumber: string; reason: string }[];
   /** A file-name-like title; Chromium suggests it when saving a PDF. */
   title?: string;
+  /**
+   * 25/11 (F15, «تحكم شامل بعناصر الفاتورة»): the parts the store chose to leave off its waybill.
+   * Omitted — the store never changed anything — and the sheet is today's, byte for byte (pinned by
+   * `label-sheet.main-golden.json`). The parts a courier needs (name, phones, address, COD, barcode)
+   * have no switch here at all: they cannot be left off. The logo is `store.logoUrl` (null = none).
+   */
+  show?: SheetShow;
+}
+
+/** The parts of a waybill a store may leave off. Every one `true` is today's waybill. */
+export interface SheetShow {
+  storeName: boolean;
+  courierName: boolean;
+  /** Our reference in the header (the QR's caption carries it too). */
+  ref: boolean;
+  items: boolean;
+  note: boolean;
+  qr: boolean;
+  supportPhone: boolean;
 }
 
 /**
@@ -276,6 +295,12 @@ export interface LabelNeed {
   cod: string;
   /** The store has a support number for the footer. */
   foot: boolean;
+  /** F15: the store left the QR off its waybill. */
+  noQr?: boolean;
+  /** F15: the store left the item lines (and the count line) off its waybill. */
+  noItems?: boolean;
+  /** F15: the store left every part of the header off (logo, name, courier, reference). */
+  noHead?: boolean;
 }
 
 /** What the label shows; the plan the drop order works down. */
@@ -293,6 +318,8 @@ interface Show {
   note: number;
   /** Item lines; 0 is the one count line («2 قطع»). */
   items: number;
+  /** F15: false when the store left the items off — no item line and no count line. Today: always true. */
+  list?: boolean;
 }
 
 export interface LabelFit {
@@ -403,7 +430,7 @@ function heightAt(g: Geometry, need: LabelNeed, s: number, show: Show) {
 
   const place = Math.min(show.place, L.place);
   const note = show.body ? Math.min(show.note, L.note) : 0;
-  const itemLines = !show.body
+  const itemLines = !show.body || show.list === false
     ? 0
     : show.items === 0
       ? 1
@@ -482,15 +509,17 @@ export function fitFor(size: SheetSize, need?: LabelNeed): LabelFit {
   const floor = Math.max(1, legacyScale(size));
 
   const want: Show = {
-    head: true,
+    head: !n.noHead,
     tight: false,
-    body: true,
+    // F15: with the items left off, the contents row is the note alone — or nothing.
+    body: !n.noItems || (Boolean(n.note) && t.note > 0),
     codShort: false,
-    qr: t.qr,
+    qr: t.qr && !n.noQr,
     foot: n.foot && tier !== 'tiny',
     place: t.place,
     note: n.note ? t.note : 0,
     items: t.items === 0 ? 0 : Math.min(t.items, Math.max(1, n.items)),
+    list: !n.noItems,
   };
   const fits = (s: number, show: Show) => heightAt(g, n, s, show).full <= g.usable - FIT_SLACK_MM;
 
@@ -642,10 +671,29 @@ function itemsHtml(items: LabelItem[], max: number): string {
   );
 }
 
-function labelHtml(l: LabelView, size: SheetSize, store: SheetStore): string {
+/**
+ * F15: what the label and the store say once the store's choices are applied — a part left off is
+ * simply not there, so the fitting below gives its room to the parts that stay. With no choices
+ * (`show` omitted) the label and the store go through untouched.
+ */
+function applyShow(l: LabelView, store: SheetStore, show?: SheetShow) {
+  if (!show) return { l, store, need: needOf(l, store) };
+  const label = show.note ? l : { ...l, note: null };
+  const st = show.supportPhone ? store : { ...store, supportPhone: null };
+  const need = needOf(label, st);
+  if (!show.qr) need.noQr = true;
+  if (!show.items) need.noItems = true;
+  if (!st.logoUrl && !show.storeName && !show.courierName && !show.ref) need.noHead = true;
+  return { l: label, store: st, need };
+}
+
+function labelHtml(given: LabelView, size: SheetSize, givenStore: SheetStore, show?: SheetShow): string {
+  const { l, store, need } = applyShow(given, givenStore, show);
   // Each label is fitted to what IT says: a one-item order with a short
   // address grows into the room a twelve-item one needs for its list.
-  const t = fitFor(size, needOf(l, store));
+  const t = fitFor(size, need);
+  const items = !need.noItems;
+  const noteHtml = l.note && t.note > 0 ? `<p class="note" style="-webkit-line-clamp:${t.note}"><b>ملاحظة:</b> ${esc(l.note)}</p>` : '';
   const tier = t.tier;
   const code = encodableCode128(l.courierCode);
   const logo =
@@ -656,8 +704,8 @@ function labelHtml(l: LabelView, size: SheetSize, store: SheetStore): string {
   ${
     t.head
       ? `<header class="head">
-    <div class="brand">${logo}<strong>${esc(store.name)}</strong></div>
-    <div class="courier"><span>${esc(l.courier)}</span><b dir="ltr">${esc(l.ref)}</b></div>
+    <div class="brand">${logo}${show?.storeName === false ? '' : `<strong>${esc(store.name)}</strong>`}</div>
+    <div class="courier">${show?.courierName === false ? '' : `<span>${esc(l.courier)}</span>`}${show?.ref === false ? '' : `<b dir="ltr">${esc(l.ref)}</b>`}</div>
   </header>`
       : ''
   }
@@ -667,10 +715,10 @@ function labelHtml(l: LabelView, size: SheetSize, store: SheetStore): string {
     <p class="place" style="-webkit-line-clamp:${t.place}">${esc(l.place)}</p>
   </div>
   ${
-    t.body
+    t.body && (items || noteHtml)
       ? `<div class="body">
-    ${itemsHtml(l.items, t.items)}
-    ${l.note && t.note > 0 ? `<p class="note" style="-webkit-line-clamp:${t.note}"><b>ملاحظة:</b> ${esc(l.note)}</p>` : ''}
+    ${items ? itemsHtml(l.items, t.items) : ''}
+    ${noteHtml}
   </div>`
       : ''
   }
@@ -780,7 +828,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
     const chunk = labels.slice(p * perPage, (p + 1) * perPage);
     const run = Math.floor((p * perPage) / PRINT_CHUNK);
     sheets.push(
-      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, size, opts.store)).join('')}</div>`
+      `<div class="page" data-run="${run}">${chunk.map((l) => labelHtml(l, size, opts.store, opts.show)).join('')}</div>`
     );
   }
 

@@ -185,7 +185,7 @@ export async function waybillCod(order: WaybillOrder, minorUnit: number): Promis
 }
 
 /** Our reference as a QR, with its four-module quiet zone. */
-async function qrSvg(value: string): Promise<string> {
+export async function qrSvg(value: string): Promise<string> {
   return QRCode.toString(value, { type: 'svg', errorCorrectionLevel: 'M', margin: 4 });
 }
 
