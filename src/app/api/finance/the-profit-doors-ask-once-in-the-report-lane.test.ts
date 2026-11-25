@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { state, profitToDate, analytics } = vi.hoisted(() => ({
-  state: { stamp: { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') as Date | null } }, monthRows: [] as unknown[], storeId: 's1', lanes: [] as boolean[] },
+  state: { stamp: { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') as Date | null } }, monthRows: [] as unknown[], storeId: 's1', lanes: [] as boolean[], statements: [] as { createdAt: Date; fileHash: string }[] },
   profitToDate: vi.fn(),
   analytics: vi.fn(),
 }));
@@ -21,6 +21,8 @@ vi.mock('@/lib/db', () => ({
   db: {
     expense: { aggregate: vi.fn(async () => state.stamp), groupBy: vi.fn(async () => state.monthRows) },
     order: { count: vi.fn(async () => 1) },
+    // 25/11 (A1): the profit door reads the store's profit epoch to name its kept answer; `state.statements` are its courier statements.
+    courierStatement: { findMany: vi.fn(async () => state.statements) },
   },
 }));
 vi.mock('@/lib/geo-context', () => ({
@@ -43,6 +45,7 @@ beforeEach(() => {
   state.storeId = 's1';
   state.monthRows = [];
   state.lanes = [];
+  state.statements = [];
   state.stamp = { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') } };
   profitToDate.mockReset().mockImplementation(async () => {
     state.lanes.push(inHeavyLane());
@@ -81,6 +84,23 @@ describe('/api/finance', () => {
     state.stamp = { _count: { _all: 2 }, _sum: { amount: 15 }, _max: { createdAt: new Date('2026-11-18T08:00:00Z') } };
     await finance();
     expect(profitToDate).toHaveBeenCalledTimes(3);
+  });
+
+  it('A1 (25/11): the first courier statement is another question — the key carries the profit epoch, so the figures move the moment one is uploaded', async () => {
+    await finance();
+    await finance();
+    expect(profitToDate).toHaveBeenCalledTimes(1);
+    // An open manual draft is not a statement: the same key, the kept answer.
+    state.statements = [{ createdAt: new Date('2026-10-28T09:00:00Z'), fileHash: 'manual:draft:x' }];
+    await finance();
+    expect(profitToDate).toHaveBeenCalledTimes(1);
+    // A real one: a new key, a new computation, and the epoch is handed to the engine rather than read twice.
+    state.statements = [{ createdAt: new Date('2026-10-28T09:00:00Z'), fileHash: 'abc' }];
+    const body = await (await finance()).json();
+    expect(profitToDate).toHaveBeenCalledTimes(2);
+    expect((profitToDate.mock.calls[1] as unknown[])[2]).toEqual({ epoch: { at: new Date('2026-10-27T21:00:00.000Z'), day: '2026-10-28' } });
+    expect(body.since).toBe('2026-10-27T21:00:00.000Z');
+    expect(body.sinceDay).toBe('2026-10-28');
   });
 
   it('the month\'s two revenue readings run in the lane too, and are kept', async () => {

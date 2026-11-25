@@ -47,6 +47,8 @@ const { db, rows, requireContext, requirePermission, logAudit } = vi.hoisted(() 
       update: vi.fn(),
     },
     order: { findMany: vi.fn(async () => []) },
+    // 25/11 (A1): the profit door reads the store's profit epoch; no statement here, so every expense below counts as it always did.
+    courierStatement: { findMany: vi.fn(async () => []) },
     wallet: { findFirst: vi.fn() },
     walletMovement: { create: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),

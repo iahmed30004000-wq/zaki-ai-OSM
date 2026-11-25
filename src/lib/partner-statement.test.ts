@@ -20,11 +20,14 @@ const { db, tables, commission } = vi.hoisted(() => {
     user: [] as Row[],
     order: [] as Row[],
     expense: [] as Row[],
+    // 25/11 (A1): the store's courier statements — the profit epoch is read from them. Empty unless a test says otherwise.
+    courierStatement: [] as Row[],
   };
   const matches = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
       if (key === 'OR') return (want as Row[]).some((w) => matches(row, w));
-      if (key === 'id' && want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row.id);
+      // 25/11 (A1): any `in` list, not only ids — delivered is `shippingStatus: { in: [...] }` (`whereDelivered()`).
+      if (want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row[key]);
       if (want && typeof want === 'object' && !(want instanceof Date) && !Array.isArray(want) && key !== 'id') {
         return matches((row[key] ?? {}) as Row, want as Row);
       }
@@ -59,6 +62,7 @@ const { db, tables, commission } = vi.hoisted(() => {
     user: { findMany: finder('user') },
     order: { findMany: finder('order') },
     expense: { findMany: finder('expense') },
+    courierStatement: { findMany: finder('courierStatement') },
   };
   return { db, tables, commission: vi.fn(async () => 12.7) };
 });
@@ -74,7 +78,8 @@ const partner = (id: string, name: string, sharePercent: number, sortOrder: numb
   id, companyId: 'c1', name, sharePercent, isActive, sortOrder, createdAt: new Date(2026, 10, 13, 0, sortOrder),
 });
 const order = (id: string, total: number, shipping: number, cost: number): Row => ({
-  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
+  // 25/11 (A1): delivered by `shippingStatus`, as every road now writes it; the legacy column kept in step, as the shipping door writes it.
+  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
   deliveredAt: new Date('2026-11-05T10:00:00Z'),
 });
 const expense = (id: string, storeId: string | null, amount: number, voidedAt: Date | null = null): Row => ({
