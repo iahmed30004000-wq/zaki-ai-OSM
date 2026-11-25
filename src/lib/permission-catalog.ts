@@ -420,7 +420,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * هالحركة هاي لاي طلب حتى لو عليه باركود، بس بدي الزر هاد متاح للمالك فقط». Granted to NOBODY by any migration, seed or
        * fallback: the owner's full access holds it, and he ticks it for whoever he wants.
        */
-      { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار)', en: 'Close orders as collected with no money moved (old no-barcode ones, or ones ticked by hand)' },
+      { key: 'ops.close_legacy', requires: 'ops.track', ar: 'إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار) والتراجع عن الإقفال', en: 'Close orders as collected with no money moved (old no-barcode ones, or ones ticked by hand), and take such a close back' },
       { key: 'ops.return_fee', requires: 'ops.returns', ar: 'احتساب أجرة الإرجاع على شركة الشحن', en: 'Charge the courier a return fee' },
       /*
        * «هاد الطلب بالغلط حطيتو تم والشركة بتقول تم ارجاعها لازم يكون في زر تراجع مش محدود بمدة زمنية ويكون عليه صلاحية للمالك متاح» (13/11).

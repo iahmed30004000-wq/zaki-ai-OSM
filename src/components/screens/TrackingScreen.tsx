@@ -114,6 +114,8 @@ interface Row {
   sourceWarehouseName?: string;
   /** The returns desk counted this parcel back in (a return receipt exists). Only an explicit «false» draws «تراجع عن المرتجع». */
   returnCounted?: boolean;
+  /** «مسوّى» by «إقفال القديمة», its mark still live — sent true only to whoever holds the close's key. Draws «تراجع عن الإقفال». */
+  legacyClosed?: boolean;
 }
 
 interface Extra {
@@ -260,6 +262,8 @@ export function TrackingScreen() {
   /** The delivered parcel whose delivery somebody is about to take back. */
   const [undoFor, setUndoFor] = useState<Row | null>(null);
   const [undoReturnFor, setUndoReturnFor] = useState<Row | null>(null);
+  /** The parcel whose no-money «إقفال القديمة» the owner is about to take back. */
+  const [takeBackFor, setTakeBackFor] = useState<Row | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
   /** The order whose door outcome is being written, so its buttons wait. */
   const [settling, setSettling] = useState<string | null>(null);
@@ -1387,6 +1391,22 @@ export function TrackingScreen() {
                   تراجع عن المرتجع…
                 </Button>
               )}
+              {/*
+                «تراجع عن إقفال القديمة» (25/11, «اعملها بالكود»): on a parcel «إقفال القديمة» made «مسوّى» with no money, for whoever holds
+                that close's own key. The dialog measures first and refuses on any money trace; after it, «تراجع عن التسليم» takes the order.
+              */}
+              {acts.closeLegacy && o.legacyClosed === true && o.settlementStatus === 'SETTLED' && (
+                <Button
+                  type="button"
+                  variant={quiet}
+                  size="sm"
+                  onClick={() => setTakeBackFor(o)}
+                  className={quietFit}
+                  title="رجّع تسوية الطلب لحالتها قبل «إقفال القديمة» — لما الطرد رجع فعلاً"
+                >
+                  تراجع عن الإقفال…
+                </Button>
+              )}
               {acts.transfer && (
               <Button
                 type="button"
@@ -1530,6 +1550,20 @@ export function TrackingScreen() {
           onClose={() => setUndoReturnFor(null)}
           onDone={async (message) => {
             setUndoReturnFor(null);
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {takeBackFor && (
+        <UndoDeliveryDialog
+          kind="legacy"
+          order={takeBackFor}
+          onClose={() => setTakeBackFor(null)}
+          onDone={async (message) => {
+            setTakeBackFor(null);
             setDone(message);
             setError(null);
             await list.reload();

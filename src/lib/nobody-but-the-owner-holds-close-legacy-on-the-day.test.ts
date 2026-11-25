@@ -35,7 +35,8 @@ describe('who holds «أقفل القديمة بلا باركود» on the day',
     const item = catalogItem(KEY);
     expect(item?.requires).toBe('ops.track');
     // 13/11: the key now opens the second button too («أقفل المحدّد بلا حركة مال»), so its label says both.
-    expect(item?.ar).toBe('إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار)');
+    // 25/11 (F14): was «…أو المحدَّدة بالاختيار)». The same key now also opens «تراجع عن إقفال القديمة» on one order, so the label says it.
+    expect(item?.ar).toBe('إقفال طلبات كمحصَّلة بلا حركة مال (القديمة بلا باركود، أو المحدَّدة بالاختيار) والتراجع عن الإقفال');
   });
 
   it('SUPER_ADMIN holds it — its full access is every key', async () => {

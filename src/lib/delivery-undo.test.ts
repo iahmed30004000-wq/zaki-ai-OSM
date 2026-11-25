@@ -2025,7 +2025,13 @@ describe('a zero «returned» line does not block the undo — and everything el
 
   it('NEGATIVE — a zero «returned» line whose row a person answered, the approval settled, or a person tied by hand still blocks (no matching rebuilds it)', async () => {
     await refusedUntouched(await withLine({}, { resolution: 'ACCEPTED_COURIER' }));
-    await refusedUntouched(await withLine({}, { resolution: 'UNDER_REVIEW' }));
+    await refusedUntouched(await withLine({}, { resolution: 'OURS_STANDS' }));
+    // 25/11 (F14 «تراجع عن إقفال القديمة»): was `refusedUntouched(… { resolution: 'UNDER_REVIEW' })`. A row only PARKED settles and claims
+    // nothing, and it is the one answer an order closed by «إقفال القديمة» could get — so after that close is taken back, a statement whose
+    // matching is already CLOSED (its row never rebuilt) must not hold the undo. Now proved in `legacy-take-back-chain.test.ts`; a parked
+    // row the approval settled, or a person tied by hand, still blocks (below).
+    await refusedUntouched(await withLine({}, { resolution: 'UNDER_REVIEW', appliedAt: new Date() }));
+    await refusedUntouched(await withLine({}, { resolution: 'UNDER_REVIEW', matchedBy: 'MANUAL' }));
     await refusedUntouched(await withLine({}, { appliedAt: new Date() }));
     await refusedUntouched(await withLine({}, { matchedBy: 'MANUAL' }));
     await refusedUntouched(await withLine({}, { result: 'MATCHED' }));
