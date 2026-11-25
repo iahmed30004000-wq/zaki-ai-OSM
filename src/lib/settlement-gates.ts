@@ -424,9 +424,27 @@ export function rowRebuiltUnanswered(r: UndoLineRow): boolean {
   );
 }
 
-/** A zero «returned» line whose every row (if any) is still the machine's, unanswered: it carries no money for the order. */
+/** «قيد المراجعة» as the match row stores it — `settlement-difference.PARKED`, spelled here so this file keeps its two imports (a test holds the two equal). */
+export const PARKED_ROW = 'UNDER_REVIEW';
+
+/**
+ * A row a person PARKED — «قيد المراجعة», nothing else: no approval settled it, no person tied it by hand, and it is a difference or an
+ * exclusion. A parked row settles nothing and claims nothing (`settlement-difference.PARKED`), and it is the ONLY answer the matrix offers
+ * on an order «إقفال القديمة» had closed — so once that close is taken back (25/11, `legacy-take-back`), the zero «returned» line of a
+ * statement whose matching was already CLOSED (no new matching will ever rebuild its row) must not hold the undo either.
+ */
+export function rowParkedNoMoney(r: UndoLineRow): boolean {
+  return (
+    r.resolution === PARKED_ROW &&
+    r.appliedAt === null &&
+    (r.matchedBy === null || (typeof r.matchedBy === 'string' && r.matchedBy !== MANUAL_MATCH)) &&
+    (ZERO_RETURN_ROW_RESULTS as readonly string[]).includes(r.result)
+  );
+}
+
+/** A zero «returned» line whose every row (if any) is still the machine's, unanswered — or only parked: it carries no money for the order. */
 export function zeroReturnCarriesNoMoney(line: StatedLine, rows: UndoLineRow[]): boolean {
-  return isZeroReturnedLine(line) && rows.every(rowRebuiltUnanswered);
+  return isZeroReturnedLine(line) && rows.every((r) => rowRebuiltUnanswered(r) || rowParkedNoMoney(r));
 }
 
 /** A line as the undo-delivery door reads it: the naming line, its figures and word, and its rows read whole. */
@@ -446,7 +464,8 @@ export interface UndoLinkedLine extends Omit<LinkedLine, 'result'>, UndoLineRow 
  * Such a line is the very reason the button exists: the company says «تم إرجاعها» and paid nothing, while our side recorded a
  * delivery. Against the delivered order the matching wrote it MISMATCHED (a zero against an expectation), and that row used to block
  * the undo as «the statement owns the order's money». It owns none. After the undo the order is in flight again, and the next
- * matching rebuilds the row as EXCLUDED (`isExcludedLine`) — which is why only a row the matching rebuilds is set aside here.
+ * matching rebuilds the row as EXCLUDED (`isExcludedLine`) — which is why only a row the matching rebuilds is set aside here, or (25/11) a
+ * row only PARKED «قيد المراجعة», which settles and claims nothing (`rowParkedNoMoney`).
  *
  * Only for the undo: «استلمت منه» keeps asking `statementNamingRefusal` exactly as before.
  */
