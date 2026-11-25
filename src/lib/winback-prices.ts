@@ -35,6 +35,11 @@ export type WinbackPrices = Readonly<Record<string, WinbackPrice>>;
 
 /** The pieces from which the three-piece price applies. */
 export const THREE_PIECES = 3;
+/**
+ * PENDING THE OWNER'S RULING (F12 review, 25/11): until he says what an order of four pieces or more is offered at, only orders of one
+ * to three pieces in total (paid + free) are offered at all — the rest are skipped by name (`TOO_MANY_PIECES`). The tiers are unchanged.
+ */
+export const MAX_PIECES_OFFERED = 3;
 export const PRICE_MAX = 1_000_000;
 
 const CURRENCY = /^[A-Z]{3}$/;
@@ -78,7 +83,7 @@ export function validateWinbackPrice(input: unknown): PriceInput {
 
 export type PriceVerdict =
   | { ok: true; price: number; tier: 'one' | 'three'; productId: string; pieces: number }
-  | { ok: false; code: 'MIXED_PRODUCTS' | 'NO_WINBACK_PRICE' | 'CURRENCY_MISMATCH' | 'NO_LINES' };
+  | { ok: false; code: 'MIXED_PRODUCTS' | 'NO_WINBACK_PRICE' | 'CURRENCY_MISMATCH' | 'NO_LINES' | 'TOO_MANY_PIECES' };
 
 /**
  * THE PRICE OF ONE CANCELLED ORDER — or why it has none. `lines` are its goods as the creator copies them (its own lines, or its single
@@ -97,6 +102,7 @@ export function winbackPriceFor(
   if (!entry) return { ok: false, code: 'NO_WINBACK_PRICE' };
   if (entry.currency !== currency) return { ok: false, code: 'CURRENCY_MISMATCH' };
   const pieces = lines.reduce((s, l) => s + Math.max(0, l.quantity) + Math.max(0, l.freeQuantity ?? 0), 0);
+  if (pieces > MAX_PIECES_OFFERED) return { ok: false, code: 'TOO_MANY_PIECES' };
   const tier = pieces >= THREE_PIECES ? 'three' : 'one';
   return { ok: true, price: entry[tier], tier, productId, pieces };
 }

@@ -44,7 +44,9 @@ export const SKIP_CODES = [
   'NO_WINBACK_PRICE',
   'CURRENCY_MISMATCH',
   'NO_LINES',
+  'TOO_MANY_PIECES',
   'PRICE_NOT_LOWER',
+  'PRICE_BELOW_COST',
   'NO_ROOM',
 ] as const;
 export type SkipCode = (typeof SKIP_CODES)[number];
@@ -57,7 +59,9 @@ export const SKIP_AR: Record<SkipCode, string> = {
   NO_WINBACK_PRICE: 'المنتج ما إلو سعر استرجاع',
   CURRENCY_MISMATCH: 'عملة الطلب غير عملة سعر الاسترجاع',
   NO_LINES: 'الطلب ما فيه بضاعة',
+  TOO_MANY_PIECES: 'الطلب فيه أكتر من 3 قطع (ما بينعرض لحد ما يقرر المالك)',
   PRICE_NOT_LOWER: 'سعر الاسترجاع أعلى من سعر الطلب الأصلي',
+  PRICE_BELOW_COST: 'سعر الاسترجاع أقل من تكلفة البضاعة',
   NO_ROOM: 'الموظفات وصلوا الحد (طلبات بإيدهن ومحجوزة إلهن)',
 };
 
@@ -69,6 +73,8 @@ export interface BulkCandidate {
   /** What the cancelled order cost the customer: its subtotal less the discount already on it. */
   paid: number;
   lines: Array<{ productId: string; quantity: number; freeQuantity: number }>;
+  /** What the new order's goods will cost — the cost the creator copies (the owner's fixed figures when every line has one, else the cancelled order's). */
+  cost: number;
 }
 
 export interface PlannedRow {
@@ -139,6 +145,11 @@ export function planBulk(input: {
       skip('PRICE_NOT_LOWER');
       continue;
     }
+    // Never below what the goods cost: a win-back sold at a loss is not one.
+    if (price.price < c.cost) {
+      skip('PRICE_BELOW_COST');
+      continue;
+    }
     // Round-robin over the agents who still have room: the next one in turn, skipping a full one.
     let agent: (typeof room)[number] | undefined;
     for (let k = 0; k < room.length; k++) {
@@ -170,6 +181,7 @@ type OrderRow = {
   freeQuantity: number | null;
   sellingPrice: number | null;
   discountAmount: number | null;
+  estimatedCostOfGoods: number | null;
   items: Array<{ productId: string; quantity: number; freeQuantity: number | null }>;
 };
 
@@ -185,6 +197,7 @@ export function toCandidate(o: OrderRow): BulkCandidate {
     currency: o.currency,
     paid: Number(o.sellingPrice ?? 0) - Number(o.discountAmount ?? 0),
     lines,
+    cost: Number(o.estimatedCostOfGoods ?? 0),
   };
 }
 
@@ -198,6 +211,7 @@ export const CANDIDATE_SELECT = {
   freeQuantity: true,
   sellingPrice: true,
   discountAmount: true,
+  estimatedCostOfGoods: true,
   items: { select: { productId: true, quantity: true, freeQuantity: true }, orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.OrderSelect;
 

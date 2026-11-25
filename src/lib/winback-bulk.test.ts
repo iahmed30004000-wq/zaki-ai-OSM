@@ -15,6 +15,7 @@ const cand = (i: number, over: Partial<BulkCandidate> = {}): BulkCandidate => ({
   currency: 'USD',
   paid: 45,
   lines: [{ productId: 'scar', quantity: 3, freeQuantity: 0 }],
+  cost: 5,
   ...over,
 });
 const none = new Map<string, CustomerVerdict>();
@@ -88,6 +89,18 @@ describe('what is skipped, and why', () => {
     expect(p.skipped).toEqual({ PRICE_NOT_LOWER: 1 });
   });
 
+  it('PENDING THE OWNER: more than three pieces (paid + free) is not offered, by its own reason', () => {
+    const p = plan([cand(1, { lines: [{ productId: 'scar', quantity: 4, freeQuantity: 0 }] }), cand(2, { lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] }), cand(3)]);
+    expect(p.planned.map((r) => r.orderId)).toEqual(['o3']);
+    expect(p.skipped).toEqual({ TOO_MANY_PIECES: 2 });
+  });
+
+  it('a price below the cost the new order will carry is not offered', () => {
+    const p = plan([cand(1, { cost: 20.01 }), cand(2, { cost: 20 })]);
+    expect(p.planned.map((r) => r.orderId)).toEqual(['o2']);
+    expect(p.skippedRows).toEqual([{ orderId: 'o1', orderNumber: 'ORD-1', code: 'PRICE_BELOW_COST' }]);
+  });
+
   it('the tier follows the pieces of the cancelled order', () => {
     const p = plan([cand(1, { lines: [{ productId: 'scar', quantity: 2, freeQuantity: 0 }] }), cand(2)]);
     expect(p.planned.map((r) => [r.tier, r.price])).toEqual([
@@ -105,8 +118,8 @@ describe('what is skipped, and why', () => {
 
 describe('a cancelled order is read as the creator copies it', () => {
   it('its own lines when it has some, else its product columns; paid is the subtotal less the discount', () => {
-    const base = { id: 'o', orderNumber: 'N', customerId: 'c', currency: 'USD', productId: 'scar', quantity: 3, freeQuantity: 1, sellingPrice: 45, discountAmount: 5 };
-    expect(toCandidate({ ...base, items: [] })).toMatchObject({ paid: 40, lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] });
+    const base = { id: 'o', orderNumber: 'N', customerId: 'c', currency: 'USD', productId: 'scar', quantity: 3, freeQuantity: 1, sellingPrice: 45, discountAmount: 5, estimatedCostOfGoods: 7 };
+    expect(toCandidate({ ...base, items: [] })).toMatchObject({ paid: 40, cost: 7, lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] });
     expect(toCandidate({ ...base, items: [{ productId: 'fungus', quantity: 1, freeQuantity: null }] }).lines).toEqual([{ productId: 'fungus', quantity: 1, freeQuantity: 0 }]);
   });
 });

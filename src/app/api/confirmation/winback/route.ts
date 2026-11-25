@@ -454,6 +454,10 @@ async function offerOne(
         figures,
         country.minorUnit
       ) ?? order.estimatedCostOfGoods;
+    // The owner's price never sells the goods below what they cost (the F12 review): refused on the row, nothing written.
+    if (priced && totalAmount < estimatedCostOfGoods) {
+      return { ok: false, status: 409, body: { error: 'سعر الاسترجاع أقل من تكلفة البضاعة', errorAr: 'سعر الاسترجاع أقل من تكلفة البضاعة', code: 'PRICE_BELOW_COST' } };
+    }
 
     /**
      * THE ORDER NUMBER RETRIES HERE TOO, which it could not before.
@@ -649,7 +653,13 @@ async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> 
   } else {
     clauses.push({ id: { in: input.orderIds } });
   }
-  const candidates = await readCandidates({ ...baseWhere(scope, rule, now), AND: clauses }, input.action === 'bulk-preview' ? BULK_SCAN : input.orderIds.length);
+  const read = await readCandidates({ ...baseWhere(scope, rule, now), AND: clauses }, input.action === 'bulk-preview' ? BULK_SCAN : input.orderIds.length);
+  // The cost each new order will carry, exactly as the creator copies it: the owner's fixed figures when every line has one, else the cancelled order's.
+  const figures = await fixedCostsOf(db, companyId, [...new Set(read.flatMap((c) => c.lines.map((l) => l.productId)))]);
+  const candidates = read.map((c) => ({
+    ...c,
+    cost: costWhenEveryLineHasAFigure(c.lines.map((l) => ({ productId: l.productId, units: l.quantity + l.freeQuantity })), figures, ctx.country.minorUnit) ?? c.cost,
+  }));
   const customerIds = candidates.map((c) => c.customerId);
   const [customers, liveCustomers] = await Promise.all([customerWinbackVerdicts(db, scope, customerIds), customersWithALiveOrder(scope, customerIds)]);
   const plan = planBulk({

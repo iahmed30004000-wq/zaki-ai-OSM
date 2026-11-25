@@ -159,6 +159,9 @@ const NOT_A_COSTING: Record<string, string> = {
   // `src/app/api/finance/route.ts` was here until 13/11: the cost of the delivered orders it reported is read by
   // `src/lib/profit-to-date.ts` now (it writes no row, so it is not in this sweep), and the route names no cost any more.
   'src/app/api/orders/[id]/finance/route.ts': 'writes the HAND-TYPED finance columns (`productCost`, packaging…); `estimatedCostOfGoods` is only read to show the profit',
+  // ADDED 25/11 (F12 review): the bulk win-back READS the cancelled order's cost to keep the owner's price above it; its one write is the
+  // hold (`assignedToId`). The new order and its cost are written by the win-back door (on DOORS), through `fixedCostsOf`.
+  'src/lib/winback-bulk.ts': 'reads the cancelled order’s `estimatedCostOfGoods` as a floor for the win-back price; writes only the hold (`assignedToId`), never a cost',
 };
 
 describe('no file writes an order’s cost of goods without being a door, a copy, or a reader', () => {

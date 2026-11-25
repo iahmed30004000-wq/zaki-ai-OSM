@@ -271,8 +271,8 @@ function PricesEditor({ prices, onSaved }: { prices: Prices; onSaved: () => Prom
       setDraft((all) => Object.fromEntries(Object.entries(all).filter(([k]) => k !== id)));
       await onSaved();
     } catch (e) {
+      // Shown here and swallowed: the press must not leave an unhandled rejection behind it.
       toast.failed(e instanceof Error ? e.message : 'تعذّر الحفظ');
-      throw e;
     }
   };
 
@@ -284,13 +284,13 @@ function PricesEditor({ prices, onSaved }: { prices: Prices; onSaved: () => Prom
           {open ? 'سكّر' : 'عدّل الأسعار'}
         </Button>
       </div>
-      <p className="text-note text-[var(--sys-muted-foreground)]">السعر هو إجمالي الطلب شامل التوصيل. قطعة أو قطعتين = سعر القطعة؛ 3 قطع أو أكتر = سعر الـ3. منتج بلا سعر ما بينعرض.</p>
+      <p className="text-note text-[var(--sys-muted-foreground)]">السعر هو إجمالي الطلب شامل التوصيل. قطعة أو قطعتين = سعر القطعة؛ 3 قطع = سعر الـ3. طلب فيه أكتر من 3 قطع ما بينعرض لهلّق. منتج بلا سعر ما بينعرض.</p>
       {open &&
         prices.products.map((p) => {
           const d = row(p.id, p.price);
           const set = (k: 'one' | 'three' | 'currency', v: string) => setDraft({ ...draft, [p.id]: { ...d, [k]: v } });
           return (
-            <div key={p.id} className="grid items-end gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_auto]">
+            <div key={p.id} className="grid items-end gap-2 md:grid-cols-5">
               <span className="text-sm">{p.name}</span>
               <Input label="قطعة أو قطعتين" type="number" inputMode="decimal" value={d.one} onChange={(e) => set('one', e.target.value)} />
               <Input label="3 قطع أو أكتر" type="number" inputMode="decimal" value={d.three} onChange={(e) => set('three', e.target.value)} />

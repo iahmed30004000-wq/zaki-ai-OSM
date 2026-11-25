@@ -14,7 +14,9 @@ describe('the price of one cancelled order', () => {
     expect(winbackPriceFor([line('scar', 1)], PRICES, 'USD')).toMatchObject({ ok: true, price: 12, tier: 'one' });
     expect(winbackPriceFor([line('scar', 2)], PRICES, 'USD')).toMatchObject({ ok: true, price: 12, tier: 'one' });
     expect(winbackPriceFor([line('scar', 3)], PRICES, 'USD')).toMatchObject({ ok: true, price: 20, tier: 'three' });
-    expect(winbackPriceFor([line('scar', 5)], PRICES, 'USD')).toMatchObject({ ok: true, price: 20, tier: 'three' });
+    // PENDING THE OWNER (25/11): more than three pieces is not offered at all, by its own reason
+    expect(winbackPriceFor([line('scar', 4)], PRICES, 'USD')).toEqual({ ok: false, code: 'TOO_MANY_PIECES' });
+    expect(winbackPriceFor([line('scar', 3, 1)], PRICES, 'USD')).toEqual({ ok: false, code: 'TOO_MANY_PIECES' });
     expect(winbackPriceFor([line('truffle', 1)], PRICES, 'USD')).toMatchObject({ ok: true, price: 10 });
   });
 

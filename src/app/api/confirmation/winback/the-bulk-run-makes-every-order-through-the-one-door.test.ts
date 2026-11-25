@@ -27,6 +27,9 @@ type Src = {
   rejectionReason: string;
   confirmationStatus: string;
   items: { productId: string; productName: string; quantity: number; freeQuantity: number; unitPrice: number }[];
+  discountAmount?: number;
+  cost?: number;
+  currency?: string;
 };
 
 const { state, db, logAudit } = vi.hoisted(() => {
@@ -44,6 +47,12 @@ const { state, db, logAudit } = vi.hoisted(() => {
     holds: [] as Record<string, any>[],
     race: false,
     n: 0,
+    minor: 2,
+    team: [] as SessionUser[],
+    candidateCalls: [] as any[],
+    liveCalls: [] as any[],
+    audienceCalls: [] as any[],
+    countScopes: [] as any[],
   };
   const ids = (where: unknown): string[] | null => {
     const m = /"id":\{"in":(\[[^\]]*\])/.exec(JSON.stringify(where));
@@ -52,22 +61,24 @@ const { state, db, logAudit } = vi.hoisted(() => {
   const customersIn = (where: any): string[] => where?.customerId?.in ?? [];
   const srcRow = (s: Src) => ({
     ...s,
-    storeId: 's1', countryId: 'co1', regionId: 'r1', currency: 'USD', productId: s.items[0].productId,
+    storeId: 's1', countryId: 'co1', regionId: 'r1', currency: s.currency ?? 'USD', productId: s.items[0].productId,
     quantity: s.items.reduce((n, l) => n + l.quantity, 0), freeQuantity: 0,
-    sellingPrice: s.items.reduce((n, l) => n + l.quantity * l.unitPrice, 0), discountAmount: 0, shippingCost: 0,
+    sellingPrice: s.items.reduce((n, l) => n + l.quantity * l.unitPrice, 0), discountAmount: s.discountAmount ?? 0, shippingCost: 0,
     priceIncludesDelivery: false, productNameSnapshot: s.items[0].productName, productImageSnapshot: null,
-    moderatorId: null, estimatedCostOfGoods: 1, source: 'Manual', customerNotes: null,
+    moderatorId: null, estimatedCostOfGoods: s.cost ?? 1, source: 'Manual', customerNotes: null,
     shippedAt: null, shippingStatus: 'NOT_READY', offerId: null,
   });
   const db: any = {
     company: { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ winbackPrices: state.prices }) })) },
     order: {
-      findMany: vi.fn(async ({ where, select }: any) => {
+      findMany: vi.fn(async ({ where, select, orderBy }: any) => {
         if (select?.items) {
+          state.candidateCalls.push({ where, orderBy });
           const only = ids(where);
+          const dir = orderBy?.[0]?.createdAt === 'desc' ? -1 : 1;
           return state.sources
             .filter((s) => !state.offered.has(s.id) && (!only || only.includes(s.id)))
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .sort((a, b) => dir * (a.createdAt.getTime() - b.createdAt.getTime()))
             .map((s) => ({ ...srcRow(s), items: s.items.map((l) => ({ productId: l.productId, quantity: l.quantity, freeQuantity: l.freeQuantity })) }));
         }
         if (select?.statusLogs) {
@@ -77,6 +88,7 @@ const { state, db, logAudit } = vi.hoisted(() => {
             ...state.history.map((h) => ({ ...h, statusLogs: h.lostAt ? [{ createdAt: h.lostAt }] : [] })),
           ].filter((r) => want.includes(r.customerId));
         }
+        if (select?.claimedById !== undefined) state.liveCalls.push(where);
         if (select?.claimedById !== undefined) return state.live.filter((r) => customersIn(where).includes(r.customerId));
         return [];
       }),
@@ -128,7 +140,7 @@ vi.mock('@/lib/geo-context', () => ({
     companyId: 'c1',
     storeId: state.storeId,
     countryId: 'co1',
-    country: { id: 'co1', code: 'SY', currencyCode: 'USD', minorUnit: 2, orderPrefix: 'ORD', allowNegativeStock: false },
+    country: { id: 'co1', code: 'SY', currencyCode: 'USD', minorUnit: state.minor, orderPrefix: 'ORD', allowNegativeStock: false },
   }),
 }));
 vi.mock('@/lib/authorization', async (orig) => {
@@ -141,14 +153,23 @@ vi.mock('@/lib/authorization', async (orig) => {
     },
   };
 });
-vi.mock('@/lib/winback-bulk', async (orig) => ({
-  ...(await orig<typeof import('@/lib/winback-bulk')>()),
-  bulkAgents: async (_s: unknown, _n: unknown, only?: string[]) =>
-    [
-      { id: 'sara', name: 'سارة', room: 500 },
-      { id: 'huda', name: 'هدى', room: 500 },
-    ].filter((a) => !only || only.includes(a.id)),
+// The agents: the REAL `bulkAgents` (store, `mayBeHandedAnOrder`, the room) over a stubbed audience and stubbed counts — the people are built by the engine.
+vi.mock('@/lib/notification-audience', () => ({
+  resolveAudience: async (q: any) => {
+    state.audienceCalls.push(q);
+    return q.storeId === 's1' && q.audience?.permission === 'confirmation.pull' ? state.team : [];
+  },
 }));
+vi.mock('@/lib/confirmation-queue', async (orig) => ({
+  ...(await orig<typeof import('@/lib/confirmation-queue')>()),
+  returnsModeOn: async () => false,
+  ownedCounts: async (_tx: unknown, scope: unknown) => {
+    state.countScopes.push(scope);
+    return { total: 0, heldForHer: 0, withoutAttempt: 0, untouched: null };
+  },
+}));
+vi.mock('@/lib/confirmation-rule-settings', async (orig) => ({ ...(await orig<typeof import('@/lib/confirmation-rule-settings')>()), confirmationRuleOnce: () => ({}) }));
+vi.mock('@/lib/employee-numbers', async (orig) => ({ ...(await orig<typeof import('@/lib/employee-numbers')>()), confirmationRulesOnce: () => ({}) }));
 
 import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
@@ -161,8 +182,8 @@ const LIVE_AGENT = [
 ];
 const MANAGER = ['confirmation.supervise', 'confirmation.winback', 'orders.assign', 'orders.view'];
 
-async function person(keys: string[], opts: { role?: string; roleId?: string | null; deny?: string[] } = {}): Promise<SessionUser> {
-  const base = { id: 'mgr', email: 'm@x', name: 'المديرة', role: opts.role ?? 'MANAGER', roleId: opts.roleId === undefined ? 'r1' : opts.roleId, status: 'ACTIVE', companyId: 'c1', permissions: [] } as unknown as SessionUser;
+async function person(keys: string[], opts: { role?: string; roleId?: string | null; deny?: string[]; id?: string; name?: string } = {}): Promise<SessionUser> {
+  const base = { id: opts.id ?? 'mgr', email: 'm@x', name: opts.name ?? 'المديرة', role: opts.role ?? 'MANAGER', roleId: opts.roleId === undefined ? 'r1' : opts.roleId, status: 'ACTIVE', companyId: 'c1', permissions: [] } as unknown as SessionUser;
   return attachGrants(
     base,
     await computeEffectiveGrants(base as never, {
@@ -197,7 +218,13 @@ const src = (i: number, over: Partial<Src> = {}): Src => ({
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  Object.assign(state, { storeId: 's1', sources: [], history: [], live: [], offered: new Map(), created: [], lines: [], holds: [], race: false, n: 0 });
+  Object.assign(state, { storeId: 's1', sources: [], history: [], live: [], offered: new Map(), created: [], lines: [], holds: [], race: false, n: 0, minor: 2, candidateCalls: [], liveCalls: [], audienceCalls: [], countScopes: [] });
+  state.team = [
+    await person(LIVE_AGENT, { id: 'sara', name: 'سارة', role: 'CONFIRMATION_AGENT' }),
+    await person(LIVE_AGENT, { id: 'huda', name: 'هدى', role: 'CONFIRMATION_AGENT' }),
+    // can pull and work, but may not confirm: never handed an order (`mayBeHandedAnOrder`)
+    await person(['confirmation.pull', 'confirmation.work', 'orders.view'], { id: 'wael', name: 'وائل', role: 'FOLLOW_UP_AGENT' }),
+  ];
   state.prices = { scar: { one: 12, three: 20, currency: 'USD' } };
   state.viewer = await person(MANAGER);
 });
@@ -405,5 +432,132 @@ describe('6 — no customer field in a log', () => {
     expect(written).not.toMatch(/fullName|phone|address/i);
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
+  });
+});
+
+describe('7 — the review round (25/11): each of these went green under a break; now each is held', () => {
+  it('B6 — the run makes ONLY the ids it was handed, even when newer orders wait in the pool', async () => {
+    state.sources = [src(1), src(2), src(3)]; // 3 is the newest
+    const r = await run([uuid(1)]);
+    expect(r.body.created).toBe(1);
+    expect(state.created.map((c) => c.replacesOrderId)).toEqual([uuid(1)]);
+  });
+
+  it('B7 — the plan and the run both read the pool through the «ready» view (never offered, not a second chance, a logged loss)', async () => {
+    state.sources = [src(1)];
+    await preview();
+    await run([uuid(1)]);
+    expect(state.candidateCalls).toHaveLength(2);
+    for (const c of state.candidateCalls) {
+      const w = JSON.stringify(c.where);
+      expect(w).toContain('"replacedBy":null');
+      expect(w).toContain('"replacesOrderId":null');
+      expect(w).toContain('"statusLogs"');
+    }
+  });
+
+  it('B18 — the candidates are asked newest first', async () => {
+    state.sources = [src(1), src(2)];
+    await preview();
+    expect(state.candidateCalls[0].orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+  });
+
+  it('B8/B15 — a single press that forges `priced` or `price` is still held to the ceiling', async () => {
+    state.sources = [src(1)];
+    const r = await post({ orderId: uuid(1), discount: 25, priced: { price: 20 }, price: 20 });
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe('DISCOUNT_TOO_LARGE');
+    expect(db.order.create).not.toHaveBeenCalled();
+    // and within the ceiling, the typed discount is what is written — the forged price is not
+    const ok = await post({ orderId: uuid(1), discount: 5, priced: { price: 1 }, price: 1 });
+    expect(ok.status).toBe(200);
+    expect(state.created[0].totalAmount).toBe(40);
+    expect(state.created[0].priceIncludesDelivery).toBe(false);
+  });
+
+  it('B12/B13 — the agents are this store’s, and only who may be handed an order', async () => {
+    const r = await post({ action: 'bulk-preview', count: 5, agentIds: ['sara', 'wael'] });
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe('INVALID_AGENT');
+    expect(state.audienceCalls.every((q) => q.storeId === 's1' && q.companyId === 'c1')).toBe(true);
+    const ok = await preview();
+    expect(ok.status).toBe(200);
+    expect(state.countScopes.length).toBeGreaterThan(0);
+    expect(state.countScopes.every((sc) => sc.storeId === 's1' && sc.companyId === 'c1')).toBe(true);
+  });
+
+  it('B14 — the live-order check is asked inside this store', async () => {
+    state.sources = [src(1)];
+    await run([uuid(1)]);
+    expect(state.liveCalls.length).toBeGreaterThanOrEqual(2);
+    for (const w of state.liveCalls) expect(w).toMatchObject({ companyId: 'c1', storeId: 's1' });
+  });
+
+  it('B20 — the priced discount is rounded to the minor unit: JOD 3 × 3.333 at 7.5 → exactly 2.499', async () => {
+    state.minor = 3;
+    state.prices = { scar: { one: 5, three: 7.5, currency: 'JOD' } };
+    state.sources = [src(1, { currency: 'JOD', items: [{ ...SCAR, unitPrice: 3.333, quantity: 3 }] })];
+    const r = await run([uuid(1)]);
+    expect(r.body.created).toBe(1);
+    expect(state.created[0].discountAmount).toBe(2.499);
+    expect(state.created[0].totalAmount).toBe(7.5);
+  });
+
+  it('B4/B16 — a discount already on the cancelled order is counted once: 45 less 5 before, at 20 → 20 more, 25 in all, total 20', async () => {
+    state.sources = [src(1, { discountAmount: 5 })];
+    const r = await run([uuid(1)]);
+    expect(r.body.created).toBe(1);
+    expect(state.created[0].discountAmount).toBe(25);
+    expect(state.created[0].totalAmount).toBe(20);
+    expect(state.created[0].internalNotes).toContain('بخصم 20');
+    const shares = state.lines.reduce((n, l) => n + l.discountShare, 0);
+    expect(shares).toBe(25);
+  });
+
+  it('the cost floor: a price below what the goods cost is not offered, at the plan and at the creator', async () => {
+    state.sources = [src(1, { cost: 20.5 }), src(2, { cost: 20 })];
+    const plan = await preview();
+    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(2)]);
+    expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'PRICE_BELOW_COST', count: 1 })]);
+    const r = await run([uuid(1), uuid(2)]);
+    expect(r.body.results.find((x: any) => x.orderId === uuid(1))).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
+    expect(state.created.map((c) => c.replacesOrderId)).toEqual([uuid(2)]);
+  });
+
+  it('the creator holds the cost floor too: a fixed cost set between the plan and the press refuses that row', async () => {
+    state.sources = [src(1)];
+    // the plan reads no figure; by the time the creator asks, the owner has set 9 a piece (3 × 9 = 27 > 20)
+    db.productFixedCost.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ productId: 'scar', amount: 9 }]);
+    const r = await run([uuid(1)]);
+    expect(r.body.created).toBe(0);
+    expect(r.body.results[0]).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
+    expect(db.order.create).not.toHaveBeenCalled();
+  });
+
+  it('PENDING THE OWNER — more than three pieces is not offered, by its own reason', async () => {
+    state.sources = [src(1, { items: [{ ...SCAR, quantity: 4 }] }), src(2, { items: [{ ...SCAR, quantity: 3 }] })];
+    const plan = await preview();
+    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(2)]);
+    expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'TOO_MANY_PIECES', count: 1, reasonAr: expect.stringContaining('3 قطع') })]);
+  });
+
+  it('B27 — every row of the run says its own code, in Arabic', async () => {
+    state.prices = { scar: { one: 12, three: 20, currency: 'USD' } };
+    state.sources = [
+      src(1),
+      src(2, { items: [{ productId: 'soap', productName: 'صابون', unitPrice: 20, freeQuantity: 0, quantity: 1 }] }),
+      src(3, { customerId: 'cust-1' }),
+      src(4, { cost: 50 }),
+    ];
+    const gone = uuid(99);
+    const r = await run([uuid(1), uuid(2), uuid(3), uuid(4), gone]);
+    const code = (id: string) => r.body.results.find((x: any) => x.orderId === id);
+    expect(code(gone)).toMatchObject({ ok: false, code: 'NOT_IN_POOL' });
+    expect(code(uuid(2))).toMatchObject({ ok: false, code: 'NO_WINBACK_PRICE' });
+    expect(code(uuid(4))).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
+    // cust-1 cancelled two orders (1 and 3): the newest is refused for the customer, the older as the same customer
+    expect(code(uuid(3))).toMatchObject({ ok: false, code: 'CUSTOMER_CANCELLED_TWICE' });
+    expect(code(uuid(1))).toMatchObject({ ok: false, code: 'SAME_CUSTOMER' });
+    for (const x of r.body.results.filter((y: any) => !y.ok)) expect(x.reasonAr).toMatch(/[\u0600-\u06FF]/);
   });
 });
