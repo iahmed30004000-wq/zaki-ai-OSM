@@ -28,6 +28,9 @@
  * ELEVEN SINCE 19/11 (R15a): «قواعد الموظفين» joined, right before the staff
  * card — a settings screen on `settings.view`, a key the door already holds,
  * so the door's union is the same six keys (9 settings + 2 admin = 11).
+ *
+ * TWELVE SINCE 25/11: «الأصالة والباركود» — «رموز الأصالة» and «باركود المنتجات», two pages on `settings.view`,
+ * right after «النظام» where the codes card used to be (10 settings + 2 admin = 12).
  */
 
 export interface SettingsCard {
@@ -88,6 +91,13 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
     // 19/11 (R15a): was «اسم الشركة، والمهام التي يشغّل النظام بها نفسه.» — «إعدادات النظام» keeps the name and the offer after the order now.
     why: 'اسم الشركة ومهلة العرض بعد الطلب، والمهام التي يشغّل النظام بها نفسه.',
     paths: ['/settings/system', '/admin/jobs'],
+  },
+  {
+    // 25/11 (the owner): «رموز الأصالة» left «إعدادات النظام» for a page of its own, beside «باركود المنتجات».
+    key: 'authenticity',
+    title: 'الأصالة والباركود',
+    why: 'رموز القطع اللي بتطلع «أصلي»، ولكل منتج باركود وصفحة تحقق بتصمّمها.',
+    paths: ['/settings/authenticity', '/settings/product-barcodes'],
   },
   {
     // 19/11 (R15a): the score and the deductions, moved from «إعدادات النظام» to a page of their own beside the staff.

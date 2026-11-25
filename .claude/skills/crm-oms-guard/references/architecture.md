@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **61 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **63 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -173,6 +173,8 @@ nothing they may open is not drawn. `/settings` is also where an ad platform's O
 متجر التطبيقات            /apps/store
 التطبيقات المثبتة          /apps/installed
 إعدادات النظام            /settings/system
+رموز الأصالة              /settings/authenticity     (the codes card, moved from إعدادات النظام on 25/11; settings.view, writes settings.edit)
+باركود المنتجات            /settings/product-barcodes (each product's barcode and public page /v/[slug]; settings.view, writes settings.edit)
 المهام المجدولة            /admin/jobs         (on the system card; gate settings.view)
 قواعد الموظفين             /admin/staff-rules  (the score and the deductions cards, moved from إعدادات النظام on 19/11; settings.view)
 الموظفين                  /admin/users
@@ -246,7 +248,7 @@ asks the same keys again.
 | `/store/landing-pages` | landing_pages.view |
 | `/settings` | geo.view · settings.view · commission.view · whatsapp.manage · telegram.connect · apps.view |
 | `/settings/geo` | geo.view |
-| `/settings/couriers` · `/settings/channels` · `/settings/tracking` · `/settings/ai` · `/settings/system` · `/admin/jobs` · `/admin/staff-rules` | settings.view |
+| `/settings/couriers` · `/settings/channels` · `/settings/tracking` · `/settings/ai` · `/settings/system` · `/settings/authenticity` · `/settings/product-barcodes` · `/admin/jobs` · `/admin/staff-rules` | settings.view |
 | `/settings/commission` | commission.view |
 | `/settings/links` | whatsapp.manage · telegram.connect |
 | `/apps/store` · `/apps/installed` | apps.view |
@@ -357,7 +359,15 @@ stored with the transfer, never recalculated. A transfer is reversed whole: both
 
 **/admin/staff-rules** — «قواعد الموظفين» (19/11): the two staff cards of `/settings/system` — «سكور الموظفين» and «قواعد الخصم» —
 moved there unchanged, beside الموظفين in الإدارة. Opens on `settings.view`; editing asks `team.settings` / `penalties.rules`.
-`/settings/system` keeps the company name and «العرض بعد الطلب», and since 19/11 the «رموز الأصالة» card.
+`/settings/system` keeps the company name and «العرض بعد الطلب» (the «رموز الأصالة» card it held from 19/11 left on 25/11).
+
+**/settings/authenticity** · **/settings/product-barcodes** — «رموز الأصالة» and «باركود المنتجات» (25/11, the owner), side by
+side after إعدادات النظام. The first is the codes card, moved whole (a code may now be tagged to a product). The second gives
+each product ONE public page (`ProductVerifyPage`) at a short, editable link `/v/[slug]` — an old slug stays the page's and
+answers a 308 to the current one, and is never given to another page — plus a stable address by its public id under
+verify/p (redirects to the slug). The page checks a piece's code through the public door api/public/verify-product
+(`POST`, by public id) → `{ genuine }` only: genuine when the code
+exists in the company and is tagged to this product or to none. Both open on `settings.view`; every write asks `settings.edit`.
 
 **«رموز الأصالة»** (19/11, a card of `/settings/system`, not a page: a registry line rides in every staff screen's first
 load) — the owner's own list of codes, added one at a time, that the public `/verify/[id]` page (id = the store's id) checks a scanned

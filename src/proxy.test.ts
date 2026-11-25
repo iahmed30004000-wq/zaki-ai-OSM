@@ -107,10 +107,16 @@ describe('what a visitor with no session may fetch', () => {
   it('/verify/<store> — the public barcode checker — passes through', async () => {
     expect((await get('/verify/2f1c7a3e-0b9d-4c55-9a6e-1d2b3c4d5e6f')).headers.get('location')).toBeNull();
   });
+
+  // 25/11 («باركود المنتجات»): a product's own page at its short address, and at its stable id — a printed barcode
+  // opens either with no session.
+  it.each(['/v/krem-alozn', '/v/krem-alozn?code=P-00042', '/verify/p/AbCdEf123_-x'])('%s — a product page — passes through', async (path) => {
+    expect((await get(path)).headers.get('location')).toBeNull();
+  });
 });
 
 describe('what it may not', () => {
-  it.each(['/', '/orders', '/finance/wallets', '/fonts-admin', '/settings/tracking', '/verify-admin'])(
+  it.each(['/', '/orders', '/finance/wallets', '/fonts-admin', '/settings/tracking', '/verify-admin', '/vip', '/v-admin'])(
     '%s is the dashboard, and sends them to sign in',
     async (path) => {
       const res = await get(path);

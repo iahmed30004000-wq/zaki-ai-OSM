@@ -16,6 +16,12 @@
 @source not "../../apps";
 
 /*
+ * A product's own authenticity page («باركود المنتجات») wears one string of its own rules, scoped under `.vp` and
+ * drawn by the page itself; its words are CSS, not class names, and read as candidates they would grow this sheet.
+ */
+@source not "../components/verify/product-verify-style.ts";
+
+/*
  * What EVERY page loads: the utility classes, and nothing that styles a
  * page by itself. The dashboard's own look is src/app/(system)/system.css;
  * a landing page's and a storefront's is their theme (--store-*). A rule here
