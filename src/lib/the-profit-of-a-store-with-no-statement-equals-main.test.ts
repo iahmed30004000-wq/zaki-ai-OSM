@@ -168,8 +168,9 @@ async function mainEngine(): Promise<Engine> {
 describe('a store with no courier statement: the profit is byte for byte what osm/main answered', () => {
   it('the golden file was written from osm/main, and covers every scenario', async () => {
     if (process.env.A1_WRITE_GOLDEN === '1' && mainRef) {
-      const sha = execSync(`git rev-parse ${mainRef}`, { encoding: 'utf8' }).trim();
-      writeFileSync(GOLDEN, `${JSON.stringify({ source: `${sha} src/lib/profit-to-date.ts`, digests: await digestsOf(await mainEngine()) }, null, 1)}\n`);
+      // The short sha only: a 40-character hex string reads as a secret to `no-secret-reaches-a-commit`.
+      const sha = execSync(`git rev-parse --short=8 ${mainRef}`, { encoding: 'utf8' }).trim();
+      writeFileSync(GOLDEN, `${JSON.stringify({ source: `osm/main@${sha} src/lib/profit-to-date.ts`, digests: await digestsOf(await mainEngine()) }, null, 1)}\n`);
     }
     expect(existsSync(GOLDEN)).toBe(true);
     const golden = JSON.parse(readFileSync(GOLDEN, 'utf8'));
