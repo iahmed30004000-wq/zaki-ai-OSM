@@ -98,22 +98,25 @@ describe('on the matching screen', () => {
 
   it('NEGATIVE: not drawn for who may only see the statements', async () => {
     permissions.current = ['settlement.view'];
-    render(<MatchingScreen />);
-    await screen.findAllByText('في الكشف وليس عندنا');
+    // Wait for the statement's ROWS (a line of the queue on the page), not only a heading: the card is decided from them.
+    render(<MatchingScreen queuesStartOpen />);
+    expect((await screen.findAllByText('B000001')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: PRESS })).toBeNull();
   });
 
   it('NEGATIVE: not drawn on a statement whose matching is closed', async () => {
     statementOver = { status: 'APPROVED', approvedAt: '2026-11-20T10:00:00Z', matchingClosedAt: '2026-11-20T10:00:00Z' };
-    render(<MatchingScreen />);
-    await screen.findAllByText('في الكشف وليس عندنا');
+    // Wait for the statement's ROWS (a line of the queue on the page), not only a heading: the card is decided from them.
+    render(<MatchingScreen queuesStartOpen />);
+    expect((await screen.findAllByText('B000001')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: PRESS })).toBeNull();
   });
 
   it('NEGATIVE: not drawn when every line with no order is already answered or linked', async () => {
     rows = rows.slice(2);
-    render(<MatchingScreen />);
-    await screen.findAllByText('في الكشف وليس عندنا');
+    // Wait for the statement's ROWS (a line of the queue on the page), not only a heading: the card is decided from them.
+    render(<MatchingScreen queuesStartOpen />);
+    expect((await screen.findAllByText('B000003')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: PRESS })).toBeNull();
   });
 

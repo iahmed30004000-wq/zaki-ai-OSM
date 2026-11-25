@@ -147,6 +147,8 @@ beforeEach(async () => {
     { id: 'st2', companyId: 'c1', storeId: 's1', reference: 'ST-2', status: 'MATCHED', approvedAt: null, matchingClosedAt: null },
     { id: 'st9', companyId: 'c1', storeId: 's2', reference: 'ST-9', status: 'MATCHED', approvedAt: null, matchingClosedAt: null },
     { id: 'stX', companyId: 'c2', storeId: 's7', reference: 'ST-X', status: 'MATCHED', approvedAt: null, matchingClosedAt: null },
+    // another company whose store happens to carry the same id: only the company on the statement tells it apart
+    { id: 'stY', companyId: 'c2', storeId: 's1', reference: 'ST-Y', status: 'MATCHED', approvedAt: null, matchingClosedAt: null },
   ];
   state.matches = [
     // the three it is for
@@ -165,6 +167,7 @@ beforeEach(async () => {
     line('company2', { statementId: 'stX', companyId: 'c2' }),
     // a row that names this statement but another company (a broken row): the company on the row still decides
     line('foreignRow', { companyId: 'c2' }),
+    line('companyY', { statementId: 'stY', companyId: 'c2' }),
   ];
   await as(REVIEWER);
 });
@@ -267,6 +270,14 @@ describe('NEGATIVE — what it refuses, writing nothing', () => {
     const res = await press(REASON, 'st9');
     expect(res.status).toBe(404);
     expect(state.matches).toEqual(before);
+  });
+
+  it('a statement of another company under the same store id: 404 — the statement read is held to the company', async () => {
+    const before = snapshot();
+    const res = await press(REASON, 'stY');
+    expect(res.status).toBe(404);
+    expect(state.matches).toEqual(before);
+    expect(logAudit).not.toHaveBeenCalled();
   });
 
   it('a statement of another company, asked from this one: 404, nothing moves', async () => {
