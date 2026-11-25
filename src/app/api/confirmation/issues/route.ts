@@ -1,3 +1,4 @@
+import { offTheListIf } from '@/lib/winback-private-list';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
@@ -177,8 +178,8 @@ export async function POST(req: Request) {
           claimedById: null,
           claimedAt: null,
           currentOwnerId: null,
-          // F12: a private-list row let go goes to the win-back pool (winbackListAt kept), never back onto her list unclaimed.
-          ...(order.winbackListUserId ? { winbackListUserId: null, winbackListSince: null } : {}),
+          // F12: a list row (or a «انعرض من قبل» one) leaving by this door leaves the list WHOLE — all three marks — and rejoins the normal flow.
+          ...offTheListIf(order),
           confirmationStatus: 'NEW',
           status: 'NEW',
           signatureStatus: 'UNSIGNED',

@@ -62,7 +62,7 @@ const { state, db, logAudit } = vi.hoisted(() => {
   const srcRow = (s: Src) => ({
     ...s,
     storeId: 's1', countryId: 'co1', regionId: 'r1', currency: s.currency ?? 'USD', productId: s.items[0].productId,
-    quantity: s.items.reduce((n, l) => n + l.quantity, 0), freeQuantity: 0,
+    quantity: s.items.reduce((n, l) => n + l.quantity, 0), freeQuantity: s.items.reduce((n, l) => n + l.freeQuantity, 0),
     sellingPrice: s.items.reduce((n, l) => n + l.quantity * l.unitPrice, 0), discountAmount: s.discountAmount ?? 0, shippingCost: 0,
     priceIncludesDelivery: false, productNameSnapshot: s.items[0].productName, productImageSnapshot: null,
     moderatorId: null, estimatedCostOfGoods: s.cost ?? 1, source: 'Manual', customerNotes: null,
@@ -305,7 +305,8 @@ describe('2–3 — the run makes the order through the one creator, at the owne
       [state.created[1].id, 'huda', 'huda'],
     ]);
     for (const h of state.holds) {
-      expect(h.where).toMatchObject({ claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: null });
+      // the new order is BORN marked (winbackListAt) — out of the general pull until it is on her list
+      expect(h.where).toMatchObject({ claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null } });
       expect(h.data.winbackListAt).toBeInstanceOf(Date);
     }
     // and the cancelled order is never written
@@ -321,6 +322,25 @@ describe('2–3 — the run makes the order through the one creator, at the owne
       [uuid(2), 3, 20],
       [uuid(1), 3, 20],
     ]);
+  });
+
+  it('B4/B30 (money) — a source with FREE pieces gives a new order with no gift: freeQuantity 0 on the row and on the line; and it is born marked', async () => {
+    state.sources = [src(1, { items: [{ ...SCAR, quantity: 2, freeQuantity: 1 }] })];
+    expect((await run([uuid(1)])).body.created).toBe(1);
+    expect(state.created[0]).toMatchObject({ quantity: 3, freeQuantity: 0, totalAmount: 20 });
+    expect(state.lines).toEqual([expect.objectContaining({ quantity: 3, freeQuantity: 0, lineTotal: 20 })]);
+    // out of the general pull from the instant it exists — never a moment in the agents' queue before it is on her list
+    expect(state.created[0].winbackListAt).toBeInstanceOf(Date);
+  });
+
+  it('B13 (money) — the single press is what it was: a typed discount ON TOP of the one carried, the old lines, no win-back mark', async () => {
+    state.sources = [src(1, { discountAmount: 5 })];
+    const r = await post({ orderId: uuid(1), discount: 4 });
+    expect(r.status).toBe(200);
+    // 3 × 15 = 45, 5 carried + 4 typed = 9 off → 36; the cancelled order's own lines and flag
+    expect(state.created[0]).toMatchObject({ quantity: 3, discountAmount: 9, totalAmount: 36, priceIncludesDelivery: false, offerId: 'off-old' });
+    expect(state.created[0].winbackListAt).toBeUndefined();
+    expect(state.lines.map((l) => [l.quantity, l.unitPrice, l.lineTotal])).toEqual([[3, 15, 36]]);
   });
 
   it('the kamaa water: a 1-piece order that cost 15 is offered at 3 pieces for 20 — no «price above the old order» exclusion', async () => {

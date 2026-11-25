@@ -58,6 +58,7 @@ export function offeredBeforeWhere(scope: { companyId: string; storeId: string }
     winbackListAt: { not: null },
     winbackListUserId: null,
     claimedById: null,
+    assignedToId: null,
     confirmationStatus: 'NEW',
     shippingStatus: 'NOT_READY',
   };
@@ -81,7 +82,8 @@ export async function handToList(
       confirmationStatus: 'NEW',
       shippingStatus: 'NOT_READY',
       winbackListUserId: null,
-      ...(input.rehand ? { winbackListAt: { not: null } } : { winbackListAt: null }),
+      // A fresh bulk-run order is born marked (`winbackListAt`); a re-hand takes one a list let go. Never an ordinary order.
+      winbackListAt: { not: null },
     },
     data: {
       claimedById: input.agentId,
@@ -120,6 +122,9 @@ export async function expireLists(client: Client, scope: { companyId: string; st
       claimedById: null,
       claimedAt: null,
       currentOwnerId: null,
+      // a transfer named her (`assignedToId`); the pool and the re-hand both ask for nobody's name
+      assignedToId: null,
+      assignedAt: null,
       signatureStatus: 'UNSIGNED',
       winbackListUserId: null,
       winbackListSince: null,
@@ -249,4 +254,15 @@ export async function autoMoveIdleLists(
     });
   }
   return moved;
+}
+
+/**
+ * LEAVING THE LIST — every way an order leaves a private list or the win-back pool by somebody's hand (a release, a pull-back, a hand-back,
+ * an issue, a stand-down, a colleague taking it for the customer on the line, a supervisor's claim) clears ALL THREE marks, so the order
+ * rejoins the normal flow for its status (a postponed one is pulled on its date). Only the 3-day expiry (`expireLists`) keeps
+ * `winbackListAt` — the one way into «انعرض من قبل». A row with no mark writes nothing new: an ordinary order's write is what it was.
+ */
+export const OFF_THE_LIST = { winbackListUserId: null, winbackListAt: null, winbackListSince: null } as const;
+export function offTheListIf(row: { winbackListUserId?: string | null; winbackListAt?: Date | string | null } | null | undefined) {
+  return row && (row.winbackListUserId || row.winbackListAt) ? OFF_THE_LIST : {};
 }

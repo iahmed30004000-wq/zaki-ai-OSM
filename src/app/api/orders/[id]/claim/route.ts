@@ -1,3 +1,4 @@
+import { offTheListIf } from '@/lib/winback-private-list';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -65,6 +66,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           lockedById: null,
           lockedAt: null,
           lockExpiresAt: null,
+          // F12: a list row (or a «انعرض من قبل» one) leaving by this door leaves the list WHOLE — all three marks — and rejoins the normal flow.
+          ...offTheListIf(order),
           // Every ownership write bumps the version
           version: { increment: 1 },
         },
@@ -373,8 +376,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       data: {
         claimedById: null, claimedAt: null,
         currentOwnerId: null,
-        // F12: a private-list row let go goes to the win-back pool (winbackListAt kept), never back onto her list unclaimed.
-        ...(order.winbackListUserId ? { winbackListUserId: null, winbackListSince: null } : {}),
+        // F12: a list row (or a «انعرض من قبل» one) leaving by this door leaves the list WHOLE — all three marks — and rejoins the normal flow.
+        ...offTheListIf(order),
         // A release lets go of the hold as well: an order she gave back is the shared queue's, not held for her a second time
         // (`assignedAt` is what a hold is measured from — order-reservation.ts).
         assignedAt: null,

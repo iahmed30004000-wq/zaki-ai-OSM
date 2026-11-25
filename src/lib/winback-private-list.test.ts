@@ -71,7 +71,7 @@ describe('the hand-out', () => {
   it('claims the NEW order for her, marks her list and starts the clock — only an order nobody holds and no list holds', async () => {
     const c = client();
     expect(await handToList(c as never, { ...SCOPE, orderId: 'o1', agentId: 'sara', byUserId: 'mgr', now })).toBe(true);
-    expect(c.calls[0].where).toMatchObject({ id: 'o1', ...SCOPE, claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: null });
+    expect(c.calls[0].where).toMatchObject({ id: 'o1', ...SCOPE, claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null } });
     expect(c.calls[0].data).toMatchObject({ claimedById: 'sara', winbackListUserId: 'sara', winbackListAt: now, winbackListSince: now });
   });
 
@@ -168,6 +168,34 @@ describe('one full shift untouched → the active agent with the fewest open row
     const where = (client.order.findMany.mock.calls[0] as unknown as [{ where: Record<string, any> }])[0].where;
     expect(where).toMatchObject({ ...SCOPE, winbackListSince: { lt: new Date('2026-11-26T06:00:00.000Z') }, contactAttempts: { none: {} } });
     expect(before.getTime()).toBeLessThan(where.winbackListSince.lt.getTime());
+  });
+
+  const moveClient = (worked: unknown[], decided: unknown[]) => ({
+    order: {
+      findMany: vi.fn(async () => [{ id: 'a1', winbackListUserId: 'abeer' }]),
+      groupBy: vi.fn(async () => []),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
+    orderContactAttempt: { findMany: vi.fn(async () => worked) },
+    orderStatusLog: { findMany: vi.fn(async () => decided) },
+    orderActivity: { create: vi.fn() },
+  });
+
+  it('B21 — an agent who worked the shift but may not be handed an order (not in eligible) never receives one', async () => {
+    const c = moveClient([{ employeeId: 'wael', order: { winbackListUserId: null } }, { employeeId: 'mona', order: { winbackListUserId: null } }], []);
+    await autoMoveIdleLists(c as never, SCOPE, CAL, new Date('2026-11-29T05:00:00Z'), ['abeer', 'mona']);
+    expect((c.order.updateMany.mock.calls as any[]).map((x) => x[0].data.winbackListUserId)).toEqual(['mona']);
+    const c2 = moveClient([{ employeeId: 'wael', order: { winbackListUserId: null } }], []);
+    expect(await autoMoveIdleLists(c2 as never, SCOPE, CAL, new Date('2026-11-29T05:00:00Z'), ['abeer', 'mona'])).toBe(0);
+  });
+
+  it('B22 — a DECISION she made on her list in the shift (a status line by her) counts as touching it: nothing moves', async () => {
+    const c = moveClient([{ employeeId: 'mona', order: { winbackListUserId: null } }], [{ changedById: 'abeer', order: { winbackListUserId: 'abeer' } }]);
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, new Date('2026-11-29T05:00:00Z'), ['abeer', 'mona'])).toBe(0);
+    expect(c.order.updateMany).not.toHaveBeenCalled();
+    // and a status line by her on ANOTHER list's order is not touching hers
+    const c2 = moveClient([{ employeeId: 'mona', order: { winbackListUserId: null } }], [{ changedById: 'abeer', order: { winbackListUserId: 'mona' } }]);
+    expect(await autoMoveIdleLists(c2 as never, SCOPE, CAL, new Date('2026-11-29T05:00:00Z'), ['abeer', 'mona'])).toBe(1);
   });
 
   it('nobody active in the shift: nothing moves', async () => {

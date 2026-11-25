@@ -31,6 +31,7 @@ const { state, db, logAudit } = vi.hoisted(() => {
       deleteMany: vi.fn(async () => ((state.deleted += 1), { count: 1 })),
       create: vi.fn(async ({ data }: any) => (state.lines.push(data), data)),
     },
+    orderNote: { create: vi.fn() },
     productFixedCost: { findMany: vi.fn(async () => [{ productId: 'scar', amount: 2 }]) },
     productionBatch: { findMany: vi.fn(async () => []) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
@@ -113,6 +114,38 @@ describe('the switch', () => {
     expect((await patch({ pieces: 1 })).status).toBe(403);
     state.viewer = await person('mgr', MANAGER);
     expect((await patch({ pieces: 1 })).status).toBe(200);
+  });
+
+  it('B26/B29 — the holder is the one who holds it AND whose list it is: holding a colleague’s list row, or listed but not holding, is refused', async () => {
+    state.order = listOrder({ claimedById: 'sara', winbackListUserId: 'huda' });
+    expect((await patch({ pieces: 1 })).status).toBe(403);
+    state.order = listOrder({ claimedById: 'huda', winbackListUserId: 'sara' });
+    expect((await patch({ pieces: 1 })).status).toBe(403);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('B27 — a manager needs BOTH keys: orders.assign alone, or the offer’s key alone, is refused', async () => {
+    state.viewer = await person('mgr', ['orders.assign', 'orders.view']);
+    expect((await patch({ pieces: 1 })).status).toBe(403);
+    state.viewer = await person('mgr', ['confirmation.supervise', 'confirmation.winback', 'orders.view']);
+    expect((await patch({ pieces: 1 })).status).toBe(403);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('B22 — the cost per piece counts the old order’s FREE pieces: 4 paid + 2 free that cost 30 is 5 a piece', async () => {
+    db.productFixedCost.findMany.mockResolvedValue([]);
+    state.order = listOrder({ replaces: { estimatedCostOfGoods: 30, quantity: 4, freeQuantity: 2, items: [] } });
+    expect((await patch({ pieces: 1 })).status).toBe(200);
+    expect(state.updates[0].data.estimatedCostOfGoods).toBe(5);
+    state.order = listOrder({ replaces: { estimatedCostOfGoods: 30, quantity: 4, freeQuantity: 2, items: [{ quantity: 4, freeQuantity: 2 }] } });
+    await patch({ pieces: 3 });
+    expect(state.updates[1].data.estimatedCostOfGoods).toBe(15);
+    db.productFixedCost.findMany.mockResolvedValue([{ productId: 'scar', amount: 2 }]);
+  });
+
+  it('the switch writes what it did beside the order’s own note', async () => {
+    await patch({ pieces: 1 });
+    expect(db.orderNote.create).toHaveBeenCalledWith({ data: expect.objectContaining({ orderId: 'w1', kind: 'internal', body: 'تحوّل عرض الاسترجاع لـقطعة وحدة — 12' }) });
   });
 
   it('only a list order, only before confirmation, only with a price in the order’s currency', async () => {

@@ -106,6 +106,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return true;
     });
     if (!done) return refuse('الطلب تغيّر من شي تاني — حدّث الصفحة.', 'VERSION_CONFLICT', 409);
+    // The order's note said «3 قطع» when it was made: the switch writes what it is now, beside it.
+    await db.orderNote.create({
+      data: { companyId, orderId: id, authorId: user.id, kind: 'internal', body: `تحوّل عرض الاسترجاع لـ${pieces === 1 ? 'قطعة وحدة' : '3 قطع'} — ${money.cod}` },
+    });
 
     await logAudit({
       companyId,

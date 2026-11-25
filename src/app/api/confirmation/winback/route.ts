@@ -502,6 +502,8 @@ async function offerOne(
           regionId: order.regionId,
           ...refs,
           replacesOrderId: order.id,
+          // F12: a bulk-run order is born a win-back order — out of the general pull until it is on a list (`handToList`).
+          ...(priced ? { winbackListAt: now } : {}),
           customerId: order.customerId,
           productId: order.productId,
           // The cancelled order's offer was for ITS quantity; a priced offer is one of the owner's two options, not that offer.

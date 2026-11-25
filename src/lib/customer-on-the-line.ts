@@ -1,3 +1,4 @@
+import { offTheListIf } from './winback-private-list';
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { canonicalPhone, phoneKeys, phoneKeysAnyStore } from './phone-rules';
@@ -305,6 +306,9 @@ export const CALLBACK_FACTS_SELECT = {
   labelPrintedAt: true,
   assignedToId: true,
   assignedAt: true,
+  // F12: whether it is a private-list row (or «انعرض من قبل»): taken for the customer on the line, it leaves the list whole.
+  winbackListUserId: true,
+  winbackListAt: true,
   assignee: { select: { id: true, name: true, status: true } },
   // The promised dates: evidence that the order was sent back, for «الطلب يرجع للطابور فوراً» only (`hasEvidence`).
   postponedUntil: true,
@@ -635,6 +639,8 @@ export async function takeOnTheLine(args: {
          * the taker 423 `ORDER_LOCKED`, and the colleague's open form keeps renewing it). An order out of the pool has neither.
          */
         ...(from ? { assignedToId: user.id, assignedAt: now, lockedById: null, lockedAt: null, lockExpiresAt: null } : {}),
+        // F12: a list row (or a «انعرض من قبل» one) leaving by this door leaves the list WHOLE — all three marks — and rejoins the normal flow.
+        ...offTheListIf(row),
       },
     });
     if (taken.count !== 1) {
