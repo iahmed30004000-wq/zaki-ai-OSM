@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/Checkbox';
 import { Money } from '@/components/ui/Money';
 import { UNDO_REASON_MAX, UNDO_REASON_MIN, type UndoMeasure } from '@/lib/delivery-undo-words';
 import type { ReturnUndoMeasure } from '@/lib/return-undo-words';
+import type { TakeBackMeasure } from '@/lib/legacy-take-back-words';
 
 /**
  * «تراجع عن التسليم» — taking back a delivery that was recorded by mistake (13/11).
@@ -32,7 +33,11 @@ import type { ReturnUndoMeasure } from '@/lib/return-undo-words';
  * «تراجع عن المرتجع» (25/11) IS THE SAME DIALOG FOR THE OTHER MISTAKE: a return «رجعت» recorded at the door by mistake. Same shape (measure,
  * reason, one tick, the fingerprint back), its own door and its own words. The sentences of the measure are the server's either way.
  */
-type Kind = 'delivery' | 'return';
+/*
+ * «تراجع عن إقفال القديمة» (25/11) is the same dialog a third time: the no-money «مسوّى» of the close, taken back on one order. Same shape,
+ * its own door (the close's own key) and its own words.
+ */
+type Kind = 'delivery' | 'return' | 'legacy';
 const WORDS: Record<Kind, { door: string; title: string; subtitle: string; what: string; when: string; refused: string; placeholder: string; ack: string; failed: string }> = {
   delivery: {
     door: '/api/ops/tracking/undo-delivery',
@@ -56,6 +61,17 @@ const WORDS: Record<Kind, { door: string; title: string; subtitle: string; what:
     ack: 'أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون، وبيتسجّل باسمي.',
     failed: 'تعذّر التراجع',
   },
+  legacy: {
+    door: '/api/ops/tracking/undo-legacy-close',
+    title: 'تراجع عن الإقفال',
+    subtitle: 'بترجع تسويتو لحالتها قبل «إقفال القديمة»',
+    what: 'بتلغي «مسوّى» اللي كتبو «إقفال القديمة» بلا مصاري، وبترجع تسوية الطلب لحالتها قبلو. بعدها «تراجع عن التسليم» وقسم المرتجعات بياخدوه.',
+    when: 'طلب واحد بكل ضغطة. بيرفض إذا الطلب مش مسوّى من الإقفال، أو عليه أي مصاري: حركة محفظة، «استلمت منه»، كشف سوّاه، أو عمولة اندفعت.',
+    refused: 'ما بيرجع هالإقفال:',
+    placeholder: 'مثال: الشركة بتقول الطرد رجع — سطرو بالكشف بصفر',
+    ack: 'أقرّ: التراجع بيرجّع تسوية الطلب لحالتها قبل الإقفال، وبيتسجّل باسمي.',
+    failed: 'تعذّر التراجع',
+  },
 };
 
 export function UndoDeliveryDialog({
@@ -67,7 +83,7 @@ export function UndoDeliveryDialog({
   order: { id: string; orderNumber: string; merchantRef: string | null };
   onClose: () => void;
   onDone: (message: string) => void;
-  /** Which mistake is taken back: a delivery (the default, as it always was) or a return «رجعت». */
+  /** Which mistake is taken back: a delivery (the default, as it always was), a return «رجعت», or a no-money «إقفال القديمة». */
   kind?: Kind;
 }) {
   const [w] = useState(() => WORDS[kind]);
@@ -83,7 +99,7 @@ export function UndoDeliveryDialog({
    * the tick is taken back, and a late answer to an old question can never be drawn — with nothing reset by hand.
    */
   const key = again;
-  const [loaded, setLoaded] = useState<{ key: number; measure: UndoMeasure | ReturnUndoMeasure } | null>(null);
+  const [loaded, setLoaded] = useState<{ key: number; measure: UndoMeasure | ReturnUndoMeasure | TakeBackMeasure } | null>(null);
   const [failed, setFailed] = useState<{ key: number; message: string } | null>(null);
   const [ackKey, setAckKey] = useState<number | null>(null);
   const [reason, setReason] = useState('');
@@ -94,7 +110,7 @@ export function UndoDeliveryDialog({
 
   useEffect(() => {
     let current = true;
-    apiJson<UndoMeasure | ReturnUndoMeasure>(DOOR, {
+    apiJson<UndoMeasure | ReturnUndoMeasure | TakeBackMeasure>(DOOR, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'measure', orderId: id }),
