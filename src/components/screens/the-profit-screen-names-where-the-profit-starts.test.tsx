@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { earlierDaysNote, profitSinceSentence, sinceDate, startsBefore } from '@/lib/profit-since-words';
 
@@ -60,6 +60,22 @@ describe('the profit screen', () => {
   it('names the start beside the figures', async () => {
     render(<FinanceProfitScreen />);
     expect(await screen.findByText((t) => t.includes('الأرباح محسوبة من 28 أكتوبر 2026 — يوم أول كشف مرفوع'))).toBeTruthy();
+  });
+
+  it('with NO span (the box cleared): the one sentence names the start — never «منذ البداية»', async () => {
+    render(<FinanceProfitScreen />);
+    await screen.findByText((t) => t.includes('الأرباح محسوبة من'));
+    fireEvent.click(screen.getAllByLabelText('امسح التاريخ')[0]);
+    expect(await screen.findByText('الأرباح محسوبة من 28 أكتوبر 2026 — يوم أول كشف مرفوع. كل الموصَّل وكل المصاريف من يومها.')).toBeTruthy();
+    expect(screen.queryByText((t) => t.includes('الأرقام منذ البداية'))).toBeNull();
+  });
+
+  it('NEGATIVE: with no span and no statement it says «منذ البداية», as before', async () => {
+    sinceDay = null;
+    render(<FinanceProfitScreen />);
+    await screen.findAllByText('إيراد الموصَّل');
+    fireEvent.click(screen.getAllByLabelText('امسح التاريخ')[0]);
+    expect(await screen.findByText('الأرقام منذ البداية — كل الموصَّل وكل المصاريف.')).toBeTruthy();
   });
 
   it('a span that starts before it (today = 20/10): says the earlier days are not counted', async () => {

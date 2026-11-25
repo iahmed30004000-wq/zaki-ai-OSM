@@ -189,6 +189,17 @@ describe('THE START LINE — the day of the first courier statement', () => {
     expect(await profitEpoch(SCOPE, TZ)).toBeNull();
   });
 
+  it('the epoch query names the company AND the store — never the store alone', async () => {
+    db.courierStatement.findMany.mockClear();
+    await profitEpoch(SCOPE, TZ);
+    expect((db.courierStatement.findMany.mock.calls[0][0] as Row).where).toEqual({ companyId: 'c1', storeId: 's1' });
+  });
+
+  it('NEGATIVE: another company’s statement under the same store id is not this store’s start', async () => {
+    tables.courierStatement.push({ ...statement('2026-09-01T09:00:00Z'), companyId: 'c2' }, statement('2026-10-28T09:00:00Z'));
+    expect((await profitEpoch(SCOPE, TZ))!.day).toBe('2026-10-28');
+  });
+
   it('NEGATIVE: another store’s statement is not this store’s start', async () => {
     tables.courierStatement.push(statement('2026-09-01T09:00:00Z', 'sha-x', 's2'), statement('2026-10-28T09:00:00Z'));
     expect((await profitEpoch(SCOPE, TZ))!.day).toBe('2026-10-28');

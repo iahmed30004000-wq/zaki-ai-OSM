@@ -174,6 +174,52 @@ describe('the profit screen and the dashboard: the same revenue for the same ord
   });
 });
 
+describe('the real profit door with a span AND a first statement (M11)', () => {
+  const at = (iso: string) => new Date(iso);
+  const o = (id: string, deliveredAt: string, totalAmount: number) =>
+    ({ id, orderNumber: id, companyId: 'c1', storeId: 's1', shippingStatus: 'DELIVERED', status: 'SHIPPED', totalAmount, collectedAmount: null, shippingCost: 0, estimatedCostOfGoods: 0, deliveredAt: at(deliveredAt), createdAt: at('2026-10-01') });
+  beforeEach(() => {
+    for (const t of Object.values(tables)) t.length = 0;
+    // First statement 28/10 09:00Z → the epoch is 27/10 21:00Z (the 28th in Damascus).
+    tables.courierStatement.push({ companyId: 'c1', storeId: 's1', createdAt: at('2026-10-28T09:00:00Z'), fileHash: 'sha' });
+    tables.order.push(o('before', '2026-10-25T10:00:00Z', 1000), o('edge', '2026-10-27T21:00:00Z', 10), o('after', '2026-11-03T10:00:00Z', 100));
+    tables.expense.push(
+      { id: 'x-before', companyId: 'c1', storeId: 's1', amount: 500, title: 'x', category: 'OTHER', voidedAt: null, expenseDate: at('2026-10-22T10:00:00Z'), walletId: 'w1' },
+      { id: 'x-after', companyId: 'c1', storeId: 's1', amount: 30, title: 'x', category: 'OTHER', voidedAt: null, expenseDate: at('2026-11-03T10:00:00Z'), walletId: 'w1' },
+    );
+    tables.commissionEntry.push({ orderId: 'before', amount: 77 }, { orderId: 'after', amount: 5 });
+  });
+  const ask = async (qs: string) => (await finance(new Request(`http://localhost/api/finance${qs}`))).json();
+
+  it('a span wholly BEFORE the first statement: every figure zero, and the door still says where the profit starts', async () => {
+    const body = await ask('?from=2026-10-01&to=2026-10-27');
+    expect(body.summary).toEqual({
+      totalRevenue: 0, totalCOGS: 0, totalShipping: 0, totalCommissions: 0, shippingAndCommissions: 0,
+      totalOperationalExpenses: 0, netProfit: 0, profitMargin: 0,
+    });
+    expect(body.recentDeliveredOrders).toEqual([]);
+    expect(body.expenses).toEqual([]);
+    expect(body.since).toBe('2026-10-27T21:00:00.000Z');
+    expect(body.sinceDay).toBe('2026-10-28');
+  });
+
+  it('a span that STRADDLES it (20/10 → 05/11): counted from the epoch only, on both sides', async () => {
+    const body = await ask('?from=2026-10-20&to=2026-11-05');
+    // revenue edge 10 + after 100 = 110 · commissions 5 · expenses 30 → net 75
+    expect(body.summary.totalRevenue).toBe(110);
+    expect(body.summary.totalCommissions).toBe(5);
+    expect(body.summary.totalOperationalExpenses).toBe(30);
+    expect(body.summary.netProfit).toBe(75);
+    expect(body.recentDeliveredOrders.map((r: Row) => r.id).sort()).toEqual(['after', 'edge']);
+    expect(body.expenses.map((r: Row) => r.id)).toEqual(['x-after']);
+  });
+
+  it('no span: the same floor', async () => {
+    const body = await ask('');
+    expect(body.summary.netProfit).toBe(75);
+  });
+});
+
 describe('the partners are cut from the same number — floored at the same start', () => {
   it.each(SEEDS.slice(0, 60))('book %i (with a first statement): the statement’s net profit is the profit screen’s, and both name the same start', async (seed) => {
     book(seed, { statement: true });

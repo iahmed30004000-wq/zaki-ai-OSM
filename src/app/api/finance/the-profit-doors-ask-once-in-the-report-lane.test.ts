@@ -11,12 +11,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const { state, profitToDate, analytics } = vi.hoisted(() => ({
-  state: { stamp: { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') as Date | null } }, monthRows: [] as unknown[], storeId: 's1', lanes: [] as boolean[], statements: [] as { createdAt: Date; fileHash: string }[] },
+  state: { stamp: { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') as Date | null } }, monthRows: [] as unknown[], storeId: 's1', lanes: [] as boolean[], statements: [] as { createdAt: Date; fileHash: string }[], keys: [] as string[] },
   profitToDate: vi.fn(),
   analytics: vi.fn(),
 }));
 
-vi.mock('@/lib/heavy-lane', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/heavy-lane')>()), REPORT_TTL_MS: 60_000 }));
+vi.mock('@/lib/heavy-lane', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/heavy-lane')>();
+  // 25/11 (A1): every key asked is written down, so the key's parts can be pinned.
+  return { ...real, REPORT_TTL_MS: 60_000, heavyOnce: (key: string, ttl: number, fn: () => Promise<unknown>) => (state.keys.push(key), real.heavyOnce(key, ttl, fn)) };
+});
 vi.mock('@/lib/db', () => ({
   db: {
     expense: { aggregate: vi.fn(async () => state.stamp), groupBy: vi.fn(async () => state.monthRows) },
@@ -46,6 +50,7 @@ beforeEach(() => {
   state.monthRows = [];
   state.lanes = [];
   state.statements = [];
+  state.keys = [];
   state.stamp = { _count: { _all: 2 }, _sum: { amount: 30 }, _max: { createdAt: new Date('2026-11-10T08:00:00Z') } };
   profitToDate.mockReset().mockImplementation(async () => {
     state.lanes.push(inHeavyLane());
@@ -101,6 +106,20 @@ describe('/api/finance', () => {
     expect((profitToDate.mock.calls[1] as unknown[])[2]).toEqual({ epoch: { at: new Date('2026-10-27T21:00:00.000Z'), day: '2026-10-28' } });
     expect(body.since).toBe('2026-10-27T21:00:00.000Z');
     expect(body.sinceDay).toBe('2026-10-28');
+  });
+
+  it('A1: the key carries the epoch INSTANT, not a yes/no — a first statement on another day is another key', async () => {
+    state.statements = [{ createdAt: new Date('2026-10-28T09:00:00Z'), fileHash: 'abc' }];
+    await finance();
+    state.statements = [{ createdAt: new Date('2026-10-29T09:00:00Z'), fileHash: 'abc' }];
+    await finance();
+    const profitKeys = state.keys.filter((k) => k.startsWith('finance-profit|'));
+    expect(profitKeys[0]).toContain('|since:2026-10-27T21:00:00.000Z|');
+    expect(profitKeys[1]).toContain('|since:2026-10-28T21:00:00.000Z|');
+    expect(profitToDate).toHaveBeenCalledTimes(2);
+    state.statements = [];
+    await finance();
+    expect(state.keys.filter((k) => k.startsWith('finance-profit|'))[2]).toContain('|since:none|');
   });
 
   it('the month\'s two revenue readings run in the lane too, and are kept', async () => {
