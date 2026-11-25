@@ -346,10 +346,15 @@ describe('NO NEW CSS — every class the section uses is one the product already
 
 // 25/11 (A1): «من البداية» names the same start the profit screen names — the day of the first courier statement.
 describe('where the profit the shares are cut from starts', () => {
-  it('with a first statement: the card names its day, and says the draws are all counted', async () => {
+  /*
+   * 25/11 (F13) — UPDATED. Old: «السحوبات كلها من البداية» (A1 left the draws unfloored). New: the draws start the same day, and the
+   * ones before it stay listed but are not counted — the owner's choice «ب» on A1's open question.
+   */
+  it('with a first statement: the card names its day, and says the draws start that day too', async () => {
     answer = statementOf({ since: '2026-10-27T21:00:00.000Z', sinceDay: '2026-10-28' });
     await tables();
-    expect(screen.getByText((t) => t.includes('الأرباح محسوبة من 28 أكتوبر 2026 — يوم أول كشف مرفوع. السحوبات كلها من البداية'))).toBeTruthy();
+    expect(screen.getByText((t) => t.includes('الأرباح محسوبة من 28 أكتوبر 2026 — يوم أول كشف مرفوع. والسحوبات من نفس اليوم: اللي قبله بيضل مكتوب وما بينحسب'))).toBeTruthy();
+    expect(screen.queryByText((t) => t.includes('السحوبات كلها من البداية'))).toBeNull();
     expect(screen.queryByText((t) => t.includes('كل الأرقام من البداية'))).toBeNull();
   });
 

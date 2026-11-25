@@ -108,6 +108,12 @@ export function WithdrawalsSection() {
               <Badge variant="danger">معكوس</Badge>
             </>
           )}
+          {r.beforeProfit && (
+            <>
+              {' '}
+              <Badge variant="outline">{book.beforeProfit?.label}</Badge>
+            </>
+          )}
         </>
       ),
     },
@@ -214,7 +220,9 @@ export function WithdrawalsSection() {
     { key: 'by', label: 'سجّله', render: (r) => r.createdByName ?? '—' },
   ];
 
-  const stores = [...new Set(book.byStore.map((t) => t.storeId))];
+  // F13: a store whose only draws are before its profit epoch still has a line.
+  const stores = [...new Set([...book.byStore, ...(book.beforeProfit?.byStore ?? [])].map((t) => t.storeId))];
+  const before = book.beforeProfit;
   const detail = detailsId ? book.rows.find((r) => r.id === detailsId) ?? null : null;
 
   return (
@@ -301,19 +309,45 @@ export function WithdrawalsSection() {
               </li>
             </ul>
           )}
+          {/* F13 (25/11): the draws before the profit epoch — listed per partner and wallet currency, OUTSIDE the totals above and
+              «المجموع بالدولار»; the worth beside them only where one was stored. */}
+          {before && before.totals.length > 0 && (
+            <ul className="mt-3 divide-y divide-[var(--sys-border)] border-t border-[var(--sys-border)]" data-before-profit="">
+              <li className="py-2 text-note text-[var(--sys-muted)]">
+                {before.label}
+                {before.sinceDay ? ` — الأرباح من ${before.sinceDay}` : ''}
+              </li>
+              {before.totals.map((t) => (
+                <li key={`${t.partnerId}|${t.currencyCode}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                  <span className="text-sm text-[var(--sys-muted-foreground)]">{t.partnerName}</span>
+                  <span className="text-note text-[var(--sys-muted)] tabular-nums">{t.count} مسحوب</span>
+                  <span className="ms-auto text-sm text-[var(--sys-muted-foreground)]">
+                    <Money value={t.total} currency={t.currencyCode} minorUnit={t.minorUnit} />
+                  </span>
+                  {t.currencyCode !== store && t.valueCount > 0 && (
+                    <span className="w-full text-end text-note text-[var(--sys-muted)]">
+                      يعادل <Money value={t.valueTotal} currency={store} minorUnit={book.storeCurrency.minorUnit} />
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
       {stores.length > 0 && (
+        // F13: per store, the counted lines and then the ones before its profit epoch, marked.
         <Card>
           <CardHeader title="المسحوبات بكل المتاجر" subtitle="لكل متجر، لكل شريك، بكل عملة لحالها." />
           <CardContent>
             <ul className="divide-y divide-[var(--sys-border)]">
               {stores.map((storeId) => {
                 const lines = book.byStore.filter((t) => t.storeId === storeId);
+                const early = before?.byStore.filter((t) => t.storeId === storeId) ?? [];
                 return (
                   <li key={storeId} className="space-y-1 py-2">
-                    <span className="text-sm font-bold text-[var(--sys-heading)]">{lines[0]?.storeName ?? '—'}</span>
+                    <span className="text-sm font-bold text-[var(--sys-heading)]">{lines[0]?.storeName ?? early[0]?.storeName ?? '—'}</span>
                     {lines.map((t) => (
                       <div key={`${t.partnerId}|${t.currencyCode}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-note">
                         <span className="text-[var(--sys-muted-foreground)]">{t.partnerName}</span>
@@ -325,6 +359,14 @@ export function WithdrawalsSection() {
                             {UNVALUED_LINE} (<Money value={t.unvaluedTotal} currency={t.currencyCode} minorUnit={t.minorUnit} />)
                           </span>
                         )}
+                      </div>
+                    ))}
+                    {early.map((t) => (
+                      <div key={`before|${t.partnerId}|${t.currencyCode}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-note text-[var(--sys-muted)]">
+                        <span>{t.partnerName} — {before?.label}</span>
+                        <span className="ms-auto">
+                          <Money value={t.total} currency={t.currencyCode} minorUnit={t.minorUnit} />
+                        </span>
                       </div>
                     ))}
                   </li>

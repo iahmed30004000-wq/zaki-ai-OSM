@@ -36,7 +36,15 @@ const PROFIT_AND_STATEMENT = [
 describe('a withdrawal moves no money', () => {
   it.each(NEW)('%s imports nothing of the wallets, the expenses or the profit', (file) => {
     const s = src(file);
-    const imports = [...s.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
+    /*
+     * 25/11 (F13) — UPDATED. Old: no import of these modules matched «profit». New: the dashboard (`partner-withdrawals.ts`) reads the
+     * store's profit EPOCH — a date, the owner's choice «ب»: draws count from the profit's start — and only that symbol, checked here;
+     * nothing that adds the profit up. Every other import is held to the old rule.
+     */
+    const epochOnly = /import \{ profitEpoch, type ProfitEpoch \} from '\.\/profit-to-date';/;
+    if (file === 'src/lib/partner-withdrawals.ts') expect(s).toMatch(epochOnly);
+    else expect(s).not.toMatch(/profit-to-date/);
+    const imports = [...s.replace(epochOnly, '').matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
     for (const i of imports) {
       expect(i, `${file} → ${i}`).not.toMatch(/wallet|pay-from-wallet|expense|profit|partner-statement|commission|settlement/i);
     }

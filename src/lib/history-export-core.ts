@@ -6,6 +6,7 @@ import { rateText } from './exchange-rate-words';
 import { TRANSFER_STATE_AR, type TransferState } from './transfer-reversal';
 import type { Cell } from './xlsx-writer';
 import type { HistoryBasis } from './history-export-url';
+import { BEFORE_PROFIT_AR } from './draw-epoch';
 
 /**
  * «سحب سجل حركات وتحويلات وتواريخ ينزلو PDF أو Excel» (the owner, 22/11, F5) — THE RULES OF A HISTORY FILE, with no database.
@@ -418,6 +419,8 @@ export interface WithdrawalLine {
   createdByName: string | null;
   reversedBy?: { reversalReason: string | null } | null;
   storeName: string;
+  /** F13: dated before the store's profit epoch — its status says so, and it is in a totals line of its own, never in «مسحوبات». */
+  beforeProfit?: boolean;
 }
 
 export const WITHDRAWAL_HEADER = [
@@ -428,7 +431,9 @@ export const WITHDRAWAL_HEADER = [
 export function withdrawalSheet(lines: WithdrawalLine[], timeZone: string): HistorySheet {
   const AMOUNT = 6;
   const VALUE = 8;
-  const standing = lines.filter((w) => !w.reversedBy);
+  // F13: a draw before the profit epoch is not «ساري»: it stays in the file, marked, and is totalled on its own line.
+  const standing = lines.filter((w) => !w.reversedBy && !w.beforeProfit);
+  const before = lines.filter((w) => !w.reversedBy && w.beforeProfit);
   return {
     title: 'سجل مسحوبات الشركاء',
     header: WITHDRAWAL_HEADER,
@@ -445,7 +450,7 @@ export function withdrawalSheet(lines: WithdrawalLine[], timeZone: string): Hist
         w.valueInStoreCurrency === null ? '' : roundMinor(w.valueInStoreCurrency, w.storeMinor),
         w.storeCurrency,
         w.note ?? '',
-        w.reversedBy ? `معكوس${w.reversedBy.reversalReason ? ` — ${w.reversedBy.reversalReason}` : ''}` : 'ساري',
+        w.reversedBy ? `معكوس${w.reversedBy.reversalReason ? ` — ${w.reversedBy.reversalReason}` : ''}` : w.beforeProfit ? BEFORE_PROFIT_AR : 'ساري',
       ],
       minors: { [AMOUNT]: w.minorUnit, [VALUE]: w.storeMinor },
     })),
@@ -454,6 +459,7 @@ export function withdrawalSheet(lines: WithdrawalLine[], timeZone: string): Hist
       ...standing
         .filter((w) => w.valueInStoreCurrency !== null)
         .map((w) => ({ label: 'ما يعادله بعملة المتجر', currency: w.storeCurrency, minorUnit: w.storeMinor, amount: w.valueInStoreCurrency as number })),
+      ...before.map((w) => ({ label: BEFORE_PROFIT_AR, currency: w.currencyCode, minorUnit: w.minorUnit, amount: w.amount })),
     ]),
   };
 }
