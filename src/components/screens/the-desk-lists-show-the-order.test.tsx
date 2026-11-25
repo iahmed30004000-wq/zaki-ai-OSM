@@ -376,7 +376,9 @@ describe('the doors — one query, the same visibility, the same customer-data t
     const m = mineSrc();
     // Her own desk unless a watcher opened a colleague's (desk-watch.ts, 2/11) — the default is still her own id.
     expect(m).toContain('let deskOf = user.id;');
-    expect(m).toContain('const scope = { companyId, storeId, claimedById: deskOf }');
+    // 25/11 (F12): old `{ companyId, storeId, claimedById: deskOf }`; new — the desk no longer lists the rows of her PRIVATE win-back list
+    // (she opens that list herself); her own claim is still the whole of what «طلباتي» reads.
+    expect(m).toContain('const scope = { companyId, storeId, claimedById: deskOf, ...notOnAPrivateList }');
     expect(m).toContain('noteCustomersHandedOut({ companyId, storeId, user, where:');
     expect(m).toContain("await requirePermission('confirmation.work')");
     const p = postponedSrc();

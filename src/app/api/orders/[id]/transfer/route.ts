@@ -174,6 +174,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         signedAt: null,
         // transfer breaks the previous owner's editing lock
         lockedById: null, lockedAt: null, lockExpiresAt: null,
+        // F12: a row of a private win-back list goes onto the TARGET's list (outside her hand too); the 3-day clock is kept.
+        ...(order.winbackListUserId ? { winbackListUserId: target.id, winbackListSince: now } : {}),
         version: { increment: 1 },
       },
     });

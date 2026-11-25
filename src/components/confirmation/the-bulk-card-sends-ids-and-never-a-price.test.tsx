@@ -18,8 +18,8 @@ const META = {
   canBulk: true,
   max: 200,
   agents: [
-    { id: 'sara', name: 'سارة', room: 480 },
-    { id: 'huda', name: 'هدى', room: 500 },
+    { id: 'sara', name: 'سارة', listOpen: 4 },
+    { id: 'huda', name: 'هدى', listOpen: 0 },
   ],
   reasons: [{ code: 'PRICE_TOO_HIGH', label: 'السعر مرتفع' }],
   periods: [{ code: '30', label: 'آخر 30 يوماً' }],
@@ -34,15 +34,16 @@ const PRICES = {
 };
 const PLAN = {
   planned: [
-    { orderId: 'o1', orderNumber: 'ORD-1', agentId: 'sara', price: 20, tier: 'three' },
-    { orderId: 'o2', orderNumber: 'ORD-2', agentId: 'huda', price: 12, tier: 'one' },
+    { orderId: 'o1', orderNumber: 'ORD-1', agentId: 'sara', price: 20, pieces: 3, oldPieces: 1 },
+    { orderId: 'o2', orderNumber: 'ORD-2', agentId: 'huda', price: 20, pieces: 3, oldPieces: 6 },
   ],
   perAgent: [
-    { id: 'sara', name: 'سارة', room: 480, count: 1 },
-    { id: 'huda', name: 'هدى', room: 500, count: 1 },
+    { id: 'sara', name: 'سارة', listOpen: 4, count: 1 },
+    { id: 'huda', name: 'هدى', listOpen: 0, count: 1 },
   ],
   skipped: [{ code: 'CUSTOMER_HAS_LIVE_ORDER', count: 3, reasonAr: 'الزبون عندو طلب شغّال' }],
   scanned: 5,
+  offeredBefore: 7,
 };
 
 const route = (meta: unknown = META, prices: unknown = PRICES) =>
@@ -51,6 +52,8 @@ const route = (meta: unknown = META, prices: unknown = PRICES) =>
     if (url === '/api/confirmation/winback/prices') return prices;
     const body = JSON.parse(init?.body ?? '{}');
     if (body.action === 'bulk-preview') return PLAN;
+    if (body.action === 'rehand-preview') return { planned: [{ orderId: 'w7', orderNumber: 'WB-7', agentId: 'sara' }], perAgent: [] };
+    if (body.action === 'rehand-run') return { created: 1, failed: 0, results: [{ orderId: 'w7', orderNumber: 'WB-7', ok: true }] };
     if (body.action === 'bulk-run') return { created: 1, failed: 1, results: [{ orderId: 'o1', orderNumber: 'ORD-1', ok: true }, { orderId: 'o2', orderNumber: 'ORD-2', ok: false, code: 'ALREADY_OFFERED', reasonAr: 'انعرض عليه للتو من ضغطة تانية' }] };
     return {};
   });
@@ -83,7 +86,7 @@ describe('the plan and the run', () => {
     // only priced products are offered in the filter
     const product = screen.getByLabelText('المنتج') as HTMLSelectElement;
     expect([...product.options].map((o) => o.textContent)).toEqual(['كل المنتجات اللي إلها سعر', 'كريم الندبات']);
-    expect(container.textContent).toContain('بتقدر تاخد 480 كمان');
+    expect(container.textContent).toContain('بقايمتها هلّق 4');
 
     const show = screen.getByRole('button', { name: 'اعرض الخطة' });
     expect((show as HTMLButtonElement).disabled).toBe(true); // no agent picked yet
@@ -113,15 +116,30 @@ describe('the plan and the run', () => {
   });
 });
 
+describe('«انعرض من قبل»', () => {
+  it('hands the let-go list orders out again: the preview, then exactly its ids — and no price', async () => {
+    render(<WinbackBulkCard />);
+    await screen.findByText('وزّع على الموظفات');
+    fireEvent.click(screen.getByLabelText('سارة'));
+    fireEvent.click(screen.getByRole('button', { name: 'اعرض الخطة' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'وزّع اللي انعرضوا من قبل (7)' }));
+    await waitFor(() => expect(api.mock.calls.some((c) => String(c[1]?.body ?? '').includes('rehand-run'))).toBe(true));
+    const pre = JSON.parse((api.mock.calls.find((c) => String(c[1]?.body ?? '').includes('rehand-preview'))![1] as { body: string }).body);
+    expect(pre).toEqual({ action: 'rehand-preview', count: 7, agentIds: ['sara'] });
+    const runBody = JSON.parse((api.mock.calls.find((c) => String(c[1]?.body ?? '').includes('rehand-run'))![1] as { body: string }).body);
+    expect(runBody).toEqual({ action: 'rehand-run', orderIds: ['w7'], agentIds: ['sara'] });
+  });
+});
+
 describe('the prices', () => {
   it('drawn for who may change the rule; one row saved is one request with the product and its two figures', async () => {
     render(<WinbackBulkCard />);
     await screen.findByText('أسعار الاسترجاع');
     fireEvent.click(screen.getByRole('button', { name: 'عدّل الأسعار' }));
-    const ones = screen.getAllByLabelText('قطعة أو قطعتين') as HTMLInputElement[];
+    const ones = screen.getAllByLabelText('قطعة وحدة') as HTMLInputElement[];
     expect(ones.map((i) => i.value)).toEqual(['12', '']);
     fireEvent.change(ones[1], { target: { value: '9' } });
-    fireEvent.change(screen.getAllByLabelText('3 قطع أو أكتر')[1], { target: { value: '18' } });
+    fireEvent.change(screen.getAllByLabelText('3 قطع')[1], { target: { value: '18' } });
     fireEvent.click(screen.getAllByRole('button', { name: 'احفظ' })[1]);
     await waitFor(() => expect(api.mock.calls.some((c) => c[1]?.method === 'PUT')).toBe(true));
     const put = api.mock.calls.find((c) => c[1]?.method === 'PUT')!;

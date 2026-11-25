@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE } from './confirmation-queue-messages';
+import { notAWinbackListOrder, notOnAPrivateList } from './winback-private-list';
 export { CONTACT_FIRST_MESSAGE, REGION_REQUIRED_MESSAGE };
 import { businessMinutesBetween, zonedParts, type BusinessCalendar } from './business-calendar';
 import { rejectionNeedsConversation } from './confirmation-workflow';
@@ -492,6 +493,8 @@ export function heldWithoutAttemptWhere(scope: QueueScope, holderId?: string) {
     claimedById: holderId ?? { not: null },
     confirmationStatus: { in: OPEN_CONFIRMATION },
     contactAttempts: { none: {} },
+    // F12: a row of a PRIVATE win-back list is outside her hand (winback-private-list.ts).
+    ...notOnAPrivateList,
   };
 }
 
@@ -500,7 +503,7 @@ export async function ownedCounts(tx: Tx, scope: QueueScope, userId: string, now
   const untouchedWhere = heldWithoutAttemptWhere(scope, userId);
   const [total, withoutAttempt, untouched, heldForHer] = await Promise.all([
     tx.order.count({
-      where: { ...scope, claimedById: userId, confirmationStatus: { in: OPEN_CONFIRMATION } },
+      where: { ...scope, claimedById: userId, confirmationStatus: { in: OPEN_CONFIRMATION }, ...notOnAPrivateList },
     }),
     tx.order.count({ where: untouchedWhere }),
     tx.order.findFirst({
@@ -861,6 +864,8 @@ export async function releaseStaleClaims(
       confirmationStatus: { in: OPEN_CONFIRMATION },
       contactAttempts: { none: {} },
       claimedAt: { not: null },
+      // F12: a row of a PRIVATE win-back list is outside her hand (winback-private-list.ts).
+      ...notOnAPrivateList,
     },
     select: { id: true, claimedAt: true, claimedById: true, companyId: true, orderNumber: true },
     take: 200,
@@ -1205,6 +1210,8 @@ export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idl
     trackingNumber: null,
     labelPrintedAt: null,
     contactAttempts: { none: { createdAt: { gt: returns.idleCut } } },
+    // F12: a row of a PRIVATE win-back list is outside her hand (winback-private-list.ts).
+    ...notOnAPrivateList,
   };
 }
 
@@ -1324,6 +1331,8 @@ async function releaseByRounds(
       labelPrintedAt: null,
       // No attempt at all is the ninety-minute rule's, above.
       contactAttempts: { some: {} },
+      // F12: a row of a PRIVATE win-back list is outside her hand (winback-private-list.ts).
+      ...notOnAPrivateList,
       AND: [
         // A date — a postponement, a callback he asked for — keeps it with her until it is three working hours old (R1b's grace):
         // ahead of now, or just passed, it is not scanned at all.
@@ -1647,6 +1656,8 @@ function claimableWhere(scope: QueueScope) {
     claimedById: null,
     confirmationStatus: { in: OPEN_CONFIRMATION },
     shippingStatus: 'NOT_READY',
+    // F12: a win-back list order is never in the general pull — NEW orders always come first; the list is opened by its holder.
+    ...notAWinbackListOrder,
   };
 }
 

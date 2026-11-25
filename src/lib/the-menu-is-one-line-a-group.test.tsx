@@ -122,9 +122,11 @@ describe('the menu is ten lines', () => {
     // 1 + 6 + 5 + 5 + 7 + 9 + 5 + 2 + 21 = 61.
     // 25/11 (the owner): 63 with آ«ط±ظ…ظˆط² ط§ظ„ط£طµط§ظ„ط©آ» (`/settings/authenticity`, the codes card of آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ» moved there whole) and آ«ط¨ط§ط±ظƒظˆط¯ ط§ظ„ظ…ظ†طھط¬ط§طھآ»
     // (`/settings/product-barcodes`), side by side right after آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ», on `settings.view`. Not one address moved; no more line (cards of an existing door).
-    expect(ALL_ROUTES).toHaveLength(63);
+    // 25/11 (F12, the owner's ruling «A»): 64 with `/confirmation/winback-list` «قايمة الاسترجاع» — her private win-back list, a tab of «التأكيد», on `confirmation.work`. Not one address moved.
+    expect(ALL_ROUTES).toHaveLength(64);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 7, 9, 5, 2, 23]);
+    // 25/11 (F12): «التأكيد» 5 → 6 with «قايمة الاسترجاع».
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 6, 5, 7, 9, 5, 2, 23]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
@@ -277,7 +279,9 @@ describe('the sidebar', () => {
   // in a browser by anybody but the owner): every line is one their keys open, none is empty, none is extra.
   it('and «عاين كـ»: an agent, a warehouse hand, an accountant and a moderator each see exactly the lines their keys open', () => {
     const people: Record<string, { keys: string[]; lines: [string, string][] }> = {
-      'موظفة تأكيد': { keys: ['confirmation.pull', 'confirmation.work'], lines: [['طلباتي', '/confirmation/mine']] },
+      // 25/11 (F12): old [['طلباتي', '/confirmation/mine']]; new — she has TWO tabs of «التأكيد» now (طلباتي and her private «قايمة الاسترجاع»),
+      // so the group is drawn as its hub line, which opens on «طلباتي» as before.
+      'موظفة تأكيد': { keys: ['confirmation.pull', 'confirmation.work'], lines: [['التأكيد', '/confirmation/mine']] },
       'مستودع': {
         keys: ['ops.prepare', 'ops.batches', 'ops.returns', 'inventory.view', 'products.view'],
         lines: [['الشحن', '/ops/preparation'], ['المخزون والمنتجات', '/products']],

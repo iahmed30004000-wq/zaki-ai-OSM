@@ -112,7 +112,8 @@ describe('every rejection reason is classified exactly once', () => {
     const all = [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS, ...NEVER_WINBACK_REASONS, ...Object.keys(WINBACK_RIDERS)];
     expect([...all].sort()).toEqual([...REJECTION_REASONS].sort());
     expect(new Set(all).size).toBe(all.length);
-    expect(SELECTABLE_WINBACK_REASONS).toHaveLength(7);
+    // 25/11 (F12, the owner's ruling «5 is selectable»): old 7; new 8 — the five-attempt close has its own tick and STILL rides on «three».
+    expect(SELECTABLE_WINBACK_REASONS).toHaveLength(8);
     for (const r of NEVER_WINBACK_REASONS) expect(SELECTABLE_WINBACK_REASONS, r).not.toContain(r);
     // A reason added to the workflow tomorrow fails here until somebody decides which kind it is.
     for (const r of REJECTION_REASONS) expect(REJECTION_REASON_AR[r], r).toBeTruthy();
@@ -132,10 +133,17 @@ describe('a code that rides on a winback reason', () => {
   const THREE = 'NO_ANSWER_3_ATTEMPTS';
   const FIVE = 'NO_ANSWER_5_ATTEMPTS';
 
-  it('rides on the old code, and is never itself selectable or stored', () => {
+  // 25/11 (F12): old «never itself selectable or stored»; the owner made it selectable. It still rides on «three».
+  it('rides on the old code, AND is selectable and stored on its own tick (the owner, 25/11)', () => {
     expect(WINBACK_RIDERS).toEqual({ [FIVE]: THREE });
-    expect(SELECTABLE_WINBACK_REASONS).not.toContain(FIVE);
-    expect(parseWinbackRule({ reasons: [THREE, FIVE] }).reasons).toEqual([THREE]);
+    expect(SELECTABLE_WINBACK_REASONS).toContain(FIVE);
+    expect(parseWinbackRule({ reasons: [THREE, FIVE] }).reasons).toEqual([THREE, FIVE]);
+    // ticked alone, it calls for the five-attempt closes and not the three-attempt ones
+    const fiveOnly = rule({ reasons: [FIVE] });
+    expect(code(verdict({ rejectionReason: FIVE }, fiveOnly))).toBe('ELIGIBLE');
+    expect(code(verdict({ rejectionReason: THREE }, fiveOnly))).toBe('REASON_NOT_WINBACK');
+    // both ticked: no code twice in the database's list
+    expect(winbackCodes([THREE, FIVE])).toEqual([THREE, FIVE]);
   });
 
   it('winbackCodes: the rider is added iff its host is listed — once, after what the rule lists', () => {

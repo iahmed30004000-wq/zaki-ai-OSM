@@ -190,6 +190,9 @@ export const NAV: NavGroup[] = [
       // money, and the agent meets the result of it as an ordinary new order in her queue.
       // An agent's postponed orders are a tab of «طلباتي»; the old addresses redirect.
       r('/confirmation/follow-up', 'المتابعة', 'CalendarClock', ['confirmation.supervise']),
+      // «قايمة الاسترجاع» (25/11, F12 — the owner's ruling «A»): HER private win-back list, opened by her in idle time — never pulled,
+      // outside her hand limit. On `confirmation.work`, the key of working what she holds.
+      r('/confirmation/winback-list', 'قايمة الاسترجاع', 'Undo2', ['confirmation.work']),
       r('/confirmation/issues', 'الإشكالات', 'AlertTriangle', ['confirmation.issues']),
       // «قواعد مركز التأكيد» (18/11): the eight cards of the confirmation rules, moved here from «إعدادات النظام». On `settings.view`, the key those cards' own doors already read —
       // a holder of it who holds no `confirmation.*` key opens this page, and the cards behave as they always did (each asks its own key again).

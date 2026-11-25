@@ -112,6 +112,9 @@ const WRITERS = [
    */
   'src/app/api/orders/[id]/delivery-included/route.ts',
   'src/app/api/confirmation/winback/route.ts',
+  // 25/11 (F12, the owner's ruling «1 modified»): the 1 ↔ 3 pieces switch of a win-back list order — its total is the owner's setting,
+  // through `computeCod`, never a figure from the request.
+  'src/app/api/confirmation/winback/list/[id]/route.ts',
   'src/app/api/public/landing-pages/[slug]/orders/[orderNumber]/add-product/route.ts',
   /*
    * «العرض بعد الطلب». It writes `totalAmount` and nothing else of the
@@ -216,9 +219,6 @@ const READS_ONLY: Record<string, string> = {
   'src/app/api/shipping-batches/[id]/route.ts': 'حالة دفعة الشحن وأعضاؤها — لا مال',
   'src/app/api/whatsapp/conversations/[id]/route.ts': 'يعرض إجمالاً داخل محادثة',
   'src/lib/commission.ts': 'العمولة، ولها دالّتها وجدولها المنفصل عن الطلب',
-  // 25/11 (F12, التوزيع الجماعي للاسترجاع): a new file the sweep found — it READS the cancelled order's subtotal and discount to compare the
-  // owner's win-back price with what the order cost; the new order and its money are written by the win-back door (on the list above), never here.
-  'src/lib/winback-bulk.ts': 'يقرأ سعر الطلب الملغى وخصمه ليقارنهم بسعر الاسترجاع — لا يكتب مالاً؛ الطلب الجديد ومالُه من باب الاسترجاع عبر computeCod',
   'src/lib/conversions/emit.ts': 'يرسل قيمة إلى منصّة إعلانات — صادر، قراءة',
   'src/lib/couriers/dispatch.ts': 'يقرأ الإجمالي المخزّن ليبلّغه للمندوب',
   'src/lib/offers.ts': 'تسعير العروض نفسها — سعر العرض إدخال البائع',

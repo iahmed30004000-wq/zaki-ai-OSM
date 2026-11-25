@@ -149,7 +149,7 @@ export async function POST(req: Request) {
       where: { id: orderId, companyId, storeId },
       select: {
         id: true, orderNumber: true, confirmationStatus: true, claimedById: true,
-        postponedUntil: true, nextFollowUpAt: true, version: true,
+        postponedUntil: true, nextFollowUpAt: true, version: true, winbackListUserId: true,
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -197,6 +197,8 @@ export async function POST(req: Request) {
         claimedById: null,
         claimedAt: null,
         currentOwnerId: null,
+        // F12: a private-list row let go goes to the win-back pool (winbackListAt kept), never back onto her list unclaimed.
+        ...(order.winbackListUserId ? { winbackListUserId: null, winbackListSince: null } : {}),
         lockedById: null,
         lockedAt: null,
         version: { increment: 1 },

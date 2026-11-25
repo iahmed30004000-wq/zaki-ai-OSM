@@ -372,9 +372,6 @@ describe('who reads the stored rule: the door and the engine — never a screen'
       'lib/reserve-returning-customers.ts',
       // ADDED 2026-11-21 (request Q5b): the ROUTING rules' filter asks `ruleFor` with the DEFAULT rule (its `onlyFor` answer never reads a number) — the engine, never a screen.
       'lib/routing-rules.ts',
-      // ADDED 2026-11-25 (F12, the bulk win-back): each agent's room under HER hand limit, read exactly as the returning-customer hold reads it
-      // (`returnsLimits` with the base rule and her own rules, once per press) — server only, the engine's numbers, never a screen.
-      'lib/winback-bulk.ts',
     ]);
     // …and no screen at all: a component or a client file that read it would put the reader (and the database client behind it) into a bundle.
     expect(importers.filter((f) => f.startsWith('components/') || /^'use client'/m.test(readFileSync(join(root, f), 'utf8')))).toEqual([]);

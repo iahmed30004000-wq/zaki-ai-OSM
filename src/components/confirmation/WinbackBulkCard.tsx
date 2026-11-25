@@ -21,7 +21,8 @@ import { apiJson } from '@/lib/api-client';
 interface Agent {
   id: string;
   name: string;
-  room: number;
+  /** Open rows on her private win-back list — information, never a limit. */
+  listOpen: number;
 }
 interface Meta {
   canBulk: boolean;
@@ -41,10 +42,12 @@ interface Prices {
   products: { id: string; name: string; price: Price | null }[];
 }
 interface Plan {
-  planned: { orderId: string; orderNumber: string; agentId: string; price: number; tier: 'one' | 'three' }[];
-  perAgent: { id: string; name: string; room: number; count: number }[];
+  planned: { orderId: string; orderNumber: string; agentId: string; price: number; pieces: number; oldPieces: number }[];
+  perAgent: { id: string; name: string; listOpen: number; count: number }[];
   skipped: { code: string; count: number; reasonAr: string }[];
   scanned: number;
+  /** List orders let go untouched after three days — a manager may hand them out again. */
+  offeredBefore?: number;
 }
 interface RunAnswer {
   created: number;
@@ -136,11 +139,29 @@ export function WinbackBulkCard() {
     }
   };
 
+  // «انعرض من قبل»: the list orders let go untouched — the SAME orders handed out again, no new one is made.
+  const rehand = async (howMany: number) => {
+    setBusy(true);
+    try {
+      const post = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const p = await apiJson<{ planned: { orderId: string }[] }>('/api/confirmation/winback', post({ action: 'rehand-preview', count: Math.min(howMany, max), agentIds: agents }));
+      if (p.planned.length === 0) return;
+      const a = await apiJson<RunAnswer>('/api/confirmation/winback', post({ action: 'rehand-run', orderIds: p.planned.map((x) => x.orderId), agentIds: agents }));
+      setRun(a);
+      setPlan(null);
+      toast.done(`انوزّع ${a.created} من اللي انعرضوا من قبل`);
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذّر التوزيع');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader
         title="وزّع على الموظفات"
-        subtitle={`طلب استرجاع جديد لكل طلب ملغى جاهز، بسعر الاسترجاع المحدد للمنتج (شامل التوصيل)، ومحجوز للموظفة. طلب واحد لكل زبون، والأحدث أول. لحد ${max} طلب بالضغطة.`}
+        subtitle={`طلب استرجاع جديد لكل طلب ملغى جاهز، بسعر الـ3 قطع المحدد للمنتج (شامل التوصيل)، بقايمة استرجاع خاصة بالموظفة برّا حدّها. طلب واحد لكل زبون، والأحدث أول. لحد ${max} طلب بالضغطة.`}
       />
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-4">
@@ -195,7 +216,7 @@ export function WinbackBulkCard() {
                     setAgents(on ? [...agents, a.id] : agents.filter((x) => x !== a.id));
                   }}
                   label={a.name}
-                  hint={`بتقدر تاخد ${a.room} كمان`}
+                  hint={`بقايمتها هلّق ${a.listOpen}`}
                 />
               ))}
             </div>
@@ -221,6 +242,11 @@ export function WinbackBulkCard() {
                 <li key={a.id}>{`${a.name}: ${a.count}`}</li>
               ))}
             </ul>
+            {(plan.offeredBefore ?? 0) > 0 && (
+              <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => void rehand(plan.offeredBefore ?? 0)}>
+                {`وزّع اللي انعرضوا من قبل (${plan.offeredBefore})`}
+              </Button>
+            )}
             {plan.skipped.length > 0 && (
               <>
                 <p className="font-medium">انتركوا:</p>
@@ -284,7 +310,7 @@ function PricesEditor({ prices, onSaved }: { prices: Prices; onSaved: () => Prom
           {open ? 'سكّر' : 'عدّل الأسعار'}
         </Button>
       </div>
-      <p className="text-note text-[var(--sys-muted-foreground)]">السعر هو إجمالي الطلب شامل التوصيل. قطعة أو قطعتين = سعر القطعة؛ 3 قطع = سعر الـ3. طلب فيه أكتر من 3 قطع ما بينعرض لهلّق. منتج بلا سعر ما بينعرض.</p>
+      <p className="text-note text-[var(--sys-muted-foreground)]">السعر هو إجمالي الطلب شامل التوصيل. كل طلب استرجاع بينعمل على الـ3 قطع، والموظفة بتقدر تحوّله لقطعة وحدة. منتج بلا سعر ما بينعرض.</p>
       {open &&
         prices.products.map((p) => {
           const d = row(p.id, p.price);
@@ -292,8 +318,8 @@ function PricesEditor({ prices, onSaved }: { prices: Prices; onSaved: () => Prom
           return (
             <div key={p.id} className="grid items-end gap-2 md:grid-cols-5">
               <span className="text-sm">{p.name}</span>
-              <Input label="قطعة أو قطعتين" type="number" inputMode="decimal" value={d.one} onChange={(e) => set('one', e.target.value)} />
-              <Input label="3 قطع أو أكتر" type="number" inputMode="decimal" value={d.three} onChange={(e) => set('three', e.target.value)} />
+              <Input label="قطعة وحدة" type="number" inputMode="decimal" value={d.one} onChange={(e) => set('one', e.target.value)} />
+              <Input label="3 قطع" type="number" inputMode="decimal" value={d.three} onChange={(e) => set('three', e.target.value)} />
               <Input label="العملة" value={d.currency} maxLength={3} onChange={(e) => set('currency', e.target.value)} />
               <span className="flex gap-1">
                 <Button type="button" size="sm" variant="secondary" onClick={() => save(p.id)}>

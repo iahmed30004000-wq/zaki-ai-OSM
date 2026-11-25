@@ -373,6 +373,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       data: {
         claimedById: null, claimedAt: null,
         currentOwnerId: null,
+        // F12: a private-list row let go goes to the win-back pool (winbackListAt kept), never back onto her list unclaimed.
+        ...(order.winbackListUserId ? { winbackListUserId: null, winbackListSince: null } : {}),
         // A release lets go of the hold as well: an order she gave back is the shared queue's, not held for her a second time
         // (`assignedAt` is what a hold is measured from — order-reservation.ts).
         assignedAt: null,

@@ -1,3 +1,4 @@
+import { notOnAPrivateList } from './winback-private-list';
 import type { Prisma } from '@prisma/client';
 import type { BusinessCalendar } from './business-calendar';
 import {
@@ -395,6 +396,8 @@ export async function workFirstGate(
     where: {
       ...args.scope,
       claimedById: args.userId,
+      // F12: a row of a PRIVATE win-back list is outside her hand — she opens her list herself (winback-private-list.ts).
+      ...notOnAPrivateList,
       confirmationStatus: { in: [...args.open] },
       // Never shipped — the contact door's own reading of «still ours to call».
       shippingStatus: 'NOT_READY',

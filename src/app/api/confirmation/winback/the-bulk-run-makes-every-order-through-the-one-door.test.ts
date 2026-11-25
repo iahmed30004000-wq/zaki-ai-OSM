@@ -66,7 +66,7 @@ const { state, db, logAudit } = vi.hoisted(() => {
     sellingPrice: s.items.reduce((n, l) => n + l.quantity * l.unitPrice, 0), discountAmount: s.discountAmount ?? 0, shippingCost: 0,
     priceIncludesDelivery: false, productNameSnapshot: s.items[0].productName, productImageSnapshot: null,
     moderatorId: null, estimatedCostOfGoods: s.cost ?? 1, source: 'Manual', customerNotes: null,
-    shippedAt: null, shippingStatus: 'NOT_READY', offerId: null,
+    shippedAt: null, shippingStatus: 'NOT_READY', offerId: 'off-old',
   });
   const db: any = {
     company: { findUnique: vi.fn(async () => ({ settings: JSON.stringify({ winbackPrices: state.prices }) })) },
@@ -106,6 +106,9 @@ const { state, db, logAudit } = vi.hoisted(() => {
         return { id, orderNumber: data.orderNumber };
       }),
       update: vi.fn(),
+      groupBy: vi.fn(async () => []),
+      // «انعرض من قبل» counted at the preview
+      count: vi.fn(async () => 0),
       updateMany: vi.fn(async (args: any) => {
         state.holds.push(args);
         return { count: 1 };
@@ -125,6 +128,7 @@ const { state, db, logAudit } = vi.hoisted(() => {
     orderNote: { create: vi.fn() },
     orderActivity: { create: vi.fn() },
     productFixedCost: { findMany: vi.fn(async () => []) },
+    productionBatch: { findMany: vi.fn(async () => []) },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   return { state, db, logAudit: vi.fn() };
@@ -266,51 +270,72 @@ describe('1 — manager only, read the way the session reads her', () => {
   });
 });
 
-describe('2–3 — the run makes the order through the one creator, at the owner’s price', () => {
-  it('an order cancelled 20 days ago is made and held for its agent; the TOTAL is the win-back price, delivery included', async () => {
+describe('2–3 — the run makes the order through the one creator, at the owner’s 3-piece price, on her private list', () => {
+  it('an order cancelled 20 days ago is made and put on her list; 1-piece and 3-piece old orders are both offered at 3 pieces and the triple price', async () => {
     state.sources = [src(1), src(2, { items: [{ ...SCAR, quantity: 1 }] })];
     const plan = await preview();
     expect(plan.status).toBe(200);
-    expect(plan.body.planned.map((p: any) => [p.orderId, p.agentId, p.price])).toEqual([
-      [uuid(2), 'sara', 12],
-      [uuid(1), 'huda', 20],
+    expect(plan.body.planned.map((p: any) => [p.orderId, p.agentId, p.pieces, p.price, p.oldPieces])).toEqual([
+      [uuid(2), 'sara', 3, 20, 1],
+      [uuid(1), 'huda', 3, 20, 3],
     ]);
     expect(db.order.create).not.toHaveBeenCalled(); // the preview writes nothing
 
     const r = await run(plan.body.planned.map((p: any) => p.orderId));
     expect(r.status).toBe(200);
     expect(r.body.created).toBe(2);
-    const byOld = (id: string) => state.created.find((c) => c.replacesOrderId === id)!;
-    expect(byOld(uuid(1)).totalAmount).toBe(20); // 3 × 15 = 45 → 20
-    expect(byOld(uuid(1)).discountAmount).toBe(25);
-    expect(byOld(uuid(2)).totalAmount).toBe(12); // 1 × 15 = 15 → 12
     for (const c of state.created) {
+      // one line of 3 pieces whose TOTAL is the triple price, delivery included, no discount, no gift, not the old offer
+      expect(c.totalAmount).toBe(20);
+      expect(c.quantity).toBe(3);
+      expect(c.freeQuantity).toBe(0);
+      expect(c.discountAmount).toBe(0);
+      expect(c.offerId).toBeNull();
       expect(c.priceIncludesDelivery).toBe(true);
       expect(c.confirmationStatus).toBe('NEW');
       expect(c.shippingCost).toBe(0);
     }
-    // the lines carry the same goods, and their totals add up to the price
-    const linesOf1 = state.lines.filter((l) => l.orderId === state.created.find((c) => c.replacesOrderId === uuid(1))!.id);
-    expect(linesOf1.map((l) => [l.quantity, l.unitPrice, l.lineTotal])).toEqual([[3, 15, 20]]);
-    // held for her: her name on an order nobody holds — one conditional write per new order, never a claim
-    expect(state.holds.map((h) => [h.where.id, h.data.assignedToId])).toEqual([
-      [state.created[0].id, 'sara'],
-      [state.created[1].id, 'huda'],
+    for (const id of state.created.map((c) => c.id)) {
+      const lines = state.lines.filter((l) => l.orderId === id);
+      expect(lines.map((l) => [l.productId, l.quantity, l.freeQuantity, l.lineTotal])).toEqual([['scar', 3, 0, 20]]);
+    }
+    // on her PRIVATE list: claimed by her, marked her list, the clock started — one conditional write per new order
+    expect(state.holds.map((h) => [h.where.id, h.data.claimedById, h.data.winbackListUserId])).toEqual([
+      [state.created[0].id, 'sara', 'sara'],
+      [state.created[1].id, 'huda', 'huda'],
     ]);
     for (const h of state.holds) {
-      expect(h.where).toMatchObject({ claimedById: null, assignedToId: null, confirmationStatus: 'NEW' });
-      expect(h.data.claimedById).toBeUndefined();
+      expect(h.where).toMatchObject({ claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: null });
+      expect(h.data.winbackListAt).toBeInstanceOf(Date);
     }
     // and the cancelled order is never written
     expect(db.order.update).not.toHaveBeenCalled();
     expect(state.holds.some((h) => h.where.id === uuid(1) || h.where.id === uuid(2))).toBe(false);
   });
 
+  it('2-piece and 6-piece old orders produce a 3-piece offer at the triple price', async () => {
+    state.sources = [src(1, { items: [{ ...SCAR, quantity: 2 }] }), src(2, { items: [{ ...SCAR, quantity: 6 }] })];
+    const r = await run([uuid(1), uuid(2)]);
+    expect(r.body.created).toBe(2);
+    expect(state.created.map((c) => [c.replacesOrderId, c.quantity, c.totalAmount])).toEqual([
+      [uuid(2), 3, 20],
+      [uuid(1), 3, 20],
+    ]);
+  });
+
+  it('the kamaa water: a 1-piece order that cost 15 is offered at 3 pieces for 20 — no «price above the old order» exclusion', async () => {
+    state.prices = { kamaa: { one: 10, three: 20, currency: 'USD' } };
+    state.sources = [src(1, { items: [{ productId: 'kamaa', productName: 'ماء', unitPrice: 15, freeQuantity: 0, quantity: 1 }] })];
+    const r = await run([uuid(1)]);
+    expect(r.body.created).toBe(1);
+    expect(state.created[0]).toMatchObject({ quantity: 3, totalAmount: 20 });
+  });
+
   it('a price or a discount in the body is never read', async () => {
     state.sources = [src(1)];
     const plan = await preview({ price: 1, discount: 40 });
     expect(plan.body.planned[0].price).toBe(20);
-    const r = await run([uuid(1)], { price: 1, discount: 40, priced: { price: 1 } });
+    const r = await run([uuid(1)], { price: 1, discount: 40, priced: { price: 1, pieces: 1 } });
     expect(r.body.created).toBe(1);
     expect(state.created[0].totalAmount).toBe(20);
   });
@@ -322,12 +347,21 @@ describe('2–3 — the run makes the order through the one creator, at the owne
     expect(r.body.code).toBe('DISCOUNT_TOO_LARGE');
   });
 
-  it('a price above what the order cost is refused on its row, never turned into a surcharge', async () => {
-    state.prices = { scar: { one: 16, three: 50, currency: 'USD' } };
-    state.sources = [src(1)];
+  it('the 165 handed out by hand on 25/11: their sources are already offered, so the bulk never offers them again', async () => {
+    // a source offered by the single press and transferred: it has `replacedBy`; its new order carries no list mark
+    state.sources = [src(1), src(2)];
+    state.offered.set(uuid(1), 'WB-HAND-1');
     const plan = await preview();
-    expect(plan.body.planned).toEqual([]);
-    expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'PRICE_NOT_LOWER', count: 1 })]);
+    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(2)]);
+    const r = await run([uuid(1), uuid(2)]);
+    expect(r.body.results.find((x: any) => x.orderId === uuid(1))).toMatchObject({ ok: false, code: 'NOT_IN_POOL' });
+    expect(state.created.map((c) => c.replacesOrderId)).toEqual([uuid(2)]);
+    // and the pool the bulk reads is the «ready» view, which names `replacedBy: null` — the real filter, not the fake's
+    expect(JSON.stringify(state.candidateCalls[0].where)).toContain('"replacedBy":null');
+    // the re-hand only ever reads orders a LIST let go (winbackListAt set) — never one handed out by hand
+    await post({ action: 'rehand-preview', count: 5, agentIds: ['sara'] });
+    const rehandWhere = db.order.findMany.mock.calls.map((c: any[]) => c[0]?.where).find((w: any) => w?.winbackListAt);
+    expect(rehandWhere).toMatchObject({ winbackListAt: { not: null }, winbackListUserId: null, claimedById: null });
   });
 });
 
@@ -482,8 +516,9 @@ describe('7 — the review round (25/11): each of these went green under a break
     expect(state.audienceCalls.every((q) => q.storeId === 's1' && q.companyId === 'c1')).toBe(true);
     const ok = await preview();
     expect(ok.status).toBe(200);
-    expect(state.countScopes.length).toBeGreaterThan(0);
-    expect(state.countScopes.every((sc) => sc.storeId === 's1' && sc.companyId === 'c1')).toBe(true);
+    // their open list counts are read in this store only (information — the list takes no room)
+    const listCount = (db.order.groupBy.mock.calls as any[]).map((c) => c[0]).find((a: any) => a?.by?.[0] === 'winbackListUserId');
+    expect(listCount.where).toMatchObject({ companyId: 'c1', storeId: 's1' });
   });
 
   it('B14 — the live-order check is asked inside this store', async () => {
@@ -493,64 +528,77 @@ describe('7 — the review round (25/11): each of these went green under a break
     for (const w of state.liveCalls) expect(w).toMatchObject({ companyId: 'c1', storeId: 's1' });
   });
 
-  it('B20 — the priced discount is rounded to the minor unit: JOD 3 × 3.333 at 7.5 → exactly 2.499', async () => {
+  it('B20 — the price is the total to the minor unit: JOD 3 pieces at 7.5 → 7.5, and USD 3 at 20 (6.666… a piece) → exactly 20', async () => {
     state.minor = 3;
     state.prices = { scar: { one: 5, three: 7.5, currency: 'JOD' } };
-    state.sources = [src(1, { currency: 'JOD', items: [{ ...SCAR, unitPrice: 3.333, quantity: 3 }] })];
-    const r = await run([uuid(1)]);
-    expect(r.body.created).toBe(1);
-    expect(state.created[0].discountAmount).toBe(2.499);
-    expect(state.created[0].totalAmount).toBe(7.5);
+    state.sources = [src(1, { currency: 'JOD', items: [{ ...SCAR, unitPrice: 3.333, quantity: 1 }] })];
+    expect((await run([uuid(1)])).body.created).toBe(1);
+    expect(state.created[0]).toMatchObject({ totalAmount: 7.5, sellingPrice: 7.5, discountAmount: 0 });
+    expect(state.lines[0].lineTotal).toBe(7.5);
+    state.minor = 2;
+    state.prices = { scar: { one: 12, three: 20, currency: 'USD' } };
+    state.sources = [src(2)];
+    expect((await run([uuid(2)])).body.created).toBe(1);
+    expect(state.created[1]).toMatchObject({ totalAmount: 20, sellingPrice: 20 });
+    expect(state.lines[1].lineTotal).toBe(20);
   });
 
-  it('B4/B16 — a discount already on the cancelled order is counted once: 45 less 5 before, at 20 → 20 more, 25 in all, total 20', async () => {
+  it('B4/B16 — a discount already on the cancelled order is NOT carried: the new order is its own price, total 20, discount 0', async () => {
     state.sources = [src(1, { discountAmount: 5 })];
     const r = await run([uuid(1)]);
     expect(r.body.created).toBe(1);
-    expect(state.created[0].discountAmount).toBe(25);
+    expect(state.created[0].discountAmount).toBe(0);
     expect(state.created[0].totalAmount).toBe(20);
-    expect(state.created[0].internalNotes).toContain('بخصم 20');
-    const shares = state.lines.reduce((n, l) => n + l.discountShare, 0);
-    expect(shares).toBe(25);
+    expect(state.lines.reduce((n, l) => n + l.discountShare, 0)).toBe(0);
   });
 
-  it('the cost floor: a price below what the goods cost is not offered, at the plan and at the creator', async () => {
-    state.sources = [src(1, { cost: 20.5 }), src(2, { cost: 20 })];
+  it('the cost floor: a price below what the three pieces cost is not offered, at the plan and at the creator', async () => {
+    // the owner's figure for the product: 7 a piece → 3 × 7 = 21 > 20
+    db.productFixedCost.findMany.mockResolvedValue([{ productId: 'scar', amount: 7 }]);
+    state.sources = [src(1)];
     const plan = await preview();
-    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(2)]);
+    expect(plan.body.planned).toEqual([]);
+    expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'PRICE_BELOW_COST', count: 1 })]);
+    db.productFixedCost.findMany.mockResolvedValue([{ productId: 'scar', amount: 6 }]); // 18 ≤ 20
+    expect((await preview()).body.planned).toHaveLength(1);
+    db.productFixedCost.findMany.mockResolvedValue([]);
+  });
+
+  it('with no fixed figure, the cost is the OLD order’s per piece × 3: a 2-piece source (cost 10) costs 15 and is offered; a 6-piece source (cost 48) costs 24 > 20 and is skipped', async () => {
+    state.sources = [src(1, { items: [{ ...SCAR, quantity: 2 }], cost: 10 }), src(2, { items: [{ ...SCAR, quantity: 6 }], cost: 48 })];
+    const plan = await preview();
+    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(1)]);
     expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'PRICE_BELOW_COST', count: 1 })]);
     const r = await run([uuid(1), uuid(2)]);
-    expect(r.body.results.find((x: any) => x.orderId === uuid(1))).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
-    expect(state.created.map((c) => c.replacesOrderId)).toEqual([uuid(2)]);
+    expect(r.body.results.find((x: any) => x.orderId === uuid(2))).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
+    // the new order carries the cost of ITS 3 pieces — 3 × 5 = 15 — not the 2 pieces the old one cost
+    expect(state.created.map((c) => [c.replacesOrderId, c.quantity, c.estimatedCostOfGoods])).toEqual([[uuid(1), 3, 15]]);
   });
 
   it('the creator holds the cost floor too: a fixed cost set between the plan and the press refuses that row', async () => {
     state.sources = [src(1)];
     // the plan reads no figure; by the time the creator asks, the owner has set 9 a piece (3 × 9 = 27 > 20)
-    db.productFixedCost.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ productId: 'scar', amount: 9 }]);
+    db.productFixedCost.findMany.mockResolvedValueOnce([]).mockResolvedValue([{ productId: 'scar', amount: 9 }]);
     const r = await run([uuid(1)]);
+    db.productFixedCost.findMany.mockResolvedValue([]);
     expect(r.body.created).toBe(0);
     expect(r.body.results[0]).toMatchObject({ ok: false, code: 'PRICE_BELOW_COST' });
     expect(db.order.create).not.toHaveBeenCalled();
   });
 
-  it('PENDING THE OWNER — more than three pieces is not offered, by its own reason', async () => {
-    state.sources = [src(1, { items: [{ ...SCAR, quantity: 4 }] }), src(2, { items: [{ ...SCAR, quantity: 3 }] })];
-    const plan = await preview();
-    expect(plan.body.planned.map((p: any) => p.orderId)).toEqual([uuid(2)]);
-    expect(plan.body.skipped).toEqual([expect.objectContaining({ code: 'TOO_MANY_PIECES', count: 1, reasonAr: expect.stringContaining('3 قطع') })]);
-  });
-
   it('B27 — every row of the run says its own code, in Arabic', async () => {
-    state.prices = { scar: { one: 12, three: 20, currency: 'USD' } };
+    state.prices = { scar: { one: 12, three: 20, currency: 'USD' }, oud: { one: 12, three: 20, currency: 'USD' } };
+    // the owner's figure for oud: 30 a piece — 90 for three, above the price
+    db.productFixedCost.findMany.mockResolvedValue([{ productId: 'oud', amount: 30 }]);
     state.sources = [
       src(1),
       src(2, { items: [{ productId: 'soap', productName: 'صابون', unitPrice: 20, freeQuantity: 0, quantity: 1 }] }),
       src(3, { customerId: 'cust-1' }),
-      src(4, { cost: 50 }),
+      src(4, { items: [{ productId: 'oud', productName: 'عود', unitPrice: 40, freeQuantity: 0, quantity: 1 }] }),
     ];
     const gone = uuid(99);
     const r = await run([uuid(1), uuid(2), uuid(3), uuid(4), gone]);
+    db.productFixedCost.findMany.mockResolvedValue([]);
     const code = (id: string) => r.body.results.find((x: any) => x.orderId === id);
     expect(code(gone)).toMatchObject({ ok: false, code: 'NOT_IN_POOL' });
     expect(code(uuid(2))).toMatchObject({ ok: false, code: 'NO_WINBACK_PRICE' });

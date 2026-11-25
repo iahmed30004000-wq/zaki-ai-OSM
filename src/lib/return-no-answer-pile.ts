@@ -1,3 +1,4 @@
+import { notOnAPrivateList } from './winback-private-list';
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import type { BusinessCalendar } from './business-calendar';
@@ -127,6 +128,8 @@ export function returnablePileWhere(scope: QueueScope, agentId: string, now: Dat
   return {
     ...scope,
     claimedById: agentId,
+    // F12: a row of a PRIVATE win-back list is outside her hand — she opens her list herself (winback-private-list.ts).
+    ...notOnAPrivateList,
     confirmationStatus: { in: OPEN_CONFIRMATION },
     shippingStatus: 'NOT_READY',
     shippingBatchId: null,

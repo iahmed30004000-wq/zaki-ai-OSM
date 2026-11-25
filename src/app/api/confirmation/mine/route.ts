@@ -1,3 +1,4 @@
+import { notOnAPrivateList } from '@/lib/winback-private-list';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -264,7 +265,8 @@ export async function GET(request: Request) {
       await requirePermission('confirmation.work');
     }
 
-    const scope = { companyId, storeId, claimedById: deskOf };
+    // F12: a row of a PRIVATE win-back list is outside her hand — she opens her list herself (winback-private-list.ts).
+    const scope = { companyId, storeId, claimedById: deskOf, ...notOnAPrivateList };
     const now = new Date();
 
     /*

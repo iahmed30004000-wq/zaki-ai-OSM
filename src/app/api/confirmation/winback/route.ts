@@ -16,10 +16,11 @@ import { winbackRule } from '@/lib/winback-rule';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
 import { PERIODS, baseWhere, isReason, periodWhere, reasonWhere, viewWhere, winbackFilters } from '@/lib/winback-filters';
 import { customerWinbackVerdicts } from '@/lib/winback-customer';
-import { readWinbackPrices } from '@/lib/winback-prices';
+import { readWinbackPrices, winbackUnitCost, type Pieces } from '@/lib/winback-prices';
 import {
-  BULK_MAX, BULK_SCAN, SKIP_AR, bulkAgents, customersWithALiveOrder, holdForAgent, planBulk, readCandidates, type SkipCode,
+  BULK_MAX, BULK_SCAN, SKIP_AR, bulkAgents, customersWithALiveOrder, planBulk, readCandidates, type SkipCode,
 } from '@/lib/winback-bulk';
+import { handToList, offeredBeforeWhere } from '@/lib/winback-private-list';
 import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -256,7 +257,7 @@ type Offered = { ok: true; status: 200; body: { success: true; order: { id: stri
  */
 async function offerOne(
   { user, companyId, storeId, country }: Ctx,
-  input: { orderId: string; discount: number; note?: string; priced?: { price: number } }
+  input: { orderId: string; discount: number; note?: string; priced?: { price: number; pieces: Pieces } }
 ): Promise<Offered> {
   const { orderId, note, priced } = input;
   let discount = input.discount;
@@ -397,18 +398,25 @@ async function offerOne(
     const carried = Number(order.discountAmount ?? 0);
     // The win-back price is the order's TOTAL with the delivery inside it: the new order says so, so the shipment adds nothing on top.
     const includesDelivery = priced ? true : (order.priceIncludesDelivery ?? false);
-    if (priced) {
-      // The discount that brings this order to the owner's price: its subtotal (through the one money function), less what came off
-      // before, less the price. A price above what the order cost is not a win-back — refused, never turned into a surcharge.
-      const subtotal = computeCod({ lines: lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })), discount: 0, deliveryFee: 0, priceIncludesDelivery: true, minorUnit: country.minorUnit }).subtotal;
-      discount = roundMinor(subtotal - carried - priced.price, country.minorUnit);
-      if (discount < 0) {
-        return { ok: false, status: 409, body: { error: 'سعر الاسترجاع أعلى من سعر الطلب الأصلي', errorAr: 'سعر الاسترجاع أعلى من سعر الطلب الأصلي', code: 'PRICE_NOT_LOWER' } };
-      }
+    /*
+     * THE OWNER'S TWO OPTIONS (his ruling 25/11, «1 modified») — ORDER CREATION CHANGES HERE ON HIS WORD, for the bulk run only.
+     *
+     * A priced offer is not the cancelled order's goods at a discount any more: it is ONE line of the same product, at 1 or 3 pieces
+     * (three in all, no gift), whose total is the configured price — whatever quantity the cancelled order had. The unit price is the
+     * total shared over the pieces; the money still goes through `computeCod` below, with no discount. A typed offer (the single
+     * press) is exactly what it was: the copied lines and the discount on them.
+     */
+    if (priced && new Set(lines.map((l) => l.productId)).size !== 1) {
+      return { ok: false, status: 409, body: { error: 'الطلب فيه أكتر من منتج', errorAr: 'الطلب فيه أكتر من منتج', code: 'MIXED_PRODUCTS' } };
     }
+    const goods = priced
+      ? [{ productId: lines[0].productId, productName: lines[0].productName, quantity: priced.pieces, freeQuantity: 0, unitPrice: priced.price / priced.pieces }]
+      : lines;
+    if (priced) discount = 0;
     // The discount is the WHOLE of it, not a second helping on top of what
     // came off before — the ceiling above already subtracted the old one.
-    const totalDiscount = carried + discount;
+    // A priced offer carries none: its price IS its total.
+    const totalDiscount = priced ? 0 : carried + discount;
     /*
      * THROUGH THE ONE DOOR, NOT A FORMULA OF ITS OWN.
      *
@@ -425,7 +433,7 @@ async function offerOne(
      * that is a defect even when the two agree today.»
      */
     const money = computeCod({
-      lines: lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })),
+      lines: goods.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })),
       discount: totalDiscount,
       deliveryFee: 0,
       priceIncludesDelivery: includesDelivery,
@@ -448,12 +456,18 @@ async function offerOne(
      * computed before this and do not read it.
      */
     const figures = await fixedCostsOf(db, companyId, [...new Set(lines.map((l) => l.productId))]);
-    const estimatedCostOfGoods =
-      costWhenEveryLineHasAFigure(
-        lines.map((l) => ({ productId: l.productId, units: l.quantity + (l.freeQuantity ?? 0) })),
-        figures,
-        country.minorUnit
-      ) ?? order.estimatedCostOfGoods;
+    // A priced offer is NEW goods (1 or 3 pieces, not the cancelled order's): costed for ITS OWN pieces (`winbackUnitCost`) — the owner's
+    // fixed figure per piece, else the cancelled order's own cost over its own pieces — × the new pieces. A typed offer keeps the copy rule.
+    const estimatedCostOfGoods = priced
+      ? roundMinor(
+          winbackUnitCost(figures.get(goods[0].productId), Number(order.estimatedCostOfGoods ?? 0), lines.reduce((n, l) => n + l.quantity + (l.freeQuantity ?? 0), 0)).unit * priced.pieces,
+          country.minorUnit
+        )
+      : costWhenEveryLineHasAFigure(
+          lines.map((l) => ({ productId: l.productId, units: l.quantity + (l.freeQuantity ?? 0) })),
+          figures,
+          country.minorUnit
+        ) ?? order.estimatedCostOfGoods;
     // The owner's price never sells the goods below what they cost (the F12 review): refused on the row, nothing written.
     if (priced && totalAmount < estimatedCostOfGoods) {
       return { ok: false, status: 409, body: { error: 'سعر الاسترجاع أقل من تكلفة البضاعة', errorAr: 'سعر الاسترجاع أقل من تكلفة البضاعة', code: 'PRICE_BELOW_COST' } };
@@ -490,9 +504,10 @@ async function offerOne(
           replacesOrderId: order.id,
           customerId: order.customerId,
           productId: order.productId,
-          offerId: order.offerId,
-          quantity,
-          freeQuantity: order.freeQuantity,
+          // The cancelled order's offer was for ITS quantity; a priced offer is one of the owner's two options, not that offer.
+          offerId: priced ? null : order.offerId,
+          quantity: priced ? priced.pieces : quantity,
+          freeQuantity: priced ? 0 : order.freeQuantity,
           // The subtotal of the lines written below, so the row and its own
           // lines can never disagree — the same column the orders PATCH and
           // `createReplacement` write from `money.subtotal`.
@@ -549,7 +564,7 @@ async function offerOne(
        * win-back offer nobody has accepted yet must not hold goods.
        */
       await tx.orderItem.createMany({
-        data: lines.map((l, i) => ({
+        data: goods.map((l, i) => ({
           companyId,
           orderId: fresh.id,
           productId: l.productId,
@@ -591,8 +606,9 @@ async function offerOne(
   }
 }
 
-/* ───────────────────────── «وزّع على الموظفات» — the bulk run (`winback-bulk.ts`) ───────────────────────── */
+/* ───────────────────────── «وزّع على الموظفات» — the bulk run (`winback-bulk.ts`, `winback-private-list.ts`) ───────────────────────── */
 
+const agentIdsSchema = z.array(z.string().min(1).max(64)).min(1).max(50);
 const bulkSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('bulk-preview'),
@@ -600,25 +616,28 @@ const bulkSchema = z.discriminatedUnion('action', [
     reason: z.string().min(1).max(64).optional(),
     period: z.enum(PERIODS).optional(),
     count: z.number().int().min(1).max(BULK_MAX),
-    agentIds: z.array(z.string().min(1).max(64)).min(1).max(50),
+    agentIds: agentIdsSchema,
   }),
-  z.object({
-    action: z.literal('bulk-run'),
-    orderIds: z.array(z.string().uuid()).min(1).max(BULK_MAX),
-    agentIds: z.array(z.string().min(1).max(64)).min(1).max(50),
-  }),
+  z.object({ action: z.literal('bulk-run'), orderIds: z.array(z.string().uuid()).min(1).max(BULK_MAX), agentIds: agentIdsSchema }),
+  // «انعرض من قبل»: list orders let go untouched after three days, handed out again — no new order is made.
+  z.object({ action: z.literal('rehand-preview'), count: z.number().int().min(1).max(BULK_MAX), agentIds: agentIdsSchema }),
+  z.object({ action: z.literal('rehand-run'), orderIds: z.array(z.string().uuid()).min(1).max(BULK_MAX), agentIds: agentIdsSchema }),
 ]);
 
+const BULK_ACTIONS = ['bulk-preview', 'bulk-run', 'rehand-preview', 'rehand-run'];
 const isBulkBody = (b: unknown): b is Record<string, unknown> =>
-  !!b && typeof b === 'object' && ((b as { action?: unknown }).action === 'bulk-preview' || (b as { action?: unknown }).action === 'bulk-run');
+  !!b && typeof b === 'object' && BULK_ACTIONS.includes(String((b as { action?: unknown }).action));
 
 const bulkRefuse = (errorAr: string, code: string, status = 400) => NextResponse.json({ error: errorAr, errorAr, code }, { status });
+
+type RowResult = { orderId: string; orderNumber: string; ok: boolean; agentId?: string; newOrderNumber?: string; code?: string; reasonAr?: string };
 
 /**
  * TWO PRESSES. `bulk-preview` reads the pool under the filters and answers the plan — which orders, to whom, what is skipped and why —
  * and writes nothing. `bulk-run` takes the order ids the preview answered and makes them, one at a time, through `offerOne` at the
- * server's price, then holds each for her agent. Run twice with the same ids, the second makes nothing: every order is already offered
- * (`ALREADY_OFFERED`, the creator's own verdict; the unique link refuses a race). A price in the body is never read: zod drops it.
+ * server's 3-piece price, then hands each to her agent's PRIVATE list (`handToList`) — outside her hand limit. Run twice with the same
+ * ids, the second makes nothing: every order is already offered (its source has `replacedBy`; the unique link refuses a race). A price
+ * in the body is never read: zod drops it. `rehand-*` hands out again what a list let go («انعرض من قبل») — the same order, no new one.
  *
  * Manager only: the offer's box AND «إسناد الطلبات» (`orders.assign`, the transfer door's key for handing an order to anybody). Not
  * `confirmation.reassign`: the confirmation agent's live template holds it (and the offer's box), and an agent must not hand out
@@ -634,14 +653,46 @@ async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> 
   const input = parsed.data;
   const now = new Date();
 
-  const [rule, prices, agents] = await Promise.all([winbackRule(companyId), readWinbackPrices(companyId), bulkAgents(scope, now, input.agentIds)]);
+  const agents = await bulkAgents(scope, input.agentIds);
   if (agents.length !== new Set(input.agentIds).size) {
     return bulkRefuse('في موظفة من اللي اخترتهن ما بتقدر تستلم طلبات بهالمتجر.', 'INVALID_AGENT');
   }
   // The agents in the order the manager picked them, so the even split starts where she started.
   const ordered = input.agentIds.filter((id, i, all) => all.indexOf(id) === i).map((id) => agents.find((a) => a.id === id)!);
+  const perAgentOf = (counts: Record<string, number>) => ordered.map((a) => ({ id: a.id, name: a.name, listOpen: a.listOpen, count: counts[a.id] ?? 0 }));
 
-  // The pool's «ready» view — the very filter the list shows — narrowed by the manager's choices.
+  if (input.action === 'rehand-preview' || input.action === 'rehand-run') {
+    const rows = await db.order.findMany({
+      where: { ...offeredBeforeWhere(scope), ...(input.action === 'rehand-run' ? { id: { in: input.orderIds } } : {}) },
+      orderBy: [{ winbackListAt: 'desc' }, { id: 'desc' }],
+      take: input.action === 'rehand-run' ? input.orderIds.length : input.count,
+      select: { id: true, orderNumber: true },
+    });
+    const counts: Record<string, number> = {};
+    const plan = rows.map((r, i) => {
+      const agentId = ordered[i % ordered.length].id;
+      counts[agentId] = (counts[agentId] ?? 0) + 1;
+      return { orderId: r.id, orderNumber: r.orderNumber, agentId };
+    });
+    if (input.action === 'rehand-preview') return NextResponse.json({ planned: plan, perAgent: perAgentOf(counts) });
+    const results: RowResult[] = input.orderIds
+      .filter((id) => !rows.some((r) => r.id === id))
+      .map((id) => ({ orderId: id, orderNumber: '', ok: false, code: 'NOT_OFFERED_BEFORE', reasonAr: 'مش من اللي انعرضوا من قبل (أو انوزّع للتو)' }));
+    for (const p of plan) {
+      const ok = await handToList(db, { ...scope, orderId: p.orderId, agentId: p.agentId, byUserId: user.id, now, rehand: true });
+      results.push(
+        ok
+          ? { orderId: p.orderId, orderNumber: p.orderNumber, ok, agentId: p.agentId }
+          : { orderId: p.orderId, orderNumber: p.orderNumber, ok, code: 'TAKEN_MEANWHILE', reasonAr: 'انوزّع للتو من ضغطة تانية' }
+      );
+    }
+    return finishRun(ctx, 'WINBACK_REHAND_RUN', input.orderIds.length, results, ordered);
+  }
+
+  const rule = await winbackRule(companyId);
+  const prices = await readWinbackPrices(companyId);
+  // The pool's «ready» view — the very filter the list shows — narrowed by the manager's choices. An order already offered (its
+  // `replacedBy` is set — the 165 handed out by hand on 25/11 among them) is never in it.
   const clauses: Prisma.OrderWhereInput[] = [viewWhere('ready', rule, now)];
   if (input.action === 'bulk-preview') {
     if (input.reason) {
@@ -654,11 +705,12 @@ async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> 
     clauses.push({ id: { in: input.orderIds } });
   }
   const read = await readCandidates({ ...baseWhere(scope, rule, now), AND: clauses }, input.action === 'bulk-preview' ? BULK_SCAN : input.orderIds.length);
-  // The cost each new order will carry, exactly as the creator copies it: the owner's fixed figures when every line has one, else the cancelled order's.
+  // What ONE piece of the new order costs — the floor the price is held above, read exactly as the creator costs it (`winbackUnitCost`):
+  // the owner's fixed figure, else the cancelled order's own cost over its own pieces. Never the old quantity's cost copied.
   const figures = await fixedCostsOf(db, companyId, [...new Set(read.flatMap((c) => c.lines.map((l) => l.productId)))]);
   const candidates = read.map((c) => ({
     ...c,
-    cost: costWhenEveryLineHasAFigure(c.lines.map((l) => ({ productId: l.productId, units: l.quantity + l.freeQuantity })), figures, ctx.country.minorUnit) ?? c.cost,
+    unitCost: winbackUnitCost(figures.get(c.lines[0]?.productId ?? ''), c.oldCost, c.lines.reduce((n, l) => n + l.quantity + l.freeQuantity, 0)).unit,
   }));
   const customerIds = candidates.map((c) => c.customerId);
   const [customers, liveCustomers] = await Promise.all([customerWinbackVerdicts(db, scope, customerIds), customersWithALiveOrder(scope, customerIds)]);
@@ -673,16 +725,12 @@ async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> 
   const skipped = Object.entries(plan.skipped).map(([code, count]) => ({ code, count, reasonAr: SKIP_AR[code as SkipCode] ?? code }));
 
   if (input.action === 'bulk-preview') {
-    return NextResponse.json({
-      planned: plan.planned,
-      perAgent: ordered.map((a) => ({ id: a.id, name: a.name, room: a.room, count: plan.perAgent[a.id] ?? 0 })),
-      skipped,
-      scanned: candidates.length,
-    });
+    const offeredBefore = await db.order.count({ where: offeredBeforeWhere(scope) });
+    return NextResponse.json({ planned: plan.planned, perAgent: perAgentOf(plan.perAgent), skipped, scanned: candidates.length, offeredBefore });
   }
 
   // THE RUN — one order at a time, in the planned order. Each row answers for itself; a failure never stops the next.
-  const results: Array<{ orderId: string; orderNumber: string; ok: boolean; agentId?: string; newOrderNumber?: string; code?: string; reasonAr?: string; held?: boolean }> = [];
+  const results: RowResult[] = [];
   const found = new Set(candidates.map((c) => c.orderId));
   for (const id of input.orderIds) {
     if (!found.has(id)) results.push({ orderId: id, orderNumber: '', ok: false, code: 'NOT_IN_POOL', reasonAr: 'ما عاد بقايمة الجاهز (انعرض أو تغيّر)' });
@@ -696,36 +744,43 @@ async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> 
         results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: 'CUSTOMER_HAS_LIVE_ORDER', reasonAr: SKIP_AR.CUSTOMER_HAS_LIVE_ORDER });
         continue;
       }
-      const done = await offerOne(ctx, { orderId: p.orderId, discount: 0, note: `توزيع جماعي — سعر الاسترجاع ${p.price}`, priced: { price: p.price } });
+      const done = await offerOne(ctx, { orderId: p.orderId, discount: 0, note: `توزيع جماعي — سعر الاسترجاع ${p.price} لـ${p.pieces} قطع`, priced: { price: p.price, pieces: p.pieces } });
       if (!done.ok) {
         const b = done.body as { error?: string; errorAr?: string; code?: string };
         results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: b.code ?? 'REFUSED', reasonAr: b.errorAr ?? b.error ?? 'انرفض' });
         continue;
       }
-      const held = await holdForAgent({ companyId, orderId: done.body.order.id, agentId: p.agentId, byUserId: user.id, now });
-      results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: true, agentId: p.agentId, newOrderNumber: done.body.order.orderNumber, held });
+      const listed = await handToList(db, { ...scope, orderId: done.body.order.id, agentId: p.agentId, byUserId: user.id, now });
+      results.push(
+        listed
+          ? { orderId: p.orderId, orderNumber: p.orderNumber, ok: true, agentId: p.agentId, newOrderNumber: done.body.order.orderNumber }
+          : { orderId: p.orderId, orderNumber: p.orderNumber, ok: false, newOrderNumber: done.body.order.orderNumber, code: 'NOT_LISTED', reasonAr: 'انعمل الطلب بس ما انحط بقايمتها (حدا مسكه للتو)' }
+      );
     } catch (e) {
       // The unique link (`replacesOrderId`) refused a second offer — another press got there first. Nothing about the customer is logged.
       const race = (e as { code?: string })?.code === 'P2002';
       results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: race ? 'ALREADY_OFFERED' : 'FAILED', reasonAr: race ? 'انعرض عليه للتو من ضغطة تانية' : 'تعذّر إنشاء الطلب' });
     }
   }
+  return finishRun(ctx, 'WINBACK_BULK_RUN', input.orderIds.length, results, ordered);
+}
 
+/** One audit line per press — counts, agents and orders' ids only, never a customer field — and the per-row answer. */
+async function finishRun(ctx: Ctx, action: string, asked: number, results: RowResult[], agents: ReadonlyArray<{ id: string }>): Promise<Response> {
   const made = results.filter((r) => r.ok);
   await logAudit({
-    companyId,
-    userId: user.id,
-    action: 'WINBACK_BULK_RUN',
+    companyId: ctx.companyId,
+    userId: ctx.user.id,
+    action,
     entity: 'Company',
-    entityId: companyId,
+    entityId: ctx.companyId,
     newData: {
-      storeId,
-      asked: input.orderIds.length,
-      created: made.length,
+      storeId: ctx.storeId,
+      asked,
+      done: made.length,
       failed: results.length - made.length,
-      perAgent: Object.fromEntries(ordered.map((a) => [a.id, made.filter((r) => r.agentId === a.id).length])),
+      perAgent: Object.fromEntries(agents.map((a) => [a.id, made.filter((r) => r.agentId === a.id).length])),
     },
   });
-
   return NextResponse.json({ created: made.length, failed: results.length - made.length, results });
 }

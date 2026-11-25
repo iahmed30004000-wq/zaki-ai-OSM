@@ -177,6 +177,8 @@ export async function POST(req: Request) {
           claimedById: null,
           claimedAt: null,
           currentOwnerId: null,
+          // F12: a private-list row let go goes to the win-back pool (winbackListAt kept), never back onto her list unclaimed.
+          ...(order.winbackListUserId ? { winbackListUserId: null, winbackListSince: null } : {}),
           confirmationStatus: 'NEW',
           status: 'NEW',
           signatureStatus: 'UNSIGNED',

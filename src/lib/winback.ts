@@ -75,8 +75,15 @@ export type WinbackReason = (typeof WINBACK_REASONS)[number];
  */
 export const OPTIONAL_WINBACK_REASONS = ['CUSTOMER_DOES_NOT_WANT_PRODUCT', 'OUT_OF_SERVICE_AREA', 'OTHER'] as const;
 
-/** What the rule's editor offers: the four, and the three. */
-export const SELECTABLE_WINBACK_REASONS: readonly string[] = [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS];
+/**
+ * THE PLAN'S FIVE-ATTEMPT CLOSE, ON ITS OWN TICK — the owner's ruling 25/11 (F12: «NO_ANSWER_5_ATTEMPTS is selectable»). It still rides on
+ * «three» (`WINBACK_RIDERS`): a rule that ticks three — every rule saved before this — keeps reading the five-attempt closes too. Its own
+ * tick lets him call for the five-attempt closes WITHOUT the three-attempt ones.
+ */
+export const SELECTABLE_RIDERS = [NO_ANSWER_CLOSE.five.reason] as const;
+
+/** What the rule's editor offers: the four, the three, and the five-attempt close. */
+export const SELECTABLE_WINBACK_REASONS: readonly string[] = [...WINBACK_REASONS, ...OPTIONAL_WINBACK_REASONS, ...SELECTABLE_RIDERS];
 
 /**
  * AND THE FOUR NOBODY MAY TURN ON.
@@ -96,8 +103,7 @@ export const WINBACK_RIDERS: Readonly<Record<string, string>> = { [NO_ANSWER_CLO
 
 /** The stored codes a rule's reasons stand for: what it lists, plus every code riding on one it lists. The verdict and the database filter both ask THIS. */
 export const winbackCodes = (reasons: readonly string[]): string[] => [
-  ...reasons,
-  ...Object.keys(WINBACK_RIDERS).filter((code) => reasons.includes(WINBACK_RIDERS[code])),
+  ...new Set([...reasons, ...Object.keys(WINBACK_RIDERS).filter((code) => reasons.includes(WINBACK_RIDERS[code]))]),
 ];
 
 /**

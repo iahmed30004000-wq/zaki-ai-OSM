@@ -86,7 +86,7 @@ interface SheetProduct {
   country?: string;
   currency: string;
   offers?: SheetOffer[];
-  /** The local demo's win-back price (F12): the order total, delivery included — 1–2 pieces, 3 or more. Production prices are typed by the owner on the screen. */
+  /** The local demo's win-back price (F12): the order total, delivery included — 1 piece, 3 pieces. Production prices are typed by the owner on the screen. */
   winback?: { one: number; three: number };
 }
 

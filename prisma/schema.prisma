@@ -1158,6 +1158,15 @@ model Order {
   // parcel is taken back and a REPLACEMENT order is raised, which re-enters
   // preparation and is assigned from scratch; these two link the pair.
   replacesOrderId           String?   @unique
+  /// F12 (the owner's ruling 25/11, «A») — a PRIVATE WIN-BACK LIST: the agent whose list holds this win-back order. She holds it
+  /// (claimedById is hers too) OUTSIDE her hand limit: the cap, the contact-first gate, the idle / 90-minute / rounds releases and
+  /// the returns of «لا يرد» never read a row whose list is set (winback-private-list.ts). Null on every other order.
+  winbackListUserId         String?
+  /// When the order was handed out to a list — the 3-day clock (an auto-move to a colleague does not reset it). KEPT after the list
+  /// lets it go: «انعرض من قبل», and the order stays out of the general pull (claimableWhere) until a manager hands it out again.
+  winbackListAt             DateTime?
+  /// When it reached the CURRENT list (the hand-out, or an auto-move): «untouched» is read from here.
+  winbackListSince          DateTime?
   // Stage 9 — what the customer actually paid at the door. Set only on a
   // partial delivery, and it INCLUDES the full delivery fee: the courier
   // travelled whether or not every line was taken, so the fee is never
@@ -1290,6 +1299,7 @@ model Order {
   @@index([companyId, assignedToId])
   @@index([companyId, claimedById])
   @@index([companyId, currentOwnerId])
+  @@index([companyId, storeId, winbackListUserId])
   @@index([companyId, lockedById])
   @@index([companyId, confirmationStatus])
   @@index([companyId, settlementStatus])

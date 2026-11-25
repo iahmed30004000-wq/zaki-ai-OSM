@@ -4,35 +4,45 @@ import { parseWinbackPrices } from './winback-prices';
 import type { CustomerVerdict } from './winback-customer';
 
 /**
- * THE BULK PLAN (F12) — pure: who gets which order, what is skipped and why. The counts are written by hand.
+ * THE BULK PLAN (F12, the owner's ruling 25/11) — pure: who gets which order, what is skipped and why. The counts are written by hand.
+ * Every order is offered at the 3-piece option; the lists are outside the hand, so no agent is ever «full».
  */
 
-const PRICES = parseWinbackPrices({ scar: { one: 12, three: 20, currency: 'USD' }, fungus: { one: 12, three: 20, currency: 'USD' } });
+const PRICES = parseWinbackPrices({
+  scar: { one: 12, three: 20, currency: 'USD' },
+  fungus: { one: 12, three: 20, currency: 'USD' },
+  kamaa: { one: 10, three: 20, currency: 'USD' },
+});
 const cand = (i: number, over: Partial<BulkCandidate> = {}): BulkCandidate => ({
   orderId: `o${i}`,
   orderNumber: `ORD-${i}`,
   customerId: `c${i}`,
   currency: 'USD',
-  paid: 45,
   lines: [{ productId: 'scar', quantity: 3, freeQuantity: 0 }],
-  cost: 5,
+  oldCost: 6,
+  unitCost: 2,
   ...over,
 });
 const none = new Map<string, CustomerVerdict>();
 const plan = (candidates: BulkCandidate[], extra: Partial<Parameters<typeof planBulk>[0]> = {}) =>
-  planBulk({ candidates, count: 200, agents: [{ id: 'sara', room: 500 }, { id: 'huda', room: 500 }], customers: none, liveCustomers: new Set(), prices: PRICES, ...extra });
+  planBulk({ candidates, count: 200, agents: [{ id: 'sara' }, { id: 'huda' }], customers: none, liveCustomers: new Set(), prices: PRICES, ...extra });
 
-describe('the even split', () => {
+describe('the even split, outside the hand limit', () => {
   it('200 orders to two agents: 100 and 100, and no customer twice', () => {
     // 260 candidates, newest first; every fifth one is a second order of an earlier customer
     const candidates = Array.from({ length: 260 }, (_, i) => cand(i, { customerId: i % 5 === 4 ? `c${i - 1}` : `c${i}` }));
     const p = plan(candidates);
     expect(p.planned).toHaveLength(200);
     expect(p.perAgent).toEqual({ sara: 100, huda: 100 });
-    expect(p.planned.filter((r) => r.agentId === 'sara')).toHaveLength(100);
     const customers = p.planned.map((r) => candidates.find((c) => c.orderId === r.orderId)!.customerId);
     expect(new Set(customers).size).toBe(200);
     expect(p.skipped.SAME_CUSTOMER).toBeGreaterThan(0);
+  });
+
+  it('no agent is «full»: the plan takes no room, no cap — the agents carry only an id', () => {
+    const p = planBulk({ candidates: Array.from({ length: 200 }, (_, i) => cand(i)), count: 200, agents: [{ id: 'sara' }], customers: none, liveCustomers: new Set(), prices: PRICES });
+    expect(p.perAgent).toEqual({ sara: 200 });
+    expect(Object.keys(p.skipped)).toEqual([]);
   });
 
   it('newest first, dealt in turn: the first goes to the first agent picked', () => {
@@ -58,6 +68,22 @@ describe('the even split', () => {
   });
 });
 
+describe('the price: always the 3-piece option, whatever the old quantity (the owner, 25/11)', () => {
+  it('2-piece and 6-piece old orders are offered at 3 pieces and the triple price; the old quantity rides along as information', () => {
+    const p = plan([
+      cand(1, { lines: [{ productId: 'scar', quantity: 2, freeQuantity: 0 }] }),
+      cand(2, { lines: [{ productId: 'fungus', quantity: 6, freeQuantity: 0 }] }),
+      cand(3, { lines: [{ productId: 'kamaa', quantity: 1, freeQuantity: 0 }] }),
+    ]);
+    expect(p.planned.map((r) => [r.orderId, r.pieces, r.price, r.oldPieces])).toEqual([
+      ['o1', 3, 20, 2],
+      ['o2', 3, 20, 6],
+      ['o3', 3, 20, 1],
+    ]);
+    expect(Object.keys(p.skipped)).toEqual([]);
+  });
+});
+
 describe('what is skipped, and why', () => {
   it('a customer who cancelled twice and took nothing since', () => {
     const customers = new Map<string, CustomerVerdict>([['c1', { eligible: false, code: 'CUSTOMER_CANCELLED_TWICE', reason: 'x' }]]);
@@ -72,7 +98,7 @@ describe('what is skipped, and why', () => {
     expect(p.skipped).toEqual({ CUSTOMER_HAS_LIVE_ORDER: 1 });
   });
 
-  it('a product with no win-back price, two products, another currency', () => {
+  it('a product with no win-back price, two products, another currency — each counted', () => {
     const p = plan([
       cand(1, { lines: [{ productId: 'soap', quantity: 1, freeQuantity: 0 }] }),
       cand(2, { lines: [{ productId: 'scar', quantity: 1, freeQuantity: 0 }, { productId: 'fungus', quantity: 1, freeQuantity: 0 }] }),
@@ -83,43 +109,21 @@ describe('what is skipped, and why', () => {
     expect(p.skipped).toEqual({ NO_WINBACK_PRICE: 1, MIXED_PRODUCTS: 1, CURRENCY_MISMATCH: 1 });
   });
 
-  it('a price above what the order cost is no win-back', () => {
-    const p = plan([cand(1, { paid: 19.99 }), cand(2, { paid: 20 })]);
-    expect(p.planned.map((r) => [r.orderId, r.price])).toEqual([['o2', 20]]);
-    expect(p.skipped).toEqual({ PRICE_NOT_LOWER: 1 });
-  });
-
-  it('PENDING THE OWNER: more than three pieces (paid + free) is not offered, by its own reason', () => {
-    const p = plan([cand(1, { lines: [{ productId: 'scar', quantity: 4, freeQuantity: 0 }] }), cand(2, { lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] }), cand(3)]);
-    expect(p.planned.map((r) => r.orderId)).toEqual(['o3']);
-    expect(p.skipped).toEqual({ TOO_MANY_PIECES: 2 });
-  });
-
-  it('a price below the cost the new order will carry is not offered', () => {
-    const p = plan([cand(1, { cost: 20.01 }), cand(2, { cost: 20 })]);
+  it('a price below what the three pieces cost is not offered (pending the coordinator)', () => {
+    const p = plan([cand(1, { unitCost: 6.67 }), cand(2, { unitCost: 6.66 })]);
     expect(p.planned.map((r) => r.orderId)).toEqual(['o2']);
     expect(p.skippedRows).toEqual([{ orderId: 'o1', orderNumber: 'ORD-1', code: 'PRICE_BELOW_COST' }]);
   });
 
-  it('the tier follows the pieces of the cancelled order', () => {
-    const p = plan([cand(1, { lines: [{ productId: 'scar', quantity: 2, freeQuantity: 0 }] }), cand(2)]);
-    expect(p.planned.map((r) => [r.tier, r.price])).toEqual([
-      ['one', 12],
-      ['three', 20],
-    ]);
-  });
-
-  it('an agent with no room under her cap receives nothing; the other one does; when none has room, the rest wait', () => {
-    const p = plan([cand(1), cand(2), cand(3), cand(4)], { agents: [{ id: 'sara', room: 0 }, { id: 'huda', room: 2 }] });
-    expect(p.perAgent).toEqual({ sara: 0, huda: 2 });
-    expect(p.skipped).toEqual({ NO_ROOM: 2 });
+  it('no agent picked: nothing planned', () => {
+    expect(plan([cand(1)], { agents: [] }).planned).toEqual([]);
   });
 });
 
-describe('a cancelled order is read as the creator copies it', () => {
-  it('its own lines when it has some, else its product columns; paid is the subtotal less the discount', () => {
-    const base = { id: 'o', orderNumber: 'N', customerId: 'c', currency: 'USD', productId: 'scar', quantity: 3, freeQuantity: 1, sellingPrice: 45, discountAmount: 5, estimatedCostOfGoods: 7 };
-    expect(toCandidate({ ...base, items: [] })).toMatchObject({ paid: 40, cost: 7, lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] });
+describe('a cancelled order is read as its goods', () => {
+  it('its own lines when it has some, else its product columns', () => {
+    const base = { id: 'o', orderNumber: 'N', customerId: 'c', currency: 'USD', productId: 'scar', quantity: 3, freeQuantity: 1, estimatedCostOfGoods: 9 };
+    expect(toCandidate({ ...base, items: [] })).toMatchObject({ oldCost: 9, lines: [{ productId: 'scar', quantity: 3, freeQuantity: 1 }] });
     expect(toCandidate({ ...base, items: [{ productId: 'fungus', quantity: 1, freeQuantity: null }] }).lines).toEqual([{ productId: 'fungus', quantity: 1, freeQuantity: 0 }]);
   });
 });

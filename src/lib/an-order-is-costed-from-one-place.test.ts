@@ -71,6 +71,8 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   { file: 'src/lib/replacement-order.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'a replacement and a box handed to another customer' },
   { file: 'src/lib/telegram/order-creation.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'Telegram — the same unit cost as every other door since RV574' },
   { file: 'src/app/api/confirmation/winback/route.ts', asks: /fixedCostsOf\(\s*db\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the win-back — the figures when every line has one, else the copied cost (RV575)' },
+  // 25/11 (F12, the owner's ruling «1 modified»): the 1 ↔ 3 pieces switch costs the new pieces as any door does.
+  { file: 'src/app/api/confirmation/winback/list/[id]/route.ts', asks: /fixedCostsOf\(\s*db\b/, names: ['fixedCostsOf'], what: 'the win-back list order switched between 1 and 3 pieces — the fixed figure, else the old order per piece' },
 ];
 
 describe('each door that writes an order’s cost asks the owner’s figure — by the call, not by the import', () => {
@@ -159,9 +161,6 @@ const NOT_A_COSTING: Record<string, string> = {
   // `src/app/api/finance/route.ts` was here until 13/11: the cost of the delivered orders it reported is read by
   // `src/lib/profit-to-date.ts` now (it writes no row, so it is not in this sweep), and the route names no cost any more.
   'src/app/api/orders/[id]/finance/route.ts': 'writes the HAND-TYPED finance columns (`productCost`, packaging…); `estimatedCostOfGoods` is only read to show the profit',
-  // ADDED 25/11 (F12 review): the bulk win-back READS the cancelled order's cost to keep the owner's price above it; its one write is the
-  // hold (`assignedToId`). The new order and its cost are written by the win-back door (on DOORS), through `fixedCostsOf`.
-  'src/lib/winback-bulk.ts': 'reads the cancelled order’s `estimatedCostOfGoods` as a floor for the win-back price; writes only the hold (`assignedToId`), never a cost',
 };
 
 describe('no file writes an order’s cost of goods without being a door, a copy, or a reader', () => {
