@@ -12,6 +12,7 @@ const { db, requireContext, requirePermission, logAudit } = vi.hoisted(() => ({
   db: {
     authenticityCode: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), delete: vi.fn() },
     store: { findMany: vi.fn() },
+    product: { findMany: vi.fn(), findFirst: vi.fn() },
   },
   requireContext: vi.fn(),
   requirePermission: vi.fn(),
@@ -37,6 +38,33 @@ beforeEach(() => {
   db.authenticityCode.findMany.mockResolvedValue([]);
   db.authenticityCode.findUnique.mockResolvedValue(null);
   db.store.findMany.mockResolvedValue([]);
+  db.product.findMany.mockResolvedValue([]);
+});
+
+// 25/11 («باركود المنتجات»): a code may be tagged to a product — it then reads «أصلي» on that product's page only.
+describe('the product a code belongs to', () => {
+  it('GET lists this company\'s products for the picker', async () => {
+    db.product.findMany.mockResolvedValue([{ id: 'p1', name: 'كريم' }]);
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect((await res.json()).products).toEqual([{ id: 'p1', name: 'كريم' }]);
+    expect(db.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId: 'co-1' } }));
+  });
+
+  it('a code tagged to one of this company\'s products is stored with it', async () => {
+    db.product.findFirst.mockResolvedValue({ id: 'p1' });
+    db.authenticityCode.create.mockResolvedValue({ id: 'acode1', code: 'P-1', productId: 'p1' });
+    expect((await post({ code: 'P-1', productId: 'p1' })).status).toBe(201);
+    expect(db.product.findFirst).toHaveBeenCalledWith({ where: { id: 'p1', companyId: 'co-1' }, select: { id: true } });
+    expect(db.authenticityCode.create).toHaveBeenCalledWith({ data: expect.objectContaining({ productId: 'p1' }) });
+  });
+
+  it('NEGATIVE: a product of another company (or a stray id) is refused, nothing stored', async () => {
+    db.product.findFirst.mockResolvedValue(null);
+    const res = await post({ code: 'P-1', productId: 'theirs' });
+    expect(res.status).toBe(400);
+    expect(db.authenticityCode.create).not.toHaveBeenCalled();
+  });
 });
 
 describe('the list reads on settings.view, the writes on settings.edit', () => {

@@ -154,8 +154,9 @@ describe('2 · the two cards, on this page and on no other', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ company: { name: 'شركة' } }), { status: 200 })));
     const { container } = render(<SystemSettingsScreen />);
     await waitFor(() => expect(screen.getByDisplayValue('شركة')).toBeTruthy());
-    // 19/11 (barcode authenticity): «رموز الأصالة» joined this screen as a card of its own (not a page: a registry line rides in every staff screen's first load).
-    expect(marks(container)).toEqual(['PostOrderOfferCard', 'AuthenticityCodesCard']);
+    // 19/11 (barcode authenticity): «رموز الأصالة» joined this screen as a card of its own. 25/11 (the owner): it left again, for a page
+    // of its own beside «باركود المنتجات» (`the-authenticity-pages-stand-side-by-side.test.tsx`).
+    expect(marks(container)).toEqual(['PostOrderOfferCard']);
     // The company card is the one drawn by the screen itself: its title and its one field.
     expect(screen.getByText('بيانات الشركة')).toBeTruthy();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
