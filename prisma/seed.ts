@@ -86,6 +86,8 @@ interface SheetProduct {
   country?: string;
   currency: string;
   offers?: SheetOffer[];
+  /** The local demo's win-back price (F12): the order total, delivery included — 1–2 pieces, 3 or more. Production prices are typed by the owner on the screen. */
+  winback?: { one: number; three: number };
 }
 
 // ─── Products from Google Sheet with offer prices ───
@@ -138,6 +140,7 @@ const priced: SheetProduct[] = [
     sku: 'SCAR-DE-05',
     country: 'سوريا',
     currency: 'USD',
+    winback: { one: 12, three: 20 },
     offers: [
       { name: 'عبوة عدد 1 + توصيل مجاني', quantity: 1, price: 20 },
       { name: 'عبوة عدد 2 + توصيل مجاني', quantity: 2, price: 35 },
@@ -170,6 +173,7 @@ const priced: SheetProduct[] = [
     sku: 'NAIL-FUN-08',
     country: 'سوريا',
     currency: 'USD',
+    winback: { one: 12, three: 20 },
     offers: [
       { name: 'عبوة عدد 1 + توصيل مجاني', quantity: 1, price: 20 },
       { name: 'عبوة عدد 2 + توصيل مجاني', quantity: 2, price: 35 },
@@ -192,6 +196,7 @@ const priced: SheetProduct[] = [
     sku: 'TRUFFLE-10',
     country: 'سوريا',
     currency: 'USD',
+    winback: { one: 10, three: 20 },
     offers: [
       { name: 'عبوة عدد 1 + توصيل مجاني', quantity: 1, price: 15 },
       { name: 'عبوة عدد 2 + عبوة مجاناً + توصيل مجاني', quantity: 3, price: 25 },
@@ -511,6 +516,7 @@ async function main() {
 
   // Products + offers
   let batchNo = 1;
+  const winbackPrices: Record<string, { one: number; three: number; currency: string }> = {};
   for (const p of priced) {
     const product = await prisma.product.create({
       data: {
@@ -571,8 +577,14 @@ async function main() {
         reason: `Batch ${batch.batchNumber}`,
       },
     });
+    if (p.winback) winbackPrices[product.id] = { ...p.winback, currency: p.currency };
     batchNo++;
   }
+  // The demo's win-back prices (F12), beside the company's other settings: what «وزّع على الموظفات» offers at.
+  await prisma.company.update({
+    where: { id: company.id },
+    data: { settings: JSON.stringify({ ...JSON.parse(company.settings ?? '{}'), winbackPrices }) },
+  });
 
   for (const name of catalog) {
     const sku = 'MB-' + Buffer.from(name).toString('hex').slice(0, 6).toUpperCase() + '-' + (batchNo++);

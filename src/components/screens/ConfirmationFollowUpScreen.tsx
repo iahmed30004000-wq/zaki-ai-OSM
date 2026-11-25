@@ -12,6 +12,7 @@ import { useMayOpen } from '@/hooks/useMayOpen';
 import { ConfirmationPostponedScreen } from '@/components/screens/ConfirmationPostponedScreen';
 import { WinbackScreen } from '@/components/screens/WinbackScreen';
 import { WinbackDaily } from '@/components/screens/WinbackDaily';
+import { WinbackBulkCard } from '@/components/confirmation/WinbackBulkCard';
 import { LeadsLane } from '@/components/screens/LeadsLane';
 
 /**
@@ -43,6 +44,7 @@ export function ConfirmationFollowUpScreen() {
   // The win-back door asks `confirmation.supervise` itself; the tab is drawn only for
   // who can use it, so a person is never offered a list that answers 403.
   const mayWinback = userCan(currentUser, 'confirmation.supervise');
+  const mayBulk = userCan(currentUser, 'confirmation.winback') && userCan(currentUser, 'orders.assign');
   const mayOpen = useMayOpen();
   const asked = useSearchParams().get('tab');
   const [tab, setTab] = useState<Tab>(asked === 'winback' && mayWinback ? 'winback' : 'postponed');
@@ -64,6 +66,8 @@ export function ConfirmationFollowUpScreen() {
         <>
           {/* the daily list of step F1: its own door, drawn only when the owner turned it on — and then nothing below it changes */}
           <WinbackDaily />
+          {/* «وزّع على الموظفات» (F12): drawn only for who may offer AND hand orders out; its own doors, nothing below it changes */}
+          {mayBulk && <WinbackBulkCard />}
           <WinbackScreen embedded />
         </>
       )}

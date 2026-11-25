@@ -6,14 +6,20 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { zodMessage } from '@/lib/zod-message';
 import { logAudit } from '@/lib/audit';
-import { computeCod } from '@/lib/money';
+import type { Prisma } from '@prisma/client';
+import { computeCod, roundMinor } from '@/lib/money';
 import { orderRefFields } from '@/lib/order-ref';
 import {
   maxWinbackDiscount, LOST_STATUSES, returnedAfterShipping, returnLabel, winbackVerdict, type WinbackSource,
 } from '@/lib/winback';
 import { winbackRule } from '@/lib/winback-rule';
 import { cadenceSince } from '@/lib/no-answer-cadence-switch';
-import { baseWhere, winbackFilters } from '@/lib/winback-filters';
+import { PERIODS, baseWhere, isReason, periodWhere, reasonWhere, viewWhere, winbackFilters } from '@/lib/winback-filters';
+import { customerWinbackVerdicts } from '@/lib/winback-customer';
+import { readWinbackPrices } from '@/lib/winback-prices';
+import {
+  BULK_MAX, BULK_SCAN, SKIP_AR, bulkAgents, customersWithALiveOrder, holdForAgent, planBulk, readCandidates, type SkipCode,
+} from '@/lib/winback-bulk';
 import { readWinbackPage, winbackFacts } from '@/lib/winback-list';
 import { readLimit, readPage } from '@/lib/numeric-input';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -150,6 +156,9 @@ export async function GET(req: Request) {
       : [];
     const rejectedAt = new Map<string, Date>();
     for (const l of logs) if (!rejectedAt.has(l.orderId)) rejectedAt.set(l.orderId, l.createdAt);
+    // The customer's own rule (two cancellations, `winback-customer.ts`), for THIS PAGE's customers: a row the offer would refuse says so.
+    const customerIds = orders.map((o) => o.customer?.id).filter((id): id is string => typeof id === 'string');
+    const customers = customerIds.length ? await customerWinbackVerdicts(db, { companyId, storeId }, customerIds) : new Map();
 
     const rows = orders.map((o) => {
       const source: WinbackSource = {
@@ -168,7 +177,9 @@ export async function GET(req: Request) {
       };
       // The row says in words WHICH rule put it in this view — a supervisor reading
       // «مكرَّر — البضاعة عنده أصلاً» learns the rule instead of wondering where an order went.
-      const verdict = winbackVerdict(source, now, rule);
+      const orderVerdict = winbackVerdict(source, now, rule);
+      const who = o.customer?.id ? customers.get(o.customer.id) : undefined;
+      const verdict = orderVerdict.eligible && who && !who.eligible ? { eligible: false as const, code: who.code, reason: who.reason } : orderVerdict;
       return {
         id: o.id,
         orderNumber: o.orderNumber,
@@ -213,17 +224,43 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { user, companyId, storeId, country } = await requireContext();
+    const ctx = await requireContext();
     // The offer is its OWN box (`confirmation.winback`, PR-7), given to whoever supervised the list before. Reading the
     // list keeps `confirmation.supervise`.
     await requirePermission('confirmation.winback');
 
-    const parsed = offerSchema.safeParse(await req.json().catch(() => null));
+    const body: unknown = await req.json().catch(() => null);
+    // «وزّع على الموظفات» (the bulk run) is this same door with an `action`: it makes every order through `offerOne` below — the one creator.
+    if (isBulkBody(body)) return await bulk(ctx, body);
+
+    const parsed = offerSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: zodMessage(parsed.error) }, { status: 400 });
     }
-    const { orderId, discount, note } = parsed.data;
+    const done = await offerOne(ctx, parsed.data);
+    return NextResponse.json(done.body, { status: done.status });
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
 
+type Ctx = Awaited<ReturnType<typeof requireContext>>;
+type Offered = { ok: true; status: 200; body: { success: true; order: { id: string; orderNumber: string } } } | { ok: false; status: number; body: Record<string, unknown> };
+
+/**
+ * ONE OFFER — the win-back creator. The single press («اعرضه من جديد») hands it the discount a person typed; the bulk run hands it
+ * `priced`: the owner's win-back price for this order (`winback-prices.ts`), computed by the server. With `priced` the discount is
+ * whatever brings the new order's TOTAL to that price, delivery included (`priceIncludesDelivery` on the new order, so nothing is added
+ * on top at the shipment), and it is the one discount the rule's ceiling does not stop — the owner set it per product. Everything else
+ * — the verdict, the lines, the money through `computeCod`, the cost, the number, the note, the audit — is the same code for both.
+ */
+async function offerOne(
+  { user, companyId, storeId, country }: Ctx,
+  input: { orderId: string; discount: number; note?: string; priced?: { price: number } }
+): Promise<Offered> {
+  const { orderId, note, priced } = input;
+  let discount = input.discount;
+  {
     // The rule the list drew by — read again here, because the offer is where it is enforced.
     const rule = await winbackRule(companyId);
 
@@ -236,7 +273,7 @@ export async function POST(req: Request) {
         returnReceipt: { select: { inspectedAt: true, receivedQty: true, damagedQty: true, missingQty: true } },
       },
     });
-    if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
+    if (!order) return { ok: false, status: 404, body: { error: 'الطلب غير موجود' } };
 
     const lastRejection = await db.orderStatusLog.findFirst({
       where: { orderId, statusType: 'CONFIRMATION', newValue: { in: [...LOST_STATUSES] } },
@@ -262,7 +299,16 @@ export async function POST(req: Request) {
     };
     const verdict = winbackVerdict(source, new Date(), rule);
     if (!verdict.eligible) {
-      return NextResponse.json({ error: verdict.reason, code: verdict.code }, { status: 409 });
+      return { ok: false, status: 409, body: { error: verdict.reason, code: verdict.code } };
+    }
+    /*
+     * AND THE CUSTOMER, NOT ONLY THE ORDER (the owner's amendment): a customer who cancelled two orders or more is not rung again,
+     * unless he later placed an order himself and it was delivered (`winback-customer.ts`). Asked here, so the single press and the
+     * bulk run refuse alike.
+     */
+    const customer = (await customerWinbackVerdicts(db, { companyId, storeId }, [order.customerId])).get(order.customerId);
+    if (customer && !customer.eligible) {
+      return { ok: false, status: 409, body: { error: customer.reason, errorAr: customer.reason, code: customer.code } };
     }
     // What the new order's note says it is winning back: the rejection code it always printed, or — for a parcel
     // that came back, which has no rejection code and printed «(null)» — the return, in words.
@@ -275,15 +321,17 @@ export async function POST(req: Request) {
       },
       rule.maxDiscountShare
     );
-    if (discount > ceiling) {
-      return NextResponse.json(
-        {
+    // The owner's per-product win-back price (`priced`, computed by the server) is the one discount the ceiling does not stop.
+    if (!priced && discount > ceiling) {
+      return {
+        ok: false,
+        status: 400,
+        body: {
           error: `أقصى خصمٍ على هذا الطلب ${ceiling} — والمحسوم عليه سابقاً داخلٌ في الحساب`,
           code: 'DISCOUNT_TOO_LARGE',
           maxDiscount: ceiling,
         },
-        { status: 400 }
-      );
+      };
     }
 
     /**
@@ -347,6 +395,17 @@ export async function POST(req: Request) {
           },
         ];
     const carried = Number(order.discountAmount ?? 0);
+    // The win-back price is the order's TOTAL with the delivery inside it: the new order says so, so the shipment adds nothing on top.
+    const includesDelivery = priced ? true : (order.priceIncludesDelivery ?? false);
+    if (priced) {
+      // The discount that brings this order to the owner's price: its subtotal (through the one money function), less what came off
+      // before, less the price. A price above what the order cost is not a win-back — refused, never turned into a surcharge.
+      const subtotal = computeCod({ lines: lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })), discount: 0, deliveryFee: 0, priceIncludesDelivery: true, minorUnit: country.minorUnit }).subtotal;
+      discount = roundMinor(subtotal - carried - priced.price, country.minorUnit);
+      if (discount < 0) {
+        return { ok: false, status: 409, body: { error: 'سعر الاسترجاع أعلى من سعر الطلب الأصلي', errorAr: 'سعر الاسترجاع أعلى من سعر الطلب الأصلي', code: 'PRICE_NOT_LOWER' } };
+      }
+    }
     // The discount is the WHOLE of it, not a second helping on top of what
     // came off before — the ceiling above already subtracted the old one.
     const totalDiscount = carried + discount;
@@ -369,10 +428,14 @@ export async function POST(req: Request) {
       lines: lines.map((l) => ({ quantity: l.quantity, unitPrice: l.unitPrice })),
       discount: totalDiscount,
       deliveryFee: 0,
-      priceIncludesDelivery: order.priceIncludesDelivery ?? false,
+      priceIncludesDelivery: includesDelivery,
       minorUnit: country.minorUnit,
     });
     const totalAmount = money.cod;
+    // The bulk run's promise, held where the money is made: the new order's total IS the owner's price, to the minor unit.
+    if (priced && totalAmount !== roundMinor(priced.price, country.minorUnit)) {
+      return { ok: false, status: 409, body: { error: 'تعذّر الوصول لسعر الاسترجاع على هالطلب', errorAr: 'تعذّر الوصول لسعر الاسترجاع على هالطلب', code: 'PRICE_MISMATCH' } };
+    }
 
     /*
      * WHAT THE GOODS COST — THE OWNER'S FIGURES WHEN EVERY LINE HAS ONE, ELSE THE CANCELLED ORDER'S COST (3/11: «صلّحهن»).
@@ -434,7 +497,7 @@ export async function POST(req: Request) {
           shippingCost: 0,
           totalAmount,
           currency: order.currency,
-          priceIncludesDelivery: order.priceIncludesDelivery,
+          priceIncludesDelivery: includesDelivery,
           productNameSnapshot: order.productNameSnapshot,
           productImageSnapshot: order.productImageSnapshot,
           moderatorId: order.moderatorId,
@@ -517,11 +580,142 @@ export async function POST(req: Request) {
       entity: 'Order',
       entityId: order.id,
       previousData: { rejectionReason: order.rejectionReason },
-      newData: { newOrderId: created.id, newOrderNumber: created.orderNumber, discount, by: user.name },
+      newData: { newOrderId: created.id, newOrderNumber: created.orderNumber, discount, by: user.name, ...(priced ? { winbackPrice: priced.price } : {}) },
     });
 
-    return NextResponse.json({ success: true, order: created });
-  } catch (error) {
-    return apiErrorResponse(error);
+    return { ok: true, status: 200, body: { success: true, order: created } };
   }
+}
+
+/* ───────────────────────── «وزّع على الموظفات» — the bulk run (`winback-bulk.ts`) ───────────────────────── */
+
+const bulkSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('bulk-preview'),
+    productId: z.string().min(1).max(64).optional(),
+    reason: z.string().min(1).max(64).optional(),
+    period: z.enum(PERIODS).optional(),
+    count: z.number().int().min(1).max(BULK_MAX),
+    agentIds: z.array(z.string().min(1).max(64)).min(1).max(50),
+  }),
+  z.object({
+    action: z.literal('bulk-run'),
+    orderIds: z.array(z.string().uuid()).min(1).max(BULK_MAX),
+    agentIds: z.array(z.string().min(1).max(64)).min(1).max(50),
+  }),
+]);
+
+const isBulkBody = (b: unknown): b is Record<string, unknown> =>
+  !!b && typeof b === 'object' && ((b as { action?: unknown }).action === 'bulk-preview' || (b as { action?: unknown }).action === 'bulk-run');
+
+const bulkRefuse = (errorAr: string, code: string, status = 400) => NextResponse.json({ error: errorAr, errorAr, code }, { status });
+
+/**
+ * TWO PRESSES. `bulk-preview` reads the pool under the filters and answers the plan — which orders, to whom, what is skipped and why —
+ * and writes nothing. `bulk-run` takes the order ids the preview answered and makes them, one at a time, through `offerOne` at the
+ * server's price, then holds each for her agent. Run twice with the same ids, the second makes nothing: every order is already offered
+ * (`ALREADY_OFFERED`, the creator's own verdict; the unique link refuses a race). A price in the body is never read: zod drops it.
+ *
+ * Manager only: the offer's box AND «إسناد الطلبات» (`orders.assign`, the transfer door's key for handing an order to anybody). Not
+ * `confirmation.reassign`: the confirmation agent's live template holds it (and the offer's box), and an agent must not hand out
+ * two hundred orders.
+ */
+async function bulk(ctx: Ctx, body: Record<string, unknown>): Promise<Response> {
+  await requirePermission('orders.assign');
+  const parsed = bulkSchema.safeParse(body);
+  if (!parsed.success) return bulkRefuse(zodMessage(parsed.error), 'INVALID_BODY');
+  const { companyId, storeId, user } = ctx;
+  if (!storeId) return bulkRefuse('اختار متجر قبل التوزيع.', 'STORE_REQUIRED');
+  const scope = { companyId, storeId };
+  const input = parsed.data;
+  const now = new Date();
+
+  const [rule, prices, agents] = await Promise.all([winbackRule(companyId), readWinbackPrices(companyId), bulkAgents(scope, now, input.agentIds)]);
+  if (agents.length !== new Set(input.agentIds).size) {
+    return bulkRefuse('في موظفة من اللي اخترتهن ما بتقدر تستلم طلبات بهالمتجر.', 'INVALID_AGENT');
+  }
+  // The agents in the order the manager picked them, so the even split starts where she started.
+  const ordered = input.agentIds.filter((id, i, all) => all.indexOf(id) === i).map((id) => agents.find((a) => a.id === id)!);
+
+  // The pool's «ready» view — the very filter the list shows — narrowed by the manager's choices.
+  const clauses: Prisma.OrderWhereInput[] = [viewWhere('ready', rule, now)];
+  if (input.action === 'bulk-preview') {
+    if (input.reason) {
+      if (!isReason(input.reason)) return bulkRefuse(`سبب الإلغاء غير معروف: ${input.reason}`, 'INVALID_REASON');
+      clauses.push(reasonWhere(input.reason));
+    }
+    if (input.period) clauses.push(periodWhere(input.period, now, rule));
+    if (input.productId) clauses.push({ OR: [{ items: { some: { productId: input.productId } } }, { items: { none: {} }, productId: input.productId }] });
+  } else {
+    clauses.push({ id: { in: input.orderIds } });
+  }
+  const candidates = await readCandidates({ ...baseWhere(scope, rule, now), AND: clauses }, input.action === 'bulk-preview' ? BULK_SCAN : input.orderIds.length);
+  const customerIds = candidates.map((c) => c.customerId);
+  const [customers, liveCustomers] = await Promise.all([customerWinbackVerdicts(db, scope, customerIds), customersWithALiveOrder(scope, customerIds)]);
+  const plan = planBulk({
+    candidates,
+    count: input.action === 'bulk-preview' ? input.count : input.orderIds.length,
+    agents: ordered,
+    customers,
+    liveCustomers,
+    prices,
+  });
+  const skipped = Object.entries(plan.skipped).map(([code, count]) => ({ code, count, reasonAr: SKIP_AR[code as SkipCode] ?? code }));
+
+  if (input.action === 'bulk-preview') {
+    return NextResponse.json({
+      planned: plan.planned,
+      perAgent: ordered.map((a) => ({ id: a.id, name: a.name, room: a.room, count: plan.perAgent[a.id] ?? 0 })),
+      skipped,
+      scanned: candidates.length,
+    });
+  }
+
+  // THE RUN — one order at a time, in the planned order. Each row answers for itself; a failure never stops the next.
+  const results: Array<{ orderId: string; orderNumber: string; ok: boolean; agentId?: string; newOrderNumber?: string; code?: string; reasonAr?: string; held?: boolean }> = [];
+  const found = new Set(candidates.map((c) => c.orderId));
+  for (const id of input.orderIds) {
+    if (!found.has(id)) results.push({ orderId: id, orderNumber: '', ok: false, code: 'NOT_IN_POOL', reasonAr: 'ما عاد بقايمة الجاهز (انعرض أو تغيّر)' });
+  }
+  for (const s of plan.skippedRows) results.push({ orderId: s.orderId, orderNumber: s.orderNumber, ok: false, code: s.code, reasonAr: SKIP_AR[s.code] });
+  for (const p of plan.planned) {
+    const customerId = candidates.find((c) => c.orderId === p.orderId)!.customerId;
+    try {
+      // Re-asked at the press: another manager's run may have just given this customer an order.
+      if ((await customersWithALiveOrder(scope, [customerId])).has(customerId)) {
+        results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: 'CUSTOMER_HAS_LIVE_ORDER', reasonAr: SKIP_AR.CUSTOMER_HAS_LIVE_ORDER });
+        continue;
+      }
+      const done = await offerOne(ctx, { orderId: p.orderId, discount: 0, note: `توزيع جماعي — سعر الاسترجاع ${p.price}`, priced: { price: p.price } });
+      if (!done.ok) {
+        const b = done.body as { error?: string; errorAr?: string; code?: string };
+        results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: b.code ?? 'REFUSED', reasonAr: b.errorAr ?? b.error ?? 'انرفض' });
+        continue;
+      }
+      const held = await holdForAgent({ companyId, orderId: done.body.order.id, agentId: p.agentId, byUserId: user.id, now });
+      results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: true, agentId: p.agentId, newOrderNumber: done.body.order.orderNumber, held });
+    } catch (e) {
+      // The unique link (`replacesOrderId`) refused a second offer — another press got there first. Nothing about the customer is logged.
+      const race = (e as { code?: string })?.code === 'P2002';
+      results.push({ orderId: p.orderId, orderNumber: p.orderNumber, ok: false, code: race ? 'ALREADY_OFFERED' : 'FAILED', reasonAr: race ? 'انعرض عليه للتو من ضغطة تانية' : 'تعذّر إنشاء الطلب' });
+    }
+  }
+
+  const made = results.filter((r) => r.ok);
+  await logAudit({
+    companyId,
+    userId: user.id,
+    action: 'WINBACK_BULK_RUN',
+    entity: 'Company',
+    entityId: companyId,
+    newData: {
+      storeId,
+      asked: input.orderIds.length,
+      created: made.length,
+      failed: results.length - made.length,
+      perAgent: Object.fromEntries(ordered.map((a) => [a.id, made.filter((r) => r.agentId === a.id).length])),
+    },
+  });
+
+  return NextResponse.json({ created: made.length, failed: results.length - made.length, results });
 }

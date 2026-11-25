@@ -481,7 +481,9 @@ describe('the offer raises a new order and leaves the loss where it is', () => {
   it('re-takes the whole verdict on the server before writing', () => {
     const post = route().slice(route().indexOf('export async function POST'));
     expect(post, 'يثق بما قرّرته الشاشة').toMatch(/if \(!verdict\.eligible\) \{/);
-    expect(post).toMatch(/if \(discount > ceiling\) \{/);
+    // 25/11 (F12): old `if (discount > ceiling) {`; new `if (!priced && discount > ceiling) {` — the owner's per-product win-back price (computed
+    // by the server for the bulk run) is the one discount the ceiling does not stop; a typed discount still does (the offer tests below).
+    expect(post).toMatch(/if \(!priced && discount > ceiling\) \{/);
     expect(post).toContain('DISCOUNT_TOO_LARGE');
   });
 

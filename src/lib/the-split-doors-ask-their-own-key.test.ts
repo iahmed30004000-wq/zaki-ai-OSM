@@ -85,6 +85,8 @@ const DOORS: Door[] = [
   { file: 'settings/performance/route', method: 'PUT', need: ['team.settings'], was: ['settings.manage'] },
   { file: 'settings/post-order-offer/route', method: 'PUT', need: ['offers.rules'], was: ['settings.manage'] },
   { file: 'confirmation/winback/rule/route', method: 'PUT', need: ['offers.rules'], was: ['settings.manage'] },
+  // 25/11 (F12): a door that never existed before — the win-back price of each product, beside the rule, under the rule's box.
+  { file: 'confirmation/winback/prices/route', method: 'PUT', need: ['offers.rules'], was: [] },
   { file: 'orders/import/migrate/route', method: 'POST', form: true, need: ['orders.import', 'orders.migrate'], was: ['settings.manage'] },
   { file: 'settings/commission/route', method: 'GET', need: ['commission.view'], was: ['settings.view'] },
   { file: 'settings/commission/route', method: 'POST', need: ['commission.manage'], was: ['settings.edit'] },

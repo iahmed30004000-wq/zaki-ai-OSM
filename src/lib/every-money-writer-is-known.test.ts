@@ -216,6 +216,9 @@ const READS_ONLY: Record<string, string> = {
   'src/app/api/shipping-batches/[id]/route.ts': 'حالة دفعة الشحن وأعضاؤها — لا مال',
   'src/app/api/whatsapp/conversations/[id]/route.ts': 'يعرض إجمالاً داخل محادثة',
   'src/lib/commission.ts': 'العمولة، ولها دالّتها وجدولها المنفصل عن الطلب',
+  // 25/11 (F12, التوزيع الجماعي للاسترجاع): a new file the sweep found — it READS the cancelled order's subtotal and discount to compare the
+  // owner's win-back price with what the order cost; the new order and its money are written by the win-back door (on the list above), never here.
+  'src/lib/winback-bulk.ts': 'يقرأ سعر الطلب الملغى وخصمه ليقارنهم بسعر الاسترجاع — لا يكتب مالاً؛ الطلب الجديد ومالُه من باب الاسترجاع عبر computeCod',
   'src/lib/conversions/emit.ts': 'يرسل قيمة إلى منصّة إعلانات — صادر، قراءة',
   'src/lib/couriers/dispatch.ts': 'يقرأ الإجمالي المخزّن ليبلّغه للمندوب',
   'src/lib/offers.ts': 'تسعير العروض نفسها — سعر العرض إدخال البائع',
