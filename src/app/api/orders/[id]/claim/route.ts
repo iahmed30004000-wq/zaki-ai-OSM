@@ -234,6 +234,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { lockDurationMs } = lockConfig();
     const won = await atomicClaim({
       orderId: id, userId: user.id, now,
+      // F12: a claim by id takes the order off a private list, as every other take does (`offTheListIf`).
+      offList: !!order.winbackListUserId,
       lockExpiresAt: new Date(now.getTime() + lockDurationMs), // self-lock on claim so editing can start immediately
     });
 

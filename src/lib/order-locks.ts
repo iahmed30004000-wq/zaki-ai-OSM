@@ -55,6 +55,8 @@ export async function atomicClaim(params: {
   userId: string;
   now: Date;
   lockExpiresAt: Date | null;
+  /** F12: the order is on somebody's private win-back list — the claim takes it off the list (`offTheListIf`); absent = today's write. */
+  offList?: boolean;
 }) {
   const { orderId, userId, now, lockExpiresAt } = params;
   const result = await db.order.updateMany({
@@ -82,6 +84,7 @@ export async function atomicClaim(params: {
       lockedById: userId,
       lockedAt: now,
       lockExpiresAt,
+      ...(params.offList ? { winbackListUserId: null, winbackListSince: null } : {}),
       // Optimistic-concurrency: every ownership write bumps the version
       version: { increment: 1 },
     },

@@ -22,10 +22,12 @@ const CAL = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [5, 6
 
 describe('the list is outside the pull and outside the hand', () => {
   it('a fresh NEW order is pullable; no win-back list order — on a list or let go — is ever in the pool the pull reads', () => {
-    for (const where of [readyToPullWhere(SCOPE), readyToPullWhere(SCOPE, 'sara'), duePostponedWhere(SCOPE, new Date())]) {
+    for (const where of [readyToPullWhere(SCOPE), readyToPullWhere(SCOPE, 'sara')]) {
       expect(where).toMatchObject(notAWinbackListOrder);
     }
-    expect(notAWinbackListOrder).toEqual({ winbackListAt: null });
+    // a due postponement asks POSTPONED, never NEW — the mark speaks only for NEW orders, so it has nothing to keep out there
+    expect(duePostponedWhere(SCOPE, new Date())).toMatchObject({ confirmationStatus: 'POSTPONED' });
+    expect(notAWinbackListOrder).toEqual({ OR: [{ winbackListAt: null }, { confirmationStatus: { not: 'NEW' } }] });
   });
 
   it('the cap, the contact-first gate and the idle release never read a list row', () => {
@@ -71,7 +73,8 @@ describe('the hand-out', () => {
   it('claims the NEW order for her, marks her list and starts the clock — only an order nobody holds and no list holds', async () => {
     const c = client();
     expect(await handToList(c as never, { ...SCOPE, orderId: 'o1', agentId: 'sara', byUserId: 'mgr', now })).toBe(true);
-    expect(c.calls[0].where).toMatchObject({ id: 'o1', ...SCOPE, claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null } });
+    expect(c.calls[0].where).toMatchObject({ id: 'o1', ...SCOPE, claimedById: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null }, issues: { none: { status: 'OPEN' } } });
+    expect(c.calls[0].data).toMatchObject({ assignedToId: null, assignedAt: null });
     expect(c.calls[0].data).toMatchObject({ claimedById: 'sara', winbackListUserId: 'sara', winbackListAt: now, winbackListSince: now });
   });
 

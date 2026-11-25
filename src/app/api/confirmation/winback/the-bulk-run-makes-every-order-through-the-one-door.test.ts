@@ -306,7 +306,7 @@ describe('2–3 — the run makes the order through the one creator, at the owne
     ]);
     for (const h of state.holds) {
       // the new order is BORN marked (winbackListAt) — out of the general pull until it is on her list
-      expect(h.where).toMatchObject({ claimedById: null, assignedToId: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null } });
+      expect(h.where).toMatchObject({ claimedById: null, confirmationStatus: 'NEW', winbackListUserId: null, winbackListAt: { not: null } });
       expect(h.data.winbackListAt).toBeInstanceOf(Date);
     }
     // and the cancelled order is never written

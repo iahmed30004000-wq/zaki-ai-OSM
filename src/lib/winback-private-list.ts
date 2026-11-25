@@ -34,8 +34,15 @@ type Client = Prisma.TransactionClient | typeof Db;
 export const LIST_DAYS = 3;
 const DAY_MS = 86_400_000;
 
-/** Every POOL reader: a win-back list order — on a list, or let go («انعرض من قبل») — is never in the general pull. */
-export const notAWinbackListOrder = { winbackListAt: null } satisfies Prisma.OrderWhereInput;
+/**
+ * Every POOL reader: a NEW order that carries the win-back mark — handed out, or let go («انعرض من قبل») — is never in the general pull.
+ * THE MARK SPEAKS ONLY WHILE THE ORDER IS NEW (the review of 25/11): an order of any other status that still carries it is in the normal
+ * flow for its status (a postponed one is pulled on its date, a «لا يرد» one by the rounds). So no exit — a release, a hand-back, an issue,
+ * a stand-down, a release after a claim by id — can leave a row in no queue. Written as an OR of two plain clauses (no NOT, no NULL under a
+ * NOT). It sits at the top of `claimableWhere`: the one spread that sets its own `OR` after it, `duePostponedWhere`, asks POSTPONED —
+ * never NEW — so the mark is inert there anyway.
+ */
+export const notAWinbackListOrder = { OR: [{ winbackListAt: null }, { confirmationStatus: { not: 'NEW' } }] } satisfies Prisma.OrderWhereInput;
 
 /** Every reader that weighs an agent's HAND (cap, gate, releases, «طلباتي»): a row of a private list is outside it. */
 export const notOnAPrivateList = { winbackListUserId: null } satisfies Prisma.OrderWhereInput;
@@ -58,9 +65,10 @@ export function offeredBeforeWhere(scope: { companyId: string; storeId: string }
     winbackListAt: { not: null },
     winbackListUserId: null,
     claimedById: null,
-    assignedToId: null,
     confirmationStatus: 'NEW',
     shippingStatus: 'NOT_READY',
+    // an order with an open issue is not handed out until the moderator corrects it (the hand-out asks the same)
+    issues: { none: { status: 'OPEN' } },
   };
 }
 
@@ -78,14 +86,18 @@ export async function handToList(
       companyId: input.companyId,
       storeId: input.storeId,
       claimedById: null,
-      assignedToId: null,
       confirmationStatus: 'NEW',
       shippingStatus: 'NOT_READY',
       winbackListUserId: null,
       // A fresh bulk-run order is born marked (`winbackListAt`); a re-hand takes one a list let go. Never an ordinary order.
       winbackListAt: { not: null },
+      // Never an order with an open issue: it waits for the moderator's correction first.
+      issues: { none: { status: 'OPEN' } },
     },
     data: {
+      // Whatever name a transfer or a claim left on it goes: the pool asks for none, and the hand-out writes none.
+      assignedToId: null,
+      assignedAt: null,
       claimedById: input.agentId,
       claimedAt: input.now,
       currentOwnerId: input.agentId,
@@ -257,12 +269,18 @@ export async function autoMoveIdleLists(
 }
 
 /**
- * LEAVING THE LIST — every way an order leaves a private list or the win-back pool by somebody's hand (a release, a pull-back, a hand-back,
- * an issue, a stand-down, a colleague taking it for the customer on the line, a supervisor's claim) clears ALL THREE marks, so the order
- * rejoins the normal flow for its status (a postponed one is pulled on its date). Only the 3-day expiry (`expireLists`) keeps
- * `winbackListAt` — the one way into «انعرض من قبل». A row with no mark writes nothing new: an ordinary order's write is what it was.
+ * LEAVING THE LIST — every way an order leaves a private list by somebody's hand (a release, a pull-back, a forced take, a hand-back, an
+ * issue, a stand-down, a colleague taking it for the customer on the line, a claim by id) takes it OFF THE LIST: no list holder, no list
+ * clock. The win-back mark (`winbackListAt`) STAYS, and the order's status decides (the review of 25/11):
+ *   · still NEW and nobody holds it (a release, a pull-back, an issue raised) → it is «انعرض من قبل»: never pulled, handed out by a manager
+ *     (and not while an issue is open);
+ *   · dated or not NEW (a postponed hand-back, a stand-down, a «لا يرد») → the mark is inert and the order is in the normal flow for its
+ *     status;
+ *   · taken and held (the customer on the line, a claim by id, a forced take) → it is ordinary work in that hand; let go again, the same
+ *     two rules apply.
+ * A row that is on no list writes nothing new: an ordinary order's write is what it was.
  */
-export const OFF_THE_LIST = { winbackListUserId: null, winbackListAt: null, winbackListSince: null } as const;
-export function offTheListIf(row: { winbackListUserId?: string | null; winbackListAt?: Date | string | null } | null | undefined) {
-  return row && (row.winbackListUserId || row.winbackListAt) ? OFF_THE_LIST : {};
+export const OFF_THE_LIST = { winbackListUserId: null, winbackListSince: null } as const;
+export function offTheListIf(row: { winbackListUserId?: string | null } | null | undefined) {
+  return row && row.winbackListUserId ? OFF_THE_LIST : {};
 }
