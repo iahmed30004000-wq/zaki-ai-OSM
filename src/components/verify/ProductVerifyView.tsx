@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ScanButton } from '@/components/scan/ScanButton';
 import { Button } from '@/components/ui/Button';
 import { apiJson } from '@/lib/api-client';
-import { isDarkColor, type VerifyDesign } from '@/lib/product-verify-design';
+import { isDarkColor, verifyPageBackground, type VerifyDesign } from '@/lib/product-verify-design';
 import { PRODUCT_VERIFY_CSS } from './product-verify-style';
 
 /**
@@ -17,6 +17,14 @@ import { PRODUCT_VERIFY_CSS } from './product-verify-style';
  * A code typed, scanned or carried in the link (`?code=…`, a piece's printed QR) is sent as-is to
  * `POST /api/public/verify-product/<publicId>`, which answers `{ genuine }` and nothing else. The marks are inline SVG,
  * not Remix icons: every Remix icon used anywhere lands in the one shared chunk each staff screen downloads.
+ *
+ * 25/11 (owner): «احترافية زي الصفحة القديمة» — dressed in the store-level checker's language (`VerifyBarcodeView`,
+ * `/verify/<id>`): a night page with a grid, drifting glow and points of light, the shield inside orbit rings, a gold
+ * camera call to action, a radar while checking and a seal for the verdict. Everything stays inside `.vp` and in the
+ * normal flow (nothing pinned to the screen), so the same markup sits quietly inside the editor's preview box.
+ *
+ * Colours: the owner's `primaryColor` is the accent (glow, rings, ticks, the genuine card); `backgroundColor` only
+ * tints the night — see `verifyPageBackground`.
  */
 
 type Verdict = null | 'checking' | 'genuine' | 'fake';
@@ -37,8 +45,26 @@ function cleanAnyScan(raw: string): string | null {
   return text;
 }
 
-const MIN_CHECK_MS = 900;
+/** Long enough for the radar to read as a check rather than a flicker; the answer itself is usually faster. */
+const MIN_CHECK_MS = 1400;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Points of light behind the page — fixed, so the server and the browser draw the same markup. [left%, top%, size, delay, period] */
+const DOTS = [
+  [8, 6, 3, 1.3, 9.4], [53, 3, 4, 4.5, 8.3], [88, 12, 4.5, 1.5, 7.2], [92, 30, 2.4, 3.1, 10.5], [14, 22, 4.5, 2, 5.9],
+  [30, 40, 3, 5.6, 8.3], [72, 48, 2.2, 1.6, 8.4], [6, 58, 3, 2.2, 7.5], [46, 66, 4, 3.8, 8.1], [84, 72, 3.4, 3.6, 5.8],
+  [95, 86, 4, 1.6, 6.3], [22, 80, 3, 2, 7.3], [62, 92, 3.5, 0, 10.5], [36, 16, 2.6, 4.4, 7.9],
+];
+
+/** The genuine card's burst: [x px, y px, turn deg, delay s, colour 0–2]. */
+const BURST = [
+  [-120, -70, 220, 0, 0], [-90, -120, -160, 0.05, 1], [-40, -140, 300, 0.1, 2], [10, -150, -240, 0.02, 0],
+  [60, -130, 180, 0.08, 1], [110, -100, -300, 0.04, 2], [140, -40, 260, 0.12, 0], [-150, -20, -200, 0.09, 1],
+  [-70, -90, 140, 0.15, 2], [90, -60, -120, 0.14, 0], [-20, -110, 90, 0.06, 1], [30, -80, -80, 0.11, 2],
+  [-130, 20, 160, 0.16, 0], [130, 30, -180, 0.07, 1],
+];
+
+const css = (vars: Record<string, string | number>) => vars as React.CSSProperties;
 
 function Tick() {
   return (
@@ -47,18 +73,10 @@ function Tick() {
     </svg>
   );
 }
-function Cross() {
+function Alert() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d="M12 7.5v6M12 17h.01M10.3 3.9L2.6 17.3A2 2 0 004.3 20.3h15.4a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
-    </svg>
-  );
-}
-function Shield() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden>
-      <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z" />
-      <path d="M8.5 12l2.5 2.5 4.5-5" />
     </svg>
   );
 }
@@ -66,6 +84,34 @@ function Camera() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d="M9 3h6l1.8 2.5H20a1 1 0 011 1V19a1 1 0 01-1 1H4a1 1 0 01-1-1V6.5a1 1 0 011-1h3.2zm3 4.5a5 5 0 100 10 5 5 0 000-10zm0 2a3 3 0 110 6 3 3 0 010-6z" />
+    </svg>
+  );
+}
+function Code() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M4 6v12M7 6v12M10.5 6v12M14 6v12M16.5 6v12M20 6v12" />
+    </svg>
+  );
+}
+function Lock() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 017 0v3" />
+    </svg>
+  );
+}
+function Info() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 11v5M12 8h.01" />
+    </svg>
+  );
+}
+function Steps() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M4 7h10M4 12h16M4 17h7M17 4l3 3-3 3" />
     </svg>
   );
 }
@@ -84,12 +130,50 @@ function Bag() {
   );
 }
 
+/** The shield of the old page, in three tones: the owner's colour (hero), gold (genuine card), red (not genuine). */
+function ShieldArt({ tone, id }: { tone: 'p' | 'gold' | 'red'; id: string }) {
+  return (
+    <svg viewBox="0 0 120 140" aria-hidden>
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" className={`vp-${tone}1`} />
+          <stop offset=".55" className={`vp-${tone}2`} />
+          <stop offset="1" className={`vp-${tone}3`} />
+        </linearGradient>
+      </defs>
+      <path d="M60 4l50 20v40c0 34-22 60-50 72C32 124 10 98 10 64V24z" fill={`url(#${id})`} />
+      <path d="M60 14l41 16.4V64c0 28-17.6 49-41 59-23.4-10-41-31-41-59V30.4z" fill="rgba(5,9,18,.55)" stroke="rgba(255,255,255,.35)" />
+      {tone === 'red' ? (
+        <path className="vp-draw" d="M44 52l32 32M76 52L44 84" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" />
+      ) : (
+        <path className="vp-draw" d="M38 66l15 15 30-33" fill="none" stroke="white" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />
+      )}
+    </svg>
+  );
+}
+
+/** Text running round a circle (the orbit and the verdict's seal). */
+function RingText({ id, text, className }: { id: string; text: string; className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 100 100" aria-hidden>
+      <defs>
+        <path id={id} d="M50,50 m-42,0 a42,42 0 1,1 84,0 a42,42 0 1,1 -84,0" />
+      </defs>
+      <text>
+        <textPath href={`#${id}`}>{text}</textPath>
+      </text>
+    </svg>
+  );
+}
+
 export function ProductVerifyView({ design, publicId, initialCode, preview }: ProductVerifyViewProps) {
   const [code, setCode] = useState(initialCode ?? '');
   const [verdict, setVerdict] = useState<Verdict>(initialCode && !preview ? 'checking' : null);
   const [failed, setFailed] = useState(false);
   const started = useRef(false);
   const verdictRef = useRef<HTMLDivElement>(null);
+  // SVG ids must be unique on a page and safe inside `url(#…)`.
+  const uid = 'vp' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
 
   const check = useCallback(
     async (raw: string) => {
@@ -122,7 +206,7 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
   }, [initialCode, preview, check]);
 
   useEffect(() => {
-    if (verdict && verdict !== 'checking' && !preview) verdictRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    if (verdict && !preview) verdictRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
   }, [verdict, preview]);
 
   const onScan = useCallback(
@@ -141,21 +225,32 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
   };
 
   const shown: Verdict = preview ? preview.verdict : verdict;
-  const dark = isDarkColor(design.backgroundColor);
-  const style = {
-    ['--vp-p' as string]: design.primaryColor,
-    ['--vp-bg' as string]: design.backgroundColor,
-    ['--vp-on-p' as string]: isDarkColor(design.primaryColor) ? '#ffffff' : '#0b1220',
-    ['--vp-ink' as string]: dark ? '#f1f5fb' : '#0f172a',
-    ['--vp-mute' as string]: dark ? 'rgba(241,245,251,.7)' : '#5b6578',
-  } as React.CSSProperties;
+  const style = css({
+    '--vp-p': design.primaryColor,
+    '--vp-base': verifyPageBackground(design.backgroundColor),
+    '--vp-on-p': isDarkColor(design.primaryColor) ? '#ffffff' : '#0b1220',
+  });
+  const hasAbout = Boolean(design.description) || design.features.length > 0;
+  let step = 0; // the entrance order of the blocks below, for their stagger
+  const rise = (extra = '') => ({ className: `vp-rise${extra}`, style: css({ '--i': step++ }) });
 
   return (
-    <main className={`vp${dark ? ' vp-dark' : ''}${preview ? ' vp-pv' : ''}`} style={style}>
+    <main className={`vp${preview ? ' vp-pv' : ''}`} style={style}>
       <style>{PRODUCT_VERIFY_CSS}</style>
-      <div className="vp-glow" aria-hidden />
+
+      <div className="vp-fx" aria-hidden>
+        <div className="vp-grid" />
+        <div className="vp-blob vp-b1" />
+        <div className="vp-blob vp-b2" />
+        <div className="vp-dots">
+          {DOTS.map(([l, t, s, d, k], i) => (
+            <i key={i} style={css({ '--l': `${l}%`, '--t': `${t}%`, '--s': `${s}px`, '--d': `${d}s`, '--k': `${k}s` })} />
+          ))}
+        </div>
+      </div>
+
       <div className="vp-wrap">
-        <header className="vp-top">
+        <header {...rise(' vp-top')}>
           {design.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img className="vp-logo" src={design.logoUrl} alt="" />
@@ -165,24 +260,65 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
             </span>
           )}
           <span className="vp-chip">
-            <Shield /> تحقق من الأصالة
+            <b aria-hidden /> تحقق من الأصالة
           </span>
         </header>
 
         <section className="vp-hero">
-          {design.imageUrl && (
-            <div className="vp-media">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={design.imageUrl} alt={design.name} />
-            </div>
-          )}
-          <h1>{design.name}</h1>
-          <p className="vp-head">{design.headline}</p>
+          <div {...rise(' vp-stage')} aria-hidden>
+            <div className="vp-halo" />
+            <div className="vp-ring vp-r1" />
+            <div className="vp-ring vp-r2" />
+            <div className="vp-ring vp-r3" />
+            <RingText id={`${uid}-orbit`} className="vp-orbit" text="ORIGINAL • GENUINE • AUTHENTIC • ORIGINAL • GENUINE • AUTHENTIC •" />
+            {design.imageUrl ? (
+              <>
+                <div className="vp-frame">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={design.imageUrl} alt="" />
+                </div>
+                <span className="vp-badge">
+                  <ShieldArt tone="p" id={`${uid}-badge`} />
+                </span>
+              </>
+            ) : (
+              <span className="vp-shield">
+                <ShieldArt tone="p" id={`${uid}-hero`} />
+              </span>
+            )}
+          </div>
+          {design.imageUrl && <span className="vp-sr">{`صورة ${design.name}`}</span>}
+          <p {...rise(' vp-pill')}>نظامك الذكي للتأكد من أصالة المنتج</p>
+          <h1 {...rise(' vp-name')}>{design.name}</h1>
+          <p {...rise(' vp-head')}>{design.headline}</p>
+          <ul {...rise(' vp-trust')}>
+            <li>
+              <Tick /> فحص في ثوانٍ
+            </li>
+            <li>
+              <Tick /> آمن وخاص
+            </li>
+            <li>
+              <Tick /> متاح دائماً
+            </li>
+          </ul>
         </section>
 
-        <section className="vp-card" aria-labelledby="vp-check-title">
-          <h2 id="vp-check-title">تحقق من قطعتك</h2>
-          <p className="vp-sub">اكتب الرمز الموجود على القطعة، أو صوّره بالكاميرا.</p>
+        <section {...rise(' vp-card vp-check')} aria-labelledby={`${uid}-check`}>
+          <h2 id={`${uid}-check`}>تحقق من قطعتك</h2>
+          <p className="vp-sub">صوّر الرمز الموجود على القطعة بالكاميرا، أو اكتبه بإيدك.</p>
+
+          <div className="vp-cta">
+            {preview ? (
+              <Button type="button" className="vp-scan" tabIndex={-1}>
+                <Camera /> امسح بالكاميرا
+              </Button>
+            ) : (
+              <ScanButton onScan={onScan} title="امسح الرمز الموجود على القطعة" label="امسح بالكاميرا" className="vp-scan" clean={cleanAnyScan} />
+            )}
+          </div>
+
+          <p className="vp-or">أو اكتب الرمز</p>
           <form
             className="vp-form"
             onSubmit={(e) => {
@@ -190,42 +326,68 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
               void check(code);
             }}
           >
-            <input
-              className="vp-in"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="رمز القطعة"
-              aria-label="رمز القطعة"
-              maxLength={1000}
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <span className="vp-field">
+              <Code />
+              <input
+                className="vp-in"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="رمز القطعة"
+                aria-label="رمز القطعة"
+                maxLength={1000}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </span>
             <Button className="vp-go" type="submit" disabled={!code.trim() || shown === 'checking'}>
               تحقق
             </Button>
           </form>
-          {preview ? (
-            <Button type="button" className="vp-cam" tabIndex={-1}>
-              <Camera /> امسح بالكاميرا
-            </Button>
-          ) : (
-            <ScanButton onScan={onScan} title="امسح الرمز الموجود على القطعة" label="امسح بالكاميرا" className="vp-cam" clean={cleanAnyScan} />
+          {failed && (
+            <p className="vp-err">
+              <Alert /> تعذّر التحقق الآن — تأكد من الاتصال وحاول مرة تانية.
+            </p>
           )}
-          {failed && <p className="vp-err">تعذّر التحقق الآن — تأكد من الاتصال وحاول مرة تانية.</p>}
 
           <div ref={verdictRef} role="status" aria-live="polite">
             {shown === 'checking' && (
-              <div className="vp-checking">
-                <span className="vp-spin" aria-hidden /> جاري التحقق…
+              <div className="vp-scanning">
+                <div className="vp-radar" aria-hidden>
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <p>جاري التحقق…</p>
+                <div className="vp-bar" aria-hidden>
+                  <b />
+                </div>
               </div>
             )}
             {shown === 'genuine' && (
               <div className="vp-verdict vp-ok">
-                <div className="vp-seal">
-                  <Tick />
+                <div className="vp-confetti" aria-hidden>
+                  {BURST.map(([x, y, r, d, c], i) => (
+                    <i key={i} className={`vp-c${c}`} style={css({ '--x': `${x}px`, '--y': `${y}px`, '--r': `${r}deg`, '--d': `${d}s` })} />
+                  ))}
+                </div>
+                <div className="vp-seal" aria-hidden>
+                  <span className="vp-rip" />
+                  <span className="vp-rip" />
+                  <RingText id={`${uid}-ok`} className="vp-sealtxt" text="ORIGINAL • GENUINE • AUTHENTIC • ORIGINAL • GENUINE • AUTHENTIC •" />
+                  <span className="vp-sh">
+                    <ShieldArt tone="gold" id={`${uid}-okg`} />
+                  </span>
                 </div>
                 <h3>منتج أصلي</h3>
                 <p>{design.genuineMessage}</p>
+                <div className="vp-meta" aria-hidden>
+                  <span>
+                    <Tick /> تم التحقق
+                  </span>
+                  <span>
+                    <Tick /> مسجّل لدينا
+                  </span>
+                </div>
                 <Button type="button" className="vp-again" onClick={again}>
                   تحقق من قطعة تانية
                 </Button>
@@ -233,8 +395,12 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
             )}
             {shown === 'fake' && (
               <div className="vp-verdict vp-bad">
-                <div className="vp-seal">
-                  <Cross />
+                <div className="vp-seal" aria-hidden>
+                  <span className="vp-rip" />
+                  <RingText id={`${uid}-bad`} className="vp-sealtxt" text="NOT VERIFIED • NOT VERIFIED • NOT VERIFIED • NOT VERIFIED •" />
+                  <span className="vp-sh">
+                    <ShieldArt tone="red" id={`${uid}-badg`} />
+                  </span>
                 </div>
                 <h3>لم نتمكن من التأكد</h3>
                 <p>{design.notGenuineMessage}</p>
@@ -246,15 +412,20 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
           </div>
         </section>
 
-        {(design.description || design.features.length > 0) && (
-          <section className="vp-card">
-            <h2>عن المنتج</h2>
+        {hasAbout && (
+          <section {...rise(' vp-card vp-reveal')} aria-labelledby={`${uid}-about`}>
+            <h2 id={`${uid}-about`} className="vp-h">
+              <i aria-hidden>
+                <Info />
+              </i>
+              عن المنتج
+            </h2>
             {design.description && <p className="vp-desc">{design.description}</p>}
             {design.features.length > 0 && (
               <ul className="vp-feats">
                 {design.features.map((f, i) => (
-                  <li key={i}>
-                    <i>
+                  <li key={i} style={css({ '--i': i })}>
+                    <i aria-hidden>
                       <Tick />
                     </i>
                     {f}
@@ -265,22 +436,62 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
           </section>
         )}
 
+        <section {...rise(' vp-card vp-reveal')} aria-labelledby={`${uid}-how`}>
+          <h2 id={`${uid}-how`} className="vp-h">
+            <i aria-hidden>
+              <Steps />
+            </i>
+            كيف يعمل؟
+          </h2>
+          <ol className="vp-steps">
+            <li>
+              <span className="vp-num" aria-hidden>
+                1
+              </span>
+              <div>
+                <h3>امسح أو اكتب الرمز</h3>
+                <p>الرمز موجود على القطعة أو على علبتها.</p>
+              </div>
+            </li>
+            <li>
+              <span className="vp-num" aria-hidden>
+                2
+              </span>
+              <div>
+                <h3>نطابقه فوراً</h3>
+                <p>مع سجل القطع الأصلية لهذا المنتج بالذات.</p>
+              </div>
+            </li>
+            <li>
+              <span className="vp-num" aria-hidden>
+                3
+              </span>
+              <div>
+                <h3>النتيجة خلال ثوانٍ</h3>
+                <p>«أصلي» أو تنبيه واضح إذا ما قدرنا نتأكد.</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+
         {(design.whatsappUrl || design.reorderUrl) && (
-          <div className="vp-acts">
-            {design.whatsappUrl && (
-              <a className="vp-btn vp-wa" href={design.whatsappUrl} target="_blank" rel="noopener noreferrer">
-                <WhatsApp /> تواصل معنا على واتساب
-              </a>
-            )}
+          <div {...rise(' vp-acts vp-reveal')}>
             {design.reorderUrl && (
               <a className="vp-btn vp-re" href={design.reorderUrl} target={preview ? '_blank' : undefined} rel="noopener">
                 <Bag /> اطلب مرة تانية
               </a>
             )}
+            {design.whatsappUrl && (
+              <a className="vp-btn vp-wa" href={design.whatsappUrl} target="_blank" rel="noopener noreferrer">
+                <WhatsApp /> تواصل معنا على واتساب
+              </a>
+            )}
           </div>
         )}
 
-        <footer className="vp-foot">كل قطعة أصلية إلها رمز خاص — التحقق مجاني ومتاح دائماً.</footer>
+        <footer className="vp-foot">
+          <Lock /> كل قطعة أصلية إلها رمز خاص — التحقق مجاني ومتاح دائماً.
+        </footer>
       </div>
     </main>
   );

@@ -318,6 +318,8 @@ const WRITERS: Record<string, { how: 'own' | 'claim' | 'claim-last' | 'close' | 
   '/src/app/api/finance/statements/[id]/close/route.ts': { how: 'close', why: '«إغلاق المطابقة»: its claim on the close is its only write; the settling runs under it' },
   '/src/app/api/finance/statements/[id]/match/route.ts': { how: 'own', why: 're-running the matching: the status write comes first and carries the condition' },
   '/src/app/api/finance/statements/[id]/decisions/route.ts': { how: 'own', why: 'the bulk answer' },
+  // new (25/11, «ركّن كل السطور بلا طلب»): the single door's «قيد المراجعة» for every no-order line of one statement — its one edit says the matching is still open.
+  '/src/app/api/finance/statements/[id]/park-unlinked/route.ts': { how: 'own', why: 'parking every line no order carries, with one reason' },
   '/src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts': { how: 'own', why: 'the answer on one line' },
   '/src/app/api/finance/statements/[id]/receipts/route.ts': { how: 'claim', why: 'a new receipt' },
   '/src/app/api/finance/statements/[id]/receipts/[receiptId]/route.ts': { how: 'claim', why: 'removing a receipt' },
@@ -351,6 +353,8 @@ describe('every door that writes a statement is known — and a new one is a dec
     '/src/app/api/finance/statements/[id]/match/route.ts',
     '/src/app/api/finance/statements/[id]/decisions/route.ts',
     '/src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
+    // new (25/11): the bulk park answers lines, so the close of the matching is what shuts it.
+    '/src/app/api/finance/statements/[id]/park-unlinked/route.ts',
     '/src/lib/hand-link.ts',
     '/src/lib/parcel-swap.ts',
   ];
@@ -426,6 +430,8 @@ describe('every door that writes a statement is known — and a new one is a dec
     for (const f of [
       'src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
       'src/app/api/finance/statements/[id]/decisions/route.ts',
+      // new (25/11): «ركّن كل السطور بلا طلب» reads the stamp under the same lock and says the same sentence.
+      'src/app/api/finance/statements/[id]/park-unlinked/route.ts',
     ]) {
       const src = code(f);
       expect(src, f).toContain('closedStatementRefusal()');

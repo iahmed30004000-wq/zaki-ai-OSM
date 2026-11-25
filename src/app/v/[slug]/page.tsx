@@ -1,7 +1,7 @@
 import { notFound, permanentRedirect } from 'next/navigation';
 import { ProductVerifyView } from '@/components/verify/ProductVerifyView';
 import { lookupBySlug } from '@/lib/product-verify';
-import { PRODUCT_CODE_PARAM } from '@/lib/product-verify-design';
+import { PRODUCT_CODE_PARAM, verifyPageBackground } from '@/lib/product-verify-design';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,8 +47,8 @@ export default async function ProductVerifyPage({ params, searchParams }: Props)
 
   const raw = query[PRODUCT_CODE_PARAM];
   const initialCode = typeof raw === 'string' && raw.trim() ? raw.slice(0, 1000) : undefined;
-  // The overscroll beyond the page wears the page's own background — a validated `#rrggbb`, nothing else reaches here.
-  const bg = found.design.backgroundColor;
+  // The overscroll beyond the page wears the page's own night (`verifyPageBackground`): always a `#rrggbb`, nothing else reaches here.
+  const bg = verifyPageBackground(found.design.backgroundColor);
   return (
     <>
       <style>{`html,body{background:${bg}}`}</style>
