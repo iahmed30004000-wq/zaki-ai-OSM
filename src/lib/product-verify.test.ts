@@ -20,6 +20,7 @@ import {
   isGenuineForProduct,
   lookupBySlug,
   normalizeProductCode,
+  productCodeCandidates,
   publicImage,
   SLUG_TAKEN,
   slugTaken,
@@ -197,6 +198,20 @@ describe('the verdict on a product page', () => {
     expect(normalizeProductCode('https://crm.example/v/krem?code=p-0042')).toBe('P-0042');
     expect(normalizeProductCode('https://crm.example/verify/p/AbCdEf123_-x?code=p-0042')).toBe('P-0042');
     expect(normalizeProductCode('  p-0042 ')).toBe('P-0042');
+  });
+
+  // 25/11 (owner): «الباركود يكون يقدر يكون كلشي — روابط او رموز». A saved link of any shape is a code too.
+  it('a scan is tried as the code inside a piece link, then as itself — so any saved link or code matches', () => {
+    // A piece link: its code first, then the whole link (the owner may have saved the link itself).
+    expect(productCodeCandidates('https://crm.example/v/krem?code=p-0042')).toEqual(['P-0042', 'https://crm.example/v/krem?code=p-0042']);
+    // The page's own link with no code: only the link itself — it matches when the owner saved it as a code.
+    expect(productCodeCandidates('https://crm.example/v/vara-harir')).toEqual(['https://crm.example/v/vara-harir']);
+    // Any other link, Arabic, a plain code: once, as saved.
+    expect(productCodeCandidates('https://other.example/x?id=7')).toEqual(['https://other.example/x?id=7']);
+    expect(productCodeCandidates('  p-0042 ')).toEqual(['P-0042']);
+    expect(productCodeCandidates('رمز ١٢٣')).toEqual(['رمز ١٢٣']);
+    // Too short or a control character: nothing to look up.
+    expect(productCodeCandidates('ab')).toEqual([]);
   });
 });
 

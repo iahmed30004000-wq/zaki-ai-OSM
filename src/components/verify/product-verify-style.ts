@@ -103,9 +103,7 @@ export const PRODUCT_VERIFY_CSS = `
 .vp .vp-scan:active{transform:scale(.98)}
 .vp .vp-scan svg{width:24px;height:24px;fill:currentColor}
 .vp .vp-scan span{gap:10px}
-.vp .vp-or{display:flex;align-items:center;gap:12px;margin:18px 0 12px;color:var(--vp-mute);font-size:13px;font-weight:700}
-.vp-or::before,.vp-or::after{content:"";flex:1;height:1px;background:var(--vp-line)}
-.vp-form{display:flex;gap:8px}
+.vp-form{display:flex;gap:8px;margin-top:14px}
 .vp-field{position:relative;flex:1;min-width:0}
 .vp-field svg{position:absolute;left:14px;top:50%;width:20px;height:20px;margin-top:-10px;fill:none;stroke:var(--vp-mute);stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .vp-in{width:100%;height:54px;border-radius:15px;border:1.5px solid rgba(255,255,255,.14);background:rgba(3,7,15,.55);color:var(--vp-ink);padding:0 14px 0 44px;font:700 17px 'Cairo',Tahoma,sans-serif;letter-spacing:.05em;direction:ltr;text-align:left;transition:border-color .2s,box-shadow .2s}

@@ -31,6 +31,7 @@ import {
   RiImageAddLine,
   RiLoader4Line,
   RiPrinterLine,
+  RiQrScan2Line,
 } from '@remixicon/react';
 
 /**
@@ -231,6 +232,10 @@ export function ProductVerifyEditor({
     };
   }, [page, product.id]);
 
+  const [newCode, setNewCode] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [justAdded, setJustAdded] = useState<CodeRow | null>(null);
+
   // The piece codes of this product: the ones tagged to it (the page also accepts untagged ones, which belong to all).
   const loadCodes = useCallback(async () => {
     try {
@@ -367,6 +372,32 @@ export function ProductVerifyEditor({
       img: `${origin}${qr(`&code=${encodeURIComponent(c.id)}&format=svg`)}`,
     }));
     if (!printLabels(`${product.name} — رموز القطع`, items)) blocked();
+  };
+
+  /**
+   * «حوّل لـ QR» (25/11, owner: «احط رابط ويتحول لـ qr كود … ولما افحصو يكون تمام»): anything typed or pasted — a plain
+   * code, a link of any shape, Arabic, symbols — is saved as a piece code of THIS product, and its QR shows at once. The
+   * QR is the page's piece link carrying it, so a phone camera opens the page and the check reads «أصلي» by itself.
+   */
+  const addPiece = async () => {
+    const text = newCode.trim();
+    if (!text || !page) return;
+    setAdding(true);
+    try {
+      const d = await apiJson<{ code: CodeRow }>('/api/settings/authenticity-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: text, productId: product.id }),
+      });
+      setNewCode('');
+      setJustAdded(d.code);
+      toast.done('انضاف الرمز وصار إله QR');
+      void loadCodes();
+    } catch (e) {
+      toast.failed(e instanceof Error ? e.message : 'تعذر إضافة الرمز');
+    } finally {
+      setAdding(false);
+    }
   };
 
   const ro = !canEdit;
@@ -599,13 +630,61 @@ export function ProductVerifyEditor({
           <Card>
             <CardHeader title="QR لكل قطعة" subtitle="رابط الصفحة مع رمز القطعة — الزبون بيصوّره وبتطلع النتيجة لحالها." />
             <CardContent className="space-y-2">
+              {canEdit && (
+                <form
+                  className="space-y-2 rounded-lg border border-[var(--sys-border)] p-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void addPiece();
+                  }}
+                >
+                  <Input
+                    label="حوّل لـ QR — حط رابط أو رمز (أي شي)"
+                    value={newCode}
+                    onChange={(e) => setNewCode(e.target.value)}
+                    placeholder="https://… أو VH-1234"
+                    dir="ltr"
+                    maxLength={1000}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <Button type="submit" size="sm" loading={adding} disabled={!newCode.trim()}>
+                    <RiQrScan2Line className="h-4 w-4" /> حوّل لـ QR
+                  </Button>
+                  {justAdded && (
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a generated QR, served by our own API */}
+                      <img
+                        src={qr(`&code=${encodeURIComponent(justAdded.id)}&format=svg`)}
+                        alt={`QR ${justAdded.code}`}
+                        width={132}
+                        height={132}
+                        className="rounded-md bg-white p-1"
+                      />
+                      <div className="min-w-0 flex-1 space-y-2 text-note">
+                        <p className="font-mono font-semibold text-[var(--sys-foreground)]" dir="ltr" style={{ wordBreak: 'break-all' }}>
+                          {justAdded.code}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="quiet" size="sm" onClick={() => download(qr(`&code=${encodeURIComponent(justAdded.id)}&format=png&download=1`))}>
+                            <RiDownload2Line className="h-4 w-4" /> QR
+                          </Button>
+                          <Button type="button" variant="quiet" size="sm" onClick={() => void copy(productVerifyLink(origin, page.slug, justAdded.code))}>
+                            <RiFileCopyLine className="h-4 w-4" /> نسخ
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </form>
+              )}
               {codes === null ? (
                 <p className="text-note text-[var(--sys-muted-foreground)]">
                   <RiLoader4Line className="h-4 w-4 animate-spin" />
                 </p>
               ) : codes.length === 0 ? (
                 <p className="rounded-lg border border-[var(--sys-border)] p-3 text-note text-[var(--sys-muted-foreground)]">
-                  ما في رموز مربوطة بهالمنتج. ضيفها من «رموز الأصالة» واختار المنتج. (الرموز اللي «لكل المنتجات» كمان بتطلع «أصلي» هون.)
+                  ما في رموز مربوطة بهالمنتج. حط رابط أو رمز فوق وحوّله لـ QR، أو ضيفها من «رموز الأصالة» واختار المنتج. (الرموز اللي «لكل المنتجات» كمان بتطلع «أصلي» هون.)
                 </p>
               ) : (
                 <>
