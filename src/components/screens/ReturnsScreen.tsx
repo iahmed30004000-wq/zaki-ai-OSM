@@ -205,8 +205,23 @@ const courierCell = (r: RowBase) =>
     r.deliveryProvider?.name ?? '—'
   );
 
+/**
+ * «المخزن» (the owner, 25/11: «اسم المخزن أظهره بمتابعة المرتجعات عشان أعرف»): the warehouse the parcel LEFT FROM, as its
+ * own column — a placed store only. A parcel with no stamp (shipped before the placement) reads «—».
+ */
+const warehouseCell = (r: RowBase) => r.sourceWarehouseName ?? '—';
+/** In a placed store the warehouse has its own column, so the courier cell is the courier alone. */
+const courierOnly = (r: RowBase) => r.deliveryProvider?.name ?? '—';
+
 export function ReturnsScreen() {
   const phone = useIsPhone();
+  /*
+   * F10 (25/11): the warehouses of a PLACED store this person reaches — the same door and rule as the receive dialog's
+   * picker. Undefined for a store that is not placed: no column, no filter, and the list is asked what it always was.
+   */
+  const places = useReceiveWarehouses();
+  /** «من أي مخزن طلع المرتجع»: `all`, a warehouse's id, or `none` (no stamp). Sent only for a placed store. */
+  const [warehouse, setWarehouse] = useState('all');
   // A copy the browser refuses is handed to a field to select by hand, not to a warning that goes away (as on the shipment follow-up).
   const tell = useTell();
   const copyRefused = (value: string) => void tell({ title: 'تعذّر النسخ — انسخه يدوياً', value });
@@ -232,12 +247,12 @@ export function ReturnsScreen() {
    */
   const list = usePagedList<Row, Extra>({
     url: '/api/ops/returns',
-    params: { q: term.trim() || undefined, view, status, courier, age, barcode },
+    params: { q: term.trim() || undefined, view, status, courier, age, barcode, warehouse: places ? warehouse : undefined },
     read,
   });
 
-  /** What narrows the view that is open: the state, the company, the age, the word typed or scanned. */
-  const narrowing = [status, courier, age, barcode].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
+  /** What narrows the view that is open: the state, the company, the age, the warehouse, the word typed or scanned. */
+  const narrowing = [status, courier, age, barcode, places ? warehouse : 'all'].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
   /** …and the view itself, when it is not the work — what «إعادة تعيين» counts. */
   const activeCount = narrowing + (view !== DEFAULT_VIEW ? 1 : 0);
   const reset = () => {
@@ -247,6 +262,7 @@ export function ReturnsScreen() {
     setCourier('all');
     setAge('all');
     setBarcode('all');
+    setWarehouse('all');
   };
 
   const { extra, rows, pagination } = list;
@@ -284,7 +300,9 @@ export function ReturnsScreen() {
    * control the door would refuse is not drawn. The number on it is the list's own total — every page of the filters
    * that are chosen now — because that is the set the door walks.
    */
-  const receiveAllTotal = extra?.mayReceiveAll && extra.view === 'pending' ? pagination.total : 0;
+  // F10: not while ONE warehouse is chosen — the press walks the list's other filters, not the warehouse, so the number on
+  // it would be a promise the door does not keep. «كل المخازن» brings it back.
+  const receiveAllTotal = extra?.mayReceiveAll && extra.view === 'pending' && (!places || warehouse === 'all') ? pagination.total : 0;
 
   const filters: ToolbarFilter[] | undefined = extra && [
     {
@@ -334,6 +352,22 @@ export function ReturnsScreen() {
         { value: 'none', label: `بلا باركود (${extra.facts.noBarcode ?? 0})` },
       ],
     },
+    // F10: a placed store only — the warehouses this person reaches, and «بلا مخزن» for what was shipped before the placement.
+    ...(places
+      ? [
+          {
+            key: 'warehouse',
+            label: 'المخزن',
+            value: warehouse,
+            onChange: setWarehouse,
+            options: withChosen(warehouse, [
+              { value: 'all', label: 'كل المخازن' },
+              ...places.map((w) => ({ value: w.id, label: w.name })),
+              { value: 'none', label: 'بلا مخزن' },
+            ]),
+          },
+        ]
+      : []),
     ...(view === DEFAULT_VIEW
       ? [
           {
@@ -417,7 +451,13 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: courierCell },
+                    { key: 'courier', label: 'شركة الشحن', render: places ? courierOnly : courierCell },
+                    // F10: the warehouse the parcel left from, a placed store only.
+                    ...(places
+                      ? [
+                          { key: 'warehouse', label: 'المخزن', render: warehouseCell },
+                        ]
+                      : []),
                     ...contactColumns,
                     { key: 'reason', label: 'السبب', render: (r) => returnReasonText(r.returnReason) },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
@@ -445,7 +485,13 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: courierCell },
+                    { key: 'courier', label: 'شركة الشحن', render: places ? courierOnly : courierCell },
+                    // F10: the warehouse the parcel left from, a placed store only.
+                    ...(places
+                      ? [
+                          { key: 'warehouse', label: 'المخزن', render: warehouseCell },
+                        ]
+                      : []),
                     ...contactColumns,
                     {
                       key: 'counted',
