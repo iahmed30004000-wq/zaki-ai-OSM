@@ -197,6 +197,8 @@ export interface PartnerDrawRow {
   createdByName: string | null;
   /** A reversing entry took it back: shown, marked, and counted as nothing. */
   reversed: boolean;
+  /** F13: its real date is before the profit epoch — shown, marked «قبل بداية الأرباح — ما بتنحسب», counted in no figure. ABSENT otherwise. */
+  beforeProfit?: true;
 }
 
 /** What `GET /api/finance/partners/statement` answers: the lines of `partnerLines`, and the figures that explain them. */
@@ -214,6 +216,8 @@ export interface PartnerStatement extends StatementLines {
   /** Where the profit they are cut from starts (A1): the day of the store's first courier statement (YYYY-MM-DD) and its first instant. ABSENT for a store with no statement — its figures are since the beginning, and its statement is exactly what it was. */
   since?: string;
   sinceDay?: string;
+  /** F13: the standing draws dated before `since` — listed and marked, counted nowhere. ABSENT exactly when `since` is. */
+  beforeProfitCount?: number;
 }
 
 /**

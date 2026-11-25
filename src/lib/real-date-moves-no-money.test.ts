@@ -143,7 +143,11 @@ const MONEY_READERS = [
   'src/app/api/finance/route.ts',
   'src/lib/profit-to-date.ts',
   'src/lib/profit-summary.ts',
-  'src/lib/partner-statement.ts',
+  /*
+   * 25/11 (F13) — UPDATED. Old: `src/lib/partner-statement.ts` was in this list (it never read the real date). New: it reads it for ONE
+   * thing — whether a draw is before the store's profit epoch (the owner's choice «ب» on A1's open question) — and is pinned by the
+   * test below instead: the real date is selected once and judged only by `drawBeforeProfit`; no sum reads it.
+   */
   'src/lib/partner-statement-core.ts',
   'src/lib/statement-close.ts',
   'src/lib/match-integrity.ts',
@@ -164,6 +168,16 @@ const code = (p: string) =>
 describe('the arithmetic does not read the real date', () => {
   it.each(MONEY_READERS)('%s never mentions occurredAt', (file) => {
     expect(code(file)).not.toMatch(/occurredAt/);
+  });
+
+  it('partner-statement.ts reads the real date only to judge a draw against the profit epoch (F13)', () => {
+    const s = code('src/lib/partner-statement.ts');
+    expect(s.match(/occurredAt/g)).toEqual(['occurredAt']);
+    expect(s).toMatch(/occurredAt: true/);
+    expect(s).toMatch(/drawBeforeProfit\(m, epochAt\)/);
+    const sums = s.slice(s.indexOf('const drawsUnits'), s.indexOf('const netProfit'));
+    expect(sums.length).toBeGreaterThan(100);
+    expect(sums).not.toMatch(/occurredAt|createdAt|realDateOf/);
   });
 
   it('walletBalance — the book balance every closing compares with — sums every movement, whatever its date', () => {

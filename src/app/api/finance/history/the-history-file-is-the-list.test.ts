@@ -19,6 +19,8 @@ const { db, tables, requireContext, current, reads } = vi.hoisted(() => {
   const tables = {
     wallet: [] as Row[], walletMovement: [] as Row[], walletTransfer: [] as Row[], partnerWithdrawal: [] as Row[],
     partner: [] as Row[], user: [] as Row[], store: [] as Row[], company: [] as Row[], country: [] as Row[], partnerStandingAmount: [] as Row[],
+    // 25/11 (F13): the withdrawals file reads the store's profit epoch from its courier statements. Empty here: no epoch, the file as it was.
+    courierStatement: [] as Row[],
   };
   const reads = { count: 0 };
 
@@ -81,6 +83,7 @@ const { db, tables, requireContext, current, reads } = vi.hoisted(() => {
     company: model('company'),
     country: model('country'),
     partnerStandingAmount: model('partnerStandingAmount'),
+    courierStatement: model('courierStatement'),
   };
   return { db, tables, reads, requireContext: vi.fn(), current: { user: null as unknown as SessionUser } };
 });

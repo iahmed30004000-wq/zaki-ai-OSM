@@ -17,6 +17,7 @@ import { userCan } from '@/lib/can';
 import { arDateTime } from '@/lib/format';
 import type { PartnerDrawRow, PartnerStatement, StatementLine } from '@/lib/partner-statement-core';
 import { profitSinceSentence } from '@/lib/profit-since-words';
+import { BEFORE_PROFIT_AR } from '@/lib/draw-epoch';
 
 /**
  * «الشركاء» — EACH PARTNER'S SHARE OF THE NET PROFIT, WHAT HE HAS DRAWN, AND «مكسور عليه» (13/11), under the profit it divides.
@@ -31,6 +32,7 @@ import { profitSinceSentence } from '@/lib/profit-since-words';
  * NO PERIOD, BECAUSE THE SCREEN HAS NONE: «صافي الربح» above is since the beginning, so every column is since the beginning, and an
  * over-draw carries forward by construction. The shares are today's shares for all history — the section says so in its subtitle.
  * (25/11, A1) For a store with a courier statement the profit starts on the day of the first one, and the subtitle names that day.
+ * (25/11, F13) The draws start the same day: one dated before it is listed, marked «قبل بداية الأرباح — ما بتنحسب», counted nowhere.
  *
  * «مكسور عليه» IS A COUNT, NOT A REFUSAL: a red chip with the amount beside the partner, and nothing is blocked anywhere.
  * «عكس» on a draw uses the wallet's own reversal door (the cash box's key, and the partners' key for this kind).
@@ -168,6 +170,12 @@ export function PartnersSection() {
               <Badge variant="danger">معكوس</Badge>
             </>
           )}
+          {d.beforeProfit && (
+            <>
+              {' '}
+              <Badge variant="outline">{BEFORE_PROFIT_AR}</Badge>
+            </>
+          )}
         </>
       ),
     },
@@ -215,7 +223,7 @@ export function PartnersSection() {
         <CardHeader
           title="الشركاء"
           // A1 (25/11): «من البداية» names the same start the profit screen names — the day of the first statement — when the store has one.
-          subtitle={'نصيب كل شريك من صافي الربح، وسحوباته، والرصيد. اللي بيسحب فوق نصيبه بيتسجّل «مكسور عليه» — بيتنعدّ وبيتحمل للقادم وما بينمنع. ' + (statement.sinceDay ? profitSinceSentence(statement.sinceDay) + '. السحوبات كلها من البداية، والنسب هي نسب اليوم على كل التاريخ.' : 'كل الأرقام من البداية، والنسب هي نسب اليوم على كل التاريخ.')}
+          subtitle={'نصيب كل شريك من صافي الربح، وسحوباته، والرصيد. اللي بيسحب فوق نصيبه بيتسجّل «مكسور عليه» — بيتنعدّ وبيتحمل للقادم وما بينمنع. ' + (statement.sinceDay ? profitSinceSentence(statement.sinceDay) + '. والسحوبات من نفس اليوم: اللي قبله بيضل مكتوب وما بينحسب. والنسب هي نسب اليوم على كل التاريخ.' : 'كل الأرقام من البداية، والنسب هي نسب اليوم على كل التاريخ.')}
         />
         <CardContent className="p-0">
           <div className="space-y-2 border-b border-[var(--sys-border)] px-5 py-3 text-note text-[var(--sys-muted-foreground)]">
@@ -225,6 +233,11 @@ export function PartnersSection() {
             </p>
             {statement.trust.level !== 'STATED' && (
               <p className="text-[var(--sys-warning)]">{statement.trust.ar} — فالتوزيع على رقم ناقص.</p>
+            )}
+            {(statement.beforeProfitCount ?? 0) > 0 && (
+              <p>
+                في {statement.beforeProfitCount} سحب قبل بداية الأرباح — مكتوبين بسجل السحوبات تحت، وما انحسبوا على حدا.
+              </p>
             )}
             {statement.uncounted > 0 && (
               <p className="text-[var(--sys-warning)]">
