@@ -407,6 +407,11 @@ export const NAV: NavGroup[] = [
       r('/apps/store', 'متجر التطبيقات', 'LayoutGrid', ['apps.view']),
       r('/apps/installed', 'التطبيقات المثبتة', 'Blocks', ['apps.view']),
       r('/settings/system', 'إعدادات النظام', 'Settings', ['settings.view']),
+      // «رموز الأصالة» and «باركود المنتجات» (25/11, the owner): two pages side by side. The codes card left «إعدادات النظام» for a page of
+      // its own; beside it, each product's own barcode and public page (`/v/<slug>`), which checks those codes. On `settings.view`, the key
+      // of the page the card came from — nobody gains or loses it; every write inside asks `settings.edit`, as before.
+      r('/settings/authenticity', 'رموز الأصالة', 'ShieldCheck', ['settings.view']),
+      r('/settings/product-barcodes', 'باركود المنتجات', 'Tag', ['settings.view']),
       r('/admin/jobs', 'المهام المجدولة', 'Timer', ['settings.view']),
       // «قواعد الموظفين» (19/11, R15a): «سكور الموظفين» and «قواعد الخصم» from «إعدادات النظام», moved unchanged, beside the staff. On `settings.view`, the key of the
       // page they came from — nobody gains or loses them; each card still asks its own key to edit.

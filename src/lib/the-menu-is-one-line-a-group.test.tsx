@@ -111,9 +111,12 @@ describe('the menu is ten lines', () => {
     // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 19 = 56.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved. One more screen, no more line (it is a card of an existing door):
     // 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 20 = 57.
-    expect(ALL_ROUTES).toHaveLength(57);
+    // 25/11 (the owner): 59 with «رموز الأصالة» (`/settings/authenticity`, the codes card of «إعدادات النظام» moved there whole) and «باركود المنتجات»
+    // (`/settings/product-barcodes`), side by side right after «إعدادات النظام», on `settings.view`. Not one address moved. Two more screens, no more line
+    // (they are cards of an existing door): 1 + 6 + 5 + 5 + 4 + 9 + 5 + 2 + 22 = 59.
+    expect(ALL_ROUTES).toHaveLength(59);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 9, 5, 2, 20]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 4, 9, 5, 2, 22]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
@@ -574,7 +577,8 @@ describe('the settings front door', () => {
     // schedule + 2 staff + 5 control = 17) + «العمولات» (its line is «المال», its card stays: 18 paths).
     // 19/11 (R15a): 17 → 18 with «قواعد الموظفين» (`/admin/staff-rules`) on its own card: 7 settings + 2 apps + the schedule + the staff rules + 2 staff + 5 control = 18
     // (19 paths with «العمولات»).
-    expect(adminScreens()).toHaveLength(18);
+    // 25/11: 18 → 20 with «رموز الأصالة» and «باركود المنتجات» on their own card «الأصالة والباركود» (21 paths with «العمولات»).
+    expect(adminScreens()).toHaveLength(20);
     expect([...onCards].sort()).toEqual([...adminScreens(), OUTSIDE].sort());
     expect(NAV.find((g) => g.key === 'finance')!.routes.map((r) => r.path)).toContain(OUTSIDE);
   });
@@ -587,7 +591,8 @@ describe('the settings front door', () => {
     }
     // 18/11 (R6): 8 → 10 — the eight settings cards + «الموظفون والصلاحيات» + «الرقابة» = 8 + 2 = 10.
     // 19/11 (R15a): 10 → 11 — «قواعد الموظفين» is a settings card (its screen opens on `settings.view`), right before the two admin cards: 9 + 2 = 11.
-    expect(SETTINGS_CARDS).toHaveLength(11);
+    // 25/11: 11 → 12 — «الأصالة والباركود» (its two screens open on settings.view), right after «النظام»: 10 + 2 = 12.
+    expect(SETTINGS_CARDS).toHaveLength(12);
     expect(SETTINGS_CARDS.slice(-2).map((c) => c.key)).toEqual(ADMIN_CARDS);
     expect(SETTINGS_CARDS.at(-3)!.key).toBe('staff-rules');
   });
@@ -599,7 +604,8 @@ describe('the settings front door', () => {
   it('and the door opens for whoever may open any one of the SETTINGS screens behind it, and nobody else', () => {
     const settingsCards = SETTINGS_CARDS.filter((c) => !ADMIN_CARDS.includes(c.key));
     // 19/11 (R15a): 8 → 9 with «قواعد الموظفين»; its key, `settings.view`, is already one of the door's, so the union below did not move.
-    expect(settingsCards).toHaveLength(9);
+    // 25/11: 9 → 10 with «الأصالة والباركود»; its key, `settings.view`, is already one of the door's, so the union below did not move.
+    expect(settingsCards).toHaveLength(10);
     const behind = settingsCards.flatMap((c) => c.paths).flatMap((p) => findRoute(p)!.permissions ?? []);
     expect([...new Set(findRoute('/settings')!.permissions)].sort()).toEqual([...new Set(behind)].sort());
   });
@@ -625,7 +631,8 @@ describe('the settings front door', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'الإعدادات' })).toBeTruthy();
     // 18/11 (R6): 8 → 10 cards for whoever may open everything (8 settings + 2 admin).
     // 19/11 (R15a): 10 → 11 with «قواعد الموظفين» (9 settings + 2 admin).
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(11);
+    // 25/11: 11 → 12 with «الأصالة والباركود» (10 settings + 2 admin).
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(12);
     expect(screen.getByRole('link', { name: 'الموظفين' }).getAttribute('href')).toBe('/admin/users');
     expect(screen.getByRole('link', { name: 'سجل التدقيق' }).getAttribute('href')).toBe('/control/audit');
     const link = screen.getByRole('link', { name: 'البلدان والمتاجر' });

@@ -22,7 +22,7 @@ export async function GET() {
     const { companyId } = await requireContext();
     await requirePermission('settings.view');
 
-    const [codes, stores] = await Promise.all([
+    const [codes, stores, products] = await Promise.all([
       db.authenticityCode.findMany({
         where: { companyId },
         orderBy: { createdAt: 'desc' },
@@ -30,8 +30,11 @@ export async function GET() {
         select: { id: true, code: true, note: true, productId: true, scanCount: true, lastScanAt: true, createdAt: true },
       }),
       db.store.findMany({ where: { companyId, status: 'ACTIVE' }, select: { id: true, name: true } }),
+      // 25/11 («باركود المنتجات»): the products a code may be tagged to — a tagged code reads «أصلي» on that product's
+      // own page and on no other product's.
+      db.product.findMany({ where: { companyId }, orderBy: { name: 'asc' }, take: CAP, select: { id: true, name: true } }),
     ]);
-    return NextResponse.json({ codes, stores });
+    return NextResponse.json({ codes, stores, products });
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -66,6 +69,13 @@ export async function POST(req: Request) {
       );
     }
 
+    // 25/11: a code tagged to a product reads «أصلي» on that product's page only — so the tag must be one of THIS
+    // company's products, never a stray id (the column stays a plain text, not a foreign key, as decided on 19/11).
+    const productId = parsed.data.productId || null;
+    if (productId && !(await db.product.findFirst({ where: { id: productId, companyId }, select: { id: true } }))) {
+      return NextResponse.json({ error: 'المنتج غير موجود' }, { status: 400 });
+    }
+
     const existing = await db.authenticityCode.findUnique({ where: { companyId_code: { companyId, code } } });
     if (existing) {
       return NextResponse.json({ error: 'هذا الرمز مُضاف مسبقاً' }, { status: 409 });
@@ -76,7 +86,7 @@ export async function POST(req: Request) {
         companyId,
         code,
         note: parsed.data.note || null,
-        productId: parsed.data.productId || null,
+        productId,
         createdById: user.id,
       },
     });
@@ -87,7 +97,7 @@ export async function POST(req: Request) {
       action: 'AUTHENTICITY_CODE_CREATED',
       entity: 'AuthenticityCode',
       entityId: row.id,
-      newData: { code: row.code },
+      newData: { code: row.code, productId: row.productId },
     });
 
     return NextResponse.json({ code: row }, { status: 201 });

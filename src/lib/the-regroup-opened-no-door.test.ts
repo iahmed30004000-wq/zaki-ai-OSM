@@ -127,6 +127,20 @@ const DATED: Dated[] = [
     permissions: ['settings.view'],
     sentence: 'قواعد الموظفين: صفحة جديدة بمفتاح الإعدادات نفسه، تأخذ بطاقتي سكور الموظفين وقواعد الخصم من إعدادات النظام.',
   },
+  {
+    on: '2026-11-25',
+    path: '/settings/authenticity',
+    change: 'added',
+    permissions: ['settings.view'],
+    sentence: 'رموز الأصالة: صفحة جديدة بمفتاح الإعدادات نفسه (طلب المالك)، تأخذ بطاقة رموز الأصالة من إعدادات النظام كما هي — الإضافة والحذف بيسألوا settings.edit متل قبل.',
+  },
+  {
+    on: '2026-11-25',
+    path: '/settings/product-barcodes',
+    change: 'added',
+    permissions: ['settings.view'],
+    sentence: 'باركود المنتجات: صفحة جديدة جنب رموز الأصالة بمفتاح الإعدادات نفسه، لكل منتج باركود وصفحة تحقق عامة يصممها المالك — الحفظ بيسأل settings.edit.',
+  },
 ];
 
 // ───────────────────────── the comparison ─────────────────────────

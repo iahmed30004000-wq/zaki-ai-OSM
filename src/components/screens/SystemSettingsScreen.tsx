@@ -5,7 +5,6 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PostOrderOfferCard } from '@/components/settings/PostOrderOfferCard';
-import { AuthenticityCodesCard } from '@/components/settings/AuthenticityCodesCard';
 import { RiBuildingLine, RiCheckLine, RiLoader4Line } from '@remixicon/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -133,9 +132,11 @@ export function SystemSettingsScreen() {
           lives. */}
       <PostOrderOfferCard />
 
-      {/* «رموز الأصالة» (19/11): the codes the public `/verify/[storeId]` page reads «أصلي» for. A card here and not a page of
-          its own, because a new page is a line of the registry every staff screen downloads, and those ceilings only hold or fall. */}
-      <AuthenticityCodesCard />
+      {/*
+        «رموز الأصالة» IS NOT HERE ANY MORE (25/11, the owner): the codes card moved, whole, to its own page in the menu,
+        «رموز الأصالة» (`/settings/authenticity`), right beside «باركود المنتجات» (`/settings/product-barcodes`), on the same
+        `settings.view`. What stays on this screen is the company's name and the offer after the order.
+      */}
 
       {/*
         THE EIGHT CONFIRMATION-RULE CARDS ARE NOT HERE ANY MORE (18/11, request C1): «نظام الجولات» · «الطلب يرجع للطابور فوراً» · «إثبات المكالمات وجدول المحاولات» ·

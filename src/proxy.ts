@@ -43,7 +43,11 @@ const COOKIE_NAME = 'salesflow_session';
 //
 // /verify is the public authenticity checker (`/verify/<storeId>`, 19/11): anyone scans a barcode there with no session.
 // Its own guards: the API answers only `{genuine}`, rate-limited per address and per store.
-const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/lp', '/s', '/fonts', '/verify'];
+// `/verify/p/<publicId>` (25/11) is a product's own page by its stable id — it redirects to the short `/v/<slug>`.
+// /v is a product's own authenticity page at its short address («باركود المنتجات», 25/11): a printed product barcode
+// or piece QR opens it with no session. Its own guards: an inactive page is a 404, and its check API answers only
+// `{genuine}`, rate-limited per address and per page.
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/lp', '/s', '/fonts', '/verify', '/v'];
 
 /**
  * Edge pass: session presence and account state only.

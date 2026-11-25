@@ -59,8 +59,9 @@ figcaption{font:600 9pt monospace;word-break:break-all;margin-top:2mm}small{disp
 /**
  * «رموز الأصالة» — THE OWNER'S OWN LIST, READ BY A PUBLIC SCAN AND BY NOBODY ELSE.
  *
- * A card of «إعدادات النظام», not a page of its own (19/11): a new page is a new line of the registry, and the registry
- * rides in the first load of every staff screen, whose ceilings only hold or fall (R19). A card costs that load nothing.
+ * It was a card of «إعدادات النظام» (19/11, to spare the registry line). 25/11, the owner: «رموز الأصالة» is a page of
+ * its own in the menu (`/settings/authenticity`, `AuthenticityScreen`), right beside «باركود المنتجات» — this card moved
+ * there whole; it gained only the product a code belongs to.
  *
  * One add at a time, as asked: no bulk import. A code typed here is the only thing that makes `/verify/[storeId]` say
  * «أصلي» for it — nothing is genuine by default, and nothing here ever marks a code "used": the same code reads «أصلي»
@@ -83,6 +84,10 @@ interface StoreRow {
   id: string;
   name: string;
 }
+interface ProductRow {
+  id: string;
+  name: string;
+}
 
 export function AuthenticityCodesCard() {
   const toast = useToast();
@@ -90,7 +95,10 @@ export function AuthenticityCodesCard() {
   const canManage = useCan('settings.edit');
   const [codes, setCodes] = useState<Code[] | null>(null);
   const [stores, setStores] = useState<StoreRow[]>([]);
-  const [draft, setDraft] = useState({ code: '', note: '' });
+  // 25/11 («باركود المنتجات»): which product a code belongs to. A tagged code reads «أصلي» on that product's own page
+  // (`/v/<slug>`) and on no other product's; an untagged one reads «أصلي» on every product page and on the store's.
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [draft, setDraft] = useState({ code: '', note: '', productId: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The code whose QR window is open (20/11, owner: «يولد qr code خاص بيه»).
@@ -99,9 +107,10 @@ export function AuthenticityCodesCard() {
 
   const load = useCallback(async () => {
     try {
-      const d = await apiJson<{ codes: Code[]; stores: StoreRow[] }>('/api/settings/authenticity-codes');
+      const d = await apiJson<{ codes: Code[]; stores: StoreRow[]; products?: ProductRow[] }>('/api/settings/authenticity-codes');
       setCodes(d.codes ?? []);
       setStores(d.stores ?? []);
+      setProducts(d.products ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
@@ -168,9 +177,10 @@ export function AuthenticityCodesCard() {
       await apiJson('/api/settings/authenticity-codes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: draft.code.trim(), note: draft.note.trim() || null }),
+        body: JSON.stringify({ code: draft.code.trim(), note: draft.note.trim() || null, productId: draft.productId || null }),
       });
-      setDraft({ code: '', note: '' });
+      // The product stays chosen: codes are usually added a batch of one product at a time.
+      setDraft({ code: '', note: '', productId: draft.productId });
       toast.done('أُضيف الرمز');
       await load();
     } catch (e) {
@@ -243,6 +253,20 @@ export function AuthenticityCodesCard() {
               style={{ minWidth: 160 }}
               className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
             />
+            <select
+              value={draft.productId}
+              onChange={(e) => setDraft({ ...draft, productId: e.target.value })}
+              aria-label="المنتج"
+              style={{ minWidth: 160 }}
+              className="h-11 md:h-10 flex-1 rounded-lg border border-[var(--sys-border-input)] px-3 text-sm"
+            >
+              <option value="">لكل المنتجات (بدون منتج)</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
             <Button onClick={() => void add()} disabled={busy || !draft.code.trim()}>
               {busy ? <RiLoader4Line className="h-4 w-4 animate-spin" /> : <RiAddCircleLine className="h-4 w-4" />}
               إضافة
@@ -276,6 +300,9 @@ export function AuthenticityCodesCard() {
                     {c.code}
                   </span>
                   {c.note && <span className="text-[var(--sys-muted-foreground)]">{c.note}</span>}
+                  <span className="text-[var(--sys-muted-foreground)]">
+                    المنتج: {c.productId ? (products.find((p) => p.id === c.productId)?.name ?? 'منتج محذوف') : 'لكل المنتجات'}
+                  </span>
                   <span className="text-[var(--sys-muted-foreground)]">
                     عدد الفحوصات: <span className="tabular-nums">{c.scanCount}</span>
                   </span>

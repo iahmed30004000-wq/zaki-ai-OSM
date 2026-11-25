@@ -225,8 +225,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the last tab of «الطلبات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). Not one address moved.
     // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(57);
-    expect(new Set(paths).size).toBe(57);
+    // 25/11 (the owner): 59 with `/settings/authenticity` «رموز الأصالة» (the codes card of «إعدادات النظام», moved whole) and `/settings/product-barcodes` «باركود المنتجات», side by side in «الإدارة», on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(59);
+    expect(new Set(paths).size).toBe(59);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

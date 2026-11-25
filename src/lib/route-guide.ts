@@ -117,6 +117,8 @@ export const GUIDED_PATHS: readonly string[] = [
   '/apps/store',
   '/apps/installed',
   '/settings/system',
+  '/settings/authenticity',
+  '/settings/product-barcodes',
   '/admin/jobs',
   // الإدارة
   '/admin/staff-rules',

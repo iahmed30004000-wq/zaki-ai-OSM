@@ -140,7 +140,8 @@ describe('2 · the two cards, on this page and on no other', () => {
     // 19/11 (R15a): was ['PerformanceSettingsCard', 'PenaltyRulesCard', 'PostOrderOfferCard'] — the score and the deductions moved, unchanged, to «قواعد الموظفين»
     // (/admin/staff-rules); `the-staff-rules-page-holds-the-two-cards.test.tsx` pins them there. Only the offer after the order stays beside the name.
     // 19/11 (barcode authenticity): «رموز الأصالة» joined this screen as a card of its own (not a page: a registry line rides in every staff screen's first load).
-    expect(drawn).toEqual(['PostOrderOfferCard', 'AuthenticityCodesCard']);
+    // 25/11 (the owner): it left again, for its own page «رموز الأصالة» beside «باركود المنتجات».
+    expect(drawn).toEqual(['PostOrderOfferCard']);
   });
 
   it('NEGATIVE: no other source file in src draws or imports either card', () => {
