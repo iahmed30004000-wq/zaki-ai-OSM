@@ -448,7 +448,7 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
                 1
               </span>
               <div>
-                <h3>امسح أو اكتب الرمز</h3>
+                <h3>امسح الرمز</h3>
                 <p>الرمز موجود على القطعة أو على علبتها.</p>
               </div>
             </li>
