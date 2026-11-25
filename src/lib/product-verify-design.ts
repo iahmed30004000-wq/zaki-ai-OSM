@@ -50,14 +50,42 @@ export const VERIFY_LIMITS = {
 
 export const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-/** True when light text reads better on this colour (relative luminance, sRGB). */
-export function isDarkColor(hex: string): boolean {
-  if (!HEX_COLOR.test(hex)) return false;
+/** Relative luminance (sRGB) of a validated `#rrggbb`. */
+function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.4;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** True when light text reads better on this colour (relative luminance, sRGB). */
+export function isDarkColor(hex: string): boolean {
+  if (!HEX_COLOR.test(hex)) return false;
+  return luminance(hex) < 0.4;
+}
+
+/** The night the page is drawn on when the owner's own background cannot be (the store-level checker's navy). */
+export const VERIFY_NIGHT = '#060b16';
+
+/**
+ * THE PAGE'S BASE COLOUR. The page is a night page (grid, glow, particles — the look of `/verify/<id>`), so the
+ * owner's `backgroundColor` can only TINT it, never turn it light:
+ *   - already very dark (luminance < 0.05) → the owner's own colour, as it is;
+ *   - a mid colour → the night, tinted 22% by it (a blue page stays bluish, a wine page wine-ish);
+ *   - a light colour (the default `#f5f7fb` included) → the plain night: a light colour has no dark reading.
+ * The result is always a `#rrggbb` — the public page also paints `html,body` with it (the overscroll).
+ */
+export function verifyPageBackground(bg: string): string {
+  if (!HEX_COLOR.test(bg)) return VERIFY_NIGHT;
+  const l = luminance(bg);
+  if (l < 0.05) return bg.toLowerCase();
+  if (l >= 0.4) return VERIFY_NIGHT;
+  const mix = (i: number) => {
+    const v = Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.22 + parseInt(VERIFY_NIGHT.slice(i, i + 2), 16) * 0.78);
+    return v.toString(16).padStart(2, '0');
+  };
+  return `#${mix(1)}${mix(3)}${mix(5)}`;
 }
 
 // ───────────────────────── the short link ─────────────────────────
