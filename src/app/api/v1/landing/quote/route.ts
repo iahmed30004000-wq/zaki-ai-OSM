@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
+import { LANDING_DOOR, scopeOf } from '@/lib/v1/landing-country';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import { quoteLandingOrder } from '@/lib/v1/landing-door';
 
@@ -17,7 +18,7 @@ import { quoteLandingOrder } from '@/lib/v1/landing-door';
 export async function GET(req: Request) {
   const requestId = requestIdOf(req);
   try {
-    const caller = await requireSystemToken(req, 'products.read');
+    const caller = await requireSystemToken(req, 'products.read', LANDING_DOOR);
     const { searchParams: params } = new URL(req.url);
     const productId = params.get('productId') ?? '';
     const city = params.get('city') ?? '';
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
         .map((u) => u.trim().slice(0, 64))
         .filter(Boolean)
         .slice(0, 200),
-    });
+    }, scopeOf(caller));
     if (!result.ok) return NextResponse.json(result.body, { status: result.status, headers: { 'X-Request-Id': requestId } });
     return v1Ok(requestId, result.quote);
   } catch (error) {

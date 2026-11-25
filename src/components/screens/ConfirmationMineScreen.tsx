@@ -179,6 +179,8 @@ interface OrderRow {
   _count: { contactAttempts: number; notes: number };
   /** «إثبات المكالمات» (only while it is on, only on a held card of her own desk): what her «لا يرد» waits for — the server's word, ticked here. */
   callProof?: CallProofState;
+  /** This order's own proof seconds, said only when an owner's rule makes them differ from the desk's `proofSeconds` (request Q4d). Absent = the desk's. */
+  proofSeconds?: number;
   risk?: RiskInfo | null;
   changeRequests?: { id: string }[];
   /**
@@ -225,6 +227,8 @@ interface MineResponse {
   serverNow: string;
   /** «إثبات المكالمات» is on: each held card carries `callProof`. Absent = off, and nothing below reads or draws anything new. */
   callProofOn?: boolean;
+  /** How long «لا يرد» waits after «اتصال» — the rule in force's seconds (request Q3b). Absent = the default in `call-proof-words.ts`. */
+  proofSeconds?: number;
   /** «اتصلي هلّق» — a call is owed on these right now (and the orders whose last call reached the customer and need a decision). */
   work: OrderRow[];
   /** «بانتظار» — they did not answer and are not due to be rung again yet. */
@@ -903,11 +907,13 @@ export function ConfirmationMineScreen() {
       }))
     : 0;
   const clockNow = useCallProofClock(proofUntil > 0 ? proofUntil : null);
-  /** A wait is never longer than the thirty seconds and the clocks' margin: a stale first frame cannot print a wild number. */
-  const MAX_WAIT_S = Math.ceil((MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS) / 1000);
+  /** The wait after a press: the rule's seconds as the server said them (request Q3b; the default without them) and the clocks' margin. */
+  // Request Q4d: an order whose own seconds the server sent (an owner's rule) waits those; every other order the desk's.
+  const waitMsOf = (order?: { proofSeconds?: number }) => ((order?.proofSeconds ?? data?.proofSeconds ?? 0) * 1000 || MIN_CALL_MS.NO_ANSWER) + CLIENT_MARGIN_MS;
   const proofLock = (order: OrderRow): { text: string | null; wait: boolean } => {
     const p = proofOn ? localProof[order.id] ?? order.callProof : undefined;
-    const left = p?.state === 'WAIT' && p.unlocksAtMs !== null ? Math.min(MAX_WAIT_S, secondsLeft(p.unlocksAtMs, clockNow + serverOffsetMs)) : 0;
+    /** A wait is never longer than this order's: a stale first frame cannot print a wild number. */
+    const left = p?.state === 'WAIT' && p.unlocksAtMs !== null ? Math.min(Math.ceil(waitMsOf(order) / 1000), secondsLeft(p.unlocksAtMs, clockNow + serverOffsetMs)) : 0;
     return { text: p?.state === 'NO_OPENED' ? CALL_PROOF_WORDS.noOpened : left > 0 ? CALL_PROOF_WORDS.wait(left) : null, wait: left > 0 };
   };
   /** The «call first» sentence: the proof's own when on (the old one said «أو اكبس لا يرد», no longer a way out). */
@@ -1442,7 +1448,7 @@ export function ConfirmationMineScreen() {
                     ? (o, method) => {
                         if (method !== 'PHONE') return;
                         // Every phone press, sheet or not: the card's «لا يرد» starts its thirty seconds now.
-                        if (proofOn) holdFor(o.id, MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS);
+                        if (proofOn) holdFor(o.id, waitMsOf(o));
                         if (sheetOn) startCall(o);
                       }
                     : undefined,
@@ -1591,6 +1597,7 @@ export function ConfirmationMineScreen() {
           closesOnNext={(workable(callOrder.id) ?? callOrder).closesOnNext ?? (!data.rounds && (workable(callOrder.id) ?? callOrder).noAnswerCount + 1 >= data.noAnswerLimit)}
           confirmLock={sheetConfirmLock(workable(callOrder.id) ?? callOrder, contactFirstText)}
           proofOn={proofOn}
+          proofMs={waitMsOf(workable(callOrder.id) ?? callOrder)}
           orderId={callOrder.id}
           startedAt={call.pending.startedAt}
           waiting={

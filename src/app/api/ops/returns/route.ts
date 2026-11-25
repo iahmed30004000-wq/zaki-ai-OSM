@@ -15,6 +15,9 @@ import { readOrderPage } from '@/lib/paged-read';
 import { PENDING_ORDER_BY, RECEIVED_ORDER_BY, daysWaitedOf, returnsFilters, sinceOf, viewScope } from '@/lib/returns-filters';
 import { returnsFacts } from '@/lib/returns-list';
 import { receiveReturn } from '@/lib/return-receipt';
+import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
+import { reachesWarehouse } from '@/lib/warehouses';
+import { returnsWarehouseFilter } from '@/lib/returns-warehouse-filter';
 
 /**
  * Return receiving.
@@ -43,6 +46,12 @@ const receiveSchema = z.object({
   countedAndInspected: z.literal(true, { message: 'يلزم إقرار العد والفحص قبل الاستلام' }),
   chargeCourierFee: z.boolean().default(false),
   note: z.string().trim().max(500).optional(),
+  /**
+   * The warehouse that received the parcel (the warehouse plan, W2b). Read only for a store placed in warehouses; absent
+   * there = the warehouse the order left from. `.catch` because the old schema stripped any such field: a body the old
+   * door accepted is never refused for it.
+   */
+  warehouseId: z.string().max(64).optional().nullable().catch(undefined),
 });
 
 /**
@@ -55,6 +64,7 @@ const receiveSchema = z.object({
  *   ?courier=<id>|none           which delivery company carried it, or none
  *   ?age=fresh|few|week|old      how long since the courier last spoke of it                          (pending only)
  *   ?barcode=none                only the parcels with NO barcode (13/11: «وضيف للفلتر بلا باركود»)    (either view)
+ *   ?warehouse=<id>|none         the warehouse the parcel left from, or none — a PLACED store only (F10, 25/11)        (either view)
  *   ?q=                          order number, reference, waybill, the customer's name — and phone, for whoever may read phones
  *   ?page= ?limit=               25 a page, 100 at most
  *
@@ -73,6 +83,15 @@ export async function GET(req: Request) {
 
     const parsed = returnsFilters(searchParams, { now, maySeeContact });
     if (!parsed.ok) return NextResponse.json({ error: parsed.error, errorAr: parsed.errorAr }, { status: 400 });
+
+    /*
+     * F10 (25/11) «من أي مخزن طلع المرتجع»: `?warehouse=` — a PLACED store only (`returns-warehouse-filter.ts`). Absent, it
+     * asks nothing; for a store that is not placed it is not read. A warehouse this person does not reach is refused.
+     */
+    const place = await returnsWarehouseFilter(searchParams, { user, companyId, storeId });
+    if (!place.ok) return NextResponse.json(place.body, { status: 400 });
+    // ANDed with the other choices, like them — so the count and the rows ask it too.
+    if (place.clause) parsed.clauses.push(place.clause);
 
     const scope = { companyId, storeId };
     // The scope stays at the TOP of the question — spread, never nested — and what was chosen is ANDed onto it.
@@ -96,6 +115,8 @@ export async function GET(req: Request) {
           // The other three places a parcel's moment can live — read to say how long it has waited, not sent on.
           failedAt: true, deliveredAt: true, updatedAt: true,
           regionId: true, deliveryProviderId: true,
+          // «طلع من مخزن كذا» (W4d): read to find the name — the desk's default receiver, shown only — never sent on.
+          sourceWarehouseId: true,
           customer: { select: { fullName: true, phone: true } },
           region: { select: { id: true, name: true } },
           deliveryProvider: { select: { id: true, name: true } },
@@ -113,7 +134,8 @@ export async function GET(req: Request) {
               }),
         },
       }),
-      returnsFacts(db, { scope, view: parsed.view, now }),
+      // The tabs and the numbers beside the options follow the warehouse: they count the parcels the desk is looking at.
+      returnsFacts(db, { scope, view: parsed.view, now, ...(place.clause ? { narrow: place.clause } : {}) }),
     ]);
     const orders = list.rows;
 
@@ -125,6 +147,8 @@ export async function GET(req: Request) {
     const inspectorIds = pending
       ? []
       : [...new Set(orders.map((o) => o.returnReceipt?.inspectedById as string | undefined).filter((id): id is string => !!id))];
+    // The warehouses the page's parcels left from, in one read — none at all when no parcel has one (an unplaced store).
+    const places = await sourceWarehouseNames(db, companyId, orders.map((o) => o.sourceWarehouseId as string | null | undefined));
     const inspectors = new Map(
       (inspectorIds.length > 0
         ? await db.user.findMany({ where: { id: { in: inspectorIds }, companyId }, select: { id: true, name: true } })
@@ -141,7 +165,7 @@ export async function GET(req: Request) {
        */
       pagination: { total: list.total, page: list.page, limit: list.limit, totalPages: list.totalPages },
       facts,
-      applied: parsed.applied,
+      applied: place.warehouse ? { ...parsed.applied, warehouse: place.warehouse } : parsed.applied,
       // The fee tick-box's own key (PR-8), so the screen draws no box the door would refuse.
       mayChargeFee: can(user, 'ops.return_fee'),
       // «استلام الكل»'s own key — granted to nobody; the owner's full access holds it. No key, no button.
@@ -149,7 +173,9 @@ export async function GET(req: Request) {
       // `items` is deliberately NOT spread out below: `lines` is the same
       // fact in the shape the desk needs, and shipping both invites the
       // screen to reach for the raw one again.
-      orders: orders.map(({ items, returnReceipt, failedAt, deliveredAt, updatedAt, ...o }) => {
+      orders: orders.map(({ items, returnReceipt, failedAt, deliveredAt, updatedAt, ...whole }) => {
+        // The id leaves; the name joins only when the parcel has a source warehouse (W4d).
+        const o = withSourceWarehouseName(whole, places);
         const customer = redactCustomerForWarehouse(o.customer, maySeeContact);
         if (!pending) {
           // A record: what was counted, by whom and when. No lines, no extra action — nothing here can be received again.
@@ -238,13 +264,14 @@ export async function POST(req: Request) {
      * exact body and status this door has always answered.
      */
     const result = await receiveReturn(
-      { user, companyId, storeId, minorUnit: country.minorUnit },
+      { user, companyId, storeId, minorUnit: country.minorUnit, mayUse: (w) => reachesWarehouse(user, companyId, w) },
       {
         orderId: input.orderId,
         receivedQty: input.receivedQty,
         damagedQty: input.damagedQty,
         chargeCourierFee: input.chargeCourierFee,
         note: input.note,
+        ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
       }
     );
     if (!result.ok) return NextResponse.json(result.body, { status: result.status });

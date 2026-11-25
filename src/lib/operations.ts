@@ -2,6 +2,12 @@ import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { availableStock, freeFromPools, stockPoolsFor, type StockPools } from './reservation';
 import { realStoresOnly } from './test-store';
+/*
+ * W4a: the warehouse's shelf is LOADED ONLY when a warehouse is asked about (`await import` below). A store that is not
+ * placed never asks, so these functions run on exactly the modules they ran on before the warehouses existed.
+ */
+import type { ShipmentWarehouse, WarehouseShelf } from './shipment-warehouse';
+const warehouseShelfModule = () => import('./shipment-warehouse');
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -45,7 +51,16 @@ export interface PreparationGroup {
  * an order at a time. Shortage is the gap between what the confirmed orders
  * need and what is actually on the shelf.
  */
-export async function preparationGroups(tx: Tx, scope: { companyId: string; storeId: string }) {
+export async function preparationGroups(
+  tx: Tx,
+  scope: { companyId: string; storeId: string },
+  /**
+   * W4a: «available» of ONE warehouse of a placed store, asked by the preparation door with `?warehouse=`. Absent = the
+   * store's shelf, exactly as before. The orders on this list are not on a trolley yet, so none of them is sourced from
+   * the warehouse: what they hold is not inside the warehouse's free stock and is not added back.
+   */
+  place?: { warehouse: ShipmentWarehouse }
+) {
   const items = await tx.orderItem.findMany({
     where: {
       companyId: scope.companyId,
@@ -107,6 +122,25 @@ export async function preparationGroups(tx: Tx, scope: { companyId: string; stor
       shippingStatus: item.order.shippingStatus,
     });
     byProduct.set(item.productId, group);
+  }
+
+  if (place) {
+    const { warehouseShelfFor } = await warehouseShelfModule();
+    const shelf = await warehouseShelfFor(tx, {
+      companyId: scope.companyId,
+      storeId: scope.storeId,
+      warehouse: place.warehouse,
+      productIds: [...byProduct.keys()],
+      orderIds: [...new Set(items.map((i) => i.order.id))],
+    });
+    for (const group of byProduct.values()) {
+      // An order of this list already sourced from the warehouse (none, in practice: it would be on a trolley) is inside
+      // the free stock; its own hold is added back, as the store's version adds back the holds of these very orders.
+      const sourcedHere = group.lines.filter((l) => shelf.stampedHere.has(l.orderId)).reduce((s, l) => s + l.reservedQty, 0);
+      group.available = (shelf.base.get(group.productId) ?? 0) + sourcedHere;
+      group.shortage = Math.max(0, group.required - group.available);
+    }
+    return [...byProduct.values()].sort((a, b) => b.shortage - a.shortage || b.orders - a.orders);
   }
 
   for (const group of byProduct.values()) {
@@ -177,7 +211,15 @@ export async function shipmentBlocks(
     regionId: string | null;
     deliveryProviderId: string | null;
   },
-  opts: { allowNegativeStock: boolean; batchOrderIds?: string[] }
+  opts: {
+    allowNegativeStock: boolean;
+    batchOrderIds?: string[];
+    /**
+     * W4a: the warehouse a PLACED store's shipment leaves from (`shipment-warehouse.shipmentPlace`). The stock question is
+     * then asked of that warehouse's free stock. Absent = the store's shelf, exactly as before.
+     */
+    warehouse?: ShipmentWarehouse;
+  }
 ): Promise<OrderBlock[]> {
   const blocks: OrderBlock[] = [];
 
@@ -245,6 +287,34 @@ export async function shipmentBlocks(
     ...lines.map((l) => ({ ...l, addOn: false })),
     ...addOns.map((a) => ({ productId: a.productId, productName: a.productName, quantity: a.quantity, freeQuantity: 0, addOn: true })),
   ];
+
+  if (opts.warehouse && order.storeId) {
+    // THE WAREHOUSE'S SHELF (W4a) — the same question, asked of the one warehouse the shipment leaves from.
+    const needs = wanted.map((l) => ({ ...l, need: l.quantity + l.freeQuantity })).filter((l) => l.need > 0);
+    const joining = opts.batchOrderIds ?? [order.id];
+    const { freeInWarehouse, otherWarehousesFree, warehouseShelfFor, warehouseShortageAr } = await warehouseShelfModule();
+    const shelf = await warehouseShelfFor(tx, {
+      companyId: order.companyId,
+      storeId: order.storeId,
+      warehouse: opts.warehouse,
+      productIds: needs.map((l) => l.productId),
+      orderIds: [order.id, ...joining],
+    });
+    const short = needs
+      .map((l) => ({ ...l, free: freeInWarehouse(shelf, order.id, l.productId, joining) }))
+      .filter((l) => l.free < l.need);
+    const others = short.length
+      ? await otherWarehousesFree(tx, {
+          companyId: order.companyId,
+          storeId: order.storeId,
+          exceptWarehouseId: opts.warehouse.id,
+          productIds: short.map((l) => l.productId),
+        })
+      : [];
+    for (const l of short) blocks.push(warehouseShortageBlock(shelf, l, others, opts.allowNegativeStock, warehouseShortageAr));
+    return blocks;
+  }
+
   for (const line of wanted) {
     /*
      * ── WHAT THIS LINE NEEDS, NOT WHAT IS LEFT UNRESERVED ──
@@ -298,6 +368,33 @@ export async function shipmentBlocks(
   return blocks;
 }
 
+/**
+ * A shortage in the warehouse a shipment leaves from (W4a): the same code and today's hard / soft rule — refused outright
+ * where negative stock is forbidden, a soft block that needs the order's acknowledgement where it is allowed — and a
+ * sentence that names the warehouse and, when another warehouse of the store holds the units, that one.
+ */
+function warehouseShortageBlock(
+  shelf: WarehouseShelf,
+  line: { productId: string; productName: string; addOn: boolean; need: number; free: number },
+  others: readonly { name: string; free: Map<string, number> }[],
+  allowNegativeStock: boolean,
+  sentence: (typeof import('./shipment-warehouse'))['warehouseShortageAr']
+): OrderBlock {
+  return {
+    code: 'STOCK_SHORTAGE',
+    message: sentence({
+      warehouseName: shelf.warehouse.name,
+      productName: line.productName,
+      addOn: line.addOn,
+      missing: line.need - Math.max(0, line.free),
+      need: line.need,
+      productId: line.productId,
+      others,
+    }),
+    hard: !allowNegativeStock,
+  };
+}
+
 /** One order of a list and the lines it carries — everything `shipmentBlocksBulk` needs to answer for it. */
 export interface BlockedOrder {
   id: string;
@@ -332,7 +429,12 @@ export interface BlockedOrder {
 export async function shipmentBlocksBulk(
   tx: Tx,
   orders: ReadonlyArray<BlockedOrder>,
-  opts: { allowNegativeStock: boolean; batchOrderIds?: string[] }
+  opts: {
+    allowNegativeStock: boolean;
+    batchOrderIds?: string[];
+    /** W4a: as in `shipmentBlocks` — the warehouse of a PLACED store the list is asked for. Absent = as before. */
+    warehouse?: ShipmentWarehouse;
+  }
 ): Promise<Map<string, OrderBlock[]>> {
   const out = new Map<string, OrderBlock[]>();
   if (orders.length === 0) return out;
@@ -411,7 +513,41 @@ export async function shipmentBlocksBulk(
   ];
   const poolOrders = new Map<string, BlockedOrder[]>();
   for (const o of orders) poolOrders.set(shelfKey(o), [...(poolOrders.get(shelfKey(o)) ?? []), o]);
+  // W4a: the warehouse's shelf instead, per (company, store) — and, for the lines it cannot cover, the store's other
+  // warehouses, read once for the whole list.
+  const warehouseShelves = new Map<string, { shelf: WarehouseShelf; others: { name: string; free: Map<string, number> }[] }>();
+  const warehouse = opts.warehouse;
+  const joining = opts.batchOrderIds ?? [];
+  const shelfLib = warehouse ? await warehouseShelfModule() : null;
   for (const [key, group] of poolOrders) {
+    const storeId = group[0].storeId;
+    if (!warehouse || !storeId) continue;
+    const productIds = group.flatMap((o) => needsOf(o).filter((l) => l.need > 0).map((l) => l.productId));
+    reads.push(
+      (async () => {
+        const { otherWarehousesFree, warehouseShelfFor } = shelfLib!;
+        const shelf = await warehouseShelfFor(tx, {
+          companyId: group[0].companyId,
+          storeId,
+          warehouse,
+          productIds,
+          orderIds: [...group.map((o) => o.id), ...joining],
+        });
+        // The other warehouses only for the products some order of the list is short of.
+        const short = group.flatMap((o) =>
+          needsOf(o)
+            .filter((l) => l.need > 0 && shelfLib!.freeInWarehouse(shelf, o.id, l.productId, joining.length ? joining : [o.id]) < l.need)
+            .map((l) => l.productId)
+        );
+        const others = short.length
+          ? await otherWarehousesFree(tx, { companyId: group[0].companyId, storeId, exceptWarehouseId: warehouse.id, productIds: short })
+          : [];
+        warehouseShelves.set(key, { shelf, others });
+      })()
+    );
+  }
+  for (const [key, group] of poolOrders) {
+    if (warehouse && group[0].storeId) continue;
     // Only a line that needs something is asked about — as in the single version.
     const productIds = group.flatMap((o) => needsOf(o).filter((l) => l.need > 0).map((l) => l.productId));
     reads.push(
@@ -449,6 +585,19 @@ export async function shipmentBlocksBulk(
     } else if (order.deliveryProviderId) {
       const block = deliveryFeeBlock(order.regionId, priced.has(`${order.deliveryProviderId}|${order.regionId}`));
       if (block) blocks.push(block);
+    }
+
+    const inWarehouse = warehouseShelves.get(shelfKey(order));
+    if (inWarehouse && shelfLib) {
+      for (const line of needsOf(order)) {
+        if (line.need <= 0) continue;
+        const free = shelfLib.freeInWarehouse(inWarehouse.shelf, order.id, line.productId, joining.length ? joining : [order.id]);
+        if (free < line.need) {
+          blocks.push(warehouseShortageBlock(inWarehouse.shelf, { ...line, free }, inWarehouse.others, opts.allowNegativeStock, shelfLib.warehouseShortageAr));
+        }
+      }
+      out.set(order.id, blocks);
+      continue;
     }
 
     const pools = shelves.get(shelfKey(order));

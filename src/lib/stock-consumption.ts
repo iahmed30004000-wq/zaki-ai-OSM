@@ -4,6 +4,8 @@ import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
 import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
 import { drawDownVariants, restoreVariants } from './product-variants';
+import { sourceWarehouseNames } from './order-source-warehouse';
+import { splitBatch } from './batch-split';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -51,6 +53,24 @@ export interface ConsumptionResult {
 
 /** The review mark a delivery leaves on an order whose shelf could not cover it. */
 export const STOCK_SHORT_ACTION = 'STOCK_SHORT_AT_DELIVERY';
+
+/** «فرق مكان» — the mark a delivery leaves on an order whose units did not all leave the warehouse it left from (W4b). */
+export const STOCK_PLACE_DIFFERENCE_ACTION = 'STOCK_PLACE_DIFFERENCE_AT_DELIVERY';
+
+/** One place a line's units came from that is not the order's warehouse: another warehouse, or none (`warehouseId` null). */
+interface ElsewherePlace {
+  warehouseId: string | null;
+  units: number;
+}
+
+/**
+ * The «فرق مكان» words written on the SALE line (pure). «2 من «مخزن ب» · 1 بلا مكان — مش من «مخزن أ»». A warehouse whose
+ * name is not found is still said, as «مخزن تاني».
+ */
+export function placeDifferenceNote(elsewhere: readonly ElsewherePlace[], sourceName: string | undefined, names: ReadonlyMap<string, string>): string {
+  const parts = elsewhere.map((p) => (p.warehouseId ? `${p.units} من «${names.get(p.warehouseId) ?? 'مخزن تاني'}»` : `${p.units} بلا مكان`));
+  return `فرق مكان: ${parts.join(' · ')} — مش من «${sourceName ?? 'مخزن الطلب'}»`;
+}
 
 /** The mark the legacy import (scripts/migration) writes on every order. */
 export const LEGACY_IMPORT_SOURCE = 'Legacy import';
@@ -151,6 +171,9 @@ export async function consumeOrderStock(
       // store-scoped; this draw-down was not, so an order could be promised
       // from its own store's shelf and served out of another's.
       storeId: true,
+      // THE WAREHOUSE IT LEFT FROM (W4a stamps it when the order joins a shipment of a placed store) — its units are taken
+      // from there first. Null for every order of a store that is not placed, and then the draw is today's, unchanged.
+      sourceWarehouseId: true,
       source: true,
       items: {
         select: { productId: true, productName: true, quantity: true, freeQuantity: true, reservedQty: true, variantSummary: true },
@@ -191,6 +214,20 @@ export async function consumeOrderStock(
    */
   const figures = await fixedCostsOf(tx, input.companyId, [...new Set(lines.map((l) => l.productId))]);
   let orderCost = 0;
+  /*
+   * ── FROM THE WAREHOUSE IT LEFT, FIRST (the warehouse plan, W4b — the ONE disclosed money point, the owner's word 20/11) ──
+   *
+   * An order with a source warehouse takes its units from that warehouse's batches, oldest first; what that warehouse
+   * lacks comes from the store's other warehouses, oldest first, then from the rows with no warehouse. Every unit taken
+   * anywhere but the source is said: on the line's SALE movement («فرق مكان») and in ONE activity on the order. The same
+   * rows are eligible as before (the store's, never on the road — `drawDownStock`); only their order changes, so the
+   * units, the shortfall and every batch total are what they were. The money: a product with a fixed figure costs the
+   * order the figure × the units, whichever batch they left; a product without one costs what its batches cost, and
+   * those can be other batches than the store-wide oldest — that is the disclosed point, and nothing else moves.
+   */
+  const source = order.sourceWarehouseId ?? null;
+  const elsewhereLines: { productId: string; productName: string; fromSource: number; elsewhere: ElsewherePlace[] }[] = [];
+  let names: Map<string, string> | null = null;
   for (const line of lines) {
     // The gift units are goods too. Leaving them in stock is how a shelf
     // ends up holding inventory that was given away.
@@ -204,7 +241,22 @@ export async function consumeOrderStock(
       quantity: need,
       // The delivery happened. The draw takes what the shelf holds and reports the rest — see above.
       allowNegative: true,
+      ...(source ? { prefer: source } : {}),
     });
+    const elsewhere: ElsewherePlace[] = source
+      ? (result.places ?? []).filter((p) => p.warehouseId !== source && p.taken > 0).map((p) => ({ warehouseId: p.warehouseId, units: p.taken }))
+      : [];
+    let note: string | null = null;
+    if (source && elsewhere.length > 0) {
+      names ??= await sourceWarehouseNames(tx, input.companyId, [source, ...elsewhere.map((p) => p.warehouseId)]);
+      note = placeDifferenceNote(elsewhere, names.get(source), names);
+      elsewhereLines.push({
+        productId: line.productId,
+        productName: line.productName,
+        fromSource: result.taken - elsewhere.reduce((s, p) => s + p.units, 0),
+        elsewhere,
+      });
+    }
     taken += result.taken;
     short += result.short;
     cost += result.cost;
@@ -241,12 +293,15 @@ export async function consumeOrderStock(
            * `onHand` and `drawDownStock` already keep.
            */
           storeId: order.storeId,
+          // The warehouse the order left from (W4b) — written only for an order that has one, so every other SALE line is
+          // the row it always was.
+          ...(source ? { warehouseId: source } : {}),
           productId: line.productId,
           type: SALE,
           quantity: -result.taken,
           balanceAfter: await onHandTotal(tx, input.companyId, line.productId),
           referenceId: input.orderId,
-          reason: `تسليم الطلب ${order.orderNumber}`,
+          reason: note ? `تسليم الطلب ${order.orderNumber} — ${note}` : `تسليم الطلب ${order.orderNumber}`,
           createdById: input.userId ?? null,
         },
       });
@@ -337,6 +392,31 @@ export async function consumeOrderStock(
     if (allFigured !== null) {
       await tx.order.update({ where: { id: input.orderId }, data: { estimatedCostOfGoods: allFigured } });
     }
+  }
+
+  /*
+   * «فرق مكان», ONCE, ON THE ORDER — units only, in the delivery's own transaction, read by whoever counts the warehouses
+   * (W5). Not a proof of consumption (the SALE line is), and never written for an order with no source warehouse.
+   */
+  if (source && elsewhereLines.length > 0) {
+    await tx.orderActivity.create({
+      data: {
+        companyId: input.companyId,
+        orderId: input.orderId,
+        userId: input.userId ?? null,
+        action: STOCK_PLACE_DIFFERENCE_ACTION,
+        metadata: JSON.stringify({
+          order: order.orderNumber,
+          sourceWarehouseId: source,
+          sourceWarehouseName: names?.get(source) ?? null,
+          units: elsewhereLines.reduce((s, l) => s + l.elsewhere.reduce((t, p) => t + p.units, 0), 0),
+          lines: elsewhereLines.map((l) => ({
+            ...l,
+            elsewhere: l.elsewhere.map((p) => ({ ...p, warehouseName: p.warehouseId ? (names?.get(p.warehouseId) ?? null) : null })),
+          })),
+        }),
+      },
+    });
   }
 
   /*
@@ -444,8 +524,15 @@ export async function restoreOrderStock(
     /** Units that came back broken. They do not return to stock; their cost does. */
     damagedQty?: number;
     userId?: string | null;
+    /**
+     * THE WAREHOUSE THAT RECEIVED THE PARCEL (the warehouse plan, W2b) — given only for a store placed in warehouses, and
+     * already checked by the returns desk (`warehouse-intake.returnPlace`). The `RET-` batch, its `RETURN` line and the
+     * pieces of each combination land there. Absent: every row is the row it always was.
+     */
+    warehouseId?: string | null;
   }
 ): Promise<{ restored: number; alreadyDone: boolean; neverConsumed?: boolean; absorbed?: number }> {
+  const receiver = input.warehouseId || null;
   if (input.receivedQty <= 0) return { restored: 0, alreadyDone: false };
   if (await alreadyMoved(tx, input.orderId, RETURN)) {
     return { restored: 0, alreadyDone: true };
@@ -546,6 +633,8 @@ export async function restoreOrderStock(
         companyId: input.companyId,
         // Back onto the shelf it left, not into the company-wide pile.
         storeId: order.storeId,
+        // …and into the warehouse that received it (W2b) — only when the desk named one.
+        ...(receiver ? { warehouseId: receiver } : {}),
         productId: line.productId,
         batchNumber: `RET-${order.orderNumber}-${line.productId.slice(0, 6)}`,
         quantityProduced: take,
@@ -576,6 +665,7 @@ export async function restoreOrderStock(
          * rows. Half-fixed is not fixed.
          */
         storeId: order.storeId,
+        ...(receiver ? { warehouseId: receiver } : {}),
         productId: line.productId,
         batchId: batch.id,
         type: RETURN,
@@ -588,7 +678,9 @@ export async function restoreOrderStock(
     });
 
     // The pieces come back onto the combinations they left (product variants — `restoreVariants`).
-    if ('variantSummary' in line && line.variantSummary) await restoreVariants(tx, { orderId: input.orderId, productId: line.productId, take });
+    if ('variantSummary' in line && line.variantSummary) {
+      await restoreVariants(tx, { orderId: input.orderId, productId: line.productId, take, ...(receiver ? { warehouseId: receiver } : {}) });
+    }
 
     restored += take;
   }
@@ -608,6 +700,11 @@ export interface UnreturnedOutcome {
   missing: number;
   /** The broken units' money, moved onto the sound units of the same parcel. */
   absorbed: number;
+  /**
+   * Sound units moved by a split into the warehouse that received the parcel (W2b) — present only when the desk named a
+   * warehouse. The sound units of a line with broken ones are not counted here: they come back in their `DMG-` batch.
+   */
+  moved?: number;
   /** Why nothing was done, when nothing was. */
   skipped?: 'NOTHING_MISSING' | 'NOTHING_CAME_BACK' | 'CONSUMED' | 'ALREADY_DONE' | 'OUTSIDE_COUNT' | 'NO_ORDER';
 }
@@ -644,6 +741,21 @@ export interface UnreturnedOutcome {
  * Once per order: a DAMAGE or LOSS line already written for it is the proof, as SALE and RETURN are for theirs.
  *
  * MUST RUN BEFORE THE RECEIPT RELEASES THE RESERVATION — `outsideTheCount` reads «never reserved a unit».
+ *
+ * ── IN A STORE PLACED IN WAREHOUSES (the warehouse plan, W2b): `warehouseId` = the warehouse that RECEIVED the parcel ──
+ *
+ * Given only by the returns desk of a placed store, already checked (`warehouse-intake.returnPlace`). Absent: not one read,
+ * write or answer of this function changes. Given:
+ *   · the broken and missing units leave from the warehouse the order LEFT from first (`Order.sourceWarehouseId` —
+ *     `drawDownStock`'s `prefer`), then the store's other warehouses, then «بلا مكان»; an order that left before the store
+ *     was placed has no such warehouse — its units stayed with no place at the placement — so «بلا مكان» first;
+ *     their `DAMAGE` / `LOSS` lines name that source warehouse;
+ *   · the `DMG-` batch that carries the sound units of a line with broken ones is created in the RECEIVING warehouse:
+ *     that is where those sound units now are;
+ *   · the sound units of every other line MOVE PLACE by a split (`batch-split.splitBatch`) from the source warehouse —
+ *     then from «بلا مكان», which is no place anybody stands in — into the receiving warehouse, when the two differ.
+ *     Never from another warehouse: units on its shelf did not travel with this parcel. A split writes no ledger line
+ *     and moves no figure (Σ produced, Σ sold, Σ remaining, Σ value stay where they were); the receipt is its document.
  */
 export async function takeOffUnreturned(
   tx: Tx,
@@ -654,6 +766,8 @@ export async function takeOffUnreturned(
     damagedQty: number;
     missingQty: number;
     userId?: string | null;
+    /** The receiving warehouse of a placed store (W2b) — see above. */
+    warehouseId?: string | null;
   }
 ): Promise<UnreturnedOutcome> {
   const none = { damaged: 0, missing: 0, absorbed: 0 };
@@ -661,10 +775,18 @@ export async function takeOffUnreturned(
   const sound = whole(input.receivedQty);
   const broken = whole(input.damagedQty);
   const gone = whole(input.missingQty);
-  if (broken + gone <= 0) return { ...none, skipped: 'NOTHING_MISSING' };
+  const receiver = input.warehouseId || null;
+  /*
+   * W2b: a placed store's parcel that came back whole still has to be put where it was received — so it goes on. Its answer
+   * stays the one it always was («nothing missing»): every skip below says so for it, with no unit moved.
+   */
+  const nothingMissing = broken + gone <= 0;
+  const skip = (why: NonNullable<UnreturnedOutcome['skipped']>): UnreturnedOutcome =>
+    nothingMissing ? { ...none, skipped: 'NOTHING_MISSING', moved: 0 } : { ...none, skipped: why };
+  if (nothingMissing && (!receiver || sound <= 0)) return { ...none, skipped: 'NOTHING_MISSING' };
   if (sound + broken <= 0) return { ...none, skipped: 'NOTHING_CAME_BACK' };
   if ((await alreadyMoved(tx, input.orderId, SALE)) || (await alreadyMoved(tx, input.orderId, RETURN))) {
-    return { ...none, skipped: 'CONSUMED' };
+    return skip('CONSUMED');
   }
   /*
    * AND A DELIVERY ON AN EMPTY SHELF WAS A CONSUMPTION TOO, though it wrote no SALE line — there was nothing to move. Its review
@@ -675,9 +797,9 @@ export async function takeOffUnreturned(
     where: { orderId: input.orderId, companyId: input.companyId, action: STOCK_SHORT_ACTION },
     select: { id: true },
   });
-  if (consumedShort) return { ...none, skipped: 'CONSUMED' };
+  if (consumedShort) return skip('CONSUMED');
   if ((await alreadyMoved(tx, input.orderId, DAMAGE)) || (await alreadyMoved(tx, input.orderId, LOSS))) {
-    return { ...none, skipped: 'ALREADY_DONE' };
+    return skip('ALREADY_DONE');
   }
 
   const order = await tx.order.findFirst({
@@ -686,13 +808,22 @@ export async function takeOffUnreturned(
       orderNumber: true,
       storeId: true,
       source: true,
+      // The warehouse it left from (W4a) — read only when the desk named a receiving warehouse (W2b).
+      ...(receiver ? { sourceWarehouseId: true } : {}),
       items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
       store: { select: { country: { select: { minorUnit: true } } } },
     },
   });
-  if (!order) return { ...none, skipped: 'NO_ORDER' };
-  if (outsideTheCount(order)) return { ...none, skipped: 'OUTSIDE_COUNT' };
+  if (!order) return skip('NO_ORDER');
+  if (outsideTheCount(order)) return skip('OUTSIDE_COUNT');
   const minorUnit = order.store?.country?.minorUnit ?? 2;
+  /*
+   * W2b: where the broken and missing units leave from, and the warehouse their lines name. Empty for a store that is not
+   * placed (no receiver): every draw below is then the very draw it always was.
+   */
+  const source = receiver ? ((order as { sourceWarehouseId?: string | null }).sourceWarehouseId ?? null) : null;
+  const from: { prefer?: string; unplacedFirst?: boolean } = receiver ? (source ? { prefer: source } : { unplacedFirst: true }) : {};
+  let moved = 0;
 
   /*
    * THE LINES THE DESK COUNTED, AND ONLY WHAT EACH OWES BACK.
@@ -718,6 +849,8 @@ export async function takeOffUnreturned(
       data: {
         companyId: input.companyId,
         storeId: order.storeId,
+        // W2b: the warehouse the units left — the order's own; written only for a placed store's parcel that has one.
+        ...(source ? { warehouseId: source } : {}),
         productId,
         ...(batchId ? { batchId } : {}),
         type,
@@ -728,6 +861,21 @@ export async function takeOffUnreturned(
         createdById: input.userId ?? null,
       },
     });
+
+  /*
+   * W2b: units of a placed store's draw that did not leave the order's own warehouse are said on the line, in the delivery's
+   * own words («فرق مكان» — `placeDifferenceNote`, W4b). Empty for a store that is not placed: the reason is today's.
+   */
+  let names: Map<string, string> | null = null;
+  const placeNote = async (drawn: { places?: { warehouseId: string | null; taken: number }[] }) => {
+    if (!source) return '';
+    const elsewhere = (drawn.places ?? [])
+      .filter((p) => p.warehouseId !== source && p.taken > 0)
+      .map((p) => ({ warehouseId: p.warehouseId, units: p.taken }));
+    if (elsewhere.length === 0) return '';
+    names ??= await sourceWarehouseNames(tx, input.companyId, [source, ...elsewhere.map((p) => p.warehouseId)]);
+    return ` — ${placeDifferenceNote(elsewhere, names.get(source), names)}`;
+  };
 
   for (const line of lines) {
     let room = Math.max(0, line.units);
@@ -744,6 +892,7 @@ export async function takeOffUnreturned(
     if (d > 0) {
       let off = 0;
       let carriedBy: string | undefined;
+      let where = '';
       if (s > 0) {
         // The sound units and the broken ones leave together; the sound ones come back carrying the money of both.
         const drawn = await drawDownStock(tx, {
@@ -752,15 +901,19 @@ export async function takeOffUnreturned(
           productId: line.productId,
           quantity: s + d,
           allowNegative: true,
+          ...from,
         });
         const back = Math.min(s, drawn.taken);
         off = drawn.taken - back;
+        where = await placeNote(drawn);
         if (back > 0) {
           const totalCost = roundMinor(drawn.cost, minorUnit);
           const batch = await tx.productionBatch.create({
             data: {
               companyId: input.companyId,
               storeId: order.storeId,
+              // W2b: the sound units are in the warehouse that received them.
+              ...(receiver ? { warehouseId: receiver } : {}),
               productId: line.productId,
               batchNumber: `DMG-${order.orderNumber}-${line.productId.slice(0, 6)}`,
               quantityProduced: back,
@@ -785,11 +938,13 @@ export async function takeOffUnreturned(
           productId: line.productId,
           quantity: d,
           allowNegative: true,
+          ...from,
         });
         off = drawn.taken;
+        where = await placeNote(drawn);
       }
       if (off > 0) {
-        await ledger(line.productId, DAMAGE, off, `تالف من مرتجع ${order.orderNumber} — رُفض عند الباب`, carriedBy);
+        await ledger(line.productId, DAMAGE, off, `تالف من مرتجع ${order.orderNumber} — رُفض عند الباب${where}`, carriedBy);
         damagedOut += off;
       }
     }
@@ -801,13 +956,72 @@ export async function takeOffUnreturned(
         productId: line.productId,
         quantity: m,
         allowNegative: true,
+        ...from,
       });
       if (drawn.taken > 0) {
-        await ledger(line.productId, LOSS, drawn.taken, `ناقص من مرتجع ${order.orderNumber} — ما رجع مع الطرد`);
+        await ledger(line.productId, LOSS, drawn.taken, `ناقص من مرتجع ${order.orderNumber} — ما رجع مع الطرد${await placeNote(drawn)}`);
         missingOut += drawn.taken;
       }
     }
+
+    // W2b: a line with no broken unit — its sound units are still where the books left them; they move to the receiver.
+    if (receiver && s > 0 && d === 0 && receiver !== source) {
+      moved += await moveReturnedUnits(tx, {
+        companyId: input.companyId,
+        storeId: order.storeId,
+        productId: line.productId,
+        quantity: s,
+        from: source,
+        to: receiver,
+      });
+    }
   }
 
-  return { damaged: damagedOut, missing: missingOut, absorbed: roundMinor(absorbed, minorUnit) };
+  return {
+    damaged: damagedOut,
+    missing: missingOut,
+    absorbed: roundMinor(absorbed, minorUnit),
+    ...(receiver ? { moved } : {}),
+    // W2b: a whole parcel's answer is the one it always was — only the units it moved are added.
+    ...(nothingMissing ? { skipped: 'NOTHING_MISSING' as const } : {}),
+  };
+}
+
+/**
+ * THE SOUND UNITS OF A REFUSED PARCEL, PUT WHERE THEY WERE RECEIVED (W2b). They never left the books, so they sit in the
+ * rows of the warehouse the order left from (`from`) — or, for an order that left before its store was placed, in the rows
+ * with no warehouse. Taken oldest first from `from`, then from the rows with no warehouse, never from a third warehouse,
+ * never from the road; each piece by `splitBatch` into `to`. Returns the units moved — fewer only when those rows hold
+ * fewer (the count of the receiving warehouse will then say so). No ledger line, no money: a split moves no figure.
+ */
+async function moveReturnedUnits(
+  tx: Tx,
+  p: { companyId: string; storeId: string | null; productId: string; quantity: number; from: string | null; to: string }
+): Promise<number> {
+  let left = p.quantity;
+  let moved = 0;
+  const places: (string | null)[] = p.from ? [p.from, null] : [null];
+  for (const place of places) {
+    if (left <= 0) break;
+    const rows = await tx.productionBatch.findMany({
+      where: {
+        companyId: p.companyId,
+        productId: p.productId,
+        quantityRemaining: { gt: 0 },
+        ...(p.storeId ? { storeId: p.storeId } : {}),
+        warehouseId: place,
+        inTransitTransferId: null,
+      },
+      orderBy: [{ productionDate: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, quantityRemaining: true },
+    });
+    for (const row of rows) {
+      if (left <= 0) break;
+      const take = Math.min(left, row.quantityRemaining);
+      await splitBatch(tx, { companyId: p.companyId, batchId: row.id, quantity: take, to: { warehouseId: p.to } });
+      left -= take;
+      moved += take;
+    }
+  }
+  return moved;
 }

@@ -227,6 +227,17 @@ export const NAV: NavGroup[] = [
       r('/inventory/balances', 'أرصدة المخزون', 'Boxes', ['inventory.view']),
       r('/manufacturing', 'تشغيلات الإنتاج', 'Factory', ['production.view']),
       r('/inventory/movements', 'حركات المخزون', 'ArrowLeftRight', ['inventory.view']),
+      // «نقل البضاعة» (20/11, W3b): moving units between two warehouses of one store — send, on the road, received by count. Opens on
+      // `inventory.view` like its two neighbours; every press asks its own key (inventory.transfer · transfer_receive · difference_approve).
+      r('/inventory/transfers', 'نقل البضاعة', 'Repeat', ['inventory.view']),
+      // «إخراج بضاعة» (20/11, W6b): goods out of a warehouse for good, not by a sale — request, a second hand's approval or
+      // rejection, and the month's table. Opens on `inventory.view` like its neighbours; the request asks `inventory.exit`,
+      // the decision `inventory.exit_approve`, and the value at cost reaches `costs.view` holders only.
+      r('/inventory/exits', 'إخراج بضاعة', 'PackagePlus', ['inventory.view']),
+      // «الجرد» (21/11, W5b): the count against the keeper — a sheet for one warehouse, counted BLIND, submitted, and approved by
+      // a second hand; and «كشف عهدة الأمين». Opens on `inventory.view` like its neighbours (a viewer is told only what was
+      // counted); counting asks `inventory.count`, approving and the statement `inventory.count_approve`, the value `costs.view`.
+      r('/inventory/counts', 'الجرد', 'ClipboardList', ['inventory.view']),
     ],
   },
   {
@@ -427,6 +438,8 @@ export const NAV: NavGroup[] = [
       // given to a customer. Two words from one root, one row apart.
       r('/control/penalties', 'خصومات الموظفين', 'ShieldQuestion', ['penalties.view']),
       r('/control/audit', 'سجل التدقيق', 'ScrollText', ['audit.view']),
+      // What went wrong on the «Zaki Orders» phones (22/11): read by whoever reads the audit trail.
+      r('/control/app-errors', 'أعطال التطبيق', 'ScrollText', ['audit.view']),
       r('/control/blacklist', 'القائمة السوداء', 'Ban', ['control.blacklist']),
       // Everybody's own page, so not a line of anybody's menu: its door is the name in the header and the
       // line in the phone's «المزيد» sheet. It stays in this group (and in the registry) for its guard and title.

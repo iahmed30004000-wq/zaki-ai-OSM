@@ -12,6 +12,7 @@ import { canCollect } from '@/lib/parcel-tracking/priority';
 import type { TrackingListFacts } from '@/lib/parcel-tracking/list';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
+import { OpenHandovers } from '@/components/screens/tracking/OpenHandovers';
 import { ManualStatementDialog } from '@/components/screens/finance/ManualStatementDialog';
 import { useConfirm } from '@/components/ui/Confirm';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -389,8 +390,8 @@ export function ManualMatching() {
         بعد الاستلام يُغلق الطلب مالياً. والراجع يُغلق بعد عدّ بضاعته في «المرتجعات».
       </p>
       <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
-        «استلمت منه» لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف، أو كشف واحد تعتمده: «مطابق يدوي»
-        لإضافة الطلبات إلى مسوّدة، ثم «تجميع» في «التحصيل والكشوف».
+        طلبات المندوب: «استلمت منه» بيفتح «تسليم مندوب» متل الكشف — كل دفعة بعملتها ومحفظتها ولو على كم يوم، والمبلغ بينكتب
+        بالمحافظ عند «اعتماد». طلب بلا مندوب: نقداً بعملة الطلب لمحفظة من بلد هالمتجر.
       </p>
     </>
   );
@@ -413,6 +414,9 @@ export function ManualMatching() {
           rules
         )}
       </Card>
+
+      {/* The open handovers (F9): «{المندوب} — باقي X — سجّل دفعة». Draws itself only for «رفع تقارير الشحن». */}
+      <OpenHandovers />
 
       <ListToolbar
         search={term}

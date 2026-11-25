@@ -17,6 +17,8 @@ interface Answer {
   alerts?: HealthAlert[];
   rule?: string;
   weekly?: string;
+  /** «طلبات بلا موظفة» (request Q5c): the server's line, present only while a routing rule is in force. */
+  unstaffed?: string;
 }
 
 const valid = (x: unknown): x is Answer => !!x && typeof x === 'object' && typeof (x as Answer).enabled === 'boolean';
@@ -70,6 +72,11 @@ export function QueueHealthBoard() {
             <StatTile key={label} label={label} value={value} />
           ))}
         </div>
+        {data.unstaffed && (
+          <p className="mt-3 rounded-md border border-[var(--sys-border-strong)] px-3 py-2 text-note text-[var(--sys-foreground)]" data-unstaffed>
+            {data.unstaffed}
+          </p>
+        )}
         {data.weekly && (
           <p className="mt-3 rounded-md border border-[var(--sys-border)] px-3 py-2 text-xs text-[var(--sys-foreground)]">
             <strong>معايرة الأسبوع:</strong> {data.weekly}

@@ -582,7 +582,8 @@ describe('«مطابقة يدوية» — the instruction card (FIN-16)', () => 
     expect(fold.querySelector('summary')!.textContent).toContain('كيف تعمل؟');
     // Folded, not removed: the paragraphs are in the page for find-in-page and for a reader that opens it.
     expect(fold.querySelectorAll('p')).toHaveLength(5);
-    expect(fold.textContent).toContain('«استلمت منه» لنقد بعملة الطلب نفسها');
+    // 23/11 (F9): was «"استلمت منه" لنقد بعملة الطلب نفسها» — on a courier's orders it opens the handover now.
+    expect(fold.textContent).toContain('«استلمت منه» بيفتح «تسليم مندوب»');
   });
 
   it('DESK: the five paragraphs are in the card, unfolded, and there is no stepper', async () => {

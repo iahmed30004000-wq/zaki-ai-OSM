@@ -228,7 +228,8 @@ describe('cookies already in browsers keep working — nobody is signed out by t
 describe('the audit still says how a sign-in was proved', () => {
   it('USER_LOGGED_IN keeps writing `factor`, and «password» is still one of its words', () => {
     const src = readFileSync(join(ROOT, 'src/lib/sign-in.ts'), 'utf8');
-    expect(src).toMatch(/newData: \{ email: user\.email, role: user\.role, status: user\.status, ip, factor: input\.factor, replaced \}/);
+    // 22/11: `kind` (WEB or APP — the «Zaki Orders» app) joined the row after `replaced`. Modified, not removed.
+    expect(src).toMatch(/newData: \{ email: user\.email, role: user\.role, status: user\.status, ip, factor: input\.factor, replaced, kind \}/);
     expect(src).toContain("| 'password'");
   });
 });

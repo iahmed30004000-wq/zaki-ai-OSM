@@ -9,8 +9,9 @@ import { logAudit } from '@/lib/audit';
 import { storeIsPlaced, warehousesOfStore, warehousesReachedBy } from '@/lib/warehouses';
 import {
   PlacementRefused,
-  VARIANTS_STAY_STORE_LEVEL_AR,
+  VARIANTS_IN_PLACEMENT_AR,
   countsSchema,
+  placementCombinations,
   placeStore,
   previewPlacement,
   refusalStatus,
@@ -51,11 +52,15 @@ export async function GET() {
     const own = await warehousesOfStore(companyId, storeId);
     const warehouses = await warehousesReachedBy(user, companyId, own.map((w) => ({ ...w, companyId })));
     const plan = await previewPlacement(db, { companyId, storeId, counts: [] });
+    // 20/11 (W8c): the combinations of the products that have them — present only when there are any, so a store
+    // without combinations answers exactly as before.
+    const combinations = await placementCombinations(db, companyId, plan.rows.filter((r) => r.hasVariants).map((r) => r.productId));
     return NextResponse.json({
       placed: false,
       warehouses: warehouses.map((w) => ({ id: w.id, name: w.name })),
       rows: plan.rows,
-      variantsNote: VARIANTS_STAY_STORE_LEVEL_AR,
+      variantsNote: VARIANTS_IN_PLACEMENT_AR,
+      ...(Object.keys(combinations).length > 0 ? { combinations } : {}),
     });
   } catch (error) {
     if (error instanceof PlacementRefused) return refuse(refusalStatus(error.code), error.code, error.errorAr);

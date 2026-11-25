@@ -12,9 +12,9 @@ type Client = Prisma.TransactionClient | typeof db;
  * ═══════════════════════════════════════════════════════════════════════
  * «أرقام القاعدة» — THE NUMBERS OF THE ONE CONFIRMATION RULE AS A STORED DOCUMENT (request Q3a of the rules plan; INERT).
  *
- * `Company.settings.confirmationRule` holds the owner's edit of `CONFIRMATION_RULE` (`confirmation-rule.ts`). In THIS request nothing in the engine reads it:
- * the door `/api/settings/confirmation-rule` saves, shows and reverts it, and every engine file still reads the constant. The engine starts reading it (through
- * `readConfirmationRule`, once per door or job) in the next request — so until then a saved document changes no answer anywhere.
+ * `Company.settings.confirmationRule` holds the owner's edit of `CONFIRMATION_RULE` (`confirmation-rule.ts`). The door `/api/settings/confirmation-rule` saves, shows
+ * and reverts it (Q3a); since request Q3b the engine reads it — through `readConfirmationRule` (or `confirmationRuleOnce`), once per door or job, handed down to the
+ * pure rules. With no stored document every answer is the default's, byte for byte.
  *
  * ── THE RULE ──
  * The fields of `CONFIRMATION_RULE`, with the schedule generalised to STEPS: an ordered list, one step per attempt after the first (attempts = steps + 1).
@@ -290,9 +290,22 @@ export async function readConfirmationRuleDocument(client: Client, companyId: st
   return doc;
 }
 
-/** THE RULE IN FORCE for this company at `nowMs` — the one function the engine will read it through (from the next request on; nothing calls it for that yet). */
+/** THE RULE IN FORCE for this company at `nowMs` — the one function the engine reads it through (request Q3b: once per door or job, then handed down). */
 export async function readConfirmationRule(client: Client, companyId: string, nowMs: number = Date.now()): Promise<ConfirmationRuleNumbers> {
   return ruleAt(await readConfirmationRuleDocument(client, companyId, nowMs), nowMs).rule;
+}
+
+/** The rule in force, asked lazily and at most ONCE: a door hands this to every helper it calls, and only a helper that needs a number reads it. */
+export type RuleNow = () => Promise<ConfirmationRuleNumbers>;
+
+/**
+ * `readConfirmationRule` for ONE request or ONE pass of a job: the first call reads (through the thirty-second cache — on a warm cache no statement at all), every later
+ * call answers that same rule, so two helpers of one door can never act on two different rules. Nothing is read until something asks: a door whose switches are off
+ * reads nothing new.
+ */
+export function confirmationRuleOnce(client: Client, companyId: string, nowMs: number = Date.now()): RuleNow {
+  let read: Promise<ConfirmationRuleNumbers> | null = null;
+  return () => (read ??= readConfirmationRule(client, companyId, nowMs));
 }
 
 /**

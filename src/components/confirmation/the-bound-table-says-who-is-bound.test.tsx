@@ -182,6 +182,30 @@ describe('«افحص موظفة»', () => {
     expect(box.querySelector('[data-pull-code]')!.getAttribute('data-pull-code')).toBe('OPEN');
   });
 
+  // Q4b (21/11): the door now also answers her three numbers, each with the source in the server's words; the panel says them as three lines.
+  it('her numbers and where each came from — the server\'s words, as they came; an older answer without them draws no list', async () => {
+    const numbers = {
+      hand: { value: 2, from: 'من قاعدة «الجديدة»' },
+      idleMinutes: { value: 20, from: 'من القاعدة الأساسية' },
+      pullPerHour: { value: 12, from: 'من قاعدة «الجديدة»' },
+    };
+    h.check.sara = answer({ open: true, code: null, sentence: 'السحب مفتوح إلها هلّق.' }, { numbers });
+    await pickAndCheck();
+    const list = (await screen.findByLabelText('أرقامها')) as HTMLElement;
+    expect([...list.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'حد اليد إلها: 2 — من قاعدة «الجديدة»',
+      'مهلة الطلب المتروك إلها: 20 دقيقة دوام — من القاعدة الأساسية',
+      'سرعة السحب إلها: 12 طلب بالساعة — من قاعدة «الجديدة»',
+    ]);
+  });
+
+  it('NEGATIVE: an answer without numbers draws no numbers list', async () => {
+    h.check.sara = answer({ open: true, code: null, sentence: 'السحب مفتوح إلها هلّق.' });
+    await pickAndCheck();
+    await screen.findByText(/السحب مفتوح/);
+    expect(document.querySelector('[data-check-numbers]')).toBeNull();
+  });
+
   it('the cap of 500 is named «السقف», and no «محجوز» when nothing is held for her', async () => {
     h.check.sara = answer({ open: true, code: null, sentence: 'مفتوح.' }, { hold: { inHand: 4, heldForHer: 0, load: 4, limit: 500, limitFrom: 'CAP', withoutAttempt: 0, withoutAttemptLimit: 40 } });
     await pickAndCheck();
@@ -244,8 +268,10 @@ describe('where it stands', () => {
   it('on the rules page, once, right under the box', () => {
     const rules = read('src/components/screens/ConfirmationRulesScreen.tsx');
     expect(rules).toContain("import { DeskPeopleTable } from '@/components/confirmation/DeskPeopleTable';");
-    expect(rules.match(/<DeskPeopleTable \/>/g)).toHaveLength(1);
-    expect(rules.indexOf('<DeskPeopleTable />')).toBeLessThan(rules.indexOf('<CallProofCard />'));
+    // 21/11 (request Q4c): was `<DeskPeopleTable />`; now `<DeskPeopleTable key={round} />` — a save on «قواعد خاصة» reads the table again (its key moves),
+    // so a new rule's numbers and source show at once. Still once, still under the box and above the cards.
+    expect(rules.match(/<DeskPeopleTable key=\{round\} \/>/g)).toHaveLength(1);
+    expect(rules.indexOf('<DeskPeopleTable key={round} />')).toBeLessThan(rules.indexOf('<CallProofCard />'));
   });
 
   it('NEGATIVE: never on the desk — «طلباتي» imports neither part (its bundle sits at its ceiling)', () => {

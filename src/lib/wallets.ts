@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { roundMinor } from './money';
+import { assertOccurredAt } from './real-date';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -78,9 +79,20 @@ export interface MovementInput {
   referenceId?: string;
   /** The statement receipt this IN is the money of: one movement per receipt, held by a unique index. */
   statementReceiptId?: string;
-  /** A partner draw's partner, and what it is worth in the STORE's currency. Both are required on a `PARTNER_DRAW` and refused on every other kind. */
+  /** A partner draw's partner, and what it is worth in the STORE's currency. The partner is required on a `PARTNER_DRAW` and the value optional there (23/11, F7); both are refused on every other kind. */
   partnerId?: string;
   valueInStoreCurrency?: number;
+  /**
+   * «سعر الصرف التلقائي» (23/11, F8): the rate `valueInStoreCurrency` was FILLED at, when the draws door filled it from today's rate.
+   * Stored beside it and never read by a sum. Only on a `PARTNER_DRAW` that carries a value; absent = written byte for byte as before.
+   */
+  equivalentRate?: { rate: number; kind: 'AUTO' | 'MANUAL'; source: string | null; at: Date | null };
+  /**
+   * When the money REALLY moved (22/11, lib/real-date), when the person typed one. Absent = the registration moment, and the row
+   * is written exactly as before. Refused in the future (beyond a five-minute skew) and before 2020. Never added up: every balance
+   * and closing reads `createdAt`.
+   */
+  occurredAt?: Date | null;
   createdById: string;
 }
 
@@ -99,10 +111,15 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
     if (!input.partnerId || input.referenceType !== 'PARTNER_DRAW' || input.referenceId !== input.partnerId) {
       throw new Error('A partner draw must name its partner');
     }
-    if (!(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
+    // 23/11 (F7): the value is OPTIONAL — a draw may be in its wallet's currency alone («بدون ما يجيني سعر الصرف», the owner), and
+    // the partners' statement counts such a draw in no share. When one IS given it must be a real figure above zero, as before.
+    if (input.valueInStoreCurrency !== undefined && !(typeof input.valueInStoreCurrency === 'number' && input.valueInStoreCurrency > 0)) {
       throw new Error('A partner draw must carry its value in the store currency');
     }
-  } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined) {
+    if (input.equivalentRate !== undefined && (input.valueInStoreCurrency === undefined || !(input.equivalentRate.rate > 0))) {
+      throw new Error('A rate is stored only beside the value it filled');
+    }
+  } else if (input.partnerId !== undefined || input.valueInStoreCurrency !== undefined || input.equivalentRate !== undefined) {
     throw new Error('Only a partner draw carries a partner or a store value');
   }
   /*
@@ -122,6 +139,7 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
   });
   if (!wallet) throw new Error('Wallet not found');
   if (input.amount <= 0) throw new Error('Amount must be greater than zero');
+  const occurredAt = assertOccurredAt(input.occurredAt, new Date());
 
   return tx.walletMovement.create({
     data: {
@@ -137,6 +155,17 @@ export async function recordMovement(tx: Tx, input: MovementInput) {
       referenceId: input.referenceId ?? null,
       ...(input.statementReceiptId ? { statementReceiptId: input.statementReceiptId } : {}),
       ...(input.partnerId ? { partnerId: input.partnerId, valueInStoreCurrency: input.valueInStoreCurrency } : {}),
+      // F8: only when the door filled the value from today's rate — every other row is written byte for byte as before.
+      ...(input.equivalentRate
+        ? {
+            equivalentRate: input.equivalentRate.rate,
+            equivalentRateKind: input.equivalentRate.kind,
+            equivalentRateSource: input.equivalentRate.source,
+            equivalentRateAt: input.equivalentRate.at,
+          }
+        : {}),
+      // Only when one was typed: a row without it is written byte for byte as before this change.
+      ...(occurredAt ? { occurredAt } : {}),
       createdById: input.createdById,
     },
   });

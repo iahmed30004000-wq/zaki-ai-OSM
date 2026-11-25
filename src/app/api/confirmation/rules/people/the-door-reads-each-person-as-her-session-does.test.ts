@@ -262,7 +262,9 @@ describe('who may ask, and what the answer carries', () => {
 
   it('exactly id, name, roleLabel, readiness — no order, no customer, no email', async () => {
     const { body } = await read();
-    for (const p of body.people) expect(Object.keys(p).sort()).toEqual(['id', 'name', 'readiness', 'roleLabel']);
+    // 21/11 (request Q4c): was ['id', 'name', 'readiness', 'roleLabel']; now also 'numbers' — her hand, idle minutes and pull pace, each with the rule it came
+    // from and whether it acts now («visible in مين مربوطة with its source», the row's Definition of Done). Still no order, no customer, no email.
+    for (const p of body.people) expect(Object.keys(p).sort()).toEqual(['id', 'name', 'numbers', 'readiness', 'roleLabel']);
     const text = JSON.stringify(body);
     expect(text).not.toMatch(/customer|phone|address|email|@x|orderId/i);
   });

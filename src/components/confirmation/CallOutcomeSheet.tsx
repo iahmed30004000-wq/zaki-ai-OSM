@@ -134,6 +134,7 @@ export function CallOutcomeSheet({
   closesOnNext,
   confirmLock,
   proofOn = false,
+  proofMs = MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS,
   orderId: orderIdProp,
   startedAt: startedAtProp,
   waiting,
@@ -174,6 +175,8 @@ export function CallOutcomeSheet({
    * until thirty seconds after the press (the phone's own clock — the server still decides), and «ردّ» and «اتصل لاحقاً» leave a line in the contact log.
    */
   proofOn?: boolean;
+  /** The wait after the press with the clocks' margin — the rule in force's seconds as the desk heard them from the server (request Q3b). Absent = the default. */
+  proofMs?: number;
   /**
    * The order she rang and the moment of the press (`PendingCall.startedAt`). Both are optional: the sheet reads the phone's kept pending call when the screen
    * does not say. Only used with `proofOn`.
@@ -222,7 +225,7 @@ export function CallOutcomeSheet({
   // «ردّ» / «اتصل لاحقاً» wrote an outcome line for this call: it used the press up (the server says so too), so «ما رد» needs a new «اتصال».
   const [consumed, setConsumed] = useState(false);
   const usableStart = typeof call.startedAt === 'number' && Number.isFinite(call.startedAt) && call.startedAt <= nowMs + FUTURE_TOLERANCE_MS;
-  const unlockAt = usableStart ? (call.startedAt as number) + MIN_CALL_MS.NO_ANSWER + CLIENT_MARGIN_MS : null;
+  const unlockAt = usableStart ? (call.startedAt as number) + proofMs : null;
   const proofLock: string | null = !proofOn
     ? null
     : consumed || unlockAt === null

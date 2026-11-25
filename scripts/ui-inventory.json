@@ -83,7 +83,7 @@
   },
   "src/components/apps/SystemTokensPanel.tsx": {
     "buttons": 5,
-    "inputs": 2,
+    "inputs": 4,
     "columns": 0,
     "cards": 3,
     "modals": 0,
@@ -161,6 +161,17 @@
     "icons": 0,
     "links": 0,
     "tabs": 0
+  },
+  "src/components/confirmation/OwnRulesCard.tsx": {
+    "buttons": 7,
+    "inputs": 10,
+    "columns": 0,
+    "cards": 2,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0,
+    "checkboxes": 3
   },
   "src/components/confirmation/PullPanel.tsx": {
     "buttons": 1,
@@ -305,6 +316,16 @@
     "links": 2,
     "tabs": 0
   },
+  "src/components/inventory/CombinationBoxes.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/inventory/OpeningStockCount.tsx": {
     "buttons": 3,
     "inputs": 6,
@@ -327,13 +348,24 @@
   },
   "src/components/inventory/ReceiveDialog.tsx": {
     "buttons": 2,
-    "inputs": 4,
+    "inputs": 5,
     "columns": 0,
     "cards": 1,
     "modals": 1,
     "icons": 0,
     "links": 0,
     "tabs": 0
+  },
+  "src/components/inventory/TransferAcross.tsx": {
+    "buttons": 4,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/labels/LabelSize.tsx": {
     "buttons": 0,
@@ -536,6 +568,16 @@
     "links": 0,
     "tabs": 0,
     "iconButtons": 2
+  },
+  "src/components/ops/WarehousePicker.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 1,
+    "tabs": 0
   },
   "src/components/orders/AiOrderModal.tsx": {
     "buttons": 4,
@@ -1064,7 +1106,7 @@
   },
   "src/components/products/ProductVariants.tsx": {
     "buttons": 3,
-    "inputs": 6,
+    "inputs": 9,
     "columns": 6,
     "cards": 0,
     "modals": 0,
@@ -1116,12 +1158,22 @@
     "tabs": 0
   },
   "src/components/screens/AiSettingsScreen.tsx": {
-    "buttons": 7,
+    "buttons": 8,
     "inputs": 6,
     "columns": 0,
     "cards": 5,
     "modals": 0,
-    "icons": 11,
+    "icons": 13,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/AppErrorsScreen.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 6,
+    "cards": 2,
+    "modals": 0,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   },
@@ -1347,7 +1399,7 @@
     "tabs": 0
   },
   "src/components/screens/GeoSettingsScreen.tsx": {
-    "buttons": 13,
+    "buttons": 14,
     "inputs": 7,
     "columns": 0,
     "cards": 6,
@@ -1381,7 +1433,7 @@
   },
   "src/components/screens/InventoryBalancesScreen.tsx": {
     "buttons": 9,
-    "inputs": 4,
+    "inputs": 7,
     "columns": 0,
     "cards": 5,
     "modals": 1,
@@ -1391,7 +1443,7 @@
   },
   "src/components/screens/InventoryMovementsScreen.tsx": {
     "buttons": 1,
-    "inputs": 2,
+    "inputs": 3,
     "columns": 8,
     "cards": 2,
     "modals": 0,
@@ -1472,7 +1524,7 @@
   },
   "src/components/screens/ManufacturingScreen.tsx": {
     "buttons": 8,
-    "inputs": 10,
+    "inputs": 11,
     "columns": 12,
     "cards": 4,
     "modals": 1,
@@ -1589,8 +1641,8 @@
   },
   "src/components/screens/ReturnsScreen.tsx": {
     "buttons": 10,
-    "inputs": 2,
-    "columns": 17,
+    "inputs": 4,
+    "columns": 20,
     "cards": 2,
     "modals": 2,
     "icons": 2,
@@ -1628,6 +1680,39 @@
     "icons": 19,
     "links": 0,
     "tabs": 0
+  },
+  "src/components/screens/StockCountsScreen.tsx": {
+    "buttons": 12,
+    "inputs": 3,
+    "columns": 20,
+    "cards": 6,
+    "modals": 3,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
+  "src/components/screens/StockExitsScreen.tsx": {
+    "buttons": 10,
+    "inputs": 4,
+    "columns": 11,
+    "cards": 4,
+    "modals": 3,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3
+  },
+  "src/components/screens/StockTransfersScreen.tsx": {
+    "buttons": 18,
+    "inputs": 6,
+    "columns": 6,
+    "cards": 3,
+    "modals": 6,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/StoreDesignScreen.tsx": {
     "buttons": 3,
@@ -1801,7 +1886,7 @@
     "tabs": 0
   },
   "src/components/screens/TrackingScreen.tsx": {
-    "buttons": 27,
+    "buttons": 28,
     "inputs": 0,
     "columns": 15,
     "cards": 3,
@@ -1996,6 +2081,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/screens/finance/BackfillOldDraws.tsx": {
+    "buttons": 5,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/BulkDecide.tsx": {
     "buttons": 1,
     "inputs": 3,
@@ -2053,6 +2148,16 @@
     "cards": 1,
     "modals": 0,
     "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/finance/HistoryExport.tsx": {
+    "buttons": 2,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 2,
     "links": 0,
     "tabs": 0
   },
@@ -2127,6 +2232,16 @@
     "tabs": 0,
     "checkboxes": 1
   },
+  "src/components/screens/finance/RealDateDetails.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 2,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/screens/finance/ReverseTransferDialog.tsx": {
     "buttons": 2,
     "inputs": 1,
@@ -2179,13 +2294,14 @@
   },
   "src/components/screens/finance/TransfersScreen.tsx": {
     "buttons": 3,
-    "inputs": 4,
-    "columns": 9,
+    "inputs": 5,
+    "columns": 11,
     "cards": 6,
     "modals": 0,
-    "icons": 5,
+    "icons": 6,
     "links": 0,
-    "tabs": 0
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/finance/WalletLookDialog.tsx": {
     "buttons": 7,
@@ -2199,14 +2315,25 @@
   },
   "src/components/screens/finance/WalletsScreen.tsx": {
     "buttons": 18,
-    "inputs": 19,
-    "columns": 11,
+    "inputs": 20,
+    "columns": 13,
     "cards": 5,
     "modals": 5,
-    "icons": 15,
+    "icons": 16,
     "links": 0,
     "tabs": 0,
-    "iconButtons": 5
+    "iconButtons": 6
+  },
+  "src/components/screens/finance/WithdrawalsSection.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 14,
+    "cards": 7,
+    "modals": 0,
+    "icons": 1,
+    "links": 2,
+    "tabs": 0,
+    "iconButtons": 1
   },
   "src/components/screens/ops/PickingAssistant.tsx": {
     "buttons": 1,
@@ -2251,12 +2378,12 @@
     "checkboxes": 1
   },
   "src/components/screens/tracking/CollectDialog.tsx": {
-    "buttons": 2,
-    "inputs": 5,
+    "buttons": 5,
+    "inputs": 6,
     "columns": 0,
-    "cards": 1,
-    "modals": 1,
-    "icons": 1,
+    "cards": 2,
+    "modals": 3,
+    "icons": 2,
     "links": 0,
     "tabs": 0
   },
@@ -2287,6 +2414,26 @@
     "cards": 0,
     "modals": 0,
     "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/tracking/HandoverPanel.tsx": {
+    "buttons": 2,
+    "inputs": 7,
+    "columns": 0,
+    "cards": 3,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/screens/tracking/OpenHandovers.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 1,
     "links": 0,
     "tabs": 0
   },
@@ -2415,6 +2562,17 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/settings/ConfirmationRuleEditor.tsx": {
+    "buttons": 5,
+    "inputs": 5,
+    "columns": 0,
+    "cards": 2,
+    "modals": 0,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 3
+  },
   "src/components/settings/CourierCredentials.tsx": {
     "buttons": 4,
     "inputs": 9,
@@ -2446,6 +2604,16 @@
     "links": 1,
     "tabs": 0,
     "iconButtons": 2
+  },
+  "src/components/settings/ExchangeRatesCard.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
   },
   "src/components/settings/IntakeFilterCard.tsx": {
     "buttons": 0,
@@ -2499,6 +2667,16 @@
     "tabs": 0,
     "iconButtons": 1,
     "switches": 1
+  },
+  "src/components/settings/PagesLinkCard.tsx": {
+    "buttons": 2,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 4,
+    "links": 1,
+    "tabs": 0
   },
   "src/components/settings/PartnersCard.tsx": {
     "buttons": 2,

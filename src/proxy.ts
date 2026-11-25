@@ -4,6 +4,7 @@ import { jwtVerify } from 'jose';
 import { hostSite, inHostScope } from '@/lib/landing-domain';
 import { countRedirectHit, redirectFor } from '@/lib/store-redirects';
 import { cachedLandingPath, isCachedLandingPath } from '@/lib/landing-cache-path';
+import { appRequestHeaders } from '@/lib/app-bearer';
 import {
   PREVIEW_COOKIE,
   PREVIEW_REFUSAL,
@@ -182,6 +183,17 @@ export async function proxy(req: Request) {
   // Its internal route is reached only through the rewrite below; asked for by name it does not exist, so nobody can
   // reach a page by a second address that no count or redirect knows about.
   if (isCachedLandingPath(pathname)) return new NextResponse('Not found', { status: 404 });
+
+  // ── «Zaki Orders», the Android app: its header token becomes the session cookie (app-bearer.ts) ──
+  // Before the preview gate on purpose: an app request carries no preview, and every cookie it brought is dropped. The
+  // origin check still runs (the app sends no Origin; a page that sent one would be held to the same rule as ever).
+  const appHeaders = appRequestHeaders(req.headers, pathname);
+  if (appHeaders) {
+    const originError = validateApiOrigin(req);
+    if (originError) return originError;
+    appHeaders.delete(PREVIEW_STAMP_HEADER);
+    return NextResponse.next({ request: { headers: appHeaders } });
+  }
 
   // ── «عاين كـ»: no write while the owner previews somebody (see previewGate) ──
   const preview = await previewGate(req, pathname);

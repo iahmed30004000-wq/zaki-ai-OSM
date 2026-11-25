@@ -98,7 +98,7 @@ const ROW = {
 };
 
 /** What the next desk answers carry: the switch and the card's proof. */
-let desk: { callProofOn?: boolean; row?: Record<string, unknown> } = {};
+let desk: { callProofOn?: boolean; proofSeconds?: number; row?: Record<string, unknown> } = {};
 let sent: { url: string; method: string; body: unknown; raw?: string }[] = [];
 let mineReads = 0;
 /** The next POST to the contact log is refused with this (for the result named). */
@@ -142,6 +142,7 @@ beforeEach(() => {
         closedToday: [],
         confirmed: { day: '', q: '', page: 1, pageSize: 25, total: 0, pages: 1, rows: [] },
         ...(desk.callProofOn ? { callProofOn: true } : {}),
+        ...(desk.proofSeconds ? { proofSeconds: desk.proofSeconds } : {}),
       };
     }
     if (url === '/api/confirmation/queue') {
@@ -313,6 +314,30 @@ describe('WITH THE SWITCH ON: «لا يرد» and «مغلق أو خارج ال�
     await waitFor(() => expect(noAnswer().disabled).toBe(false));
   });
 
+  // Request Q3b (19/11): the seconds are the rule in force's, and they reach the desk from the server's answer — the desk imports no rule.
+  it('an edited rule: the server says 45 seconds, and the press waits 45 + the clocks\' margin — not the default thirty', async () => {
+    desk = { callProofOn: true, proofSeconds: 45, row: { callProof: { state: 'NO_OPENED', unlocksAtMs: null } } };
+    await draw();
+    ring();
+    await waitFor(() => expect(posts('OPENED')).toHaveLength(1));
+    expect(screen.getByText(CALL_PROOF_WORDS.wait(45 + CLIENT_MARGIN_MS / 1000))).toBeTruthy();
+    await tick(WAIT_MS + 1_000);
+    expect(noAnswer().disabled, 'still shut after the default thirty').toBe(true);
+    await tick(15_000);
+    expect(noAnswer().disabled).toBe(false);
+  });
+
+  // Request Q4d (21/11): an order rule's seconds reach the CARD (the desk-wide answer stays the base's), and that card waits them — the desk imports no rule.
+  it('an order rule: the card says 20 seconds, and its press waits 20 + the clocks\' margin — not the desk\'s thirty', async () => {
+    desk = { callProofOn: true, row: { callProof: { state: 'NO_OPENED', unlocksAtMs: null }, proofSeconds: 20 } };
+    await draw();
+    ring();
+    await waitFor(() => expect(posts('OPENED')).toHaveLength(1));
+    expect(screen.getByText(CALL_PROOF_WORDS.wait(20 + CLIENT_MARGIN_MS / 1000))).toBeTruthy();
+    await tick(20_000 + CLIENT_MARGIN_MS + 1_000);
+    expect(noAnswer().disabled).toBe(false);
+  });
+
   it('«CALL_TOO_SOON» on the card’s own press: the red line says it and the card waits again for exactly what the server said', async () => {
     desk = { callProofOn: true, row: { callProof: { state: 'READY', unlocksAtMs: null } } };
     refuse = { result: 'NO_ANSWER', times: 1, error: refusal('CALL_TOO_SOON', CALL_PROOF_WORDS.refusedTooSoon(12), { waitSeconds: 12, unlocksAt: new Date(clock.now + 12_000).toISOString() }) };
@@ -450,5 +475,14 @@ describe('THE OUTBOX: «too soon» and «no press yet» are retried; the rest ar
     expect((await screen.findAllByText(CALL_PROOF_WORDS.notLogged)).length).toBeGreaterThan(0);
     await letItGo(20_000);
     expect(posts('NO_ANSWER')).toHaveLength(1);
+  });
+});
+
+/** REVIEW OF #448 (21/11): the call sheet waits the CARD's seconds too (its own wait is the one the card waits). */
+describe('the call sheet waits the card’s seconds', () => {
+  it('proofMs is waitMsOf of the order on the sheet', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/screens/ConfirmationMineScreen.tsx'), 'utf8');
+    expect(src).toContain('proofMs={waitMsOf(workable(callOrder.id) ?? callOrder)}');
+    expect(src).not.toContain('proofMs={waitMs}');
   });
 });

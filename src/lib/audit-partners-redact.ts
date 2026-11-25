@@ -31,10 +31,18 @@ type AuditRow = { action: string; entity: string; previousData: string | null; n
 const SAFE_KEYS_OF_ACTION: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   // Where the money left from — the cash box and its currency. Not who took it, how much, or why.
   ['PARTNER_DRAW_RECORDED', new Set(['wallet', 'currencyCode', 'storeCurrency'])],
+  // F8: the owner's exception — how many rows and the store's currency; never the figures or which draws.
+  ['PARTNER_DRAWS_BACKFILLED', new Set(['storeCurrency', 'source'])],
+  ['PARTNER_DRAW_EQUIVALENT_EDITED', new Set(['storeCurrency'])],
 ]);
 
 /** The rows that are about the partners' list through and through: nothing of their data stays. */
-const SAFE_KEYS_OF_ENTITY: ReadonlyMap<string, ReadonlySet<string>> = new Map([['Partner', new Set<string>()]]);
+const SAFE_KEYS_OF_ENTITY: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['Partner', new Set<string>()],
+  // «المسحوبات» (22/11): who took what, and the standing amounts, are the partners' key's. Only the currency stays.
+  ['PartnerWithdrawal', new Set(['currencyCode'])],
+  ['PartnerStandingAmount', new Set<string>()],
+]);
 
 /** A cut that left an empty object is no data at all: the screen shows «—» and the note, not «{}». */
 const nothingLeft = (raw: string | null) => (raw === '{}' ? null : raw);

@@ -41,6 +41,11 @@ export interface QueueHealth {
   /** Minutes since anybody pulled in this store — counted from the shift's start when that is later; null outside shift hours. */
   noPullMinutes: number | null;
   inShift: boolean;
+  /**
+   * «طلبات بلا موظفة» (request Q5b, 21/11): orders of the pool a routing rule gives to people none of whom can pull now (they wait the rule's fallback minutes, then go
+   * to everyone). Present only while a routing rule is in force for the store — absent, the board is as it was. Said on the board by request Q5c.
+   */
+  unstaffed?: number;
 }
 
 export interface HealthAlert {
@@ -64,6 +69,15 @@ export function healthAlerts(h: QueueHealth): HealthAlert[] {
     out.push({ kind: 'NEW_UNCLAIMED', title: 'طلب جديد بلا استلام', message: `أقدم طلب جديد صار له ${Math.floor(h.oldestNewMinutes)} دقيقة بدون ما حدا يستلمو خلال الدوام (الحد ${QUEUE_HEALTH.unclaimedMinutes}).` });
   }
   return out;
+}
+
+/**
+ * «طلبات بلا موظفة» ON THE BOARD (request Q5c, 21/11): the line said under the tiles while a routing rule is in force (`health.unstaffed` present), with how it is
+ * counted. null without the count — the board is as it was.
+ */
+export function unstaffedLine(n: number | undefined): string | null {
+  if (n === undefined) return null;
+  return `طلبات بلا موظفة: ${n} — طلبات قاعدة توزيع ما في ولا وحدة من موظفاتها بتقدر تسحبها هلق. بتستنى مهلة القاعدة (دقائق دوام من وصول الطلب)، وبعدها بتروح لكل الموظفات.`;
 }
 
 /** «قاعدة الاحتساب» — said under the board. */

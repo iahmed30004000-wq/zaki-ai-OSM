@@ -102,9 +102,13 @@ describe('navigation contract', () => {
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the third tab of «المحادثات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). One more screen, no more line (it is a tab of an existing hub). Not one address moved.
     // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
-    // 25/11 (the owner): 59 with `/settings/authenticity` «رموز الأصالة» (the codes card of «إعدادات النظام», moved whole) and `/settings/product-barcodes` «باركود المنتجات», side by side in «الإدارة», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(59);
-    expect(new Set(paths).size).toBe(59);
+    // 20/11 (W3b): 58 with `/inventory/transfers` «نقل البضاعة» — moving units between two warehouses of one store, the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; each press asks its own key. Not one address moved.
+    // 20/11 (W6b): 59 with `/inventory/exits` «إخراج بضاعة» — goods out of a warehouse for good (request, a second hand's approval, the month's table), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; the request and the decision each ask their own key. Not one address moved.
+    // 21/11 (W5b): 60 with `/inventory/counts` «الجرد» — the count against the keeper (open a sheet, count blind, a second hand approves the difference, «كشف عهدة الأمين»), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; counting asks `inventory.count`, approving and the statement `inventory.count_approve`. Not one address moved.
+    // 22/11 («Zaki Orders»): 61 with `/control/app-errors` «أعطال التطبيق» — the crashes and frozen screens the Android app sends, beside «سجل التدقيق» in «الإدارة», on `audit.view` like it. Not one address moved.
+    // 25/11 (the owner): 63 with `/settings/authenticity` آ«ط±ظ…ظˆط² ط§ظ„ط£طµط§ظ„ط©آ» (the codes card of آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ», moved whole) and `/settings/product-barcodes` آ«ط¨ط§ط±ظƒظˆط¯ ط§ظ„ظ…ظ†طھط¬ط§طھآ», side by side in آ«ط§ظ„ط¥ط¯ط§ط±ط©آ», on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(63);
+    expect(new Set(paths).size).toBe(63);
   });
 
   it('the store section is its own group, and reads as one', () => {

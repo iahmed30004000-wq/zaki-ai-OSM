@@ -32,7 +32,7 @@ async function asked() {
 
 export async function POST(req: Request) {
   try {
-    const { user, companyId, storeId } = await asked();
+    const { user, companyId, storeId, country } = await asked();
     const body = (await req.json().catch(() => ({}))) as { orderId?: unknown };
     const orderId = typeof body.orderId === 'string' ? body.orderId.trim().slice(0, 64) : '';
     if (!orderId) {
@@ -44,6 +44,8 @@ export async function POST(req: Request) {
       user: { id: user.id, role: user.role },
       orderId,
       visibility: orderVisibilityWhere(user),
+      // Request Q4b: an owner's rule with hours is placed in the store's clock.
+      timezone: country?.timezone,
     });
 
     if (!result.ok) {

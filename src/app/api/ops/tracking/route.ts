@@ -1,3 +1,4 @@
+import { handoverTakes } from '@/lib/handover-takes';
 import { NextResponse } from 'next/server';
 import { DEAD_CONFIRMATION, TRACKING_ACK_ACTION, trackingAlert } from '@/lib/parcel-tracking/alert';
 import { db } from '@/lib/db';
@@ -14,6 +15,7 @@ import { searchWhere, trackingFilters } from '@/lib/parcel-tracking/filters';
 import { readTrackingList } from '@/lib/parcel-tracking/list';
 import { readDifferenceRows } from '@/lib/parcel-tracking/difference';
 import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
+import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
 
 /**
  * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&said=&page=&limit=
@@ -191,6 +193,8 @@ export async function GET(req: Request) {
             deliveredAt: true, returnedAt: true,
             deliveryFailureReason: true, currency: true, regionId: true,
             deliveryProviderId: true,
+            // «طلع من مخزن كذا» (W4d): read to find the name, never sent on — the row gets the name, and only when there is one.
+            sourceWarehouseId: true,
             customer: { select: { fullName: true, phone: true, city: true } },
             region: { select: { id: true, name: true } },
             deliveryProvider: { select: { id: true, name: true, kind: true, apiEnabled: true, adapterCode: true } },
@@ -253,6 +257,8 @@ export async function GET(req: Request) {
       select: { deliveryProviderId: true, regionId: true, lateThresholdDays: true },
     });
     const thresholdOf = new Map(fees.map((f) => [`${f.deliveryProviderId}|${f.regionId}`, f.lateThresholdDays]));
+    // The warehouses these parcels left from, in one read — and no read at all for a page with none (an unplaced store).
+    const places = await sourceWarehouseNames(db, companyId, orders.map((o) => o.sourceWarehouseId));
 
     const built = orders.map((order) => {
       // The lines, the add-ons and the return receipt are what the
@@ -292,6 +298,10 @@ export async function GET(req: Request) {
         late: transit.late,
         // Delivery, settlement and collection stay three separate facts.
         collectionStatus: o.settlementStatus,
+        // «تراجع عن المرتجع» (25/11): whether the returns desk counted it back in — the answer, not the receipt (which stays off the wire).
+        returnCounted: _returnReceipt != null,
+        // «تسليم مندوب» or the old hand door (F9): the statement's own rule, judged here so the screen only reads it.
+        handover: handoverTakes(o, country.currencyCode),
         // What the company itself says, when it disagrees with our state: judged once for the whole list, only shown here.
         courierSaid: list.courierSaid.get(o.id) ?? null,
         /**
@@ -361,7 +371,8 @@ export async function GET(req: Request) {
         // «فيه فرق»: the company's line against our figure, or null — the courier's money, so only for whoever holds that sight.
         ...(sight.money ? { difference: differenceRows.get(o.id) ?? null } : {}),
       };
-    });
+    // The stamp's id leaves; the name joins only when the parcel has a source warehouse (W4d).
+    }).map((row) => withSourceWarehouseName(row, places));
     // The courier's figures leave with the permission: every row is built whole by the one rule above, then they are taken off.
     const rows = sight.money ? built : built.map((r) => withoutMoney(r));
 
@@ -386,6 +397,7 @@ export async function GET(req: Request) {
         writeOff: can(user, 'ops.write_off'),
         closeLegacy: can(user, 'ops.close_legacy'),
         // `undoDelivery` is «تراجع عن التسليم» (13/11): a button on a delivered parcel's row, the owner's own key; its door asks it again.
+        // The same key draws «تراجع عن المرتجع» (25/11) on a returned parcel the desk has not counted; its own door asks it again too.
         undoDelivery: can(user, 'ops.undo_delivery'),
         // «فيه فرق»: answering a difference from the row is `settlement.review` — the matching screen's own door asks it again.
         decide: mayDecide,

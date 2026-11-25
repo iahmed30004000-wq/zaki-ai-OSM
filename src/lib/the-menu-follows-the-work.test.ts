@@ -177,7 +177,8 @@ describe('operations sit with the work, and configuration sits in settings', () 
     // 19/11 (R15a): `/admin/staff-rules` «قواعد الموظفين» joined, right before «الموظفين» — the score and the deductions, moved from «إعدادات النظام».
     expect(arrived).toEqual([
       '/settings', '/apps/store', '/apps/installed', '/admin/jobs', '/admin/staff-rules', '/admin/users', '/admin/permissions',
-      '/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/blacklist',
+      // 22/11: `/control/app-errors` «أعطال التطبيق» joined, right after «سجل التدقيق» — the «Zaki Orders» app's crashes, on `audit.view`.
+      '/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/app-errors', '/control/blacklist',
       '/admin/profile',
     ]);
   });
@@ -225,9 +226,13 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     // 18/11 (landing chat inbox): 55 with `/growth/landing-chats` «رسائل اللاندينج» — the last tab of «الطلبات», beside WhatsApp and Telegram, on `whatsapp.view` (contract oms-lp.v1 §11). Not one address moved.
     // 19/11 (R13i): 56 with `/finance/rules` «قواعد المال» — the two money cards of «إعدادات النظام» (the clean-line settlement, the partners) moved there unchanged, the last tab of «المال», on `settings.view`. Not one address moved.
     // 19/11 (R15a): 57 with `/admin/staff-rules` «قواعد الموظفين» — «سكور الموظفين» and «قواعد الخصم» of «إعدادات النظام» moved there unchanged, beside «الموظفين» in «الإدارة», on `settings.view`. Not one address moved.
-    // 25/11 (the owner): 59 with `/settings/authenticity` «رموز الأصالة» (the codes card of «إعدادات النظام», moved whole) and `/settings/product-barcodes` «باركود المنتجات», side by side in «الإدارة», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(59);
-    expect(new Set(paths).size).toBe(59);
+    // 20/11 (W3b): 58 with `/inventory/transfers` «نقل البضاعة» — moving units between two warehouses of one store, the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; each press asks its own key. Not one address moved.
+    // 20/11 (W6b): 59 with `/inventory/exits` «إخراج بضاعة» — goods out of a warehouse for good (request, a second hand's approval, the month's table), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; the request and the decision each ask their own key. Not one address moved.
+    // 21/11 (W5b): 60 with `/inventory/counts` «الجرد» — the count against the keeper (open a sheet, count blind, a second hand approves the difference, «كشف عهدة الأمين»), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; counting asks `inventory.count`, approving and the statement `inventory.count_approve`. Not one address moved.
+    // 22/11 («Zaki Orders»): 61 with `/control/app-errors` «أعطال التطبيق», beside «سجل التدقيق» in «الإدارة», on `audit.view`. Not one address moved.
+    // 25/11 (the owner): 63 with `/settings/authenticity` آ«ط±ظ…ظˆط² ط§ظ„ط£طµط§ظ„ط©آ» (the codes card of آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ», moved whole) and `/settings/product-barcodes` آ«ط¨ط§ط±ظƒظˆط¯ ط§ظ„ظ…ظ†طھط¬ط§طھآ», side by side in آ«ط§ظ„ط¥ط¯ط§ط±ط©آ», on `settings.view`. Not one address moved.
+    expect(paths).toHaveLength(63);
+    expect(new Set(paths).size).toBe(63);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

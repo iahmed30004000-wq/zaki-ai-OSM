@@ -150,6 +150,38 @@ export const PERMISSION_MODULES: CatalogModule[] = [
     items: [
       { key: 'inventory.view', opens: ['أرصدة المخزون', 'حركات المخزون'], ar: 'عرض المخزون', en: 'View inventory' },
       { key: 'inventory.adjust', requires: 'inventory.view', ar: 'تعديل المخزون', en: 'Adjust inventory' },
+      /*
+       * 20/11 (warehouse plan W3a): the three hands of a transfer between two warehouses of one store — who sends, who
+       * receives by count, and who approves a shortfall. Three boxes, because the two-hands rule is a rule about PEOPLE
+       * (the sender never receives, neither of them approves the difference) and the owner gives each hand to whom he
+       * chooses. Granted by no migration: nobody holds them until the owner ticks them; his full access holds them.
+       */
+      { key: 'inventory.transfer', requires: 'inventory.view', ar: 'نقل بضاعة بين المخازن (إرسال وإلغاء قبل الاستلام)', en: 'Send stock between warehouses (and cancel before receipt)' },
+      { key: 'inventory.transfer_receive', requires: 'inventory.view', ar: 'استلام نقل بضاعة بالعدّ', en: 'Receive a stock transfer by count' },
+      { key: 'inventory.difference_approve', requires: 'inventory.view', ar: 'اعتماد فرق نقل البضاعة (ضايع أو تالف)', en: 'Approve a stock transfer shortfall (lost or damaged)' },
+      /*
+       * 20/11 (warehouse plan W7b): sending goods to a store of ANOTHER country (the owner's explicit word of 20/11). It rides behind the send key — a person who cannot send a transfer cannot send one abroad —
+       * and opens nothing else: the request still waits for the owner's own press before anything moves. Granted by no
+       * migration: nobody holds it until the owner ticks it; his full access holds it.
+       */
+      { key: 'inventory.transfer_abroad', requires: 'inventory.transfer', ar: 'نقل بضاعة لبلد تاني (بعد اعتماد المالك)', en: 'Send stock to a store of another country (after the owner approves)' },
+      /*
+       * 20/11 (warehouse plan W6a): the two hands of goods that leave a warehouse for good (damaged, expired, samples, back
+       * to the supplier, sold outside the system, a partner's draw, other) — who asks, and who approves or rejects. Two boxes,
+       * because the requester never decides her own request. Granted by no migration: nobody holds them until the owner
+       * ticks them; his full access holds them. Neither opens any money: nothing is posted to a profit, a wallet or an expense.
+       */
+      { key: 'inventory.exit', requires: 'inventory.view', ar: 'طلب إخراج بضاعة من المخزن (تالف، منتهي، عيّنات…)', en: 'Request goods out of a warehouse for good (damaged, expired, samples…)' },
+      { key: 'inventory.exit_approve', requires: 'inventory.view', ar: 'اعتماد أو رفض إخراج بضاعة من المخزن', en: 'Approve or reject goods out of a warehouse' },
+      /*
+       * 21/11 (warehouse plan W5a): the two hands of a count sheet — who counts a warehouse (blind: she is never told what
+       * the book holds) and who approves the differences (a different person; he sees the expected figure). Two boxes, because
+       * the counter never approves her own count. Granted by no migration: nobody holds them until the owner ticks them; his
+       * full access holds them. Neither opens any money: an approved difference moves stock and its value at cost, as the
+       * recount does — nothing is posted to a profit, a wallet or an expense.
+       */
+      { key: 'inventory.count', requires: 'inventory.view', ar: 'جرد مخزن بورقة جرد (بدون ما يشوف رقم الدفتر)', en: 'Count a warehouse on a count sheet (blind to the book figure)' },
+      { key: 'inventory.count_approve', requires: 'inventory.view', ar: 'اعتماد ورقة جرد وفروقاتها', en: 'Approve a count sheet and its differences' },
     ],
   },
   {
@@ -397,7 +429,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * commission). Granted to NOBODY by any migration, seed or fallback: the owner's full access holds it, and he ticks it for whoever
        * he wants.
        */
-      { key: 'ops.undo_delivery', requires: 'ops.track', ar: 'التراجع عن تسجيل تسليم بالغلط (بلا مدة زمنية)', en: 'Take back a delivery that was recorded by mistake' },
+      { key: 'ops.undo_delivery', requires: 'ops.track', ar: 'التراجع عن تسجيل تسليم أو مرتجع بالغلط (بلا مدة زمنية)', en: 'Take back a delivery or a return that was recorded by mistake' },
       /*
        * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,
        * whole and sound, back on the shelf, commission reversed — with no undo. Granted to NOBODY by any migration, seed or

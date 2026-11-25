@@ -143,10 +143,15 @@ describe('«مطابق يدوي» beside «استلمت منه»', () => {
   it('the screen tells the owner which of the two to use, before any click', async () => {
     await drawMatching();
     const text = document.body.textContent ?? '';
-    expect(text).toContain('لنقد بعملة الطلب نفسها إلى محفظة فعّالة');
-    expect(text).toContain('عملة ثانية');
-    expect(text).toContain('سعر صرف');
-    expect(text).toContain('تجميع');
+    /*
+     * 23/11 (F9): the sentence was «"استلمت منه" لنقد بعملة الطلب نفسها إلى محفظة فعّالة. أيّ عملة ثانية، أو سعر صرف … «مطابق
+     * يدوي» … ثم «تجميع»». «استلمت منه» on a courier's orders IS the manual statement now (any currency, its rate, payments
+     * over days, money at «اعتماد»), so the screen says that — and keeps the old hand form for an order with no courier.
+     */
+    expect(text).toContain('«استلمت منه» بيفتح «تسليم مندوب» متل الكشف');
+    expect(text).toContain('كل دفعة بعملتها ومحفظتها');
+    expect(text).toContain('«اعتماد»');
+    expect(text).toContain('طلب بلا مندوب');
   });
 });
 

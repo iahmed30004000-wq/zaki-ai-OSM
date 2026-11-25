@@ -107,8 +107,11 @@ let firstFails: boolean;
 let postBody: unknown;
 let hold: Promise<void> | null;
 
+// 25/11 (F10): the desk now asks its warehouses door once on opening (its warehouses door, to know a PLACED store's
+// column and filter). Old: every GET was the list's. New: the list's questions are the GETs to the list itself. Why: the
+// list's own question is what these tests pin, and it is unchanged.
 const gets = () =>
-  api.mock.calls.filter((c) => !(c[1] && (c[1] as RequestInit).method)).map((c) => new URL(c[0] as string, 'http://x').searchParams);
+  api.mock.calls.filter((c) => !(c[1] && (c[1] as RequestInit).method) && c[0] !== '/api/ops/returns/warehouses').map((c) => new URL(c[0] as string, 'http://x').searchParams);
 const posts = () => api.mock.calls.filter((c) => c[1] && (c[1] as RequestInit).method === 'POST');
 const lastAsked = () => gets().at(-1)!;
 
@@ -123,7 +126,8 @@ beforeEach(() => {
   rowsOf = (view, page) => (view === 'received' ? [counted(`R${page}`)] : [waiting(`P${page}`)]);
   api.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === 'POST') return postBody;
-    if (firstFails && api.mock.calls.length === 1) throw new Error('تعذّر التحميل');
+    // 25/11 (F10): the FIRST LIST question fails — the warehouses door asked beside it is not the list.
+    if (firstFails && url !== '/api/ops/returns/warehouses' && api.mock.calls.filter((c) => c[0] !== '/api/ops/returns/warehouses').length === 1) throw new Error('تعذّر التحميل');
     const q = new URL(url, 'http://x').searchParams;
     const view = q.get('view') ?? 'pending';
     if (hold && view === 'received') await hold;

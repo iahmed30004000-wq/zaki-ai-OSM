@@ -9,7 +9,7 @@ import type { SessionUser } from '@/types/auth';
  *     batch AND the movement carry it.
  *   - The production run's two writes are ONE transaction.
  *   - Every draw leaves units on the road (`inTransitTransferId`) alone.
- *   - The recount and the opening count of a placed store are refused by name (the count by warehouse is W2b).
+ *   - The opening count of a placed store is refused by name; its recount names a warehouse (20/11, W2b).
  *   - The stop of a warehouse and a receipt into it cannot cross; nor can the placement and a receipt.
  *
  * People are built the way a session builds them: `computeEffectiveGrants` over role rows, personal overrides and a
@@ -119,7 +119,11 @@ vi.mock('@/lib/db', () => {
         },
       };
     };
-    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount'];
+    const names = ['country', 'store', 'user', 'product', 'productionBatch', 'inventoryMovement', 'warehouse', 'warehousePlacement', 'userCountryAccess', 'userWarehouseAccess', 'stockOpeningCount', 'stockTransfer', 'stockExit', 'stockCount'];
+    // 21/11 (W5a): 'stockCount' — every intake of a placed store asks whether its warehouse is under count, and the stop door
+    // counts open sheets; none exist here (no sheet, today's answer).
+    // 20/11 (W6a): 'stockExit' — the stop door also counts PENDING exits from the warehouse; none exist here (0, today's answer).
+    // 20/11 (W3a): 'stockTransfer' — the stop door also counts OPEN transfers from or to the warehouse; none exist here (0, today's answer).
     const c: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
     c.userStoreAccess = {
       findMany: async ({ where }: Row) =>
@@ -174,7 +178,7 @@ import { attachGrants } from '@/lib/authorization';
 import { computeEffectiveGrants } from '@/lib/permissions-core';
 import { db } from '@/lib/db';
 import { POST as inventoryPOST } from './route';
-import { POST as productionPOST } from '@/app/api/production/route';
+import { GET as productionGET, POST as productionPOST } from '@/app/api/production/route';
 import { PATCH as warehousePATCH } from '@/app/api/geo/warehouses/[id]/route';
 import { drawDownStock, receiveStock } from '@/lib/receiving';
 import { OpeningStockRefused, recordOpeningStockCount } from '@/lib/stock-opening-count';
@@ -494,13 +498,21 @@ describe('«تشغيلة إنتاج» of a placed store names its warehouse, in 
 
 /* ───────────────────────── the counts of a placed store ───────────────────────── */
 
-describe('the counts of a placed store wait for the count by warehouse (marked, not removed)', () => {
-  it('NEGATIVE: the recount of a placed store is refused by name (409) and writes nothing — surplus or shortfall', async () => {
+/*
+ * 20/11 (W2b — the owner's decision 4, his «نفّذ» of 20/11): old «the recount of a placed store is refused by name (409
+ * PLACED_STORE_COUNT_WAITS) and writes nothing»; new «the recount of a placed store names its warehouse — without one it is
+ * refused (400 WAREHOUSE_REQUIRED, the receiving door's own sentence) — and still writes nothing to the stock, surplus or
+ * shortfall». The marker this file pinned was W2b's to replace; the count by warehouse itself (what is physically there,
+ * the second hand for a difference) is proven in `src/app/api/ops/returns-and-the-count-name-a-warehouse.test.ts`.
+ * Still asserted: a placed store's recount never writes for the store total.
+ */
+describe('the counts of a placed store name a warehouse (W2b) and never write for the store total', () => {
+  it('NEGATIVE: the recount of a placed store without a warehouse is refused (400) and writes nothing — surplus or shortfall', async () => {
     await as('u-admin');
     for (const countedQuantity of [100, 0]) {
       S.log = [];
       const res = await recount({ productId: BUY, countedQuantity, reason: 'جرد آخر الشهر' });
-      expect([res.status, res.body.code]).toEqual([409, 'PLACED_STORE_COUNT_WAITS']);
+      expect([res.status, res.body.code]).toEqual([400, 'WAREHOUSE_REQUIRED']);
       expect(res.body.errorAr).toMatch(/موزّع على مخازن/);
       expect(writes()).toEqual([]);
     }
@@ -573,5 +585,65 @@ describe('receiveStock, called by a lib with no session', () => {
       .catch((e: { code?: string }) => e);
     expect((err as { code: string }).code).toBe('WAREHOUSE_REQUIRED');
     expect(writes()).toEqual([]);
+  });
+});
+
+/* ───────────────────────── 22/11 (F1): the screen's choices ───────────────────────── */
+
+describe('GET /api/production tells the screen which warehouses a run may name (F1)', () => {
+  const choices = async () => {
+    const res = await productionGET(new Request('http://x/api/production'));
+    expect(res.status).toBe(200);
+    return (await res.json()) as Row;
+  };
+
+  it('who is offered what, by the real grants — the very list the door accepts', async () => {
+    // The owner (no keeper rows): every running warehouse of the store's country, none chosen for her.
+    await as('u-owner');
+    const owner = await choices();
+    expect(owner).toMatchObject({ placed: true, defaultWarehouseId: null });
+    // Stopped, abroad and another company's warehouses are never offered.
+    expect((owner.warehouses as Row[]).map((w) => [w.id, w.name]).sort()).toEqual([['w-sy1', 'الرئيسي'], ['w-sy2', 'الفرع']]);
+    // A role row, no keeper rows: the same two.
+    await as('u-admin');
+    expect((await choices()).warehouses.map((w: Row) => w.id).sort()).toEqual(['w-sy1', 'w-sy2']);
+    // The keeper of the main warehouse (production.view given to her by a personal ALLOW): only it, chosen for her.
+    S.overrides['u-keeper'] = [{ permission: 'production.view', effect: 'ALLOW' }];
+    await as('u-keeper');
+    expect(await choices()).toMatchObject({ placed: true, warehouses: [{ id: 'w-sy1', name: 'الرئيسي' }], defaultWarehouseId: 'w-sy1' });
+    // Somebody of another country: nothing to offer — the screen says why.
+    await as('u-jo');
+    expect(await choices()).toMatchObject({ placed: true, warehouses: [], defaultWarehouseId: null });
+  });
+
+  it('every warehouse offered is accepted by the run, and the one chosen for the keeper lands the run there', async () => {
+    S.overrides['u-keeper'] = [{ permission: 'production.view', effect: 'ALLOW' }];
+    await as('u-keeper');
+    const got = await choices();
+    const before = book(MADE);
+    const res = await produce({ productId: MADE, batchNumber: 'RUN-F1-1', quantityProduced: 4, manufacturingCost: 8, warehouseId: got.defaultWarehouseId });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(S.data.productionBatch.find((b) => b.batchNumber === 'RUN-F1-1')!.warehouseId).toBe('w-sy1');
+    expect(book(MADE)).toEqual({ remaining: before.remaining + 4, produced: before.produced + 4, sold: before.sold, value: before.value + 8 });
+    await as('u-admin');
+    for (const w of (await choices()).warehouses as Row[]) {
+      const ok = await produce({ productId: MADE, batchNumber: `RUN-F1-${w.id}`, quantityProduced: 1, manufacturingCost: 1, warehouseId: w.id });
+      expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    }
+  });
+
+  it('NEGATIVE: the screen\'s new list does not loosen the door — a placed store without a warehouse is still refused, nothing written', async () => {
+    await as('u-admin');
+    S.log = [];
+    const res = await produce({ productId: MADE, batchNumber: 'RUN-F1-NONE', quantityProduced: 2, manufacturingCost: 1 });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ code: 'WAREHOUSE_REQUIRED' });
+    expect(writes()).toEqual([]);
+  });
+
+  it('a store that is NOT placed: the answer carries none of the new keys', async () => {
+    await as('u-admin');
+    S.storeId = 's-sy-unplaced';
+    expect(Object.keys(await choices()).sort()).toEqual(['batches', 'currency']);
   });
 });

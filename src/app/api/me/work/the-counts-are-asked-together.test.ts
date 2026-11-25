@@ -15,6 +15,8 @@ const { db, requireContext, waitingCount, awaitingConfirmationCount, grants } = 
     orderIssue: { count: vi.fn() },
     courierStatement: { count: vi.fn() },
     deliveryFee: { findMany: vi.fn() },
+    // 20/11 (W3c): «نقل بضاعة عالق» is one more count for whoever holds every key — the fake taught the one table it reads.
+    stockTransfer: { count: vi.fn() },
   },
   requireContext: vi.fn(),
   waitingCount: vi.fn(),
@@ -52,7 +54,9 @@ const flush = async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireContext.mockResolvedValue({ user: { id: 'u' }, companyId: 'c', storeId: 's' });
+  // 20/11 (W3c): the context carries the store's country, as the real one does — the stuck-transfer count reads its timezone.
+  requireContext.mockResolvedValue({ user: { id: 'u' }, companyId: 'c', storeId: 's', country: { timezone: 'Asia/Amman' } });
+  db.stockTransfer.count.mockResolvedValue(0);
   grants.allows = () => true;
   db.order.findMany.mockResolvedValue([]);
   db.deliveryFee.findMany.mockResolvedValue([]);
@@ -67,6 +71,7 @@ describe('the counts start together', () => {
     db.orderChangeRequest.count.mockReturnValue(g.p);
     db.orderIssue.count.mockReturnValue(g.p);
     db.courierStatement.count.mockReturnValue(g.p);
+    db.stockTransfer.count.mockReturnValue(g.p);
 
     const pending = GET();
     await flush();
@@ -80,6 +85,7 @@ describe('the counts start together', () => {
     expect(db.orderIssue.count).toHaveBeenCalledTimes(1);
     expect(db.courierStatement.count).toHaveBeenCalledTimes(1);
     expect(db.deliveryFee.findMany).toHaveBeenCalledTimes(1);
+    expect(db.stockTransfer.count).toHaveBeenCalledTimes(1); // 20/11 (W3c): the stuck transfers, with the rest
 
     g.open();
     expect((await pending).status).toBe(200);
@@ -92,6 +98,7 @@ describe('the counts start together', () => {
     db.orderChangeRequest.count.mockResolvedValue(3);
     db.orderIssue.count.mockResolvedValue(4);
     db.courierStatement.count.mockResolvedValue(5);
+    db.stockTransfer.count.mockResolvedValue(10);
     // ready to ship · returns · to prepare · postponed, in the order they are asked
     db.order.count.mockResolvedValueOnce(6).mockResolvedValueOnce(7).mockResolvedValueOnce(8).mockResolvedValueOnce(9);
 
@@ -101,7 +108,7 @@ describe('the counts start together', () => {
     expect(waitingCount).not.toHaveBeenCalled();
     expect(by).toMatchObject({
       MY_UNCONFIRMED: 2, CHANGE_REQUESTS: 3, ISSUES_OPEN: 4, STATEMENTS_OPEN: 5,
-      READY_TO_SHIP: 6, RETURNS_WAITING: 7, TO_PREPARE: 8, POSTPONED_DUE: 9, LATE_SHIPMENTS: 0,
+      READY_TO_SHIP: 6, RETURNS_WAITING: 7, TO_PREPARE: 8, POSTPONED_DUE: 9, LATE_SHIPMENTS: 0, TRANSFERS_STUCK: 10,
     });
   });
 

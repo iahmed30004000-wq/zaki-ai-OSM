@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { IconButton } from '@/components/ui/IconButton';
 import { Input, Select } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/Confirm';
+import { PAGES_SENDS_AR } from '@/lib/conversions/types';
 import { RiAddCircleLine, RiAlertLine, RiArrowDownSLine, RiCheckLine, RiDeleteBinLine, RiFocus3Line, RiKey2Line, RiLoader4Line, RiPlugLine } from '@remixicon/react';
 
 /**
@@ -44,7 +45,8 @@ interface Conversion {
   valueSource: string;
   enabled: boolean;
   pixel: { id: string; name: string; pixelId: string; capiTokenHint: string | null };
-  stats: { sent: number; pending: number; failed: number; skipped: number; matchQuality: number | null };
+  /** `fromPages`: the part of `skipped` that Zaki Pages sends itself (`cc_sender: "pages"`) — absent from an older server. */
+  stats: { sent: number; pending: number; failed: number; skipped: number; fromPages?: number; matchQuality: number | null };
 }
 
 interface Options {
@@ -431,7 +433,15 @@ export function CustomConversionsCard() {
                           <span>أُرسل <b className="text-[var(--sys-success)]">{c.stats.sent}</b></span>
                           {c.stats.pending > 0 && <span>بالانتظار {c.stats.pending}</span>}
                           {c.stats.failed > 0 && <span className="text-[var(--sys-destructive)]">فشل {c.stats.failed}</span>}
-                          {c.stats.skipped > 0 && <span className="text-[var(--sys-warning)]">متأخّر {c.stats.skipped}</span>}
+                          {/* «متأخّر» is what is left of the skipped once the orders Zaki Pages sends itself are taken out (2026-11-21). */}
+                          {c.stats.skipped - (c.stats.fromPages ?? 0) > 0 && (
+                            <span className="text-[var(--sys-warning)]">متأخّر {c.stats.skipped - (c.stats.fromPages ?? 0)}</span>
+                          )}
+                          {(c.stats.fromPages ?? 0) > 0 && (
+                            <span data-testid="cc-from-pages">
+                              {PAGES_SENDS_AR} {c.stats.fromPages}
+                            </span>
+                          )}
                           {c.stats.matchQuality !== null && (
                             /* The only way anybody finds out that events are
                                arriving and matching nobody. */

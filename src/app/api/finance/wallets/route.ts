@@ -44,7 +44,14 @@ export async function GET(req: Request) {
      * store's, because a store here is a separate business with its own
      * cash, its own bank account and its own daily closing.
      */
-    const forTransfer = new URL(req.url).searchParams.get('scope') === 'transfer';
+    const scope = new URL(req.url).searchParams.get('scope');
+    const forTransfer = scope === 'transfer';
+    /*
+     * «scope=collect» (F9, 23/11): the wallets a courier's cash may land in — this store's or an unplaced one, of THIS
+     * country, and active. «بحطلي محافظ الأردن وأنا بسوريا»: the list a handover picks from no longer offers what the
+     * receipts door refuses (WALLET_OTHER_COUNTRY). Opt-in: the default list and «transfer» are what they were.
+     */
+    const forCollect = scope === 'collect';
 
     const wallets = await db.wallet.findMany({
       // This store's money, and anything not yet placed so it can be fixed
@@ -52,6 +59,7 @@ export async function GET(req: Request) {
       where: {
         companyId,
         ...(forTransfer || !storeId ? {} : { OR: [{ storeId }, { storeId: null }] }),
+        ...(forCollect ? { countryId: country.id, isActive: true } : {}),
       },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
       include: {
@@ -79,6 +87,8 @@ export async function GET(req: Request) {
           imageKey: w.imageKey,
           iconKey: w.iconKey,
           colorKey: w.colorKey,
+          // «غير مخصّصة»: a wallet of this country placed in no store yet — said only to the collect list.
+          ...(forCollect ? { unassigned: w.storeId === null } : {}),
         })),
       });
     }
@@ -106,6 +116,7 @@ export async function GET(req: Request) {
         storeId: w.storeId,
         store: w.store,
         openingCount: w.openingCount,
+        ...(forCollect ? { unassigned: w.storeId === null } : {}),
       })),
     });
   } catch (error) {

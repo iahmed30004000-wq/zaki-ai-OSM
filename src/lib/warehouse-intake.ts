@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { lockProductsStock } from './reservation';
+import { WAREHOUSE_COUNTING_AR, warehouseUnderCount } from './stock-count-freeze';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -36,7 +37,9 @@ export type IntakeRefusalCode =
   | 'WAREHOUSE_NOT_FOUND'
   | 'WAREHOUSE_OTHER_COUNTRY'
   | 'WAREHOUSE_STOPPED'
-  | 'WAREHOUSE_NOT_REACHED';
+  | 'WAREHOUSE_NOT_REACHED'
+  // 21/11 (W5a): a count sheet of the warehouse is open — nothing lands on its shelf until it is approved or voided.
+  | 'WAREHOUSE_COUNTING';
 
 export class IntakePlaceRefused extends Error {
   constructor(
@@ -55,6 +58,7 @@ const INTAKE_REFUSALS: Record<IntakeRefusalCode, { status: number; ar: string }>
   WAREHOUSE_OTHER_COUNTRY: { status: 400, ar: 'هالمخزن مش ببلد هالمتجر. البضاعة بتدخل على مخازن بلدها بس.' },
   WAREHOUSE_STOPPED: { status: 409, ar: 'هالمخزن موقوف. شغّله أول، أو دخّل البضاعة على مخزن تاني.' },
   WAREHOUSE_NOT_REACHED: { status: 403, ar: 'ما إلك وصول على هالمخزن. دخّل البضاعة على مخزن من مخازنك.' },
+  WAREHOUSE_COUNTING: { status: 409, ar: WAREHOUSE_COUNTING_AR },
 };
 
 const refused = (code: IntakeRefusalCode) => new IntakePlaceRefused(code, INTAKE_REFUSALS[code].ar, INTAKE_REFUSALS[code].status);
@@ -103,7 +107,17 @@ export async function intakePlace(
   if (!input.storeId) return null;
   await lockProductsStock(tx, input.companyId, [input.productId]);
   if (!(await storeIsPlaced(input.storeId, tx))) return null;
+  return checkedWarehouse(tx, { companyId: input.companyId, storeId: input.storeId, warehouseId: input.warehouseId, mayUse: input.mayUse });
+}
 
+/**
+ * The checks a PLACED store's warehouse must pass, in this order: named · of the company · of the store's country ·
+ * running · reached by the person. One rule for the receipt, the production run, the return desk and the quick count.
+ */
+async function checkedWarehouse(
+  tx: Tx,
+  input: { companyId: string; storeId: string; warehouseId?: string | null; mayUse?: (warehouse: WarehouseRef) => Promise<boolean> }
+): Promise<string> {
   const warehouseId = typeof input.warehouseId === 'string' ? input.warehouseId.trim() : '';
   if (!warehouseId) throw refused('WAREHOUSE_REQUIRED');
 
@@ -112,11 +126,49 @@ export async function intakePlace(
   const store = await tx.store.findFirst({ where: { id: input.storeId, companyId: input.companyId }, select: { countryId: true } });
   if (!store || store.countryId !== warehouse.countryId) throw refused('WAREHOUSE_OTHER_COUNTRY');
   if (!warehouse.isActive) throw refused('WAREHOUSE_STOPPED');
+  // 21/11 (W5a): read after the row FOR SHARE — a sheet opened before this receipt is seen; one opened after waits for it.
+  if (await warehouseUnderCount(tx, warehouse.id)) throw refused('WAREHOUSE_COUNTING');
   if (input.mayUse && !(await input.mayUse({ id: warehouse.id, companyId: warehouse.companyId, countryId: warehouse.countryId }))) {
     throw refused('WAREHOUSE_NOT_REACHED');
   }
   return warehouse.id;
 }
+
+/**
+ * WHERE A RETURNED PARCEL IS RECEIVED (the warehouse plan, W2b) — the returns desk's own question, asked inside the
+ * receipt's transaction. The same answer as `intakePlace`, for every product of the parcel at once: the products' stock
+ * locks first (sorted — `lockProductsStock`), then «placed?», then the warehouse's checks. `null` for a store that is not
+ * placed: the receipt is then written exactly as it always was.
+ *
+ * The caller decides what was ASKED: the warehouse the desk named, or — the single door only — the order's own source
+ * warehouse when the desk named none («default: the order's source»). «استلام الكل» never defaults: one warehouse for
+ * the whole press.
+ */
+export async function returnPlace(
+  tx: Tx,
+  input: {
+    companyId: string;
+    storeId: string | null | undefined;
+    productIds: readonly string[];
+    warehouseId?: string | null;
+    mayUse?: (warehouse: WarehouseRef) => Promise<boolean>;
+  }
+): Promise<string | null> {
+  if (!input.storeId) return null;
+  if (input.productIds.length > 0) await lockProductsStock(tx, input.companyId, input.productIds);
+  if (!(await storeIsPlaced(input.storeId, tx))) return null;
+  return checkedWarehouse(tx, { companyId: input.companyId, storeId: input.storeId, warehouseId: input.warehouseId, mayUse: input.mayUse });
+}
+
+/** Is this a refusal of the returns desk's warehouse (an `IntakePlaceRefused` code)? */
+export const INTAKE_REFUSAL_CODES: readonly IntakeRefusalCode[] = [
+  'WAREHOUSE_REQUIRED',
+  'WAREHOUSE_NOT_FOUND',
+  'WAREHOUSE_OTHER_COUNTRY',
+  'WAREHOUSE_STOPPED',
+  'WAREHOUSE_NOT_REACHED',
+  'WAREHOUSE_COUNTING',
+];
 
 /** The stop door's half of race 2: the warehouse row, locked FOR UPDATE before anything it holds is counted. */
 export async function lockWarehouseForStop(tx: Tx, warehouseId: string): Promise<void> {

@@ -20,6 +20,7 @@ import { intakeFilter } from './intake-filter';
 import { queueHealthJob } from './queue-health';
 import { convertWaitingCartsJob } from './convert-waiting-carts';
 import { pruneDeskRefusals } from './prune-desk-refusals';
+import { refreshExchangeRatesJob } from './refresh-exchange-rates';
 
 export {
   pruneDeskRefusals,
@@ -89,6 +90,8 @@ export const JOBS: JobDefinition[] = [
   pullAdSpendNight,
   // «سجل الرفض» (19/11): the confirmation desk's refusal rows are kept 90 days, deleted in bounded passes.
   pruneDeskRefusals,
+  // «سعر الصرف التلقائي» (23/11, F8): the fiat rates and the USDT price, once a day, from two public sources with no key.
+  refreshExchangeRatesJob,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {

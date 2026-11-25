@@ -176,6 +176,28 @@ export interface SystemCaller {
   /** Which outside system this key belongs to — `replies` for System 7. */
   system: string;
   scopes: V1Scope[];
+  /**
+   * The one country this key sees, or null for every country of the company (every key made before 2026-11-21). Only a
+   * door that asked with `{ countryAware: true }` ever receives a non-null one — the landing door, which filters by it
+   * in one place (`landing-country.ts`).
+   */
+  countryId?: string | null;
+  /**
+   * The one store this key sees, or null (2026-11-23, Zaki Pages per store). A store-bound key always carries that
+   * store's country in `countryId` too, so a door keeping a key to its country keeps a store key to its country as well;
+   * the landing door also keeps it to its store (`landing-country.ts`).
+   */
+  storeId?: string | null;
+}
+
+/** How a door asks for its caller. */
+export interface SystemTokenOptions {
+  /**
+   * This door filters what it reads and writes by `caller.countryId` (the landing door, `landing-country.ts`). A door
+   * that does not say so REFUSES a country-bound key: it would otherwise read and write every country of the company,
+   * which is the one thing binding the key was for.
+   */
+  countryAware?: boolean;
 }
 
 /** Stored scopes come back as a JSON string; a broken one grants nothing. */
@@ -224,7 +246,7 @@ const TOUCH_WINDOW_MS = 60_000;
  * allowance is the TOKEN'S (`rateLimitPerMin`) and an unauthenticated
  * caller must not be able to spend another token's budget by guessing.
  */
-export async function requireSystemToken(req: Request, scope: V1Scope): Promise<SystemCaller> {
+export async function requireSystemToken(req: Request, scope: V1Scope, opts: SystemTokenOptions = {}): Promise<SystemCaller> {
   const presented = bearerOf(req);
   if (!presented) {
     throw new V1Fault(401, V1_CODE.TOKEN_MISSING, 'Authorization: Bearer <token> is required');
@@ -241,6 +263,8 @@ export async function requireSystemToken(req: Request, scope: V1Scope): Promise<
       expiresAt: true,
       revokedAt: true,
       lastUsedAt: true,
+      countryId: true,
+      storeId: true,
     },
   });
 
@@ -260,6 +284,18 @@ export async function requireSystemToken(req: Request, scope: V1Scope): Promise<
     // a capability, not a secret.
     throw new V1Fault(403, V1_CODE.SCOPE_MISSING, `The token lacks the scope ${scope}`, {
       required: scope,
+    });
+  }
+
+  // A key bound to one country, at a door that cannot keep it to that country: refused like a scope it was not granted
+  // (2026-11-21). Never widened to the whole company.
+  const countryId = row.countryId ?? null;
+  // A store-bound key (2026-11-23) is bound like a country key: the same door, the same refusal elsewhere.
+  const storeId = row.storeId ?? null;
+  if ((countryId || storeId) && !opts.countryAware) {
+    throw new V1Fault(403, V1_CODE.SCOPE_MISSING, 'The token is bound to one country and cannot use this endpoint', {
+      required: scope,
+      country_bound: true,
     });
   }
 
@@ -283,5 +319,5 @@ export async function requireSystemToken(req: Request, scope: V1Scope): Promise<
       .catch(() => undefined);
   }
 
-  return { tokenId: row.id, companyId: row.companyId, system: row.system, scopes };
+  return { tokenId: row.id, companyId: row.companyId, system: row.system, scopes, countryId, ...(storeId ? { storeId } : {}) };
 }

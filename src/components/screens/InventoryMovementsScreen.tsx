@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { arDateTime } from '@/lib/format';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
+import { EXIT_MOVEMENT_TYPE, EXIT_REASON_AR, EXIT_REASONS } from '@/lib/stock-exit-reasons';
 
 /**
  * /inventory/movements — how the stock got to where it is.
@@ -24,13 +25,16 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 interface Movement {
   id: string;
   type: string;
-  quantity: number;
+  /** Null for a transfer still on the road, to anybody but its sender (the door says why in `reason`). */
+  quantity: number | null;
   balanceAfter: number;
   reason: string | null;
   createdAt: string;
   product: { id: string; name: string; sku: string | null } | null;
   batchNumber: string | null;
   createdByName: string | null;
+  /** A store placed in warehouses only: the warehouse whose shelf moved (null = a line of the whole store). */
+  warehouseName?: string | null;
 }
 
 const TYPE_AR: Record<string, string> = {
@@ -41,12 +45,26 @@ const TYPE_AR: Record<string, string> = {
   DAMAGE: 'تالف',
   LOSS: 'ناقص — ما رجع',
   TRANSFER: 'نقل',
+  TRANSFER_OUT: 'نقل — طالع من مخزن',
+  TRANSFER_IN: 'نقل — داخل على مخزن',
+  // 20/11 (W6b): an approved stock exit writes the type of its reason (W6a, `stock-exit-reasons.EXIT_MOVEMENT_TYPE`). The damaged
+  // write `DAMAGE` above; the other six are said here as «إخراج — <the reason's own word>», from the one list of words.
+  ...Object.fromEntries(
+    EXIT_REASONS.filter((r) => EXIT_MOVEMENT_TYPE[r] !== 'DAMAGE').map((r) => [EXIT_MOVEMENT_TYPE[r], `إخراج — ${EXIT_REASON_AR[r]}`])
+  ),
 };
 
 export function InventoryMovementsScreen() {
-  const [data, setData] = useState<{ movements: Movement[]; types: { type: string; count: number }[]; hasMore: boolean } | null>(null);
+  const [data, setData] = useState<{
+    movements: Movement[];
+    types: { type: string; count: number }[];
+    hasMore: boolean;
+    /** A store placed in warehouses only (W2c): the warehouses its ledger names. Absent = today's screen. */
+    warehouses?: { id: string; name: string }[];
+  } | null>(null);
   const [term, setTerm] = useState('');
   const [type, setType] = useState('all');
+  const [warehouse, setWarehouse] = useState('all');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -54,14 +72,18 @@ export function InventoryMovementsScreen() {
     const q = new URLSearchParams();
     if (term.trim()) q.set('q', term.trim());
     if (type !== 'all') q.set('type', type);
+    if (warehouse !== 'all') q.set('warehouse', warehouse);
     try {
       setData(await apiJson(`/api/inventory/movements?${q}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'تعذر التحميل');
     }
-  }, [term, type]);
+  }, [term, type, warehouse]);
 
-  useLiveRefresh(load, { key: `${term}·${type}` });
+  useLiveRefresh(load, { key: `${term}·${type}·${warehouse}` });
+
+  /** The warehouse column and filter exist only for a store placed in warehouses — the server says so by sending the list. */
+  const places = data?.warehouses;
 
   return (
     <PageShell
@@ -103,6 +125,23 @@ export function InventoryMovementsScreen() {
             ))}
           </select>
         </label>
+        {places && (
+          <label>
+            <span className="block text-sm font-medium text-[var(--sys-foreground)] mb-1">المخزن</span>
+            <select
+              value={warehouse}
+              onChange={(e) => setWarehouse(e.target.value)}
+              className="h-11 md:h-10 px-3 rounded-lg border border-[var(--sys-border-input)] text-sm bg-[var(--sys-card)]"
+            >
+              <option value="all">كل المخازن</option>
+              {places.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <Button type="submit">بحث</Button>
       </form>
       </Card>
@@ -138,7 +177,9 @@ export function InventoryMovementsScreen() {
               { key: 'c2', label: "النوع",
                 render: (m) => (TYPE_AR[m.type] ?? m.type) },
               { key: 'c3', label: "الكمية",
-                render: (m) => (
+                render: (m) => m.quantity === null ? (
+                  <span className="text-[var(--sys-muted-foreground)]">مخفي</span>
+                ) : (
                   <><span
                       className={`inline-flex items-center gap-1 tabular-nums font-medium ${
                         m.quantity >= 0 ? 'text-[var(--sys-success)]' : 'text-[var(--sys-destructive)]'
@@ -152,6 +193,9 @@ export function InventoryMovementsScreen() {
                 render: (m) => (m.balanceAfter) },
               { key: 'c5', label: "الدفعة",
                 render: (m) => (m.batchNumber ?? '—') },
+              ...(places
+                ? [{ key: 'cw', label: 'المخزن', render: (m: Movement) => m.warehouseName ?? 'المتجر كله' }]
+                : []),
               { key: 'c6', label: "السبب",
                 render: (m) => (m.reason ?? '—') },
               { key: 'c7', label: "سجّلها",

@@ -19,7 +19,9 @@ import { POST_ORDER_ADDITION_AR } from './post-order-offer-copy';
 import { COURIER_SAID, courierSaidTitle } from './couriers/courier-said';
 import { readingLine } from './call-outcome';
 import { cadenceSince } from './no-answer-cadence-switch';
-import { CADENCE_LIMIT, cadenceCalOf, cadenceLineNumbers } from './no-answer-cadence';
+import { cadenceCalOf, cadenceLimit, cadenceLineNumbers } from './no-answer-cadence';
+import { readConfirmationRule } from './confirmation-rule-settings';
+import { orderRuleOnce } from './order-numbers';
 import { attemptWords } from './attempt-words';
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -247,6 +249,8 @@ const ACTIVITY_AR: Record<string, string> = {
   // «تراجع عن التسليم» (13/11): a delivery recorded by mistake, taken back. The settlement and shipping lines beside it say from what to what,
   // and the internal note beside it carries the reason; this says WHAT KIND of move it was.
   DELIVERY_UNDONE: 'تراجع عن تسجيل التسليم — رجع الطلب لحالتو قبل التسليم',
+  // «تراجع عن المرتجع» (25/11): a return «رجعت» recorded by mistake, taken back. The shipping line beside it says from what to what.
+  RETURN_UNDONE: 'تراجع عن تسجيل المرتجع — رجع الطلب لحالتو قبل «رجعت»',
   // «أقفل القديمة بلا باركود» (12/11): the mark the owner's press leaves on each order it closed. The settlement log line beside it says
   // from what to what; this says what KIND of close it was — and that no money moved, so a reader never wonders where the wallet line is.
   LEGACY_CLOSED_NO_MONEY: 'اتقفل كمحصَّل بقرار المالك — بلا حركة مال',
@@ -405,8 +409,11 @@ function managerReturnWords<T extends { action: string; userId: string; reason: 
  */
 const ROUND_RELEASE_UNDER_PLAN_AR = 'تحرير تلقائي — مرّت مدة التحرير بلا ردّ، ورجع للطابور';
 
-/** What the timeline needs of the plan: the number each «لا يرد» line counted as, or null for a press that did not count. Null as a whole = the plan is off. */
-type TimelinePlan = Map<object, number | null>;
+/**
+ * What the timeline needs of the plan: the number each «لا يرد» line counted as, or null for a press that did not count, and the rule's attempts (request Q3b: «محاولة N
+ * من M» says the rule in force's M). Null as a whole = the plan is off.
+ */
+type TimelinePlan = { numbers: Map<object, number | null>; limit: number };
 
 /**
  * ONE COUNTER ON THE TIMELINE TOO (request C2, decision 9). With «إثبات المكالمات وجدول المحاولات» on, the order's lines are folded by the plan's own function
@@ -427,15 +434,19 @@ async function planOfTimeline(
     select: { country: { select: { timezone: true, weekendDays: true, workHoursStart: true, workHoursEnd: true } } },
   });
   if (!order?.country) return null;
-  return cadenceLineNumbers(contacts, cadenceCalOf(since, order.country)) as TimelinePlan;
+  // Request Q3b: the rule in force, read once for this timeline (cached) — the lines are numbered by the rule the door judges the next press by.
+  // Request Q4d (21/11): THIS ORDER's rule — its own attempts and days when an owner's rule names its store, a product of its current lines or its channel.
+  const companyId = contacts[0].companyId;
+  const rule = await orderRuleOnce(tx, companyId, orderId, () => readConfirmationRule(tx, companyId))();
+  return { numbers: cadenceLineNumbers(contacts, cadenceCalOf(since, order.country, rule)) as Map<object, number | null>, limit: cadenceLimit(rule) };
 }
 
 /** The words before «عبر …» of a contact line: main's «محاولة اتصال N» with the plan off; the plan's counted attempt with it on. */
 function contactLineWords(row: { attemptNumber: number; result: string }, plan: TimelinePlan | null): string {
   if (!plan) return `محاولة اتصال ${row.attemptNumber}`;
   if (!(NO_ANSWER_RESULTS as readonly string[]).includes(row.result)) return 'اتصال';
-  const n = plan.get(row);
-  return typeof n === 'number' ? attemptWords(n, CADENCE_LIMIT) : 'ضغطة ما انحسبت محاولة';
+  const n = plan.numbers.get(row);
+  return typeof n === 'number' ? attemptWords(n, plan.limit) : 'ضغطة ما انحسبت محاولة';
 }
 
 function claimReasonWords(row: { reason: string | null; metadata: string | null }, plan: TimelinePlan | null = null): string | null {

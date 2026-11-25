@@ -17,6 +17,8 @@ const root = process.cwd();
 const DOORS = [
   'src/app/api/finance/partners/route.ts',
   'src/app/api/finance/partners/draws/route.ts',
+  // 22/11 (F3, «المسحوبات»): the withdrawals door writes three actions of its own — swept like the other two doors.
+  'src/app/api/finance/partners/withdrawals/route.ts',
 ];
 const ARABIC = /[؀-ۿ]/;
 
@@ -42,7 +44,19 @@ describe('the partners’ actions are said in Arabic', () => {
     const written = DOORS.flatMap((file) =>
       [...stripComments(readFileSync(join(root, file), 'utf8')).matchAll(/action:\s*'([A-Z_]+)'/g)].map((m) => ({ file, action: m[1] }))
     );
-    expect(written.map((w) => w.action).sort(), 'the sweep found the two actions').toEqual(['PARTNERS_SAVED', 'PARTNER_DRAW_RECORDED']);
+    // 22/11 (F3): was the two actions [PARTNERS_SAVED, PARTNER_DRAW_RECORDED]; the withdrawals door adds its three.
+    // 23/11 (F7): was five — the withdrawals door's POST and PATCH are retired (a withdrawal is a wallet movement now, its record is
+    // PARTNER_DRAW_RECORDED), so PARTNER_WITHDRAWAL_RECORDED / _CANCELLED are no longer written. Their words stay, for the old rows of
+    // the audit trail, and are pinned just below.
+    expect(written.map((w) => w.action).sort(), 'the sweep found the three actions').toEqual([
+      'PARTNERS_SAVED',
+      'PARTNER_DRAW_RECORDED',
+      'PARTNER_STANDING_SAVED',
+    ]);
+    for (const old of ['PARTNER_WITHDRAWAL_RECORDED', 'PARTNER_WITHDRAWAL_CANCELLED']) {
+      expect(describeAction(old, 'PartnerWithdrawal'), old).toMatch(ARABIC);
+      expect(describeAction(old, 'PartnerWithdrawal'), old).not.toBe(old);
+    }
     for (const { file, action } of written) {
       const said = describeAction(action, 'Partner');
       expect(said, `${file}: ${action}`).not.toBe(action);

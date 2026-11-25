@@ -4,6 +4,7 @@ import { readChallenge } from '@/lib/two-factor-challenge';
 import { TwoFactorRefused, checkSecondFactor } from '@/lib/two-factor';
 import { rateLimit, rateLimitByIp, getClientIp } from '@/lib/rate-limit';
 import { issueSession } from '@/lib/sign-in';
+import { signInClientOf } from '@/lib/app-bearer';
 import { logAudit } from '@/lib/audit';
 import type { UserStatus } from '@/types/auth';
 
@@ -24,7 +25,10 @@ import type { UserStatus } from '@/types/auth';
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const { challenge, code, trustDevice } = await req.json().catch(() => ({}));
+    const said = await req.json().catch(() => ({}));
+    const { challenge, code, trustDevice } = said;
+    // The «Zaki Orders» app finishes its sign-in here too, saying `client: "android"` again (sign-in.ts).
+    const client = signInClientOf(said);
     // It arrives from a browser, so it is a yes/no and nothing else.
     const trustThisDevice = trustDevice === true;
 
@@ -106,6 +110,7 @@ export async function POST(req: Request) {
       factor: result.usedRecovery ? 'password+recovery' : 'password+totp',
       trustDevice: trustThisDevice && !result.usedRecovery,
       totpEnabledAt: user.totpEnabledAt,
+      client,
     });
 
     if (result.usedRecovery) {

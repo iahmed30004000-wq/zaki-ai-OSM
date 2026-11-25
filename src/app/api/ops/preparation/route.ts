@@ -6,6 +6,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { preparationGroups } from '@/lib/operations';
 import { isBenchStore } from '@/lib/bench-store';
 import { BENCH_LIST_EMPTY_AR } from '@/lib/test-store';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody, shipmentWarehouseChoices } from '@/lib/shipment-warehouse';
+import { reachesWarehouse, warehousesReachedBy } from '@/lib/warehouses';
 
 /**
  * GET /api/ops/preparation — confirmed orders grouped BY PRODUCT with
@@ -13,9 +15,9 @@ import { BENCH_LIST_EMPTY_AR } from '@/lib/test-store';
  * it. Availability honours the country's allow_negative_stock flag, which is
  * returned so the screen can say which shortages block shipment.
  */
-export async function GET() {
+export async function GET(req?: Request) {
   try {
-    const { companyId, storeId, country } = await requireContext();
+    const { user, companyId, storeId, country } = await requireContext();
     await requirePermission('ops.prepare');
 
     // A bench's orders stop at confirmation (`test-store.ts`): nothing to pack, and the screen says why.
@@ -28,9 +30,20 @@ export async function GET() {
       });
     }
 
-    const groups = await preparationGroups(db, { companyId, storeId });
+    /*
+     * W4a: «available» of one warehouse of a placed store, with `?warehouse=` (one she reaches). Not read for a store that
+     * is not placed, and absent = the store's shelf, as before.
+     */
+    const askedWarehouse = req ? new URL(req.url).searchParams.get('warehouse') : null;
+    const place = askedWarehouse
+      ? await shipmentPlace(db, { companyId, storeId, warehouseId: askedWarehouse, mayUse: (w) => reachesWarehouse(user, companyId, w) })
+      : null;
+    const groups = place ? await preparationGroups(db, { companyId, storeId }, { warehouse: place }) : await preparationGroups(db, { companyId, storeId });
+    // W4c: the warehouses the screen's picker offers — a placed store only; absent for any other, so its answer is today's.
+    const warehouses = await shipmentWarehouseChoices(db, { companyId, storeId, reached: (ws) => warehousesReachedBy(user, companyId, ws) });
 
     return NextResponse.json({
+      ...(warehouses ? { warehouses } : {}),
       allowNegativeStock: country.allowNegativeStock,
       totals: {
         products: groups.length,
@@ -40,6 +53,7 @@ export async function GET() {
       groups,
     });
   } catch (error) {
+    if (error instanceof ShipmentPlaceRefused) return NextResponse.json(shipmentPlaceBody(error), { status: error.status });
     return apiErrorResponse(error);
   }
 }

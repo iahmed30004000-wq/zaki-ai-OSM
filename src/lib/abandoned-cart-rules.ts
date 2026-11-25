@@ -44,8 +44,10 @@ export const CART_STATUS_AR: Record<CartStatus, { label: string; tone: 'neutral'
  * THE STATUSES A PERSON PICKS BY HAND.
  *
  * CONVERTED is written only by «حوّل لطلب», after the ordinary order door has made the order, or by the automatic order
- * (`abandoned-cart-orders.ts`); RECOVERED only by Zaki pages, or by the landing door, when the customer ordered by himself. Neither is a choice in a menu: a cart marked «صارت طلب» with no order
- * behind it is a number on a report that nobody can open.
+ * (`abandoned-cart-orders.ts`); RECOVERED only by Zaki pages, or by the landing door, when the customer ordered by himself
+ * — and, since 21/11 (the owner), by this system itself when the same phone already has an order for the same product
+ * (`cart-has-order.ts`: at the landing door's upsert and in the job's sweep, always pointing at that order). Neither is a
+ * choice in a menu: a cart marked «صارت طلب» with no order behind it is a number on a report that nobody can open.
  */
 export const HAND_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK', 'NOT_INTERESTED', 'INVALID'];
 
@@ -135,6 +137,31 @@ export const AUTO_ORDER_SKIP_AR = {
 
 /** The reason the automatic order is ended with when the customer then orders by himself. */
 export const CUSTOMER_ORDERED_HIMSELF_AR = 'الزبون طلب بنفسه';
+
+/**
+ * ═══ A CART WHOSE CUSTOMER ALREADY HAS AN ORDER CLOSES ITSELF (the owner, 21/11) ═══
+ *
+ * The team kept ringing visitors who had already ordered («له طلب»). Such a cart now reads «طلب لحاله», pointing at the
+ * order (`cart-has-order.ts`). Only from NEW: a status a person set (CONTACTED, CALLBACK, «غير مهتم», …) is the team's
+ * word and stays — and so does a NEW a person put back by hand.
+ */
+export const SELF_CLOSE_STATUSES: CartStatus[] = ['NEW'];
+
+/** The cart's history line when it closed itself. */
+export function cartHasOrderNote(orderNumber: string): string {
+  return `الزبون عنده طلب #${orderNumber} — تسكّرت لحالها`;
+}
+
+/**
+ * ═══ ONE CART PER CUSTOMER PER PRODUCT, NOT ONE PER VISIT (the owner, 21/11) ═══
+ *
+ * Zaki pages gives every visit its own `externalId`. A second visit of the same phone for the same product of this company,
+ * while the first cart is still open (`MERGE_INTO_STATUSES`) and was seen within `CART_MERGE_HOURS`, updates that cart; the
+ * new `externalId` is kept as its alias (`AbandonedCartAlias`). A cart a person closed («غير مهتم», «رقم غير صالح») or one
+ * that became an order is never merged into: a new visit then is a new cart.
+ */
+export const CART_MERGE_HOURS = 24;
+export const MERGE_INTO_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK'];
 
 /** The date filter's three windows, in days back from now. */
 export const CART_RANGES = { today: 0, '7d': 7, '30d': 30 } as const;

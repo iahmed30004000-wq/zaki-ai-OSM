@@ -10,6 +10,7 @@ import { roundMinor, toMinorUnits } from '@/lib/money';
 import { numeric } from '@/lib/numeric-input';
 import { zodMessage } from '@/lib/zod-message';
 import { recordMovement, walletBalance } from '@/lib/wallets';
+import { drawEquivalent } from '@/lib/exchange-rates';
 
 /**
  * POST /api/finance/partners/draws — A PARTNER'S WITHDRAWAL (13/11).
@@ -25,9 +26,11 @@ import { recordMovement, walletBalance } from '@/lib/wallets';
  * asks `finance.partners` again for this category.
  *
  * THE CURRENCY. The profit is in the STORE's currency and a wallet may hold another one. A draw from a wallet in the store's own
- * currency is worth its amount. From any other it MUST carry «ما يعادله بعملة المتجر», and without it nothing is written: a silent
- * 1:1 between dinars and dollars would put a wrong number in a partner's ledger. Neither figure is rounded behind the person's back:
- * one with more decimals than its currency has is refused.
+ * currency is worth its amount. From any other, «ما يعادله بعملة المتجر» is OPTIONAL (23/11, F7 — «أحمد سحب 1000 USDT و1000 دينار
+ * و1000 ليرة … بدون ما يجيني سعر الصرف», the owner): with it, the draw counts against the partner's share as before; without it, the
+ * draw is written in its own currency with NO store value, and the partners' statement counts it in no share (its «uncounted») —
+ * never a silent 1:1 between dinars and dollars. Neither figure is rounded behind the person's back: one with more decimals than its
+ * currency has is refused.
  *
  * THE SAME PRESS TWICE. Two identical requests (a double tap, a retry after a slow answer) must not draw twice. The wallet row is
  * locked for the length of the transaction, and a draw by the same person, of the same amount, for the same partner out of the same
@@ -105,7 +108,7 @@ export async function POST(req: Request) {
     const storeCode = country.currencyCode;
     const storeMinor = country.minorUnit;
     const typed = parsed.data.valueInStoreCurrency;
-    let value: number;
+    let value: number | undefined;
     if (wallet.currencyCode === storeCode) {
       if (typed !== undefined && toMinorUnits(typed, storeMinor) !== toMinorUnits(amount, storeMinor)) {
         return refuse(
@@ -116,17 +119,28 @@ export async function POST(req: Request) {
       }
       value = amount;
     } else {
-      if (typed === undefined) {
-        return refuse(
-          400,
-          'STORE_VALUE_REQUIRED',
-          `اكتب «ما يعادله بعملة المتجر (${storeCode})» — عملة هالمحفظة (${wallet.currencyCode}) غير عملة المتجر، ورقم بلا تحويل بيغلّط حساب الشريك.`
-        );
-      }
-      if (roundMinor(typed, storeMinor) !== typed) {
+      // 23/11 (F7): absent = a draw in its own currency alone (no store value). Was: refused as STORE_VALUE_REQUIRED.
+      if (typed !== undefined && roundMinor(typed, storeMinor) !== typed) {
         return refuse(400, 'VALUE_DECIMALS', `«ما يعادله» بأكثر من ${storeMinor} خانات عشرية — عملة المتجر (${storeCode}) بخانات ${storeMinor} بس.`);
       }
       value = typed;
+    }
+
+    /*
+     * «بسعر اليوم» (23/11, F8). Left empty with the wallet in another currency → the server fills it from TODAY's rate (the rate of the
+     * day this is written, also for a draw dated in the past) and freezes the rate, its kind, its source and its date beside it. A value
+     * the person typed always wins. No rate → the draw is written with no value, as F7 allows, and the answer says which rate is missing.
+     */
+    let filled: { rate: number; kind: 'AUTO' | 'MANUAL'; source: string | null; at: Date | null } | undefined;
+    let noRate: string | null = null;
+    if (wallet.currencyCode !== storeCode && typed === undefined) {
+      const eq = await drawEquivalent({ companyId, amount, walletCode: wallet.currencyCode, storeCode, storeMinor });
+      if (eq.ok && eq.value > 0) {
+        value = eq.value;
+        filled = { rate: eq.rate, kind: eq.kind, source: eq.source, at: eq.asOf ? new Date(eq.asOf) : null };
+      } else if (!eq.ok) {
+        noRate = eq.sentence;
+      }
     }
 
     const done = await db
@@ -165,6 +179,7 @@ export async function POST(req: Request) {
           referenceId: partner.id,
           partnerId: partner.id,
           valueInStoreCurrency: value,
+          ...(filled ? { equivalentRate: filled } : {}),
           createdById: user.id,
         });
       })
@@ -188,11 +203,20 @@ export async function POST(req: Request) {
         currencyCode: wallet.currencyCode,
         valueInStoreCurrency: value,
         storeCurrency: storeCode,
+        ...(filled ? { rate: filled.rate, rateKind: filled.kind, rateSource: filled.source, rateAt: filled.at } : {}),
         note: movement.note,
       },
     });
 
-    return NextResponse.json({ movement, balance: await walletBalance(db, wallet.id, walletMinor) }, { status: 201 });
+    return NextResponse.json(
+      {
+        movement,
+        balance: await walletBalance(db, wallet.id, walletMinor),
+        // F8: how «ما يعادله» was settled — typed, filled from today's rate, or left empty because no rate exists (the sentence says which).
+        equivalent: { value: value ?? null, filled: filled ?? null, noRate },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     return apiErrorResponse(error);
   }

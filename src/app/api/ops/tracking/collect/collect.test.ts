@@ -423,7 +423,60 @@ describe('one courier per handover, and a wallet of this store (29/10)', () => {
     expect(logAudit).not.toHaveBeenCalled();
   };
 
-  it('orders of two couriers are refused with MIXED_COURIER and nothing is written', async () => {
+  /*
+   * 23/11 (F9, «تسليم المندوب متل الكشف»): these were «two couriers → MIXED_COURIER», «a courier and none → MIXED_COURIER» and
+   * «the same courier on every order is collected as before» (200). A courier's order the handover CAN take (it has a
+   * reference, in the country's currency — `handoverTakes`, the statement's own rule) is now answered USE_HANDOVER, nothing
+   * written. A courier's order it can NEVER take (no reference) keeps this door exactly as on main — the review of #468 found
+   * it had been left with no door at all. So the old three are kept for orders with no reference, and the new answer is
+   * tested on orders with one.
+   */
+  const ref = (n: string) => ({ merchantRef: `SY-2026-000${n}` });
+
+  it('orders of two couriers, both the handover’s, are sent to it, and nothing is written', async () => {
+    two({ deliveryProviderId: 'p1', ...ref('1') }, { deliveryProviderId: 'p2', ...ref('2'), deliveryProvider: { id: 'p2', name: 'أبو خالد', kind: 'AGENT' } });
+    const res = await POST(both());
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('USE_HANDOVER');
+    expect(body.orders).toEqual(['SY-2026-0001', 'SY-2026-0002']);
+    nothingWritten();
+  });
+
+  it('MIXED: one order the handover takes beside one it cannot — the whole press is refused, naming the first; nothing is written', async () => {
+    two({ deliveryProviderId: 'p1', ...ref('1') }, { deliveryProviderId: 'p1', merchantRef: null });
+    const res = await POST(both());
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('USE_HANDOVER');
+    expect(body.orders).toEqual(['SY-2026-0001']);
+    nothingWritten();
+  });
+
+  it('a courier’s order with NO reference is collected as before: one MANUAL_COLLECTION IN, settled, payable', async () => {
+    two({ deliveryProviderId: 'p1', merchantRef: null }, { deliveryProviderId: 'p1', merchantRef: null });
+    const res = await POST(both());
+    expect(res.status).toBe(200);
+    expect(recordMovement).toHaveBeenCalledTimes(1);
+    expect(recordMovement.mock.calls[0][1]).toMatchObject({ direction: 'IN', referenceType: 'MANUAL_COLLECTION', category: 'COURIER_SETTLEMENT' });
+    expect(db.order.updateMany.mock.calls[0][0]).toMatchObject({ data: { settlementStatus: 'SETTLED' } });
+    expect(markPayableForOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it('NEGATIVE: the same order with a wallet of another country is WALLET_OTHER_COUNTRY, and nothing is written', async () => {
+    requireContext.mockResolvedValue({
+      user: { id: 'u1', name: 'محاسب' }, companyId: 'c1', storeId: 's1',
+      country: { id: 'sy', minorUnit: 2, currencyCode: 'USD' },
+    });
+    db.wallet.findFirst.mockResolvedValue({ id: WALLET, name: 'صندوق عمّان', currencyCode: 'USD', countryId: 'jo', country: { name: 'الأردن' } });
+    two({ deliveryProviderId: 'p1', merchantRef: null }, { deliveryProviderId: 'p1', merchantRef: null });
+    const res = await POST(both());
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('WALLET_OTHER_COUNTRY');
+    nothingWritten();
+  });
+
+  it('orders of two couriers with no reference are still MIXED_COURIER, as on main', async () => {
     two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p2', deliveryProvider: { id: 'p2', name: 'أبو خالد', kind: 'AGENT' } });
     const res = await POST(both());
     expect(res.status).toBe(409);
@@ -431,7 +484,7 @@ describe('one courier per handover, and a wallet of this store (29/10)', () => {
     nothingWritten();
   });
 
-  it('a parcel with NO courier named is not the first courier’s either', async () => {
+  it('a parcel with NO courier beside a courier’s with no reference: MIXED_COURIER, as on main', async () => {
     two({ deliveryProviderId: 'p1' }, { deliveryProviderId: null, deliveryProvider: null });
     const res = await POST(both());
     expect(res.status).toBe(409);
@@ -439,8 +492,8 @@ describe('one courier per handover, and a wallet of this store (29/10)', () => {
     nothingWritten();
   });
 
-  it('the same courier on every order is collected as before', async () => {
-    two({ deliveryProviderId: 'p1' }, { deliveryProviderId: 'p1' });
+  it('orders with no courier at all are collected as before', async () => {
+    two({ deliveryProviderId: null, deliveryProvider: null }, { deliveryProviderId: null, deliveryProvider: null });
     const res = await POST(both());
     expect(res.status).toBe(200);
     expect(recordMovement).toHaveBeenCalledTimes(1);

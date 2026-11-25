@@ -215,6 +215,8 @@ describe('the acceptance examples, through the screen: what the card says is wha
     expect(posted[0]).toEqual({
       transferId: expect.stringMatching(/^[0-9a-f-]{36}$/),
       fromWalletId: 'w-usd', toWalletId: 'w-syp', amountOut: 100, amountIn: 1_300_000, note: 'صرف دولار', expectKind: 'EXCHANGE',
+      // UPDATED 22/11 (the real date): the body also carries «تاريخ الحركة الفعلي» (now, by default).
+      occurredAt: expect.any(String),
     });
     // no rate is sent: the amount is the record
     expect('exchangeRate' in posted[0]).toBe(false);

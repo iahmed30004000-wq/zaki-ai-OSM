@@ -36,6 +36,12 @@ vi.mock('@/components/settings/LeadsV2Card', () => ({ LeadsV2Card: () => <div da
 // ADDED 2026-11-19 (request Q1b): the page gained «مين مربوطة بالقواعد» under the box. It is not one of the six cards (no `data-card`), it reads its own door, and its own
 // test (`confirmation/the-bound-table-says-who-is-bound.test.tsx`) pins what it says — here it is a marker, so «nothing else» and «no digit of its own» still mean the six and the box.
 vi.mock('@/components/confirmation/DeskPeopleTable', () => ({ DeskPeopleTable: () => <section data-desk-people-section /> }));
+// ADDED 2026-11-20 (request Q3c): the page gained «أرقام القاعدة», the numbers editor, under «مين مربوطة». It is not one of the six cards, it reads its own door and prints the
+// server's numbers, and its own test (`settings/the-rule-editor-says-what-the-server-says.test.tsx`) pins it — here it is a marker, for the same reason as the section above.
+vi.mock('@/components/settings/ConfirmationRuleEditor', () => ({ ConfirmationRuleEditor: () => <section data-rule-editor-section /> }));
+// ADDED 2026-11-21 (request Q4c): the page gained «قواعد خاصة» (the ready templates, «اكتب قاعدتك», the rules written) between the two. Not one of the six cards, it
+// reads its own door, and its own test (`confirmation/the-own-rules-card-says-what-the-server-says.test.tsx`) pins it — here a marker, as above.
+vi.mock('@/components/confirmation/OwnRulesCard', () => ({ OwnRulesCard: () => <section data-own-rules-section /> }));
 
 import { ConfirmationRulesScreen, RULE_REPLACED_LINE } from './ConfirmationRulesScreen';
 import { ALL_ROUTES, NAV, canAccessRoute, findRoute } from '@/lib/route-registry';

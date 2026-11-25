@@ -8,6 +8,7 @@ import { ContactButtons } from '@/components/orders/ContactButtons';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { TransferDialog } from '@/components/screens/tracking/TransferDialog';
 import { CollectDialog } from '@/components/screens/tracking/CollectDialog';
+import { OpenHandovers } from '@/components/screens/tracking/OpenHandovers';
 import { CourierSaidChip } from '@/components/screens/tracking/CourierSaidChip';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
 import { ParcelPhone } from '@/components/screens/tracking/ParcelPhone';
@@ -109,6 +110,10 @@ interface Row {
    * is on the row only for whoever holds the money sight (`access.money`); an older server sends none, and nothing is drawn.
    */
   difference?: DifferenceOnTheRow | null;
+  /** «طلع من مخزن كذا» (W4d): the warehouse it left from — sent only when the order has one, so an unplaced store draws nothing new. */
+  sourceWarehouseName?: string;
+  /** The returns desk counted this parcel back in (a return receipt exists). Only an explicit «false» draws «تراجع عن المرتجع». */
+  returnCounted?: boolean;
 }
 
 interface Extra {
@@ -254,6 +259,7 @@ export function TrackingScreen() {
   const [writeOffFor, setWriteOffFor] = useState<Row | null>(null);
   /** The delivered parcel whose delivery somebody is about to take back. */
   const [undoFor, setUndoFor] = useState<Row | null>(null);
+  const [undoReturnFor, setUndoReturnFor] = useState<Row | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
   /** The order whose door outcome is being written, so its buttons wait. */
   const [settling, setSettling] = useState<string | null>(null);
@@ -747,6 +753,8 @@ export function TrackingScreen() {
           money waiting LAST — so on a board of late parcels the first page
           held none, and a bar saying «nothing to collect» hid fourteen
           delivered parcels. «اعرضها» asks the server for exactly them. */}
+      {/* The open handovers (F9): «{المندوب} — باقي X — سجّل دفعة». Draws itself only for «رفع تقارير الشحن». */}
+      <OpenHandovers />
       {access.collect && collectOwed > 0 && (
         <Card padding="sm" className="flex flex-wrap items-center gap-3">
           {/* On a desk this strip is what it always was: the count, the way out and the button, in a row above the
@@ -1068,19 +1076,26 @@ export function TrackingScreen() {
             {
               key: 'courier',
               label: 'جهة الشحن',
-              render: (o) =>
-                o.deliveryProvider ? (
-                  <span className="inline-flex items-center gap-1 text-[var(--sys-foreground)]">
-                    {o.deliveryProvider.kind === 'AGENT' ? (
-                      <RiEBike2Line className="h-4 w-4 text-[var(--sys-primary)]" />
-                    ) : (
-                      <RiTruckLine className="h-4 w-4 text-[var(--sys-muted)]" />
-                    )}
-                    {o.deliveryProvider.name}
-                  </span>
-                ) : (
-                  <span className="text-[var(--sys-muted)]">—</span>
-                ),
+              render: (o) => (
+                <>
+                  {o.deliveryProvider ? (
+                    <span className="inline-flex items-center gap-1 text-[var(--sys-foreground)]">
+                      {o.deliveryProvider.kind === 'AGENT' ? (
+                        <RiEBike2Line className="h-4 w-4 text-[var(--sys-primary)]" />
+                      ) : (
+                        <RiTruckLine className="h-4 w-4 text-[var(--sys-muted)]" />
+                      )}
+                      {o.deliveryProvider.name}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--sys-muted)]">—</span>
+                  )}
+                  {/* «طلع من مخزن كذا» (W4d): under the courier, only when the server named a warehouse. */}
+                  {o.sourceWarehouseName && (
+                    <span className="block text-note text-[var(--sys-muted-foreground)]">طلع من مخزن {o.sourceWarehouseName}</span>
+                  )}
+                </>
+              ),
             },
             {
               key: 'status',
@@ -1356,6 +1371,22 @@ export function TrackingScreen() {
                   تراجع عن التسليم…
                 </Button>
               )}
+              {/*
+                «تراجع عن المرتجع» (25/11): the mirror, on a RETURNED parcel the returns desk has not counted. «رجعت» recorded by mistake is
+                taken back so the company's statement («تم توصيلها») can deliver it. The same owner's key, the same quiet target.
+              */}
+              {acts.undoDelivery && o.shippingStatus === 'RETURNED' && o.returnCounted === false && (
+                <Button
+                  type="button"
+                  variant={quiet}
+                  size="sm"
+                  onClick={() => setUndoReturnFor(o)}
+                  className={quietFit}
+                  title="رجّع الطلب لحالتو قبل «رجعت» — لما انسجّل مرتجع بالغلط"
+                >
+                  تراجع عن المرتجع…
+                </Button>
+              )}
               {acts.transfer && (
               <Button
                 type="button"
@@ -1485,6 +1516,20 @@ export function TrackingScreen() {
           onClose={() => setUndoFor(null)}
           onDone={async (message) => {
             setUndoFor(null);
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {undoReturnFor && (
+        <UndoDeliveryDialog
+          kind="return"
+          order={undoReturnFor}
+          onClose={() => setUndoReturnFor(null)}
+          onDone={async (message) => {
+            setUndoReturnFor(null);
             setDone(message);
             setError(null);
             await list.reload();

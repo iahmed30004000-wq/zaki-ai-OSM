@@ -77,9 +77,9 @@ describe('registering the media buyer', () => {
 });
 
 describe('what the page offers', () => {
-  it('the six, then the owner’s stop request, each with its label', async () => {
+  it('the six, then the owner’s stop request, then Zaki Pages’ order status (2026-11-21), each with its label', async () => {
     const { availableEvents } = await (await GET()).json();
-    expect(availableEvents.map((e: { code: string }) => e.code)).toEqual([...APP_EVENTS, OWNER_STOP_EVENT]);
+    expect(availableEvents.map((e: { code: string }) => e.code)).toEqual([...APP_EVENTS, OWNER_STOP_EVENT, 'pages.order_status']);
     expect(availableEvents.every((e: { label: string }) => e.label.length > 0)).toBe(true);
   });
 

@@ -56,6 +56,10 @@ model Company {
   trackingPixels        TrackingPixel[]
   countries             Country[]
   warehouses            Warehouse[]
+  stockTransfers        StockTransfer[]
+  stockExits            StockExit[]
+  stockCounts           StockCount[]
+  productPairs          ProductPair[]
   customerBlocks        CustomerBlock[]
   orderChannels         OrderChannel[]
   stores                Store[]
@@ -64,6 +68,7 @@ model Company {
   adAccounts            AdAccount[]
   customConversions     CustomConversion[]
   penaltyRules          PenaltyRule[]
+  confirmationRules     ConfirmationRule[]
   payslips              Payslip[]
   penalties             Penalty[]
   productReviews        ProductReview[]
@@ -75,6 +80,7 @@ model Company {
   partners              Partner[]
   abandonedCarts        AbandonedCart[]
   abandonedCartEvents   AbandonedCartActivity[]
+  abandonedCartAliases  AbandonedCartAlias[]
   landingChatThreads    LandingChatThread[]
   authenticityCodes     AuthenticityCode[]
   productVerifyPages    ProductVerifyPage[]
@@ -467,6 +473,14 @@ model Product {
   category           Category?                   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   batches            ProductionBatch[]
   inventoryMovements InventoryMovement[]
+  stockTransferLines StockTransferLine[]         @relation("StockTransferLineProduct")
+  /// 20/11 (W7b): transfer lines from another store whose units land in this product (its twin).
+  stockTransfersIn   StockTransferLine[]         @relation("StockTransferLineTwin")
+  stockExitLines     StockExitLine[]
+  stockCountLines    StockCountLine[]
+  /// 20/11 (W7a): the same article in another store of the company — at most one twin per other store (`ProductPair`).
+  pairsAsA           ProductPair[]               @relation("ProductPairA")
+  pairsAsB           ProductPair[]               @relation("ProductPairB")
   offers             Offer[]
   orders             Order[]
   orderItems         OrderItem[]
@@ -680,9 +694,10 @@ model ProductionBatch {
   quantityMovedOut    Int     @default(0) @map("quantity_moved_out")
   /// The batch this row was split from by a move (its twin's parent).
   splitFromBatchId    String? @map("split_from_batch_id")
-  /// Set while this row is on the road. The transfers table arrives with its
-  /// own request; until then nothing writes this column, and it carries no
-  /// foreign key yet.
+  /// Set while this row is on the road: the stock transfer carrying it
+  /// (`stock_transfers`, W3a). Its foreign key arrived with that table
+  /// (NO ACTION: a transfer is never deleted). A row emptied by an approved
+  /// shortfall keeps the id — the history of where its units went.
   inTransitTransferId String? @map("in_transit_transfer_id")
 
   company            Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -693,11 +708,13 @@ model ProductionBatch {
   warehouse          Warehouse?            @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
   splitFrom          ProductionBatch?      @relation("BatchSplit", fields: [splitFromBatchId], references: [id], onDelete: SetNull)
   splits             ProductionBatch[]     @relation("BatchSplit")
+  inTransitTransfer  StockTransfer?        @relation(fields: [inTransitTransferId], references: [id], onDelete: NoAction)
 
   @@unique([companyId, batchNumber])
   @@index([companyId, productId])
   @@index([companyId, productId, warehouseId])
   @@index([splitFromBatchId])
+  @@index([inTransitTransferId])
   @@map("production_batches")
 }
 
@@ -1097,7 +1114,15 @@ model Order {
   /// The id of the Purchase event the landing system sent Meta for this order — for reference only. This system's
   /// own conversions keep their own ids (`conversionEventId`).
   lpPurchaseEventId         String?
-  freeQuantity              Int       @default(0) // gift units from a landing-page offer (additive)
+  /// ── WHAT ZAKI PAGES ADDS (2026-11-21) — written once, after creation, by the landing door alone, null elsewhere ──
+  /// Who sends this order's custom conversions to Meta: «pages» = Zaki Pages does, and this system's sender skips it
+  /// (`conversions/emit.ts`); null = this system sends, exactly as before.
+  ccSender                  String?
+  /// The Meta pixel id the Zaki Pages page fired (digits). For reference; nothing is sent with it.
+  lpPixelId                 String?
+  /// The page's slug in Zaki Pages, beside `externalLandingPageId`.
+  externalPageSlug          String?
+  freeQuantity             Int       @default(0) // gift units from a landing-page offer (additive)
   internalNotes             String?
   customerNotes             String?
   postponedUntil            DateTime?
@@ -2244,6 +2269,7 @@ model Country {
   orders         Order[]
   access         UserCountryAccess[]
   warehouses     Warehouse[]
+  systemTokens   SystemToken[]
 
   @@unique([companyId, code])
   @@index([companyId, isActive])
@@ -2427,10 +2453,19 @@ model Store {
   stockOpeningCount StockOpeningCount?
   /// The one placement of this store's stock in warehouses (`warehouse_placements`).
   warehousePlacement WarehousePlacement?
+  /// Stock transfers between this store's warehouses (`stock_transfers`).
+  stockTransfers    StockTransfer[] @relation("StockTransferStore")
+  /// 20/11 (W7b): transfers from another store whose goods arrive in this one.
+  stockTransfersIn  StockTransfer[] @relation("StockTransferToStore")
+  /// Goods that left this store's warehouses for good (`stock_exits`).
+  stockExits        StockExit[]
+  /// 21/11 (W5a): the count sheets of this store's goods in its warehouses (`stock_counts`).
+  stockCounts       StockCount[]
   pages             StorePage[]
   menus             StoreMenu[]
   redirects         StoreRedirect[]
   productReviews    ProductReview[]
+  systemTokens      SystemToken[]
 
   @@unique([companyId, slug])
   @@unique([domain])
@@ -2585,6 +2620,12 @@ model Warehouse {
   movements       InventoryMovement[]
   shippingBatches ShippingBatch[]
   sourcedOrders   Order[]
+  variantStock    ProductVariantStock[]
+  variantMoves    VariantStockMovement[]
+  transfersOut    StockTransfer[]       @relation("StockTransferFrom")
+  transfersIn     StockTransfer[]       @relation("StockTransferTo")
+  stockExits      StockExit[]
+  stockCounts     StockCount[]
 
   // One name per country — two countries may each have «المخزن الرئيسي».
   @@unique([companyId, countryId, name])
@@ -2608,6 +2649,380 @@ model UserWarehouseAccess {
   @@unique([userId, warehouseId])
   @@index([warehouseId])
   @@map("user_warehouse_access")
+}
+
+/// A STOCK TRANSFER — one document with two ends, like a wallet transfer
+/// (`WalletTransfer`), plus a road: sent → in transit → received by count
+/// (the warehouse plan, W3a; `src/lib/stock-transfers.ts`).
+///
+/// The kind is READ from the two ends and stored (`stock-transfer-kind.ts`):
+/// INTERNAL (two warehouses holding one store's goods) splits batches and moves
+/// no cost. 20/11 (W7b): BETWEEN_STORES and BETWEEN_COUNTRIES are built
+/// (`stock-transfer-across.ts`): units are drawn out of the source product and,
+/// at receipt, received into its twin (`ProductPair`) in `toStoreId` at the
+/// cost they left with plus the typed landed costs. Nothing is ever deleted: a
+/// cancel and an approved shortfall are written on the row, and the batches keep
+/// the id of the road they took (`ProductionBatch.inTransitTransferId`). No
+/// money: no wallet, expense or profit is touched by any kind.
+///
+/// status: AWAITING_APPROVAL (W7b: a transfer to another country, waiting for
+/// the owner's press — nothing has moved, its units are held out of the free
+/// stock) · SENT (on the road) · RECEIVED · RECEIVED_WITH_DIFFERENCE (counted
+/// short; inside one store the missing units stay on the road until a third
+/// person approves them out as LOSS or DAMAGE — `differenceApprovedAt`; across
+/// stores they already left the source at the send, and the approval is a
+/// report only) · CANCELLED.
+/// Held by CHECKs in the migration, which this file cannot express:
+///   stock_transfers_kind_check, stock_transfers_status_check,
+///   stock_transfers_two_warehouses_check (from ≠ to),
+///   stock_transfers_difference_type_check (LOSS | DAMAGE),
+///   stock_transfers_to_store_check (W7b: `toStoreId` null ⇔ INTERNAL; never the source store),
+///   stock_transfer_lines_quantity_check (sent > 0; 0 ≤ received ≤ sent),
+///   stock_transfer_lines_cost_check (W7b: costOut, unitCostIn null or ≥ 0),
+///   stock_transfers_exchange_rate_check (F2: exchangeRate null or > 0).
+model StockTransfer {
+  /// May be made by the client: the replay guard (same id + same deal = the same transfer).
+  id                     String    @id @default(uuid())
+  companyId              String
+  /// Whose goods (the source end's store; for INTERNAL, both ends').
+  storeId                String
+  kind                   String
+  fromWarehouseId        String
+  toWarehouseId          String
+  status                 String    @default("SENT")
+  note                   String?
+  sentById               String
+  sentAt                 DateTime  @default(now())
+  receivedById           String?
+  receivedAt             DateTime?
+  cancelledById          String?
+  cancelledAt            DateTime?
+  cancelReason           String?
+  differenceType         String?
+  differenceReason       String?
+  differenceApprovedById String?
+  differenceApprovedAt   DateTime?
+  /// 20/11 (W7b): whose goods ARRIVE — another store of the company (BETWEEN_STORES / BETWEEN_COUNTRIES). Null = the
+  /// source store (INTERNAL), so every row written before W7b reads exactly as it did.
+  toStoreId              String?
+  /// 20/11 (W7b): the owner's press on a transfer to another country, before anything moves.
+  approvedById           String?
+  approvedAt             DateTime?
+  /// 22/11 (F2): ONLY between two stores whose countries keep their costs in different currencies — units of the
+  /// destination currency for 1 unit of the source currency, typed at the send and frozen (no door changes it). Null =
+  /// one currency, and the transfer costs exactly as before. Held by stock_transfers_exchange_rate_check (null or > 0).
+  exchangeRate           Float?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store         Store               @relation("StockTransferStore", fields: [storeId], references: [id], onDelete: Restrict)
+  toStore       Store?              @relation("StockTransferToStore", fields: [toStoreId], references: [id], onDelete: Restrict)
+  fromWarehouse Warehouse           @relation("StockTransferFrom", fields: [fromWarehouseId], references: [id], onDelete: NoAction)
+  toWarehouse   Warehouse           @relation("StockTransferTo", fields: [toWarehouseId], references: [id], onDelete: NoAction)
+  lines         StockTransferLine[]
+  batches       ProductionBatch[]
+  /// 20/11 (W8b): the combinations' pieces on this transfer's road.
+  variantRoad   ProductVariantStock[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([companyId, toStoreId, createdAt(sort: Desc)])
+  @@index([fromWarehouseId, status])
+  @@index([toWarehouseId, status])
+  @@map("stock_transfers")
+}
+
+/// One product of a transfer. One line per product (unique), so «the same
+/// product on two lines» cannot be stored even if a door forgot to refuse it.
+/// `quantityReceived` is what the receiver COUNTED (null until received).
+///
+/// 20/11 (W7b) — a transfer ACROSS stores (all null for INTERNAL):
+///   toProductId    the twin the units land in (read from `ProductPair` at the send and kept: a pair removed later does
+///                  not rewrite where a past transfer went). SET NULL with its product.
+///   costOut        what the units that left cost, as the draw-down returned it (each batch at its price, a run and its
+///                  twins costed once) — NOT rounded: the source's stock value fell by exactly this.
+///   landedCosts    the cost lines typed at receipt: [{ kind: TRANSPORT | CUSTOMS | OTHER, amount, note }], amounts in
+///                  the destination store's currency (the currency its product cost is kept in), rounded to its minor unit.
+///   unitCostIn     the destination's unit cost: (received × costOut ÷ sent + Σ landedCosts) ÷ received, rounded half away
+///                  from zero to the destination's minor unit (`money.roundMinor`). The destination's stock value rose by
+///                  exactly received × unitCostIn.
+///   costRemainder  (received × costOut ÷ sent + Σ landedCosts) − received × unitCostIn: what the rounding left out. Booked
+///                  nowhere — not in stock, not in a profit — and written here for the report. |remainder| ≤ received ×
+///                  half a minor unit.
+///   zeroCostReason why a unit cost of zero is real (`unit-cost.resolveUnitCost`: a zero needs a sentence).
+///   22/11 (F2) — when the transfer carries an `exchangeRate` (two currencies): landedCosts are in the SOURCE currency,
+///                  rounded to ITS minor unit; unitCostIn = roundMinor((received × costOut ÷ sent + Σ landedCosts) × rate
+///                  ÷ received, destination minor unit); costRemainder is that total × rate − received × unitCostIn, in the
+///                  destination currency (`stock-transfer-cost.convertedArrivalCost`).
+model StockTransferLine {
+  id               String  @id @default(uuid())
+  transferId       String
+  productId        String
+  quantitySent     Int
+  quantityReceived Int?
+  toProductId      String?
+  costOut          Float?
+  landedCosts      Json?
+  unitCostIn       Float?
+  costRemainder    Float?
+  zeroCostReason   String?
+
+  transfer  StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product   Product       @relation("StockTransferLineProduct", fields: [productId], references: [id], onDelete: Cascade)
+  toProduct Product?      @relation("StockTransferLineTwin", fields: [toProductId], references: [id], onDelete: SetNull)
+  /// 20/11 (W8b): the line's combinations, for a product that has them. `quantitySent` = Σ of theirs (and, once received,
+  /// `quantityReceived` = Σ of theirs) — checked by the door (`variant-lines.ts`). A product without combinations: none.
+  variants StockTransferLineVariant[]
+
+  @@unique([transferId, productId])
+  @@index([productId])
+  @@index([toProductId])
+  @@map("stock_transfer_lines")
+}
+
+/// ONE COMBINATION OF A TRANSFER LINE (the warehouse plan, W8b) — «أسود · L ×3» of the product line above it.
+/// The product line stays ONE row per product (its unique pair is unchanged, so every reader of product lines reads what
+/// it always read); its combinations are these rows, and their quantities sum to the line's. `transferId` and `productId`
+/// are copies of the line's, for the reads of a whole transfer.
+/// Held by a CHECK in the migration, which this file cannot express:
+///   stock_transfer_line_variants_quantity_check (sent > 0; 0 ≤ received ≤ sent).
+model StockTransferLineVariant {
+  id               String @id @default(uuid())
+  lineId           String
+  transferId       String
+  productId        String
+  variantId        String
+  quantitySent     Int
+  quantityReceived Int?
+
+  line    StockTransferLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([transferId])
+  @@index([variantId])
+  @@map("stock_transfer_line_variants")
+}
+
+/// A STOCK EXIT — goods that leave a warehouse for good, not by a sale (the warehouse plan, W6a; `src/lib/stock-exits.ts`).
+///
+/// A request names ONE warehouse of the store, its lines and ONE reason (`stock-exit-reasons.ts`): تالف · منتهي ·
+/// عيّنات وهدايا · مرتجع للمورّد · بيع برّا النظام · سحب شريك · أخرى (with a sentence). While PENDING its units are held
+/// (subtracted from the warehouse's free stock — `stock-transfers.freeStockOf` — and the warehouse may not stop). A
+/// DIFFERENT person approves (the units are drawn oldest first in that warehouse — `receiving.drawDownStock` — and each
+/// line keeps the value at cost of what left) or rejects (the hold is released, nothing else moves). Nothing is ever
+/// deleted, and no money is written: no wallet, no expense, no profit (the owner's default for decision 6: a report only).
+///
+/// status: PENDING · APPROVED · REJECTED.
+/// Held by CHECKs in the migration, which this file cannot express:
+///   stock_exits_reason_check (the seven reasons), stock_exits_status_check,
+///   stock_exits_other_needs_note_check («أخرى» carries a sentence),
+///   stock_exit_lines_quantity_check (quantity > 0; value at cost null or ≥ 0).
+model StockExit {
+  /// May be made by the client: the replay guard (same id + same request = the same exit).
+  id            String    @id @default(uuid())
+  companyId     String
+  /// Whose goods.
+  storeId       String
+  warehouseId   String
+  reason        String
+  note          String?
+  status        String    @default("PENDING")
+  requestedById String
+  requestedAt   DateTime  @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+  rejectReason  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company   Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  lines     StockExitLine[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([warehouseId, status])
+  @@map("stock_exits")
+}
+
+/// One product of an exit. One line per product (unique). `valueAtCost` is what the units that left cost, at their
+/// batches' cost (oldest first, rounded once to the store currency's minor unit) — null until the exit is approved.
+model StockExitLine {
+  id          String @id @default(uuid())
+  exitId      String
+  productId   String
+  quantity    Int
+  valueAtCost Float?
+
+  exit    StockExit @relation(fields: [exitId], references: [id], onDelete: Cascade)
+  product Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// 20/11 (W8b): the line's combinations, for a product that has them; `quantity` = Σ of theirs (`variant-lines.ts`).
+  variants StockExitLineVariant[]
+
+  @@unique([exitId, productId])
+  @@index([productId])
+  @@map("stock_exit_lines")
+}
+
+/// ONE COMBINATION OF AN EXIT LINE (the warehouse plan, W8b). While the exit is PENDING these pieces are held: they are
+/// out of the combination's free pieces in that warehouse (`variant-lines.freeVariantsOf`). `exitId` and `productId` are
+/// copies of the line's. Held by a CHECK in the migration: stock_exit_line_variants_quantity_check (quantity > 0).
+model StockExitLineVariant {
+  id        String @id @default(uuid())
+  lineId    String
+  exitId    String
+  productId String
+  variantId String
+  quantity  Int
+
+  line    StockExitLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([exitId])
+  @@index([variantId])
+  @@map("stock_exit_line_variants")
+}
+
+/// A COUNT SHEET OF ONE WAREHOUSE (the warehouse plan, request W5a — the owner's decision 4: the count is of what is
+/// PHYSICALLY in the warehouse). A sheet names one warehouse of a placed store and its products (all, or a chosen list).
+///
+///   OPEN       the keeper writes what she counted, line by line. She is never told the book's figure: the doors answer
+///              a holder of `inventory.count` without `inventory.count_approve` with no expected figure at all.
+///   SUBMITTED  the counter is done; the expected figure of each line is FROZEN on the line
+///              (`warehouse-count.expectedInWarehouse`: the warehouse's rows − the units that left it with the courier).
+///   APPROVED   a DIFFERENT person (not the one who opened, counted or submitted) applies each line's difference
+///              (counted − frozen expected) through the recount's own arithmetic in that warehouse; each ledger line
+///              carries the sheet's id (`referenceId`).
+///   VOIDED     nothing is applied; nothing changed.
+/// While a sheet is OPEN or SUBMITTED its warehouse refuses receipts, transfers, exits and return receipts; deliveries go
+/// on (they move the book and the units with the courier together, so the expected figure does not move).
+///
+/// Held in the migration `20261121100000_stock_counts`, which this file cannot express:
+///   stock_counts_status_check (the four statuses), stock_counts_scope_check (ALL / CHOSEN),
+///   stock_counts_one_open_per_warehouse — ONE open sheet per warehouse: a partial unique index on "warehouseId" WHERE
+///   "status" IN ('OPEN', 'SUBMITTED'),
+///   stock_count_lines_counted_check (counted null or ≥ 0), stock_count_line_variants_counted_check (counted ≥ 0).
+model StockCount {
+  id            String    @id @default(uuid())
+  companyId     String
+  /// Whose goods are counted.
+  storeId       String
+  warehouseId   String
+  status        String    @default("OPEN")
+  scope         String    @default("ALL")
+  note          String?
+  openedById    String
+  openedAt      DateTime  @default(now())
+  submittedById String?
+  submittedAt   DateTime?
+  decidedById   String?
+  decidedAt     DateTime?
+  voidReason    String?
+  /// Every person who ever wrote a line of the sheet — never shortened: the two-hands rule refuses each of them the approval.
+  writerIds     String[]  @default([])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store     Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  lines     StockCountLine[]
+
+  @@index([companyId, storeId, createdAt(sort: Desc)])
+  @@index([warehouseId, status])
+  @@map("stock_counts")
+}
+
+/// One product of a count sheet (unique per sheet). `counted` is the keeper's answer (null until she writes it).
+/// `book`, `withCourier` and `expected` are frozen at SUBMIT (null before); `unsourcedWithCourier` is the units of this
+/// store's orders with the courier that name NO warehouse (their units are in some warehouse's rows and are subtracted
+/// from none — shown to the approver as a reason a shortfall may not be real). `applied` (= counted − expected) and
+/// `valueAtCost` (what that difference is worth at the batches' cost, signed, rounded once) are written at approval.
+model StockCountLine {
+  id                   String    @id @default(uuid())
+  countId              String
+  productId            String
+  counted              Int?
+  countedById          String?
+  countedAt            DateTime?
+  book                 Int?
+  withCourier          Int?
+  expected             Int?
+  unsourcedWithCourier Int?
+  applied              Int?
+  valueAtCost          Float?
+
+  count    StockCount              @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product  Product                 @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants StockCountLineVariant[]
+
+  @@unique([countId, productId])
+  @@index([productId])
+  @@map("stock_count_lines")
+}
+
+/// ONE COMBINATION OF A COUNT LINE (W5a, the W8b pattern): for a product with combinations the keeper counts each one;
+/// the line's `counted` is their sum. `expected` is frozen at submit (the combination's pieces in that warehouse − its
+/// pieces with the courier from it); at approval the difference moves the combination through `variant-stock`'s one
+/// writer. `countId` and `productId` are copies of the line's.
+model StockCountLineVariant {
+  id        String @id @default(uuid())
+  lineId    String
+  countId   String
+  productId String
+  variantId String
+  counted   Int
+  expected  Int?
+
+  line    StockCountLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, variantId])
+  @@index([countId])
+  @@index([variantId])
+  @@map("stock_count_line_variants")
+}
+
+/// THE SAME ARTICLE IN TWO STORES (the warehouse plan, request W7a). Two `Product` rows of two stores of ONE company
+/// that a person said are the same goods — what a transfer between stores will read to know where the goods land
+/// (W7b). Chosen by a person (the door proposes equal sku first, then equal name), never made by the system.
+///
+/// One row per unordered couple, written in ONE direction: side A is the store whose id sorts first (byte order), so
+/// a product sits on the same side of every pair it has with a given store. That turns «one twin per product per
+/// other store» into two plain unique keys (`productAId + storeBId`, `productBId + storeAId`), and the couple itself
+/// into a third (`productAId + productBId`).
+///
+/// `storeAId` / `storeBId` are copies of the products' stores, written once by `product-pairs.savePair` (no door moves
+/// a product to another store). No foreign key to `stores`: a store with products cannot be deleted
+/// (`products.store_id` RESTRICT), and a pair goes with either of its products (CASCADE).
+/// `hint`: why the two were proposed — 'SKU', 'NAME', 'NAME_EN' — or null when a person picked them by hand.
+///
+/// Held by CHECKs in the migration, which this file cannot express:
+///   product_pairs_store_order_check («storeAId» < «storeBId», COLLATE "C" — also: two different stores),
+///   product_pairs_hint_check (null or one of the three hints).
+model ProductPair {
+  id          String   @id @default(uuid())
+  companyId   String
+  productAId  String
+  storeAId    String
+  productBId  String
+  storeBId    String
+  hint        String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  company  Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  productA Product @relation("ProductPairA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("ProductPairB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId])
+  @@unique([productAId, storeBId])
+  @@unique([productBId, storeAId])
+  @@index([companyId, storeAId])
+  @@index([companyId, storeBId])
+  @@map("product_pairs")
 }
 
 // ─── ORDER LINES (Stage 3) ───
@@ -2672,9 +3087,93 @@ model ProductVariant {
 
   product    Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderUnits OrderItemVariant[]
+  /// 19/11 (W8a): a PLACED store's count of this combination, per warehouse (`variant-stock.ts`). `onHand` is their sum.
+  places         ProductVariantStock[]
+  stockMovements VariantStockMovement[]
+  /// 20/11 (W8b): the stock documents that name this combination.
+  transferLines  StockTransferLineVariant[]
+  exitLines      StockExitLineVariant[]
+  countLines     StockCountLineVariant[]
 
   @@index([companyId, productId])
   @@map("product_variants")
+}
+
+/// A COMBINATION'S COUNT IN ONE PLACE — only for a store that is PLACED in warehouses (the warehouse plan, W8a).
+///
+/// A store that is not placed has no row here: its combinations keep `ProductVariant.onHand` as they always did. Once the
+/// store is placed, every change of a combination's count goes through ONE function (`variant-stock.ts`), which moves
+/// these rows, writes one `VariantStockMovement` per row it moved, and then writes `ProductVariant.onHand` = Σ of them.
+/// So Σ `onHand` here = `ProductVariant.onHand`, always — the row with `warehouseId` NULL is «بلا مكان»: the count the
+/// combination had when the store was placed (the placement was at product level and did not divide it), and the
+/// pieces with the courier, until a keeper counts them into a warehouse.
+///
+/// Constraints the schema cannot say, in the migration `20261119210000_variant_stock`:
+///   `product_variant_stock_one_unplaced` — ONE «بلا مكان» row per combination (a partial unique index on
+///   `variantId` WHERE `warehouseId` IS NULL; the unique pair below lets two NULL rows through, as Postgres does).
+///   20/11 (W8b, `20261120140000_variant_lines`): narrowed to WHERE `warehouseId` IS NULL AND `inTransitTransferId` IS
+///   NULL — a road row has no warehouse either, and is not «بلا مكان».
+///   `product_variant_stock_one_road` — ONE road row per (combination, transfer): a partial unique index on
+///   (`variantId`, `inTransitTransferId`) WHERE `inTransitTransferId` IS NOT NULL.
+model ProductVariantStock {
+  id          String   @id @default(uuid())
+  companyId   String
+  variantId   String
+  /// NULL = «بلا مكان» (see above) — or, with `inTransitTransferId`, the road of that transfer.
+  warehouseId String?
+  onHand      Int      @default(0)
+  /// 20/11 (W8b): set = these pieces are on this transfer's road (no warehouse), like a batch twin on the road.
+  inTransitTransferId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse         Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+  inTransitTransfer StockTransfer? @relation(fields: [inTransitTransferId], references: [id], onDelete: NoAction)
+
+  @@unique([variantId, warehouseId])
+  @@index([companyId, warehouseId])
+  @@index([inTransitTransferId])
+  @@map("product_variant_stock")
+}
+
+/// THE LEDGER OF A COMBINATION'S COUNT in a placed store (W8a) — one line per place a change moved. Never edited, never
+/// deleted. Σ `quantity` of a combination's lines = its `onHand` (the first line, OPENING, carries the count it had).
+/// type: OPENING (the count before the first change, «بلا مكان») · COUNT (a keeper's count, with its reason) ·
+/// SALE (a delivery) · RETURN (a counted return).
+model VariantStockMovement {
+  id          String   @id @default(uuid())
+  companyId   String
+  /// The product's store — the store-removal list counts it (`geo-removal.ts`).
+  storeId     String?
+  productId   String
+  variantId   String
+  /// NULL = «بلا مكان».
+  warehouseId String?
+  type        String
+  /// Signed: what this place gained (+) or lost (−).
+  quantity    Int
+  /// The place's count after this line.
+  placeAfter  Int
+  /// The combination's total (`ProductVariant.onHand`) after the change this line belongs to.
+  onHandAfter Int
+  reason      String?
+  /// The order of a SALE or a RETURN.
+  orderId     String?
+  createdById String?
+  /// 20/11 (W8b): set = the place this line moved is that transfer's road (with `warehouseId` NULL).
+  inTransitTransferId String?
+  /// 20/11 (W8b): the document of the change — a transfer, an exit or a placement (NULL for a count, a sale, a return).
+  referenceId String?
+  createdAt   DateTime @default(now())
+
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: NoAction)
+
+  @@index([companyId, variantId, createdAt])
+  @@index([companyId, warehouseId, createdAt(sort: Desc)])
+  @@index([companyId, storeId, createdAt])
+  @@map("variant_stock_movements")
 }
 
 /// THE PIECES OF ONE ORDER LINE, by combination: piece 1 «أسود · L», piece 2 «كحلي · M» are two rows of quantity 1.
@@ -2989,8 +3488,23 @@ model WalletMovement {
   /// profit is in the store's currency and a wallet may hold another one, so a draw from a wallet in a different currency carries
   /// the equivalent the person typed; from a wallet in the store's own currency it is the amount. Null on every other movement.
   valueInStoreCurrency Decimal? @db.Decimal(14, 3)
+  /// «سعر الصرف التلقائي» (23/11, F8, `lib/exchange-rates-core.ts`): THE RATE `valueInStoreCurrency` WAS FILLED AT, when the server
+  /// filled it from today's rate because the person left it empty. Store units for ONE wallet unit; AUTO (the internet, `…Source` names
+  /// it) or MANUAL (the owner's typed rate); `…At` = when that rate was true. FROZEN at write time — a later rate never rewrites a row —
+  /// and read by no sum: the ledger reads `valueInStoreCurrency` only. NULL on a typed equivalent, on every other movement, and on every
+  /// row older than the migration (no backfill). Migration 20261123160000_wallet_movement_equivalent_rate holds two CHECKs this file
+  /// cannot express: wallet_movements_equivalent_rate_check (rate > 0, with a kind) and
+  /// wallet_movements_equivalent_rate_kind_check (kind AUTO | MANUAL, with a rate).
+  equivalentRate       Decimal?  @db.Decimal(24, 12)
+  equivalentRateKind   String?
+  equivalentRateSource String?
+  equivalentRateAt     DateTime?
   createdById    String
   createdAt      DateTime @default(now())
+  /// THE REAL DATE (22/11, `lib/real-date.ts`): when the money really moved, as typed. NULL = the same as `createdAt` (no
+  /// backfill). Shown and sorted by, never added up: balances, closings, matching, profit and the partners' statement stay on
+  /// `createdAt`. Migration 20261122130000_wallet_real_dates.
+  occurredAt     DateTime?
 
   wallet     Wallet          @relation(fields: [walletId], references: [id], onDelete: Restrict)
   reversalOf WalletMovement? @relation("Reversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
@@ -3028,10 +3542,69 @@ model Partner {
 
   company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
   movements WalletMovement[]
+  standing    PartnerStandingAmount[]
+  withdrawals PartnerWithdrawal[]
 
   @@unique([companyId, name])
   @@index([companyId, isActive, sortOrder])
   @@map("partners")
+}
+
+/// «المسحوبات» — THE AMOUNT A PARTNER USUALLY TAKES, PER CURRENCY, TYPED ONCE (22/11) — «حط شاشة مسحوبات وحط العملات».
+///
+/// One row per (partner, currency): the figure the «سجّل مسحوب» press fills in, so it is not typed again each time. A setting, not
+/// money: it moves nothing and nothing adds it up. Saved and cleared only by `lib/partner-withdrawals.ts` behind `finance.partners`.
+///   amount — > 0, in the currency's own decimals (held by a CHECK in the migration, which this file cannot express).
+model PartnerStandingAmount {
+  id           String   @id @default(uuid())
+  companyId    String
+  partnerId    String
+  currencyCode String
+  amount       Decimal  @db.Decimal(14, 3)
+  updatedById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+
+  @@unique([partnerId, currencyCode])
+  @@index([companyId])
+  @@map("partner_standing_amounts")
+}
+
+/// «المسحوبات» — A RECORD OF WHAT A PARTNER TOOK, BY STORE AND CURRENCY (22/11). RECORD ONLY: no wallet moves, nothing is an expense,
+/// and neither the profit nor the partners' statement (`lib/partner-statement.ts`, which reads PARTNER_DRAW wallet movements) reads it.
+///
+/// Never edited, never deleted. A cancel is a SECOND row pointing back at the original (`reversalOfId`, unique — held by the database,
+/// so an original is cancelled at most once) with the written reason; the pair counts as nothing. Totals are per currency only — two
+/// currencies are never added together.
+///   amount       — > 0 on every row (the original and its reversal alike; held by a CHECK in the migration), Decimal(14,3) like a
+///                  wallet movement, in the currency's own decimals (refused otherwise, never rounded behind the person's back).
+///   withdrawnOn  — the day the money was taken, as the person wrote it.
+///   fromStanding — the figure was the partner's standing amount for this currency at the press.
+///   storeId      — no foreign key (like the other keyless records); named in `geo-removal.ts`, so a store with one is not deleted.
+model PartnerWithdrawal {
+  id             String   @id @default(uuid())
+  companyId      String
+  storeId        String
+  partnerId      String
+  currencyCode   String
+  amount         Decimal  @db.Decimal(14, 3)
+  withdrawnOn    DateTime @db.Date
+  fromStanding   Boolean  @default(false)
+  note           String?
+  reversalOfId   String?  @unique
+  reversalReason String?
+  createdById    String
+  createdAt      DateTime @default(now())
+
+  partner    Partner            @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  reversalOf PartnerWithdrawal? @relation("WithdrawalReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy PartnerWithdrawal? @relation("WithdrawalReversal")
+
+  @@index([companyId, storeId, createdAt])
+  @@index([partnerId])
+  @@map("partner_withdrawals")
 }
 
 // Wallet to wallet, same or different country. The exchange rate is entered
@@ -3066,6 +3639,9 @@ model WalletTransfer {
   note         String
   createdById  String
   createdAt    DateTime @default(now())
+  /// THE REAL DATE (22/11, `lib/real-date.ts`): when the transfer really happened, as typed; its two legs carry the same.
+  /// NULL = the same as `createdAt`. Shown and sorted by, never added up.
+  occurredAt   DateTime?
 
   @@index([companyId, createdAt])
   @@index([companyId, kind])
@@ -3441,6 +4017,48 @@ model PenaltyRule {
   @@map("penalty_rules")
 }
 
+/// «قاعدة خاصة» of the confirmation desk (request Q4a of the rules plan, 20/11) — a rule the OWNER writes on top of the one base rule
+/// (`Company.settings.confirmationRule`, `src/lib/confirmation-rule-settings.ts`). Shaped like `PenaltyRule` / `CommissionRule`: scoped, dated, stopped
+/// with `isActive`, NEVER deleted (no code path deletes a row; a company going takes its rules with it).
+///
+/// INERT IN THIS REQUEST: nothing reads the table yet. `ruleFor` in `src/lib/confirmation-rules.ts` resolves a person's and an order's numbers from
+/// these rows; zero active rows answers the base rule exactly. The kinds, what each one may name, and the payload of each are validated there.
+/// The amount of an order is NOT a condition (the owner, 20/11): a rule names a product, a store, a channel or employees — nothing else.
+/// No migration writes a row: the eight ready templates are data in the lib (`CONFIRMATION_RULE_TEMPLATES`), OFF until the owner turns one on.
+model ConfirmationRule {
+  id            String    @id @default(uuid())
+  companyId     String    @map("company_id")
+  /// Null = every store of the company. No foreign key (like `PenaltyRule`): a store that has rules is not empty (`geo-removal.ts`).
+  storeId       String?   @map("store_id")
+  name          String
+  /// EMPLOYEE_NUMBERS | ORDER_NUMBERS | PRIORITY | ROUTING — see CONFIRMATION_RULE_KINDS in src/lib/confirmation-rules.ts.
+  kind          String
+  /// Who it binds: null = every employee; otherwise a JSON array of user ids (named employees — only an EMPLOYEE_NUMBERS rule may name them).
+  userIds       Json?     @map("user_ids")
+  /// Which orders: one product, one channel kind (CHANNEL_KINDS), new orders or retries. Null = all.
+  productId     String?   @map("product_id")
+  channelKind   String?   @map("channel_kind")
+  /// NEW | RETRY.
+  phase         String?
+  /// Hours of the store's day, "HH:MM", both or neither; from > to wraps midnight.
+  hoursFrom     String?   @map("hours_from")
+  hoursTo       String?   @map("hours_to")
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isActive      Boolean   @default(true) @map("is_active")
+  /// What it changes — its shape depends on `kind` (validated in the lib, never stored unvalidated).
+  payload       Json
+  createdById   String    @map("created_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, isActive])
+  @@index([companyId, storeId])
+  @@map("confirmation_rules")
+}
+
 /**
  * ONE PROPOSED OR APPLIED DEDUCTION.
  * Nothing here becomes money on its own. The system can measure that
@@ -3778,9 +4396,14 @@ model AppDelivery {
   nextAttemptAt DateTime?
   deliveredAt   DateTime?
   createdAt     DateTime  @default(now())
+  /// One fact, one row (2026-11-21): set on the order-status events to Zaki Pages
+  /// (`pages.order_status:<companyId>:<orderId>:<status>`), null on every other row. A second emit of the same
+  /// status for the same order writes nothing (`skipDuplicates` on the pair below).
+  idempotencyKey String?
 
   install AppInstall @relation(fields: [installId], references: [id], onDelete: Cascade)
 
+  @@unique([installId, idempotencyKey])
   @@index([status, nextAttemptAt])
   @@index([companyId, createdAt])
   @@map("app_deliveries")
@@ -3832,11 +4455,21 @@ model SystemToken {
   /// The last time this key was accepted. Written at most once a minute —
   /// a read-only call must not cost a write on every request.
   lastUsedAt      DateTime?
+  /// THE ONE COUNTRY THIS KEY SEES (2026-11-21, Zaki Pages per country). NULL = every country of the company, exactly
+  /// as every key made before this column. Only the landing door honours it (`landing-country.ts`); every other door
+  /// refuses a country-bound key rather than let it read the whole company (`requireSystemToken`).
+  countryId       String?
+  /// THE ONE STORE THIS KEY SEES (2026-11-23, Zaki Pages per store). NULL = every store of its country (or of the
+  /// company). A store-bound key always carries that store's country too, so every country rule holds for it as well;
+  /// only the landing door honours it (`landing-country.ts`).
+  storeId         String?
   createdById     String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  country Country? @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  store   Store?   @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
   @@unique([companyId, name])
   @@index([companyId, revokedAt])
@@ -4328,11 +4961,41 @@ model UserSession {
   userAgent    String?
   /// REPLACED (a third device signed in) · STALE (unused longer than any cookie lives) · LOGOUT · IDLE.
   revokeReason String?
+  /// WEB (a browser, the cookie) · APP (the «Zaki Orders» Android app, the same token in a header). Each kind is
+  /// counted on its own (sign-in.ts): opening the app never signs the laptop out, and the reverse.
+  kind         String    @default("WEB")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, revokedAt])
   @@map("user_sessions")
+}
+
+/// «ZAKI ORDERS» — WHAT WENT WRONG ON A PHONE (22/11): a crash, a frozen screen (ANR / the app's own 4-second watchdog),
+/// or an error the app caught. Sent by the app (`POST /api/client-errors`), read by whoever holds `audit.view`.
+///
+/// NO CUSTOMER DATA: the app sends the screen name, the stack and the device — never an order, a name or a phone — and the
+/// door cuts every field to its length. Who sent it is the signed-in person, from the session, never from the body.
+model ClientError {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String?
+  /// CRASH · ANR · ERROR
+  kind        String
+  message     String
+  stack       String?
+  screen      String?
+  appVersion  String
+  versionCode Int?
+  device      String?
+  osVersion   String?
+  /// When it happened on the phone (it may arrive later: the app sends what it kept when it is back online).
+  occurredAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([companyId, createdAt])
+  @@index([companyId, kind, createdAt])
+  @@map("client_errors")
 }
 
 /// «السلات المهجورة» — A VISITOR WHO LEFT A NAME AND A PHONE ON A LANDING PAGE AND NO ORDER (contract oms-lp.v1 §9).
@@ -4346,7 +5009,8 @@ model UserSession {
 /// is the link written afterwards.
 ///
 /// status: NEW · CONTACTED · NO_ANSWER · CALLBACK · NOT_INTERESTED · INVALID · CONVERTED (the team made the order) ·
-/// RECOVERED (the customer ordered by himself, told by Zaki pages). The words and the rules are `src/lib/abandoned-carts.ts`.
+/// RECOVERED (the customer ordered by himself: told by Zaki pages, or — since 21/11 — found by this system when the same
+/// phone already has an order for the same product, `cart-has-order.ts`). The words and the rules are `src/lib/abandoned-carts.ts`.
 model AbandonedCart {
   id              String    @id @default(uuid())
   companyId       String
@@ -4389,6 +5053,7 @@ model AbandonedCart {
   order      Order?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   assignedTo User?                   @relation("AbandonedCartAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   activities AbandonedCartActivity[]
+  aliases    AbandonedCartAlias[]
 
   @@unique([companyId, externalId])
   @@index([companyId, status, lastSeenAt])
@@ -4397,6 +5062,25 @@ model AbandonedCart {
   @@index([companyId, assignedToId])
   @@index([productId])
   @@map("abandoned_carts")
+}
+
+/// ONE CART PER CUSTOMER PER PRODUCT, NOT ONE PER VISIT (the owner, 21/11). Zaki pages gives every visit its own
+/// `externalId`; when a second visit of the same phone for the same product arrives within a day while the first cart is
+/// still open, the landing door updates that cart and keeps the new `externalId` here, so Zaki pages' later calls with it
+/// (a re-send, `/recovered`) reach the same cart. Unique per company like the cart's own `externalId`; goes with its cart.
+model AbandonedCartAlias {
+  id         String   @id @default(uuid())
+  companyId  String
+  externalId String
+  cartId     String
+  createdAt  DateTime @default(now())
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  cart    AbandonedCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, externalId])
+  @@index([cartId])
+  @@map("abandoned_cart_aliases")
 }
 
 /// A cart's history and notes, one line each: the door's arrivals and updates, a status changed, «ما رد», a note, a
@@ -4553,6 +5237,11 @@ model LandingChatThread {
   unreadCount        Int       @default(0)
   lastMessageAt      DateTime?
   lastMessagePreview String?
+  /// The country of the landing key that opened the thread (2026-11-21) — a country-bound key reads and writes only its
+  /// own country's threads. NULL: opened by a key for every country. Plain id, like `productId`: a thread outlives a row.
+  countryId          String?
+  /// The store of the landing key that opened the thread (2026-11-23). NULL: opened by a key not bound to a store.
+  storeId            String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -4561,6 +5250,8 @@ model LandingChatThread {
 
   @@unique([companyId, externalId])
   @@index([companyId, lastMessageAt])
+  @@index([companyId, countryId])
+  @@index([companyId, storeId])
   @@map("landing_chat_threads")
 }
 

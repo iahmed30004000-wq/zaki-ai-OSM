@@ -4,6 +4,17 @@ import type { db as prismaDb } from './db';
 import { splitBatch } from './batch-split';
 import { holdingWhere, lockProductsStock } from './reservation';
 import { leftWarehouseWhere } from './order-state';
+import {
+  VARIANT_LINE_AR,
+  VARIANT_LINE_STATUS,
+  checkLineShapes,
+  checkPlacementVariants,
+  placeVariants,
+  variantCountsField,
+  type Fail,
+  type VariantLineRefusalCode,
+  type VariantQty,
+} from './variant-lines';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -51,7 +62,8 @@ export class PlacementRefused extends Error {
       | 'NO_COUNTER'
       | 'COUNT_IN_FUTURE'
       | 'ALREADY_HAS_PLACES'
-      | 'NOT_EXACT',
+      | 'NOT_EXACT'
+      | VariantLineRefusalCode,
     readonly errorAr: string,
     readonly differing?: PlacementRow[]
   ) {
@@ -62,10 +74,17 @@ export class PlacementRefused extends Error {
 
 /** How a door answers each refusal: a second placement and a disagreeing count are conflicts; the rest are bad input. */
 export function refusalStatus(code: PlacementRefused['code']): number {
+  // 20/11 (W8b): a refusal about the combinations answers with its own status.
+  if (Object.hasOwn(VARIANT_LINE_STATUS, code)) return VARIANT_LINE_STATUS[code as VariantLineRefusalCode];
   if (code === 'ALREADY_PLACED' || code === 'NOT_EXACT' || code === 'ALREADY_HAS_PLACES') return 409;
   if (code === 'STORE_NOT_FOUND' || code === 'WAREHOUSE_NOT_FOUND') return 404;
   return 400;
 }
+
+/** How `variant-lines.ts` refuses inside the placement: as the placement refuses. */
+const fail: Fail = (code, errorAr) => {
+  throw new PlacementRefused(code, errorAr ?? VARIANT_LINE_AR[code]);
+};
 
 /** The counts as a door receives them: per warehouse, in the order the warehouses were given, the units of each product. */
 export const countsSchema = z
@@ -73,7 +92,14 @@ export const countsSchema = z
     z.object({
       warehouseId: z.string().min(1).max(64),
       lines: z
-        .array(z.object({ productId: z.string().min(1).max(64), quantity: z.number().int('العدد لازم يكون رقم صحيح').min(0).max(10_000_000) }))
+        .array(
+          z.object({
+            productId: z.string().min(1).max(64),
+            quantity: z.number().int('العدد لازم يكون رقم صحيح').min(0).max(10_000_000),
+            /** 20/11 (W8b): optional — which combinations of the product this warehouse holds; their sum is `quantity`. */
+            variants: variantCountsField.optional(),
+          })
+        )
         .max(5000),
     })
   )
@@ -82,12 +108,45 @@ export const countsSchema = z
 /** The one sentence a count that disagrees with the book gets: the recount door first, then the placement. */
 export const RECOUNT_FIRST_AR = 'اجرد هالمنتجات من «جرد المتاح» أول، وبعدين وزّع';
 
-/** A product with combinations (size/colour) is placed as a product; its combinations' counts stay the store's until the variants request. */
-export const VARIANTS_STAY_STORE_LEVEL_AR = 'المنتج بيتوزّع ككل. عدّ الخيارات (المقاس واللون) بيضل على مستوى المتجر لهلق.';
+/**
+ * A product with combinations (size/colour): the sheet asks, beside its count per warehouse, how many of each combination
+ * that warehouse holds (W8b's optional `variants` of a line). 20/11 (W8c) — was «المنتج بيتوزّع ككل. عدّ الخيارات (المقاس
+ * واللون) بيضل على مستوى المتجر لهلق.», true until W8b let the placement carry combinations; now a combination counted here
+ * gets its warehouse, and one left blank stays «بلا مكان» (W8a) until it is counted in its warehouse.
+ */
+export const VARIANTS_IN_PLACEMENT_AR =
+  'المنتج اللي إله خيارات (مقاس/لون): اكتب عدده بكل مخزن، وتحته كم قطعة من كل خيار. مجموع الخيارات لازم يساوي عدد المنتج. الخيار اللي بتتركه فاضي بيضل «بلا مكان» لحد ما ينعدّ بمخزنه.';
+
+/** One combination as the sheet draws it: its label and its store-level count (`ProductVariant.onHand`), the server's. */
+export interface PlacementCombination {
+  variantId: string;
+  label: string;
+  onHand: number;
+}
+
+/**
+ * 20/11 (W8c): the ACTIVE combinations of the products that have them, by product, in the seller's order — what the
+ * sheet draws its boxes from. ONE read, and none at all when no product of the page has combinations.
+ */
+export async function placementCombinations(
+  tx: Tx,
+  companyId: string,
+  productIds: readonly string[]
+): Promise<Record<string, PlacementCombination[]>> {
+  const out: Record<string, PlacementCombination[]> = {};
+  if (productIds.length === 0) return out;
+  const rows = await tx.productVariant.findMany({
+    where: { companyId, productId: { in: [...new Set(productIds)] }, status: 'ACTIVE' },
+    orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    select: { id: true, productId: true, label: true, onHand: true },
+  });
+  for (const r of rows) (out[r.productId] ??= []).push({ variantId: r.id, label: r.label, onHand: r.onHand });
+  return out;
+}
 
 export interface PlacementCount {
   warehouseId: string;
-  lines: { productId: string; quantity: number }[];
+  lines: { productId: string; quantity: number; variants?: VariantQty[] }[];
 }
 
 export interface FactBatch {
@@ -324,6 +383,8 @@ export function checkCounts(
       seenP.add(l.productId);
       if (!Number.isInteger(l.quantity) || l.quantity < 0) throw new PlacementRefused('QUANTITY_INVALID', 'العدد لازم يكون رقم صحيح من صفر وطالع.');
     }
+    // 20/11 (W8b): a line that names combinations names each once, and they sum to its quantity.
+    checkLineShapes(c.lines, fail);
   }
 }
 
@@ -353,6 +414,8 @@ export async function previewPlacement(tx: Tx, input: { companyId: string; store
   if (input.counts.length > 0) {
     const { store, warehouses } = await loadStoreAndWarehouses(tx, input.companyId, input.storeId, input.counts);
     checkCounts(store, warehouses, new Set(facts.products.map((p) => p.id)), input.counts);
+    // 20/11 (W8b): the same combination checks as the press (nothing read when no line names one).
+    await checkPlacementVariants(tx, { companyId: input.companyId, counts: input.counts, nameOf: new Map(facts.products.map((p) => [p.id, p.name])) }, fail);
   }
   return planPlacement(facts, input.counts);
 }
@@ -396,6 +459,7 @@ export async function placeStore(
   }
   const plan = planPlacement(facts, input.counts);
   if (!plan.exact) throw new PlacementRefused('NOT_EXACT', notExactAr(plan.differing), plan.differing);
+  await checkPlacementVariants(tx, { companyId: input.companyId, counts: input.counts, nameOf: new Map(facts.products.map((p) => [p.id, p.name])) }, fail);
 
   const placement = await tx.warehousePlacement.create({
     data: {
@@ -422,5 +486,13 @@ export async function placeStore(
       }
     }
   }
+  // 20/11 (W8b): the combinations counted in each warehouse leave «بلا مكان» for it — after the batch rows, through the
+  // one writer of a combination's count. Combinations not named stay «بلا مكان» (W8a) until a keeper counts them.
+  await placeVariants(
+    tx,
+    { companyId: input.companyId, storeId: input.storeId, userId: input.recordedById, referenceId: placement.id },
+    { counts: input.counts, reason: `التوزيع الافتتاحي — عدّه ${countedByName}` },
+    fail
+  );
   return { placement, plan };
 }

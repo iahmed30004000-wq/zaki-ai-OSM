@@ -132,11 +132,15 @@ function threadFacts(input: RelayInput) {
 const THREAD_ANSWER = { id: true, botPaused: true, unreadCount: true, orderNumber: true, orderId: true, pageName: true, productName: true } as const;
 
 /** The thread of this session, made the first time it is seen. Two first relays at once: one creates, the other reads it. */
-async function threadFor(companyId: string, externalId: string, facts: Record<string, string>) {
+async function threadFor(companyId: string, externalId: string, facts: Record<string, string>, countryId: string | null, storeId: string | null = null) {
   const known = await db.landingChatThread.findUnique({ where: { companyId_externalId: { companyId, externalId } }, select: THREAD_ANSWER });
   if (known) return { thread: known, created: false };
   try {
-    const thread = await db.landingChatThread.create({ data: { companyId, externalId, ...facts }, select: THREAD_ANSWER });
+    // A key bound to one country opens its country's thread (`landing-country.ts`); a key of every country, as before.
+    const thread = await db.landingChatThread.create({
+      data: { companyId, externalId, ...facts, ...(countryId ? { countryId } : {}), ...(storeId ? { storeId } : {}) },
+      select: THREAD_ANSWER,
+    });
     return { thread, created: true };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -154,10 +158,14 @@ async function threadFor(companyId: string, externalId: string, facts: Record<st
 export async function relayChatLines(
   companyId: string,
   input: RelayInput,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** The key's country (`landing-country.ts`, which has already kept the input to it); null for a key of every country. */
+  countryId: string | null = null,
+  /** The key's store (2026-11-23); null for a key not bound to one. */
+  storeId: string | null = null
 ): Promise<{ status: 200 | 201; body: { threadId: string; botPaused: boolean; written: number } }> {
   const facts = threadFacts(input);
-  const { thread, created } = await threadFor(companyId, input.sessionId, facts);
+  const { thread, created } = await threadFor(companyId, input.sessionId, facts, countryId, storeId);
 
   // The order is linked once its number is this company's.
   let orderId: string | null = thread.orderId;
@@ -240,11 +248,14 @@ export interface ChatUpdate {
 export const updatesQuery = z.object({ after: z.string().regex(/^\d{1,18}$/).optional() });
 
 /** What the staff did since `after`, for every thread of this company. `cursor` is the last `seq` handed out (or `after`). */
-export async function chatUpdates(companyId: string, after: string | undefined, now: Date = new Date()) {
+export async function chatUpdates(companyId: string, after: string | undefined, now: Date = new Date(), countryId: string | null = null, storeId: string | null = null) {
   const from = BigInt(after ?? '0');
   const rows = await db.landingChatMessage.findMany({
     where: {
       companyId,
+      // A key bound to one country reads its country's threads only; a key of every country reads them all, as before.
+      // A store key (2026-11-23): its own store's threads only.
+      ...(countryId || storeId ? { thread: { ...(countryId ? { countryId } : {}), ...(storeId ? { storeId } : {}) } } : {}),
       seq: { gt: from },
       direction: { in: [DIRECTION.STAFF, DIRECTION.EVENT] },
       createdAt: { lte: new Date(now.getTime() - SETTLE_MS) },

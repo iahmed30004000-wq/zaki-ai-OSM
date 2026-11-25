@@ -458,6 +458,7 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/ad-spend': 'الميديا باير (zaki-mediabuyer) يقرأ الإنفاقَ اليوميَّ لكلِّ إعلانٍ بتوكنٍ بصلاحية ads.spend.read ليحسب تكلفةَ الطلب — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/health': 'نظامُ صفحات الهبوط المنفرد (src/server/oms.ts) يفحص الاتصال والمفتاح — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/products': 'نظامُ صفحات الهبوط يعرض كلَّ منتجات الشركة لمن يبني صفحة — المستدعي في مستودعٍ آخر',
+  '/api/v1/landing/stores': 'نظامُ صفحات الهبوط يعرض متاجر البلد حين يضيف المالك بلداً أو متجراً — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/products/[id]': 'نظامُ صفحات الهبوط يرسم الصفحة من منتجها وعروضها — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/geo/[country]': 'نظامُ صفحات الهبوط يملأ قائمة المدن في النموذج — المستدعي في مستودعٍ آخر',
   '/api/v1/landing/quote': 'نظامُ صفحات الهبوط يُري الزائرَ المبلغ وأجرة التوصيل قبل الإرسال — المستدعي في مستودعٍ آخر',
@@ -477,6 +478,8 @@ const REACHED_BUT_UNSEEN: Record<string, string> = {
   '/api/v1/landing/chat/updates': 'صفحاتُ الهبوط تقرأ ردود الفريق وإيقاف البوت وإرجاعه كل بضع ثوانٍ (العقد §11) — المستدعي في مستودعٍ آخر',
   '/api/call-helper/pair':
     'تطبيقُ «مساعد الاتصال» على أندرويد (apps/call-helper-android → PairActivity.kt) يبادل رمزَ الربطِ بتوكن — المستدعي برنامج Kotlin لا يقرؤه هذا المسح',
+  '/api/orders/quote':
+    'تطبيقُ «Zaki Orders» على أندرويد يسأل عن سعر الطلب اليدوي قبل إرساله (شاشة «+ طلب») — المستدعي برنامج Kotlin في مستودعٍ آخر لا يقرؤه هذا المسح',
 };
 
 /**
@@ -494,9 +497,16 @@ const NO_CALLER_FOUND: Record<string, string> = {
   // 18/11 (R14a1): '/api/orders/confirmation/team/[userId]' left — the drawer under a row of the team table (`performance/TeamMemberDrawer.tsx`) calls it.
   // 19/11 (W1b): '/api/inventory/placement' and '/api/inventory/placement/preview' left — the placement sheet on the balances screen (`inventory/PlacementSheet.tsx`) calls both.
   // 19/11 (W0b): '/api/geo/warehouses', '/api/geo/warehouses/[id]' and '/api/geo/warehouses/[id]/keepers' left — the «المخازن» card under each country of the geo screen (`geo/WarehousesCard.tsx`) calls all three.
+  // 20/11 (W3b): the four stock-transfer doors of W3a left — the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls the list, the send, the receive, the cancel and the difference.
+  // 20/11 (W6b): the three stock-exit doors of W6a left — the screen «إخراج بضاعة» (`screens/StockExitsScreen.tsx`) calls the list, the request, the approval and the rejection; and its month's table calls the new '/api/inventory/exits/month'.
+  // 20/11 (Q4a): NO_CALLER_FOUND for a LIBRARY, not a route — `src/lib/confirmation-rules.ts` (the owner's own rules and `ruleFor`) is read by nothing yet; no route is added, so nothing enters this list. Its own test pins «no importer» and Q4b removes that pin when the pull reads it.
+  // 21/11 (Q4b): that pin is gone — `employee-numbers.ts` reads the table and the pull, the claim, «الزبون على الخط», the hold, the release job, the queue door and «افحص موظفة» ask it. Still no route is added.
   // 19/11 (Q1b): '/api/confirmation/rules/people' left — the «مين مربوطة بالقواعد» section of the rules page (`confirmation/DeskPeopleTable.tsx`) calls it.
+  // 21/11 (W7c): '/api/inventory/pairs' and '/api/inventory/pairs/[id]' (W7a) left — the twin picker of the transfer form (`inventory/TransferAcross.tsx`) proposes, saves and removes pairs.
+  // 21/11 (W7c): '/api/inventory/transfers/[id]/approve' (W7b) left — the owner's «اعتمد وابعت» on the screen «نقل البضاعة» (`screens/StockTransfersScreen.tsx`) calls it.
   '/api/orders/[id]/finance': 'لقطةُ مالِ الطلبِ ودفترُه — لا نافذةَ تطلبها، وشاشةُ الطلب تقرأ /api/orders/[id] وحدها',
   '/api/orders/[id]/call-logs': 'المسارُ باقٍ وتعليقُ OrderDetailModal نفسه يقول إنه عاش هناك ولم يرسمه شيء',
+  // 21/11 (W5b): the five count-sheet doors of W5a left — the screen «الجرد» (`screens/StockCountsScreen.tsx`) calls the list and the open, the sheet and its answers, the submit, the approval and the void; and its «كشف عهدة الأمين» calls the new '/api/inventory/counts/statement'.
   '/api/moderators': 'صاحبُها الوحيد كان نموذجَ «طلب جديد»، وصار يقرأ /api/orders/form-options (PR-6: الأسماء فقط، ولمن عنده «إسناد الطلبات»). باقٍ كما هو — فيه مبيعاتُ كلِّ موظف وعمولتُه خلف users.view — وتضييقُه بـteam.monitor بندٌ لاحق لا يُنفَّذ هنا',
   '/api/orders/follow-ups': 'مسكَّر (410) — طوابيرُ المتابعةِ صارت بشاشات التأكيد، والبابُ كان بلا صلاحية ويقرّر بأسماء الأدوار',
   '/api/webhooks/couriers/[token]':
@@ -516,8 +526,6 @@ const NO_CALLER_FOUND: Record<string, string> = {
     'يقرأ أرقامَه من الحاسبة المشتركة ولا يكرّرها — لكنه يَعرض أداءَ الموظف لنفسه ولا شاشةَ تسأله بعد',
   '/api/finance/summary': 'يُلخّص المالَ عبر محرّكِ التحليلاتِ الواحد، ولا شاشةَ تستدعيه — له اختبارُه فقط',
   '/api/public/stores/[store]/search': 'صفحةُ المتجر تبحث على الخادم بـsearchProducts مباشرةً؛ لا حقلَ اقتراحاتٍ يستدعي الطريق',
-  // 19/11 (request Q3a of the rules plan): the door of «أرقام القاعدة» is built ahead of its editor. Request Q3c (the numbers editor) calls it and removes this line.
-  '/api/settings/confirmation-rule': 'باب «أرقام القاعدة» (حفظ وعرض ورجوع) انبنى قبل محرّره — بطاقة المحرّر (Q3c) هي اللي بتستدعيه وبتشيل هالسطر',
   '/api/orders/[id]/change-requests/preview':
     'معاينةُ طلبِ التعديلِ متعدّدِ الحقول (المرحلة ٢) — قراءةٌ صرفة بُنيت قبل واجهتِها؛ شاشةُ «تعديل الطلب» (المرحلة ٦) هي من تستدعيها',
 
@@ -681,6 +689,7 @@ const PLANNED_BUT_UNUSED: Record<string, string> = {
   'src/lib/store-theme.ts:storedLayoutOf': 'مكتبة المتجر لوكيل المتجر — لا تُلمس من خارج فرعه',
   // 19/11, warehouse plan W0a: the three questions every stock door of the plan will ask; the first readers are W1a (placement) and W2a (receiving). Each line leaves with its first reader.
   // 19/11 (W1a): 'src/lib/warehouses.ts:storeIsPlaced' and ':warehousesOfStore' left — the placement door (`/api/inventory/placement`) reads both.
+  // 20/11, rules plan Q4a: the owner's own rules were an inert table and resolver. 21/11 (Q4c): 'src/lib/confirmation-rules.ts:overlapRefusal' and ':CONFIRMATION_RULE_TEMPLATES' left — the rules screen's doors (/api/confirmation/rules, …/[id], …/preview) read both.
   // 19/11 (W2a): 'src/lib/warehouses.ts:reachesWarehouse' left — the receiving and production doors ask it for the warehouse a placed store's units land in.
 };
 

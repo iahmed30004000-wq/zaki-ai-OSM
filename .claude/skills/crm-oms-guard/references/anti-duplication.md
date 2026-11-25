@@ -111,6 +111,27 @@ units still live only in batches. Extend `src/lib/warehouses.ts`; never add a se
 (19/11, W1a) A store becomes «placed» once: `WarehousePlacement` (one row per store) + `src/lib/warehouse-placement.ts`
 (`storeIsPlaced` reads the row). Units change place inside one store ONLY through `src/lib/batch-split.ts`
 (`splitBatch`: a twin row, `quantityProduced` 0, the parent's cost and dates) — never draw-down + receive.
+(20/11, W8a) A COMBINATION's count (size/colour, `ProductVariant.onHand`) was already its own number beside the batches;
+in a placed store it is split per warehouse in `ProductVariantStock` (one «بلا مكان» row with no warehouse) and written
+ONLY by `src/lib/variant-stock.ts` (`onHand` = Σ of the places; a `VariantStockMovement` line per change). The product's
+units still live only in batches — this splits the existing combination count, it is not a second count of the product.
+(20/11, W3a) A transfer between two warehouses of ONE store: `StockTransfer` + `StockTransferLine` and
+`src/lib/stock-transfers.ts` (send = split into twins on the road, receive by count, a shortfall approved by a third person,
+cancel before receipt; kind read by `stock-transfer-kind.ts`). Between stores / countries is NOT built (refused by the door).
+(20/11, W6a) Goods out of a warehouse for good (not a sale): `StockExit` + `StockExitLine` and `src/lib/stock-exits.ts`
+(request with one reason of `stock-exit-reasons.ts` → held in the free stock → a DIFFERENT person approves through
+`receiving.drawDownStock` with `warehouseId`, or rejects). The free stock of a warehouse is ONE function: `stock-transfers.freeStockOf`.
+Nothing posted to a profit, a wallet or an expense.
+(20/11, W7a) The same article in two stores: `ProductPair` and `src/lib/product-pairs.ts` (proposed by equal sku, then equal
+name — `order-parser.foldForMatch` — and SAVED by a person; one twin per product per other store, held by the database's
+unique keys). Doors `/api/inventory/pairs` (key `inventory.transfer`). Nothing reads it yet — the transfer between stores
+(W7b) will; never link two stores' products another way.
+
+(22/11, F3) A PARTNER'S WITHDRAWAL has TWO records, on purpose for now: the cash one is the wallet movement of category
+PARTNER_DRAW (`/api/finance/partners/draws`, read by `partner-statement.ts`); the RECORD-ONLY one is `PartnerWithdrawal` +
+`PartnerStandingAmount` and `src/lib/partner-withdrawals.ts` (tab «المسحوبات» on «الأرباح», key `finance.partners`): per store and
+currency, totals never across currencies, a cancel is a reversing row. It moves no wallet, and no profit or statement reads it —
+linking it to the cash (a movement behind an approval) is the open follow-up. Never add a third.
 
 **This list rots.** It was written at Stage 0 and went eleven stages
 without being re-run, by which point every line but two was false — and one

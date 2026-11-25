@@ -35,12 +35,17 @@ import { automaticReleaseMetadata, releaseNotice } from './auto-release';
 import { promiseArrived, workFirstGate, type WorkFirstRefusal } from './work-first';
 import { queuePrioritySwitch } from './queue-priority-switch';
 import { modesInMinutes, readQueueModes } from './queue-modes-settings';
-import { freshSince, isAged, queueModeAt, QUEUE_PRIORITY_LIMITS, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { QUEUE_PRIORITY, freshSince, isAged, queueModeAt, wantsBacklog, type PullLane, type QueueMode } from './queue-priority';
+import { confirmationRuleOnce, type RuleNow } from './confirmation-rule-settings';
+import { PULL_PACE } from './confirmation-rules';
+import { NOBODY_NAMED, confirmationRulesOnce, employeeNumbers, employeeNumbersOf, namedByRules, pullPaceOf, type HerAsk, type RulesNow } from './employee-numbers';
 
 import { RETURNS_MODE } from './returns-mode';
 // The mode's two numbers are DEFINED in `returns-mode.ts` (a file with no imports, so the release notice in `auto-release.ts` — which a screen imports — can say them without dragging a rules module into the desk's bundle) and re-exported here: every importer is unchanged.
 export { RETURNS_MODE };
 import { readBacklogShare, recentPullLanes } from './queue-priority-share';
+import { priorityBoostOf, type PriorityBoost } from './priority-rules';
+import { ROUTED_EMPTY_MESSAGE } from './routing-rules';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -77,10 +82,11 @@ export const CLAIM_CAPS = { withoutAttempt: 40, total: 500 } as const;
 
 /**
  * HOW FAST SHE MAY PULL (the owner, 8/11: «كيف نمنعهم يسحبو طلبات بسرعة مهولة»): at most `perHour` pulls in any rolling
- * `windowMinutes`. The caps above bound how MANY she holds, not how FAST she takes them. The only place the numbers live —
- * `pullPaceRefusal` and its sentence read them here.
+ * `windowMinutes`. The caps above bound how MANY she holds, not how FAST she takes them. `pullPaceRefusal` and its sentence read
+ * them. Request Q4b (21/11): the object is DEFINED in `confirmation-rules.ts` (an owner's rule may change one person's `perHour`, and
+ * the resolver reads its base there) and re-exported here, so every importer is unchanged.
  */
-export const PULL_PACE = { perHour: 40, windowMinutes: 60 } as const;
+export { PULL_PACE };
 
 /** The reason the pull writes on the history line of the order it hands out — and the one the pace counts. */
 const PULL_NEXT_REASON = 'PULL_NEXT';
@@ -803,21 +809,22 @@ function minutesInArabic(minutes: number): string {
 }
 
 /** What she pulled, the limit, and when the pull opens — and what to do meanwhile. */
-function pullTooFastMessage(pulled: number, opensInMinutes: number): string {
-  return `سحبت ${pulled} طلباً خلال آخر ${PULL_PACE.windowMinutes} دقيقة — الحد ${PULL_PACE.perHour}. اشتغل على اللي بإيدك، والسحب بيفتح بعد ${minutesInArabic(opensInMinutes)}.`;
+function pullTooFastMessage(pulled: number, opensInMinutes: number, perHour: number): string {
+  return `سحبت ${pulled} طلباً خلال آخر ${PULL_PACE.windowMinutes} دقيقة — الحد ${perHour}. اشتغل على اللي بإيدك، والسحب بيفتح بعد ${minutesInArabic(opensInMinutes)}.`;
 }
 
 /**
  * Is she pulling faster than the pace allows? `pulledAt` are the times of her pulls inside the window, in any order
- * (`recentPullTimes` reads them). Pure: the same rule answers the pull and its tests.
+ * (`recentPullTimes` reads them). Pure: the same rule answers the pull and its tests. `perHour` is HER pace (request Q4b:
+ * an owner's rule may name her — `pullPaceOf`); left out, the base `PULL_PACE.perHour`, as on main.
  */
-export function pullPaceRefusal(pulledAt: readonly Date[], now: Date): PullRefusal | null {
-  if (pulledAt.length < PULL_PACE.perHour) return null;
+export function pullPaceRefusal(pulledAt: readonly Date[], now: Date, perHour: number = PULL_PACE.perHour): PullRefusal | null {
+  if (pulledAt.length < perHour) return null;
   // The pull whose leaving brings her back under the limit: the `perHour`-th newest — the oldest, when she is exactly at the limit.
-  const mustLeave = [...pulledAt].sort((a, b) => b.getTime() - a.getTime())[PULL_PACE.perHour - 1];
+  const mustLeave = [...pulledAt].sort((a, b) => b.getTime() - a.getTime())[perHour - 1];
   const opensAt = mustLeave.getTime() + PULL_PACE.windowMinutes * 60_000;
   const opensInMinutes = Math.max(1, Math.ceil((opensAt - now.getTime()) / 60_000));
-  return { code: 'PULL_TOO_FAST', message: pullTooFastMessage(pulledAt.length, opensInMinutes) };
+  return { code: 'PULL_TOO_FAST', message: pullTooFastMessage(pulledAt.length, opensInMinutes, perHour) };
 }
 
 /** The times of her pulls inside the window: the lines `pullNextOrder` wrote (`CLAIMED` / `PULL_NEXT`), released since or not. */
@@ -842,8 +849,10 @@ export async function releaseStaleClaims(
   /**
    * «نظام الجولات»: the switch when the caller already read it (the pull reads it before its transaction), and how many it may let go.
    * `returns` is the same for «الطلب يرجع للطابور فوراً»: the mode when the caller already read it (`null` = off), left out = read here.
+   * `rule` is the rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, it is read here when a figure is needed.
+   * `rules` is the owner's own rules as the caller asks them (request Q4b, `confirmationRulesOnce`) — the idle release reads each holder's minutes from them.
    */
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow; rules?: RulesNow } = {}
 ) {
   const stale = await tx.order.findMany({
     where: {
@@ -921,14 +930,20 @@ export async function releaseNoAnswerRounds(
   scope: QueueScope,
   cal: BusinessCalendar,
   now = new Date(),
-  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null } = {}
+  opts: { rounds?: RoundsSwitch; roundsLimit?: number; returns?: ReturnsMode | null; rule?: RuleNow; rules?: RulesNow } = {}
 ): Promise<number> {
   const rounds = opts.rounds ?? (await roundsSwitch(tx, scope.companyId));
   const limit = opts.roundsLimit ?? ROUNDS_RELEASE_LIMIT;
+  // Request Q3b: ONE reading of the rule for the whole pass — the mode's idle cut and the notice's figure come from the same rule.
+  const rule = opts.rule ?? confirmationRuleOnce(tx, scope.companyId, now.getTime());
+  // Request Q4b: the owner's rules, read the same way — each holder's idle minutes (`idlePlanFor`), asked only where an idle release runs.
+  const rules = opts.rules ?? confirmationRulesOnce(tx, scope.companyId, now.getTime());
+  // No room left in the pass is no question at all (the release below asks nothing either).
+  const idle = (returns: ReturnsMode, room: number) => (room > 0 ? idlePlanFor(tx, scope, returns, cal, rule, rules) : null);
   if (!roundsOn(rounds)) {
     // The cadence (step B) brings the returns mode with it, so ITS idle release runs without «نظام الجولات» — but only when the CALLER handed the cadence mode in (the pull does,
     // through `releaseStaleClaims`; the job's first transaction passes no mode and still answers 0 without one query). R1 (`releaseByRounds`) stays the rounds' own.
-    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit) : 0;
+    return opts.returns?.cadence ? releaseIdleReturns(tx, scope, opts.returns, limit, rule, await idle(opts.returns, limit)) : 0;
   }
   /*
    * REQUEST C2 (18/11): THE ROUNDS' RELEASES STOP WHILE THE PLAN IS ON. «نظام الجولات» stored on beside «إثبات المكالمات وجدول المحاولات» used to keep its three
@@ -936,13 +951,58 @@ export async function releaseNoAnswerRounds(
    * plan holds. With the plan on only the plan's own idle release runs (20 working minutes), under the same bound. The mode the caller handed in says it (`cadence`); a
    * caller that handed none has it read here. The plan off: the lines below, as ever.
    */
-  const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds }) : null;
-  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit);
+  const planReturns = opts.returns !== undefined ? (opts.returns?.cadence ? opts.returns : null) : (await cadenceSince(tx, scope.companyId)) ? await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule }) : null;
+  if (planReturns) return releaseIdleReturns(tx, scope, planReturns, limit, rule, await idle(planReturns, limit));
   const released = await releaseByRounds(tx, scope, cal, now, rounds, limit);
-  const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds });
+  const returns = opts.returns !== undefined ? opts.returns : await readReturnsMode(tx, scope.companyId, { now, calendar: () => cal, rounds, rule });
   // ONE bound for the pass (RV1660): the idle release takes only what the rounds release left of `limit`, so a pass never lets go of
   // more than `limit` in all — 200 in the job’s one short transaction, 25 inside a pull — whichever of the two rules an old order meets.
-  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released))) : released;
+  return returns ? released + (await releaseIdleReturns(tx, scope, returns, Math.max(0, limit - released), rule, await idle(returns, limit - released))) : released;
+}
+
+/**
+ * EACH HOLDER'S OWN IDLE MINUTES (request Q4b, 21/11) — the plan of one pass of the idle release, or null when every holder's minutes are the base rule's (then the pass is
+ * main's, query for query).
+ *
+ * A rule of the owner changes the idle minutes of the people it names (or of everyone in a store, at some hours). The release used to place ONE cut for the whole store;
+ * now every holder is judged by HER minutes: `everyone` is the cut of whoever no rule names (the base, or a rule for everyone), and `named` holds the cut of each person a
+ * rule names, by her own minutes — so a colleague is never released by another's minutes. Asked only where the idle minutes come from the base rule at all (the plan on, or
+ * «أولوية الطابور» — exactly `limitsOf`'s question); with `RETURNS_MODE`'s 30 a rule does not act, as with the base rule.
+ */
+export interface IdlePlan {
+  everyone: { cut: Date; minutes: number };
+  named: ReadonlyMap<string, { cut: Date; minutes: number }>;
+}
+
+export async function idlePlanFor(client: Tx, scope: QueueScope, returns: ReturnsMode, cal: BusinessCalendar, rule: RuleNow, rules: RulesNow): Promise<IdlePlan | null> {
+  const rows = await rules();
+  if (!rows.some((r) => r.kind === 'EMPLOYEE_NUMBERS' && r.companyId === scope.companyId)) return null;
+  const nowMs = returns.now.getTime();
+  if (!returns.cadence && !(await queuePrioritySwitch(client, scope.companyId, nowMs)).enabled) return null;
+  const base = await rule();
+  const clock = workClock(cal);
+  const ctx = { companyId: scope.companyId, base, timezone: cal.timezone, rules: rows };
+  const minutesOf = (id: string) => employeeNumbersOf({ person: { id, storeId: scope.storeId }, now: returns.now }, ctx).idleMinutes.value;
+  const at = (minutes: number) => ({ minutes, cut: returnsMode(returns.now, clock, minutes).idleCut });
+  const named = new Map<string, { cut: Date; minutes: number }>();
+  for (const id of namedByRules(rows, scope.companyId)) named.set(id, at(minutesOf(id)));
+  return { everyone: at(minutesOf(NOBODY_NAMED)), named };
+}
+
+/** `idleHeldWhere` with each holder's own cut (`IdlePlan`): ONE query, one branch for whoever no rule names and one per person a rule names. */
+export function idleHeldWherePerHolder(scope: QueueScope, plan: IdlePlan) {
+  // The fields that do not depend on the cut are `idleHeldWhere`'s own; the three that do are asked per holder below.
+  const perHolder = new Set(['claimedById', 'claimedAt', 'contactAttempts']);
+  const common = Object.fromEntries(Object.entries(idleHeldWhere(scope, { idleCut: plan.everyone.cut })).filter(([k]) => !perHolder.has(k)));
+  const branch = (cut: Date) => ({ claimedAt: { not: null, lte: cut }, contactAttempts: { none: { createdAt: { gt: cut } } } });
+  const named = [...plan.named.keys()];
+  return {
+    ...common,
+    OR: [
+      { claimedById: named.length ? { not: null, notIn: named } : { not: null }, ...branch(plan.everyone.cut) },
+      ...[...plan.named].map(([holderId, { cut }]) => ({ claimedById: holderId, ...branch(cut) })),
+    ],
+  };
 }
 
 // ───────────────────────── «الطلب يرجع للطابور فوراً» ─────────────────────────
@@ -966,12 +1026,13 @@ export async function returnsModeOn(client: Tx, companyId: string, rounds?: Roun
 export async function readReturnsMode(
   client: Tx,
   companyId: string,
-  args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch }
+  /** `rule`: the rule in force as the caller asks it (request Q3b) — left out, read here (cached) when the figure comes from it. */
+  args: { now: Date; calendar: () => BusinessCalendar; rounds?: RoundsSwitch; rule?: RuleNow }
 ): Promise<ReturnsMode | null> {
   // The cadence is read ONCE per mode: the flag and the floor (`enabledAt`) cannot drift apart. Everything off → null, and the calendar callback is not called.
   const since = await cadenceSince(client, companyId);
   if (!since && !(await legacyReturnsModeOn(client, companyId, args.rounds))) return null;
-  return returnsMode(args.now, workClock(args.calendar()), (await limitsOf(client, companyId, args.now.getTime(), !!since)).idleBusinessMinutes, since);
+  return returnsMode(args.now, workClock(args.calendar()), (await limitsOf(client, companyId, args.now.getTime(), !!since, args.rule)).idleBusinessMinutes, since);
 }
 
 /**
@@ -979,16 +1040,35 @@ export async function readReturnsMode(
  * `QUEUE_PRIORITY_LIMITS`' 3 and 20. ONE function every reader asks, so no screen can say a figure the release does not use. The switch is a cached read and OFF on any
  * failure, so a failed read is today's numbers.
  */
-export async function returnsLimits(client: Tx, companyId: string, nowMs: number = Date.now()): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+export async function returnsLimits(
+  client: Tx,
+  companyId: string,
+  nowMs: number = Date.now(),
+  /** The rule in force as the caller asks it (request Q3b, `confirmationRuleOnce`) — left out, read here (cached) when the figures come from it. */
+  rule?: RuleNow,
+  /**
+   * Request Q4b: WHO asks — her numbers, where the owner's rules name her (`employeeNumbers`), over the base rule's. Left out, the base rule's numbers, as before
+   * (a screen that speaks for the whole store). Asked only where the figures come from the base rule at all; `RETURNS_MODE` is nobody's rule.
+   */
+  her?: HerAsk
+): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
   // REQUEST C2 (18/11): with «إثبات المكالمات وجدول المحاولات» on, the hand and the idle release are the one rule set's — 3 and 20 — WHATEVER «أولوية الطابور» says.
   // The plan is asked first (a cached read); off, or unreadable, this is the line it always was.
-  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)));
+  return limitsOf(client, companyId, nowMs, !!(await cadenceSince(client, companyId)), rule, her);
 }
 
-/** `returnsLimits` for a caller that already read the plan (`readReturnsMode` reads it ONCE per mode, so the flag, the floor and the figure cannot drift apart). */
-async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
-  if (planOn) return QUEUE_PRIORITY_LIMITS;
-  return (await queuePrioritySwitch(client, companyId, nowMs)).enabled ? QUEUE_PRIORITY_LIMITS : RETURNS_MODE;
+/**
+ * `returnsLimits` for a caller that already read the plan (`readReturnsMode` reads it ONCE per mode, so the flag, the floor and the figure cannot drift apart).
+ * REQUEST Q3b (19/11): where the figures were `QUEUE_PRIORITY_LIMITS` (the default rule's 3 and 20) they are now the RULE IN FORCE's hand and idle minutes — read only
+ * then, so with both switches off nothing new is read and the answer is `RETURNS_MODE`, as ever.
+ */
+async function limitsOf(client: Tx, companyId: string, nowMs: number, planOn: boolean, rule?: RuleNow, her?: HerAsk): Promise<{ handLimit: number; idleBusinessMinutes: number }> {
+  if (!planOn && !(await queuePrioritySwitch(client, companyId, nowMs)).enabled) return RETURNS_MODE;
+  const r = await (rule ?? confirmationRuleOnce(client, companyId, nowMs))();
+  if (!her) return { handLimit: r.hand, idleBusinessMinutes: r.idleMinutes };
+  // Request Q4b: her own numbers over this very base rule (no rule naming her → the base's, the same two figures).
+  const mine = await employeeNumbers(client, companyId, nowMs, r, her);
+  return { handLimit: mine.hand.value, idleBusinessMinutes: mine.idleMinutes.value };
 }
 
 /**
@@ -1136,26 +1216,37 @@ export function idleHeldWhere(scope: QueueScope, returns: Pick<ReturnsMode, 'idl
  * customer's other orders held for her go back with it, as the rounds release lets them go: nobody is working this customer, so
  * whoever takes the order next takes him whole.
  */
-export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: ReturnsMode, limit: number = ROUNDS_RELEASE_LIMIT): Promise<number> {
+export async function releaseIdleReturns(
+  tx: Tx,
+  scope: QueueScope,
+  returns: ReturnsMode,
+  limit: number = ROUNDS_RELEASE_LIMIT,
+  rule?: RuleNow,
+  /** Request Q4b: each holder's own minutes (`idlePlanFor`). Null or left out = one cut for everyone, `returns.idleCut` — main's pass, query for query. */
+  idle?: IdlePlan | null
+): Promise<number> {
   if (limit <= 0) return 0;
   const rows = await tx.order.findMany({
-    where: idleHeldWhere(scope, returns),
+    where: idle ? idleHeldWherePerHolder(scope, idle) : idleHeldWhere(scope, returns),
     orderBy: { claimedAt: 'asc' },
     take: limit,
     select: { id: true, claimedAt: true, claimedById: true, companyId: true, customerId: true, orderNumber: true },
   });
-  const told: { holderId: string; orderNumber: string }[] = [];
+  /** The holder's own cut and minutes — the one she is judged by, at the read and again at the write. */
+  const hers = (holderId: string) => (idle ? (idle.named.get(holderId) ?? idle.everyone) : null);
+  const told: { holderId: string; orderNumber: string; idleMinutes?: number }[] = [];
   for (const row of rows) {
+    const own = hers(row.claimedById!);
     const gone = await returnToThePool(tx, {
       companyId: row.companyId,
       orderId: row.id,
       holderId: row.claimedById!,
       reason: IDLE_RETURNED_REASON,
       claimedAt: row.claimedAt,
-      notLoggedSince: returns.idleCut,
+      notLoggedSince: own ? own.cut : returns.idleCut,
     });
     if (!gone) continue;
-    told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber });
+    told.push({ holderId: row.claimedById!, orderNumber: row.orderNumber, ...(own ? { idleMinutes: own.minutes } : {}) });
     if (row.customerId) {
       await tx.order.updateMany({
         where: {
@@ -1175,9 +1266,12 @@ export async function releaseIdleReturns(tx: Tx, scope: QueueScope, returns: Ret
   }
   if (told.length) {
     // The notice says the limit the release USED: asked of `returnsLimits`, the one function every reader asks (30, or 20 with «أولوية الطابور»). `ReturnsMode` itself carries no figure: its shape is pinned key for key.
-    const idleMinutes = (await returnsLimits(tx, scope.companyId, returns.now.getTime())).idleBusinessMinutes;
+    // With each holder's own minutes (Q4b) the notice says HERS — the figure her order was released by.
+    const idleMinutes = idle ? 0 : (await returnsLimits(tx, scope.companyId, returns.now.getTime(), rule)).idleBusinessMinutes;
     await tx.notification.createMany({
-      data: told.map((n) => releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes })),
+      data: told.map(({ idleMinutes: own, ...n }) =>
+        releaseNotice({ companyId: scope.companyId, storeId: scope.storeId, ...n, reason: IDLE_RETURNED_REASON, idleMinutes: own ?? idleMinutes })
+      ),
     });
   }
   return told.length;
@@ -1660,13 +1754,16 @@ export async function pickPromiseArrived(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5b: only the orders the owner's routing rules let this puller take (`routing-rules.ts`). Absent = main's query byte for byte. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
   const rows = await tx.order.findMany({
     where: {
       AND: [
         { OR: [readyToPullWhere(scope, forUserId, now, returns), duePostponedWhere(scope, now, returns)] },
         { OR: [{ postponedUntil: { not: null } }, { nextFollowUpAt: { not: null } }] },
+        ...(only ? [only] : []),
       ],
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -1688,9 +1785,11 @@ export async function pickMostOverdueRetry(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5b: the routing filter of this puller; absent = main's. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
-  return (await pickRetryWithDue(tx, scope, now, forUserId, returns))?.id ?? null;
+  return (await pickRetryWithDue(tx, scope, now, forUserId, returns, undefined, only))?.id ?? null;
 }
 
 /** 4a with its due: the same read and the same rank as `pickMostOverdueRetry` (which is this, id only), for the aging rule of step D, which asks how long the retry has waited. */
@@ -1699,13 +1798,19 @@ export async function pickRetryWithDue(
   scope: QueueScope,
   now: Date,
   forUserId: string | undefined,
-  returns: ReturnsMode
+  returns: ReturnsMode,
+  /** Request Q5a: only the orders an owner's «هالطلبات أول» rule names (`PriorityBoost.RETRY`). Absent = every ready retry, main's query byte for byte. */
+  boosted?: Prisma.OrderWhereInput,
+  /** Request Q5b: only the orders the routing rules let this puller take. Absent = main's query byte for byte. */
+  only?: Prisma.OrderWhereInput
 ): Promise<{ id: string; due: number } | null> {
   const since = returns.cadence?.since;
   if (!since) return null;
   const lines = cadenceDueLineWhere(since);
+  const ready = { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } };
+  const extra = [...(boosted ? [boosted] : []), ...(only ? [only] : [])];
   const rows = await tx.order.findMany({
-    where: { ...readyToPullWhere(scope, forUserId, now, returns), contactAttempts: { some: lines } },
+    where: extra.length ? { AND: [ready, ...extra] } : ready,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: RETRY_SCAN_PAGE,
     select: { id: true, createdAt: true, contactAttempts: { where: lines, select: { result: true, createdAt: true, nextFollowUpAt: true } } },
@@ -1721,18 +1826,51 @@ export async function pickRetryWithDue(
 export interface PriorityPlan {
   mode: QueueMode;
   backlogTurn: boolean;
+  /** «Fresh» is younger than this many minutes — the rule in force's (request Q3b), read with the plan before the transaction. Absent = the default 15. */
+  freshMinutes?: number;
+  /**
+   * «هالطلبات أول» (request Q5a): the orders the owner's PRIORITY rules in force put first INSIDE each tier of the pick (`priority-rules.ts`), made from the pull's one
+   * cached read of the rules. Absent — no such rule in force, or one that names every order — and the pick is main's, statement for statement.
+   */
+  boost?: PriorityBoost;
 }
 
 /** Read the plan before the pull's transaction (cached reads). Any failure is «no plan»: the old pull. */
-export async function priorityPlanFor(client: Tx, scope: QueueScope, userId: string, cal: BusinessCalendar, now: Date): Promise<PriorityPlan | null> {
+export async function priorityPlanFor(
+  client: Tx,
+  scope: QueueScope,
+  userId: string,
+  cal: BusinessCalendar,
+  now: Date,
+  /** The rule in force as the caller asks it (request Q3b) — left out, read here (cached). Asked only with the key on. */
+  rule?: RuleNow,
+  /** The owner's own rules as the caller already reads them (request Q5a: the pull's one cached read) — left out, read here (cached). Asked only in the ordinary mode. */
+  rules?: RulesNow
+): Promise<PriorityPlan | null> {
   try {
     if (!(await queuePrioritySwitch(client, scope.companyId, now.getTime())).enabled) return null;
+    // Request Q3b: the fresh minutes of the rule in force, read here — BEFORE the pull's transaction — and carried in the plan, so the pick adds no statement. Carried only
+    // when they differ from the default: with the default rule the plan is main's object, key for key (absent = the default 15 in `freshSince`).
+    const read = (await (rule ?? confirmationRuleOnce(client, scope.companyId, now.getTime()))()).freshMinutes;
+    const fresh = read === QUEUE_PRIORITY.freshMinutes ? {} : { freshMinutes: read };
     const local = zonedParts(now, cal.timezone);
     // The owner's hours for the two modes (step D2); the study's where none are saved.
     const mode = queueModeAt(local.hour * 60 + local.minute, modesInMinutes(await readQueueModes(client, scope.companyId, now.getTime())));
-    if (mode !== 'NORMAL') return { mode, backlogTurn: false };
-    const [reading, recent] = await Promise.all([readBacklogShare(client, scope, now, OPEN_CONFIRMATION), recentPullLanes(client, userId)]);
-    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent) };
+    if (mode !== 'NORMAL') return { mode, backlogTurn: false, ...fresh };
+    const [reading, recent, ownRules] = await Promise.all([
+      readBacklogShare(client, scope, now, OPEN_CONFIRMATION),
+      recentPullLanes(client, userId),
+      (rules ?? confirmationRulesOnce(client, scope.companyId, now.getTime()))(),
+    ]);
+    // Request Q5a: carried only when a PRIORITY rule in force reorders something — otherwise the plan is main's object, key for key.
+    // A rule that cannot be read into a filter costs only itself: no boost, and the plan stands.
+    let boost: PriorityBoost | null = null;
+    try {
+      boost = priorityBoostOf(ownRules, { companyId: scope.companyId, storeId: scope.storeId, now, timezone: cal.timezone });
+    } catch {
+      boost = null;
+    }
+    return { mode, backlogTurn: wantsBacklog(reading.result.share, recent), ...fresh, ...(boost ? { boost } : {}) };
   } catch {
     return null;
   }
@@ -1762,35 +1900,57 @@ async function pickByPriority(
   forUserId: string | undefined,
   returns: ReturnsMode | undefined,
   plan: PriorityPlan,
-  memo: ScanMemo = {}
+  memo: ScanMemo = {},
+  /** Request Q5b: the routing filter of this puller (`routing-rules.ts`), ANDed into every query below. Absent = main's statements. */
+  only?: Prisma.OrderWhereInput
 ): Promise<string | null> {
   if (plan.mode !== 'NORMAL') return null;
+  const routed = <W extends object>(w: W) => (only ? { AND: [w, only] } : w);
   const neverRung = { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } };
   const oldestNew = async (extra: object = {}) =>
-    (await tx.order.findFirst({ where: { ...neverRung, ...extra }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
+    (await tx.order.findFirst({ where: routed({ ...neverRung, ...extra }), orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null;
+  // «هالطلبات أول» (request Q5a): inside a tier, the boosted orders first — the tier's own query with the rule's filter beside it (`AND`, so no key of the
+  // tier's predicate is replaced), then the tier as on main. No boost = never asked: the statements are main's.
+  const boost = plan.boost;
+  const oldestNewBoosted = async (extra: object = {}) =>
+    boost?.NEW
+      ? (await tx.order.findFirst({ where: { AND: [{ ...neverRung, ...extra }, boost.NEW, ...(only ? [only] : [])] }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id ?? null
+      : null;
 
+  // The customer's promise is never boosted and never passed: its order is the customer's date.
   if (returns?.cadence) {
-    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    const promised = await pickPromiseArrived(tx, scope, now, forUserId, returns, only);
     memo.promise = promised;
     if (promised) return promised;
   }
-  const fresh = await oldestNew({ createdAt: { gt: freshSince(now) } });
+  const freshWhere = { createdAt: { gt: freshSince(now, plan.freshMinutes) } };
+  const fresh = (await oldestNewBoosted(freshWhere)) ?? (await oldestNew(freshWhere));
   if (fresh) return fresh;
 
-  const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns) : null;
+  const retry = returns?.cadence ? await pickRetryWithDue(tx, scope, now, forUserId, returns, undefined, only) : null;
   if (returns?.cadence) memo.retry = retry;
+  // The boosted retries are a part of the ready ones: with none ready there is none boosted, and their scan is not asked.
+  const boostedRetry = retry && boost?.RETRY && returns ? await pickRetryWithDue(tx, scope, now, forUserId, returns, boost.RETRY, only) : null;
+  // The aged tier: a boosted retry that is aged first. One that is not aged is not in this tier — it waits for the backlog's turn like any other retry.
+  if (boostedRetry && isAged(boostedRetry.due, now)) return boostedRetry.id;
   if (retry && isAged(retry.due, now)) return retry.id;
 
   if (plan.backlogTurn) {
+    if (boostedRetry) return boostedRetry.id;
     if (retry) return retry.id;
+    const postponedWhere = returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now);
+    const boostedPostponed = boost?.ANY
+      ? await tx.order.findFirst({ where: { AND: [postponedWhere, boost.ANY, ...(only ? [only] : [])] }, orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }], select: { id: true } })
+      : null;
+    if (boostedPostponed) return boostedPostponed.id;
     const postponed = await tx.order.findFirst({
-      where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
+      where: routed(postponedWhere),
       orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
       select: { id: true },
     });
     if (postponed) return postponed.id;
   }
-  return oldestNew();
+  return (await oldestNewBoosted()) ?? oldestNew();
 }
 
 /**
@@ -1818,9 +1978,20 @@ export async function pickNextCandidate(
   now = new Date(),
   forUserId?: string,
   /** The caller already asked `pickHeldForHer` and found none (the pull does, to know whether the cap grows). */
-  opts: { heldForHerAsked?: boolean; returns?: ReturnsMode | null; priority?: PriorityPlan | null } = {}
+  opts: {
+    heldForHerAsked?: boolean;
+    returns?: ReturnsMode | null;
+    priority?: PriorityPlan | null;
+    /**
+     * «هالطلبات بس لهالموظفات» (request Q5b): the puller's routing filter (`routingWhereForPuller`), ANDed into every query of the pick below — never into what is held
+     * for her. Absent or null = main's statements, byte for byte.
+     */
+    routing?: Prisma.OrderWhereInput | null;
+  } = {}
 ) {
   const returns = opts.returns ?? undefined;
+  const only = opts.routing ?? undefined;
+  const routed = <W extends object>(w: W) => (only ? { AND: [w, only] } : w);
   // THE ORDER HELD FOR HER COMES FIRST: the customer is a returning one and she is the person he spoke to.
   if (forUserId && !opts.heldForHerAsked) {
     const mine = await pickHeldForHer(tx, scope, forUserId, now);
@@ -1831,13 +2002,13 @@ export async function pickNextCandidate(
   // through to the order below, which is also what the two time-of-day modes are.
   const memo: ScanMemo = {};
   if (opts.priority) {
-    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority, memo);
+    const dealt = await pickByPriority(tx, scope, now, forUserId, returns, opts.priority, memo, only);
     if (dealt) return dealt;
   }
 
   // A NEW ORDER BEFORE ANY OTHER: nobody has rung the customer yet. A due postponed order waits behind it.
   const neverRung = await tx.order.findFirst({
-    where: { ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } },
+    where: routed({ ...(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)), contactAttempts: { none: {} } }),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -1847,7 +2018,7 @@ export async function pickNextCandidate(
   // whatever its status (POSTPONED, FOLLOW_UP_REQUIRED, a returned retry the customer asked about…): the pull-side face of the tag on the desk (`promiseArrived`). One read, only under the plan —
   // the legacy mode and OFF never reach it, so their four queries are the old ones. The POSTPONED orders it leaves (a line was logged after their date: they are retries now) are still step 3's, below.
   if (returns?.cadence) {
-    const promised = memo.promise !== undefined ? memo.promise : await pickPromiseArrived(tx, scope, now, forUserId, returns);
+    const promised = memo.promise !== undefined ? memo.promise : await pickPromiseArrived(tx, scope, now, forUserId, returns, only);
     if (promised) return promised;
   }
 
@@ -1855,7 +2026,7 @@ export async function pickNextCandidate(
   // because they are ordered differently: a promise by its date, and
   // everything else by its age.
   const duePostponed = await tx.order.findFirst({
-    where: returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now),
+    where: routed(returns ? duePostponedWhere(scope, now, returns) : duePostponedWhere(scope, now)),
     orderBy: [{ postponedUntil: 'asc' }, { nextFollowUpAt: 'asc' }],
     select: { id: true },
   });
@@ -1864,12 +2035,12 @@ export async function pickNextCandidate(
   // THE RETRIES BY THEIR DUE (the planner's ruling 2) — with the cadence on, a ready retry is ranked by the instant its last counted press made it due, not by its age. A new order and a
   // promise still come before it; an order with no due on a line (legacy returns, an idle release) falls through to the oldest-first query below, exactly as before.
   if (returns?.cadence) {
-    const retry = memo.retry !== undefined ? memo.retry?.id ?? null : await pickMostOverdueRetry(tx, scope, now, forUserId, returns);
+    const retry = memo.retry !== undefined ? memo.retry?.id ?? null : await pickMostOverdueRetry(tx, scope, now, forUserId, returns, only);
     if (retry) return retry;
   }
 
   const oldest = await tx.order.findFirst({
-    where: returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now),
+    where: routed(returns ? readyToPullWhere(scope, forUserId, now, returns) : readyToPullWhere(scope, forUserId, now)),
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
@@ -1916,19 +2087,37 @@ export async function pullNextOrder(
   scope: QueueScope,
   user: { id: string; role: string },
   cal: BusinessCalendar,
-  now = new Date()
+  now = new Date(),
+  /**
+   * «هالطلبات بس لهالموظفات» (request Q5b): the puller's routing filter, asked by the DOOR before the pull (`routingWhereForPuller` in `routing-staff.ts`, server only —
+   * this file is reached by client components, so it never imports what reads people). Absent or null = main's pick, statement for statement.
+   */
+  opts: { routing?: Prisma.OrderWhereInput | null } = {}
 ): Promise<PullResult> {
   // «نظام الجولات»: read before the transaction (a cached read), so the pull never waits on a second connection for it.
   const rounds = await roundsSwitch(db, scope.companyId);
+  // Request Q3b: the rule in force, asked ONCE for the whole pull and only by what needs a figure of it (a cached read BEFORE the transaction; with both switches off it is
+  // never asked). Every number below — the idle cut, the hand, the fresh minutes, the notice's figure — is this one rule's.
+  const rule = confirmationRuleOnce(db, scope.companyId, now.getTime());
+  // Request Q4b: the owner's own rules, read ONCE for the whole pull, before the transaction (cached thirty seconds: on a warm cache no statement). Her hand, her pace
+  // and each holder's idle minutes in the release below come from them; with no rule they are the base numbers, line for line.
+  const rules = confirmationRulesOnce(db, scope.companyId, now.getTime());
+  await rules();
+  const her: HerAsk = { userId: user.id, storeId: scope.storeId, timezone: cal.timezone, rules };
   // «الطلب يرجع للطابور فوراً»: read the same way (a cached read, and not even asked while the rounds are off). `null` = off, and then
   // everything below is today's, line for line.
-  const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds });
-  // The hand limit the mode hands to every cap question below; left out, each one asks the cap of 500 and says today's words.
-  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime())).handLimit : undefined;
+  const returns = await readReturnsMode(db, scope.companyId, { now, calendar: () => cal, rounds, rule });
+  // The hand limit the mode hands to every cap question below — HERS (Q4b); left out, each one asks the cap of 500 and says today's words.
+  const hand = returns ? (await returnsLimits(db, scope.companyId, now.getTime(), rule, her)).handLimit : undefined;
+  // Her pace (Q4b): the base 40 unless a rule names another for her.
+  const perHour = (await pullPaceOf(db, scope.companyId, now.getTime(), her, rule)).value;
   // QUEUE PRIORITY v2 (step D1): decided before the transaction, from cached reads; null (the key off, or a read failed) = the old order, query for query.
-  const priority = await priorityPlanFor(db, scope, user.id, cal, now);
+  const priority = await priorityPlanFor(db, scope, user.id, cal, now, rule, rules);
+  // «هالطلبات بس لهالموظفات» (request Q5b): which orders the owner's routing rules let HER take — handed in by the door. null = main's pick, statement for statement.
+  const routing = opts.routing ?? null;
+  // The rule's reading has been made (or was not needed) before the transaction: the release below re-uses it, so the transaction asks the database nothing new.
   return db.$transaction(async (tx) => {
-    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns });
+    const released = await releaseStaleClaims(tx, scope, cal, now, { rounds, roundsLimit: PULL_ROUNDS_RELEASE_LIMIT, returns, rule, rules });
 
     const counts = await ownedCounts(tx, scope, user.id, now);
     const refusal = hand === undefined ? pullRefusal(counts) : pullRefusal(counts, undefined, hand);
@@ -1940,14 +2129,14 @@ export async function pullNextOrder(
     if (owed) return { ok: false, refusal: owed, released };
     // THE PACE, LAST among the refusals (the owner, 8/11): the untouched order and the caps above are the more useful sentence, and keep
     // theirs. A refusal here returns before anything is picked — no lock, no claim, no row.
-    const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now);
+    const tooFast = pullPaceRefusal(await recentPullTimes(tx, user.id, now), now, perHour);
     if (tooFast) return { ok: false, refusal: tooFast, released };
     // AT THE CAP WITH HOLDS (RV706): only an order held for her — it is already counted, so taking it does not grow the load.
     const atCap = capLoad(counts) >= (hand ?? CLAIM_CAPS.total);
 
     for (let attempt = 0; attempt < 5; attempt++) {
       const hers = await pickHeldForHer(tx, scope, user.id, now);
-      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns, priority }));
+      const candidate = hers ?? (atCap ? null : await pickNextCandidate(tx, scope, now, user.id, { heldForHerAsked: true, returns, priority, ...(routing ? { routing } : {}) }));
       if (!candidate) {
         // At the cap and nothing held for her is left to take (a hold let go between the count and here): the cap's sentence.
         if (atCap) return { ok: false, released, refusal: capRefusal(counts, false, hand)! };
@@ -1955,7 +2144,8 @@ export async function pullNextOrder(
           ok: false,
           released,
           waiting: 0,
-          refusal: { code: 'QUEUE_EMPTY', message: 'لا توجد طلبات بانتظار التأكيد الآن.' },
+          // A routing rule kept some orders for colleagues: the sentence says so (the code is the same).
+          refusal: { code: 'QUEUE_EMPTY', message: routing ? ROUTED_EMPTY_MESSAGE : 'لا توجد طلبات بانتظار التأكيد الآن.' },
         };
       }
 

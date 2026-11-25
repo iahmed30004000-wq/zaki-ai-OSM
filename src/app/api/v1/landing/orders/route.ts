@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSystemToken } from '@/lib/v1/system-token';
+import { LANDING_DOOR, idempotencySlot, scopeOf } from '@/lib/v1/landing-country';
 import { V1_CODE, V1Fault, requestIdOf, v1ErrorResponse, v1Ok } from '@/lib/v1/door';
 import {
   claimIdempotency,
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   const requestId = requestIdOf(req);
   let claimed: { companyId: string; key: string } | null = null;
   try {
-    const caller = await requireSystemToken(req, 'orders.create');
+    const caller = await requireSystemToken(req, 'orders.create', LANDING_DOOR);
     const raw = await req.text();
     let payload: unknown;
     try {
@@ -37,13 +38,13 @@ export async function POST(req: Request) {
       });
     }
 
-    const key = idempotencyKeyOf(req);
+    const key = idempotencySlot(caller, idempotencyKeyOf(req));
     const fingerprint = requestFingerprint('POST', new URL(req.url).pathname, raw);
     const replay = await claimIdempotency(caller.companyId, key, fingerprint);
     if (replay) return v1Ok(requestId, replay.body as Record<string, unknown>, replay.status);
     claimed = { companyId: caller.companyId, key };
 
-    const result = await takeLandingOrder(caller.companyId, parsed.data);
+    const result = await takeLandingOrder(caller.companyId, parsed.data, scopeOf(caller));
     if (!result.ok) {
       await releaseIdempotency(claimed.companyId, claimed.key);
       claimed = null;

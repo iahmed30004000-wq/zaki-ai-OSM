@@ -271,20 +271,37 @@ describe('THE CURRENCY: a wallet in another currency than the store’s', () => 
     answers.wallet = JOD_WALLET;
   });
 
-  it('asks «ما يعادله بعملة المتجر (USD)» — required — and the button waits for it', async () => {
+  // 23/11 (F7) — UPDATED. Old: «ما يعادله» was required, with a sentence asking for the rate, and the button waited for it. New: it is
+  // OPTIONAL and empty — no rate is asked anywhere on this path; a figure typed there must still be above zero. Why: «بدون ما يجيني
+  // سعر الصرف» (the owner).
+  it('offers «ما يعادله بعملة المتجر (USD)» as OPTIONAL — empty never blocks, and no rate is asked', async () => {
     as('finance.partners');
     const dialog = await openDialog();
     await chooseDraw(dialog);
     const box = valueBox(dialog)!;
     expect(box).toBeTruthy();
-    expect(box.required).toBe(true);
-    expect(within(dialog).getByText('ما يعادله بعملة المتجر (USD)')).toBeTruthy();
-    expect(within(dialog).getByText(/غير عملة المتجر \(USD\)/)).toBeTruthy();
+    expect(box.required).toBe(false);
+    expect(box.value).toBe('');
+    expect(within(dialog).getByText('ما يعادله بعملة المتجر (USD) — اختياري')).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(/سعر الصرف|اكتب كم بيساوي/);
     fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
     fireEvent.change(amountBox(dialog), { target: { value: '70' } });
+    expect(send(dialog).disabled).toBe(false);
+    fireEvent.change(box, { target: { value: '0' } });
     expect(send(dialog).disabled).toBe(true);
     fireEvent.change(box, { target: { value: '98.7' } });
     expect(send(dialog).disabled).toBe(false);
+  });
+
+  it('sent without «ما يعادله»: only the wallet’s amount goes, in its own currency', async () => {
+    as('finance.partners');
+    const dialog = await openDialog();
+    await chooseDraw(dialog);
+    fireEvent.change(partnerBox(dialog), { target: { value: 'pa' } });
+    fireEvent.change(amountBox(dialog), { target: { value: '1000' } });
+    fireEvent.click(send(dialog));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0].body).toEqual({ walletId: 'w2', partnerId: 'pa', amount: '1000' });
   });
 
   it('sends both figures as typed: the wallet’s amount and the store’s equivalent', async () => {
@@ -396,7 +413,9 @@ describe('every OTHER kind still sends exactly what it sent', () => {
     expect(writes()[0]).toEqual({
       url: '/api/finance/wallets/w1/movements',
       method: 'POST',
-      body: { direction: 'OUT', amount: 25.5, party: 'مورّد', category: 'ADJUSTMENT', note: 'دفعة شهرية' },
+      // UPDATED 22/11 (the real date): the hand movement's body also carries «تاريخ الحركة الفعلي» (the box's ISO moment, now by
+      // default). Old: the five keys alone. The draw's own body is untouched — the box is not drawn for a draw.
+      body: { direction: 'OUT', amount: 25.5, party: 'مورّد', category: 'ADJUSTMENT', note: 'دفعة شهرية', occurredAt: expect.any(String) },
     });
   });
 

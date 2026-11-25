@@ -23,11 +23,11 @@ export const ENTITY_AR: Record<string, string> = {
   StoreFont: 'خط المتجر', StoreRedirect: 'تحويل رابط', LandingPage: 'صفحة هبوط', Wallet: 'محفظة', WalletMovement: 'حركة محفظة',
   WalletTransfer: 'تحويل بين محافظ', CourierStatement: 'كشف مندوب', SettlementMatch: 'مطابقة كشف', DailyClosing: 'إغلاق يومي',
   Expense: 'مصروف', Payslip: 'قسيمة راتب', CommissionRule: 'قاعدة عمولة', CommissionEntry: 'عمولة', CommissionPayout: 'صرف عمولات',
-  PenaltyRule: 'قاعدة غرامة', DeliveryProvider: 'شركة شحن', DeliveryFee: 'أجرة توصيل', ShippingBatch: 'دفعة شحن',
+  PenaltyRule: 'قاعدة غرامة', ConfirmationRule: 'قاعدة خاصة لمركز التأكيد', DeliveryProvider: 'شركة شحن', DeliveryFee: 'أجرة توصيل', ShippingBatch: 'دفعة شحن',
   Region: 'منطقة', Country: 'دولة', AdAccount: 'حساب إعلانات', Campaign: 'حملة', TrackingPixel: 'بكسل تتبّع',
   CustomConversion: 'تحويل مخصّص', TelegramSource: 'مصدر تلجرام', TelegramWebhook: 'ويب هوك تلجرام', WhatsAppConnection: 'ربط واتساب',
   WhatsAppConversation: 'محادثة واتساب', WhatsAppMessage: 'رسالة واتساب', SystemToken: 'مفتاح نظام', SystemSetting: 'إعداد نظام',
-  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك', Warehouse: 'مخزن',
+  App: 'تطبيق', AppInstall: 'تثبيت تطبيق', JobRun: 'مهمة مجدولة', Partner: 'شريك', PartnerWithdrawal: 'مسحوب شريك', PartnerStandingAmount: 'مبلغ ثابت لمسحوبات شريك', Warehouse: 'مخزن',
 };
 
 /** The last word of an action code, as a verb. Applied to the row's own record kind. */
@@ -56,7 +56,7 @@ const ACTION_AR: Record<string, string> = {
   ORDER_ISSUE_CORRECTED: 'تصحيح إشكال طلب', ORDER_VOIDED_AFTER_ISSUE: 'إبطال طلب بعد إشكال', ORDER_WRITTEN_OFF: 'شطب طلب', LEGACY_CLOSED_NO_MONEY: 'قفل طلبات قديمة بلا باركود كمحصَّلة (بلا حركة مال)', PICKED_CLOSED_NO_MONEY: 'قفل طلبات محدَّدة بيد المالك كمحصَّلة (بلا حركة مال)',
   ORDERS_EXPORTED: 'تصدير طلبات', SHIPPING_STATUS_CHANGED: 'تغيير حالة الشحن', SHIPPING_INFO_UPDATED: 'تعديل معلومات الشحن', DELIVERY_FEE_CHANGED: 'تغيير أجرة التوصيل',
   SHIPPING_BATCH_OUT_FOR_DELIVERY: 'خروج دفعة شحن للتوصيل',
-  DELIVERY_UNDONE: 'تراجع عن تسجيل تسليم طلب',
+  DELIVERY_UNDONE: 'تراجع عن تسجيل تسليم طلب', RETURN_UNDONE: 'تراجع عن تسجيل مرتجع طلب',
   COURIER_SEND_CLEARED: 'فكّ إرسال عالق للشركة', SHIPMENT_CANCEL_COURIER_TOLD: 'إبلاغ الشركة بإلغاء طرد', PARCEL_ATTESTED_IN_HAND: 'تأكيد أن الطرد بين يدي المستودع', SHIP_HOLD_SET: 'إيقاف شحن طلب', SHIP_HOLD_RELEASED: 'رفع إيقاف شحن طلب', RETURN_RECEIVED: 'استلام مرتجع', RETURNS_RECEIVED_ALL: 'استلام كل المرتجعات دفعة واحدة', LABELS_PRINTED: 'طباعة بوالص',
   CHANGE_REQUEST_APPROVED: 'اعتماد طلب تعديل', CHANGE_REQUEST_REJECTED: 'رفض طلب تعديل', CHANGE_REQUEST_RAISED: 'رفع طلب تعديل',
   CHANGE_REQUEST_WITHDRAWN: 'سحب طلب تعديل', POSTPONED_RETURNED_TO_QUEUE: 'إرجاع مؤجَّل للطابور',
@@ -76,6 +76,11 @@ const ACTION_AR: Record<string, string> = {
   // «أرقام القاعدة» (`/api/settings/confirmation-rule`, request Q3a of 19/11): a save of the rule's numbers, and a «رجّع» (back to a version, or a pending change cancelled).
   CONFIRMATION_RULE_CHANGED: 'تعديل أرقام قاعدة مركز التأكيد',
   CONFIRMATION_RULE_REVERTED: 'رجوع لنسخة سابقة من أرقام قاعدة مركز التأكيد (أو إلغاء تعديل معلّق)',
+  // «قواعد خاصة» (`/api/confirmation/rules` and `…/[id]`, request Q4c of 21/11): a rule of the owner's written, stopped (never deleted), renamed, or re-dated.
+  CONFIRMATION_OWN_RULE_CREATED: 'إنشاء قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_STOPPED: 'إيقاف قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_RENAMED: 'تغيير اسم قاعدة خاصة لمركز التأكيد',
+  CONFIRMATION_OWN_RULE_DATES_CHANGED: 'تغيير مدة قاعدة خاصة لمركز التأكيد',
   INTEGRATION_SETTING_SAVED: 'حفظ إعداد ربط (واتساب أو تيليجرام)',
   INTEGRATION_SETTING_CLEARED: 'مسح إعداد ربط محفوظ بالموقع',
   LEAD_CONVERTED: 'تحويل ليد لطلب',
@@ -91,6 +96,12 @@ const ACTION_AR: Record<string, string> = {
   WALLET_TRANSFER_REVERSED: 'عكس تحويل بين محافظ',
   // «الشركاء والنسب» and «سحب شريك» (`/api/finance/partners`, `/api/finance/partners/draws`): the shares of the net profit, and a partner's withdrawal.
   PARTNERS_SAVED: 'حفظ الشركاء ونسبهم', PARTNER_DRAW_RECORDED: 'تسجيل سحب شريك',
+  // «المسحوبات» (`/api/finance/partners/withdrawals`, 22/11): a record of what a partner took, its cancel, and the standing amounts.
+  PARTNER_WITHDRAWAL_RECORDED: 'تسجيل مسحوب شريك', PARTNER_WITHDRAWAL_CANCELLED: 'إلغاء مسحوب شريك', PARTNER_STANDING_SAVED: 'حفظ المبالغ الثابتة لمسحوبات شريك',
+  // «أسعار الصرف» (`/api/finance/exchange-rates`, 23/11 F8): the owner's typed rates (the Syrian pound, an override).
+  EXCHANGE_RATES_SAVED: 'حفظ أسعار الصرف اليدوية',
+  // «عبّي السعر للقديم بسعر اليوم» (F8, the owner's exception): old draws priced at today's rate, and one such row edited or cleared.
+  PARTNER_DRAWS_BACKFILLED: 'تعبئة «ما يعادله» لسحوبات قديمة بسعر اليوم (استثناء)', PARTNER_DRAW_EQUIVALENT_EDITED: 'تعديل أو مسح «ما يعادله» لسحب انعبّى بسعر اليوم',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
   STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',
@@ -98,6 +109,18 @@ const ACTION_AR: Record<string, string> = {
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', EXPENSE_VOIDED: 'إلغاء مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
   // The warehouses (`/api/geo/warehouses/**`): created, renamed and stopped read «verb + مخزن»; these two do not end in a verb that says it.
   WAREHOUSE_STARTED: 'تشغيل مخزن', WAREHOUSE_KEEPERS_SET: 'تحديد أمناء مخزن', STOCK_PLACED_IN_WAREHOUSES: 'توزيع المخزون على المخازن',
+  // The stock transfers between a store's warehouses (`/api/inventory/transfers/**`, W3a).
+  STOCK_TRANSFER_SENT: 'إرسال نقل بضاعة', STOCK_TRANSFER_RECEIVED: 'استلام نقل بضاعة', STOCK_TRANSFER_CANCELLED: 'إلغاء نقل بضاعة',
+  STOCK_TRANSFER_DIFFERENCE_APPROVED: 'اعتماد فرق نقل بضاعة',
+  // 20/11 (W7b): the owner's press on a transfer to another country.
+  STOCK_TRANSFER_APPROVED: 'اعتماد نقل بضاعة لبلد تاني',
+  // Goods out of a warehouse for good (`/api/inventory/exits/**`, W6a).
+  STOCK_EXIT_REQUESTED: 'طلب إخراج بضاعة', STOCK_EXIT_APPROVED: 'اعتماد إخراج بضاعة', STOCK_EXIT_REJECTED: 'رفض إخراج بضاعة',
+  // Count sheets of a warehouse (`/api/inventory/counts/**`, W5a).
+  STOCK_COUNT_OPENED: 'فتح ورقة جرد', STOCK_COUNT_ANSWERED: 'كتابة عدّ بورقة جرد', STOCK_COUNT_SUBMITTED: 'تسليم ورقة جرد',
+  STOCK_COUNT_APPROVED: 'اعتماد ورقة جرد', STOCK_COUNT_VOIDED: 'إلغاء ورقة جرد',
+  // The same article in two stores (`/api/inventory/pairs/**`, W7a).
+  PRODUCT_PAIR_SAVED: 'ربط منتج بتوأمه بمتجر تاني', PRODUCT_PAIR_REMOVED: 'شيل ربط منتج بتوأمه',
   STOCK_OPENING_COUNTED: 'جرد افتتاحي للمخزون', SYSTEM_TOKEN_CREATED: 'إنشاء مفتاح نظام', SYSTEM_TOKEN_REVOKED: 'إلغاء مفتاح نظام',
   CUSTOMER_BLOCKED: 'حظر عميل', CUSTOMER_BLOCK_RELEASED: 'رفع حظر عميل', CUSTOMER_BULK_VIEW: 'اطّلاع جماعي على عملاء',
   SETTINGS_UPDATED: 'تعديل إعدادات', JOB_RUN_MANUAL: 'تشغيل مهمة يدوياً', TELEGRAM_MESSAGE_CORRECTED: 'تعديل رسالة تلجرام يدوياً',

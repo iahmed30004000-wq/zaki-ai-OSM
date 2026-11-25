@@ -9,9 +9,11 @@ import { logAudit } from '@/lib/audit';
 import { recordMovement } from '@/lib/wallets';
 import { moneyText } from '@/lib/money';
 import { zodMessage } from '@/lib/zod-message';
-import { readTransfer, transferRefusal, TRANSFER_KIND_LABEL, type TransferSide } from '@/lib/transfer-kind';
-import { readTransferReversals } from '@/lib/transfer-reversal';
+import { readTransfer, transferRefusal, type TransferSide } from '@/lib/transfer-kind';
 import { resolveTransferAmounts } from '@/lib/transfer-rate';
+import { readOccurredAt } from '@/lib/real-date';
+import { transferListRows } from '@/lib/history-export';
+import { NO_FILTERS, transfersWhere } from '@/lib/history-export-core';
 
 /**
  * Wallet-to-wallet transfers — internal, between stores, between countries,
@@ -63,72 +65,26 @@ const createSchema = z.object({
   note: z.string().trim().min(3, 'الملاحظة إلزامية').max(300),
   /** What the screen told the person they were doing, checked server-side. */
   expectKind: z.enum(['INTERNAL', 'BETWEEN_STORES', 'BETWEEN_COUNTRIES', 'EXCHANGE']).optional(),
+  /**
+   * «تاريخ الحركة الفعلي» (22/11): when the transfer really happened, an ISO moment; the transfer and its two legs carry it.
+   * Absent = the registration moment. Read by `readOccurredAt` (future beyond five minutes, malformed, before 2020 → refused).
+   */
+  occurredAt: z.unknown().optional(),
 });
 
 export async function GET() {
   try {
-    const { companyId } = await requireContext();
+    const { companyId, country } = await requireContext();
     await requirePermission('finance.cashbox_view');
 
-    const transfers = await db.walletTransfer.findMany({
-      where: { companyId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    const walletIds = [...new Set(transfers.flatMap((t) => [t.fromWalletId, t.toWalletId]))];
-    const wallets = walletIds.length
-      ? await db.wallet.findMany({
-          where: { id: { in: walletIds } },
-          // The look beside the name, so a row of the history is recognised the way its chip was (lib/wallet-look).
-          select: {
-            id: true, name: true, currencyCode: true, store: { select: { name: true } },
-            imageKey: true, iconKey: true, colorKey: true,
-          },
-        })
-      : [];
-    const walletOf = new Map(wallets.map((w) => [w.id, w]));
-
-    /*
-     * WHAT HAS BEEN REVERSED OF EACH ROW — read from the legs, not from a flag (lib/transfer-reversal).
-     *
-     * The reversing entry used to be heard only by the wallet it was written in; this list kept saying «ساري» over a transfer
-     * whose money had been taken back. One read of the movements that carry these transfers' ids, on the index of
-     * `(referenceType, referenceId)`.
-     */
-    const legRows = transfers.length
-      ? await db.walletMovement.findMany({
-          where: { companyId, referenceType: 'TRANSFER', referenceId: { in: transfers.map((t) => t.id) } },
-          select: { id: true, referenceId: true, walletId: true, reversalOfId: true, reversalReason: true, createdAt: true, createdById: true },
-        })
-      : [];
-    const reversals = readTransferReversals(legRows);
-    const writerIds = [...new Set([...reversals.values()].flatMap((r) => (r.byId ? [r.byId] : [])))];
-    const writers = writerIds.length
-      ? await db.user.findMany({ where: { id: { in: writerIds } }, select: { id: true, name: true } })
-      : [];
-    const nameOf = new Map(writers.map((u) => [u.id, u.name]));
+    // The selected store's day (its country's timezone): «سُجّلت …» only when the two moments fall on different days there.
+    const timeZone = country?.timezone ?? 'Asia/Damascus';
+    // The latest 100 REGISTERED, shown by their real date, then their registration (22/11, lib/real-date). The body lives in
+    // lib/history-export (F5) so the history file reads the same rows; this door's clause is the builder's with no filter.
+    const transfers = await transferListRows(companyId, transfersWhere(companyId, NO_FILTERS, timeZone), 100, timeZone);
 
     return NextResponse.json({
-      transfers: transfers.map((t) => {
-        const reading = reversals.get(t.id);
-        return {
-          ...t,
-          amountOut: Number(t.amountOut),
-          amountIn: Number(t.amountIn),
-          exchangeRate: Number(t.exchangeRate),
-          // The kind as it was RECORDED, not re-read now: a wallet moved to
-          // another store since must not change what this transfer was.
-          kindLabel: TRANSFER_KIND_LABEL[t.kind as keyof typeof TRANSFER_KIND_LABEL] ?? t.kind,
-          from: walletOf.get(t.fromWalletId) ?? null,
-          to: walletOf.get(t.toWalletId) ?? null,
-          state: reading?.state ?? 'ACTIVE',
-          reversedWalletIds: reading?.reversedWalletIds ?? [],
-          reversal:
-            reading && reading.state !== 'ACTIVE'
-              ? { reason: reading.reason, at: reading.at, byName: reading.byId ? (nameOf.get(reading.byId) ?? null) : null }
-              : null,
-        };
-      }),
+      transfers,
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -218,6 +174,10 @@ export async function POST(req: Request) {
     if (input.fromWalletId === input.toWalletId) {
       return NextResponse.json({ error: 'لا يمكن التحويل إلى نفس المحفظة' }, { status: 400 });
     }
+    // The real date, when one was typed; the registration is the database's own and cannot be sent.
+    const real = readOccurredAt(input.occurredAt, new Date());
+    if (!real.ok) return NextResponse.json({ error: real.errorAr, errorAr: real.errorAr, code: real.code }, { status: 400 });
+    const occurredAt = real.value;
 
     /*
      * A REPLAY FINDS ITS OWN ROW AND WRITES NOTHING, BUT ONLY FOR THE DEAL IT RECORDED.
@@ -331,6 +291,7 @@ export async function POST(req: Request) {
             exchangeRate: rate,
             kind: reading.kind,
             note: input.note,
+            ...(occurredAt ? { occurredAt } : {}),
             createdById: user.id,
           },
         });
@@ -338,13 +299,15 @@ export async function POST(req: Request) {
         await recordMovement(tx, {
           companyId, walletId: from.id, direction: 'OUT', amount: amountOut,
           party: `تحويل إلى ${to.name}`, category: 'TRANSFER_OUT',
-          note: input.note, referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
+          note: input.note, referenceType: 'TRANSFER', referenceId: created.id,
+          ...(occurredAt ? { occurredAt } : {}), createdById: user.id,
         });
         await recordMovement(tx, {
           companyId, walletId: to.id, direction: 'IN', amount: amountIn,
           party: `تحويل من ${from.name}`, category: 'TRANSFER_IN',
           note: `${input.note}${exchangeNote}`,
-          referenceType: 'TRANSFER', referenceId: created.id, createdById: user.id,
+          referenceType: 'TRANSFER', referenceId: created.id,
+          ...(occurredAt ? { occurredAt } : {}), createdById: user.id,
         });
 
         return created;
@@ -369,7 +332,7 @@ export async function POST(req: Request) {
       companyId, userId: user.id, action: 'WALLET_TRANSFER',
       entity: 'WalletTransfer', entityId: transfer.id,
       // `entered` is how the person gave the exchange: a rate, the amount that arrived, or nothing (one currency).
-      newData: { kind: reading.kind, from: from.name, to: to.name, amountOut, amountIn, rate, entered },
+      newData: { kind: reading.kind, from: from.name, to: to.name, amountOut, amountIn, rate, entered, ...(occurredAt ? { occurredAt: occurredAt.toISOString() } : {}) },
     });
 
     return NextResponse.json(

@@ -46,6 +46,8 @@ export interface AssertCallProvenArgs {
   result: string;
   door: 'ATTEMPT' | 'STATUS';
   now?: Date;
+  /** The rule in force's proof seconds, read once by the door (request Q3b); absent = the default thirty. */
+  proofSeconds?: number;
 }
 
 /**
@@ -64,7 +66,7 @@ export async function assertCallProven(client: Client, args: AssertCallProvenArg
     if (!paired.ok) throw new CallProofRefusal(paired.code === 'NO_OPENED' ? 'CALL_NOT_STARTED' : 'CALL_NOT_LOGGED', ctx);
     return { durationSeconds: null };
   }
-  const verdict = callProofVerdict({ attempts, employeeId: args.employeeId, claimedAt: args.claimedAt, result: args.result, now });
+  const verdict = callProofVerdict({ attempts, employeeId: args.employeeId, claimedAt: args.claimedAt, result: args.result, now, proofSeconds: args.proofSeconds });
   if (!verdict.ok) {
     if (verdict.code === 'NO_OPENED') throw new CallProofRefusal('CALL_NOT_STARTED', ctx);
     throw new CallProofRefusal('CALL_TOO_SOON', ctx, { waitSeconds: verdict.waitSeconds, unlocksAtMs: verdict.unlocksAtMs });

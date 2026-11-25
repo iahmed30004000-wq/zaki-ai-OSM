@@ -7,6 +7,8 @@ import { logAudit } from '@/lib/audit';
 import { can } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { courierCityGaps } from '@/lib/couriers/city-gaps';
+import { ShipmentPlaceRefused, shipmentPlace, shipmentPlaceBody, shipmentWarehouseChoices } from '@/lib/shipment-warehouse';
+import { reachesWarehouse, warehousesReachedBy } from '@/lib/warehouses';
 
 /**
  * GET  /api/shipping-batches — company-scoped list (with order counts)
@@ -27,16 +29,27 @@ export async function GET(req: Request) {
     const page = readPage(searchParams);
     const limit = readLimit(searchParams, 50, 100);
 
+    /*
+     * W4c — A PLACED STORE ONLY: the warehouses the screen's picker offers, `?warehouse=` narrows the list to one of them,
+     * and every batch carries the name of the warehouse it leaves from. For a store that is not placed `warehouses` is
+     * null: the parameter is not read, the read below is the one it always was, and the answer has no new field.
+     */
+    const warehouses = await shipmentWarehouseChoices(db, { companyId, storeId, reached: (ws) => warehousesReachedBy(user, companyId, ws) });
+    const askedWarehouse = searchParams.get('warehouse');
+    const onlyWarehouse = warehouses && askedWarehouse && warehouses.some((w) => w.id === askedWarehouse) ? askedWarehouse : null;
+    const listWhere = { companyId, storeId, ...(onlyWarehouse ? { warehouseId: onlyWarehouse } : {}) };
+
     const [total, batches] = await Promise.all([
-      db.shippingBatch.count({ where: { companyId, storeId } }),
+      db.shippingBatch.count({ where: listWhere }),
       db.shippingBatch.findMany({
-        where: { companyId, storeId },
+        where: listWhere,
         include: {
           // `apiEnabled` decides whether "رحّل إلى الشركة" means anything
           // for this batch: a manual courier has no server to send to.
           provider: { select: { id: true, name: true, code: true, kind: true, apiEnabled: true, adapterCode: true } },
           creator: { select: { id: true, name: true } },
           _count: { select: { orders: true } },
+          ...(warehouses ? { warehouse: { select: { id: true, name: true } } } : {}),
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -66,6 +79,7 @@ export async function GET(req: Request) {
     const shippedCounts = new Map<string, number>(waiting.map((w) => [w.shippingBatchId as string, w._count._all]));
 
     return NextResponse.json({
+      ...(warehouses ? { warehouses } : {}),
       batches: batches.map((b) => ({ ...b, courierCityGap: gaps.get(b.id) ?? null, shippedCount: shippedCounts.get(b.id) ?? 0 })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
@@ -83,7 +97,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { deliveryProviderId, notes } = body as { deliveryProviderId?: string; notes?: string };
+    const { deliveryProviderId, notes, warehouseId } = body as { deliveryProviderId?: string; notes?: string; warehouseId?: unknown };
 
     let providerId: string | null = null;
     if (deliveryProviderId) {
@@ -92,12 +106,17 @@ export async function POST(req: Request) {
       providerId = provider.id;
     }
 
+    // W4a: a store placed in warehouses names the warehouse the trolley leaves from (one she reaches); `null` for a store
+    // that is not placed, and nothing below changes for it.
+    const place = await shipmentPlace(db, { companyId, storeId, warehouseId, mayUse: (w) => reachesWarehouse(user, companyId, w) });
+
     // One open trolley per courier: everything going to them rides on the
     // same batch until it is handed over. A second open batch splits one
     // pickup into two lists nobody can tell apart afterwards.
     if (providerId) {
       const open = await db.shippingBatch.findFirst({
-        where: { companyId, storeId, deliveryProviderId: providerId, status: 'READY' },
+        // W4a: and per warehouse of a placed store — a trolley never mixes warehouses.
+        where: { companyId, storeId, deliveryProviderId: providerId, status: 'READY', ...(place ? { warehouseId: place.id } : {}) },
         orderBy: { createdAt: 'desc' },
       });
       if (open) {
@@ -117,6 +136,7 @@ export async function POST(req: Request) {
         deliveryProviderId: providerId,
         createdById: user.id, // server-derived actor
         notes: notes?.trim() || null,
+        ...(place ? { warehouseId: place.id } : {}),
       },
       include: { provider: { select: { id: true, name: true, code: true, kind: true, apiEnabled: true, adapterCode: true } } },
     });
@@ -129,6 +149,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, batch });
   } catch (error: any) {
+    if (error instanceof ShipmentPlaceRefused) return NextResponse.json(shipmentPlaceBody(error), { status: error.status });
     // P2002 duplicate batch number under race → generic conflict
     return NextResponse.json({ error: 'حدث خطأ داخلي' }, { status: 400 });
   }

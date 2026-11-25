@@ -85,6 +85,14 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'stockOpeningCount', label: 'جرد افتتاح المخزون', how: 'blocks' },
   // The opening placement of the warehouse plan (W1a): a store whose stock was divided between warehouses has a history.
   { model: 'warehousePlacement', label: 'توزيع المخزون على المخازن', how: 'blocks' },
+  // W8a: the ledger of a combination's count per warehouse (size/colour) — a store with one has a stock history.
+  { model: 'variantStockMovement', label: 'حركات عدد الخيارات', how: 'blocks' },
+  // Transfers between the store's warehouses (W3a): a document of goods that moved — never deleted, so the store stays.
+  { model: 'stockTransfer', label: 'نقل البضاعة بين المخازن', how: 'blocks' },
+  // Goods out of the store's warehouses for good (W6a): a document of goods that left — never deleted, so the store stays.
+  { model: 'stockExit', label: 'إخراج بضاعة من المخازن', how: 'blocks' },
+  // Count sheets of the store's goods in its warehouses (W5a): a document of what was counted and approved — never deleted.
+  { model: 'stockCount', label: 'أوراق الجرد على المخازن', how: 'blocks' },
   { model: 'productionBatch', label: 'تشغيلات الإنتاج', how: 'blocks' },
   { model: 'shippingBatch', label: 'دفعات الشحن', how: 'blocks' },
   { model: 'courierStatement', label: 'كشوف شركات الشحن', how: 'blocks' },
@@ -96,6 +104,8 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'commissionRule', label: 'قواعد العمولة', how: 'blocks' },
   { model: 'penaltyRule', label: 'قواعد الجزاءات', how: 'blocks' },
   { model: 'penalty', label: 'الجزاءات', how: 'blocks' },
+  // «المسحوبات» (22/11): a record of what a partner took from this store — never deleted, no foreign key, so the store stays.
+  { model: 'partnerWithdrawal', label: 'مسحوبات الشركاء', how: 'blocks' },
   // Selling.
   { model: 'landingPage', label: 'صفحات الهبوط', how: 'blocks' },
   { model: 'landingPageView', label: 'زيارات صفحات الهبوط', how: 'blocks' },
@@ -110,7 +120,14 @@ export const STORE_TABLES: readonly StoreTable[] = [
   { model: 'lead', label: 'ليدز الصفحات', how: 'blocks' },
   // «سجل الرفض» of the confirmation desk (request Q2a, 19/11): no foreign key on purpose (a refusal must never fail a door), so it stops a removal like every keyless record; kept 90 days.
   { model: 'deskRefusal', label: 'سجل رفض مكتب التأكيد', how: 'blocks' },
+  // «قواعد خاصة» of the confirmation desk (request Q4a, 20/11): stopped, never deleted, and no foreign key to the store — a store that has them is not empty.
+  { model: 'confirmationRule', label: 'قواعد مركز التأكيد الخاصة', how: 'blocks' },
   { model: 'trackingPixel', label: 'بكسلات التتبّع', how: 'blocks' },
+  // A system key bound to this store (2026-11-23, Zaki Pages per store): RESTRICT — stopped on «توكنات الأنظمة», never
+  // widened to the whole country by the store going from under it.
+  { model: 'systemToken', label: 'مفاتيح أنظمة مربوطة بهذا المتجر', how: 'blocks' },
+  // The landing chat threads a store-bound key opened (2026-11-23): no foreign key, like every thread's link — kept.
+  { model: 'landingChatThread', label: 'محادثات صفحات الهبوط', how: 'blocks' },
   { model: 'telegramSource', label: 'مصادر تلجرام', how: 'blocks' },
   // «أسماء المنتجات» of the Telegram door (10/11): switched off, never deleted — a store that has them is not empty.
   { model: 'telegramUpsellProduct', label: 'أسماء منتجات تلجرام', how: 'blocks' },

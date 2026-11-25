@@ -3,7 +3,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { OrderNotesPeek } from '@/components/orders/OrderNotesPeek';
 import { OrderRef } from '@/components/orders/OrderRef';
 import { ParcelCopy } from '@/components/screens/tracking/ParcelCopy';
@@ -105,6 +105,11 @@ interface RowBase {
   customer: { fullName: string; phone?: string | null };
   region: { name: string } | null;
   deliveryProvider: { name: string } | null;
+  /**
+   * «طلع من مخزن كذا» (W4d): the warehouse the parcel left from — the desk's default receiver, SHOWN only (choosing
+   * where it is received is a later request). Sent only when the order has one, so an unplaced store draws nothing new.
+   */
+  sourceWarehouseName?: string;
 }
 
 /** A parcel waiting to be counted in. */
@@ -145,6 +150,34 @@ interface Extra {
   mayReceiveAll: boolean;
 }
 
+/** A warehouse a parcel may be received into (W2b). Names are unique within a country, so the source is found by name. */
+interface ReceiveWarehouse {
+  id: string;
+  name: string;
+}
+
+/**
+ * W2b: WHERE A PARCEL MAY BE RECEIVED — asked of its own door when a receipt dialog OPENS (the list itself asks nothing
+ * new). Undefined for a store that is not placed, while the answer is on its way, or when it did not come: the dialog
+ * then asks nothing new and sends nothing new — and the door still decides (the single receipt falls back to the
+ * warehouse the parcel left from; «استلام الكل» refuses without one, in a sentence).
+ */
+function useReceiveWarehouses(): ReceiveWarehouse[] | undefined {
+  const [into, setInto] = useState<ReceiveWarehouse[] | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    apiJson<{ placed?: boolean; warehouses?: ReceiveWarehouse[] }>('/api/ops/returns/warehouses')
+      .then((a) => {
+        if (live && a?.placed === true && Array.isArray(a.warehouses)) setInto(a.warehouses);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return into;
+}
+
 /** Module-level, so the hook's loader keeps one identity — see `usePagedList`. */
 const read = (body: unknown): PagedRead<Row, Extra> => {
   const b = body as { orders: Row[]; pagination: Paging; facts: ReturnsFacts; applied: { view: View }; mayChargeFee?: boolean; mayReceiveAll?: boolean };
@@ -161,8 +194,34 @@ function ListFrame({ phone, children }: { phone: boolean; children: React.ReactN
 
 const since = (days: number | null) => (days === null ? '—' : days === 0 ? 'اليوم' : `منذ ${arabicDays(days)}`);
 
+/** The courier, and under it «طلع من مخزن كذا» when the server named one (W4d) — a row with none reads as it always did. */
+const courierCell = (r: RowBase) =>
+  r.sourceWarehouseName ? (
+    <>
+      {r.deliveryProvider?.name ?? '—'}
+      <span className="block text-note text-[var(--sys-muted-foreground)]">طلع من مخزن {r.sourceWarehouseName}</span>
+    </>
+  ) : (
+    r.deliveryProvider?.name ?? '—'
+  );
+
+/**
+ * «المخزن» (the owner, 25/11: «اسم المخزن أظهره بمتابعة المرتجعات عشان أعرف»): the warehouse the parcel LEFT FROM, as its
+ * own column — a placed store only. A parcel with no stamp (shipped before the placement) reads «—».
+ */
+const warehouseCell = (r: RowBase) => r.sourceWarehouseName ?? '—';
+/** In a placed store the warehouse has its own column, so the courier cell is the courier alone. */
+const courierOnly = (r: RowBase) => r.deliveryProvider?.name ?? '—';
+
 export function ReturnsScreen() {
   const phone = useIsPhone();
+  /*
+   * F10 (25/11): the warehouses of a PLACED store this person reaches — the same door and rule as the receive dialog's
+   * picker. Undefined for a store that is not placed: no column, no filter, and the list is asked what it always was.
+   */
+  const places = useReceiveWarehouses();
+  /** «من أي مخزن طلع المرتجع»: `all`, a warehouse's id, or `none` (no stamp). Sent only for a placed store. */
+  const [warehouse, setWarehouse] = useState('all');
   // A copy the browser refuses is handed to a field to select by hand, not to a warning that goes away (as on the shipment follow-up).
   const tell = useTell();
   const copyRefused = (value: string) => void tell({ title: 'تعذّر النسخ — انسخه يدوياً', value });
@@ -188,12 +247,12 @@ export function ReturnsScreen() {
    */
   const list = usePagedList<Row, Extra>({
     url: '/api/ops/returns',
-    params: { q: term.trim() || undefined, view, status, courier, age, barcode },
+    params: { q: term.trim() || undefined, view, status, courier, age, barcode, warehouse: places ? warehouse : undefined },
     read,
   });
 
-  /** What narrows the view that is open: the state, the company, the age, the word typed or scanned. */
-  const narrowing = [status, courier, age, barcode].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
+  /** What narrows the view that is open: the state, the company, the age, the warehouse, the word typed or scanned. */
+  const narrowing = [status, courier, age, barcode, places ? warehouse : 'all'].filter((v) => v !== 'all').length + (term.trim() ? 1 : 0);
   /** …and the view itself, when it is not the work — what «إعادة تعيين» counts. */
   const activeCount = narrowing + (view !== DEFAULT_VIEW ? 1 : 0);
   const reset = () => {
@@ -203,6 +262,7 @@ export function ReturnsScreen() {
     setCourier('all');
     setAge('all');
     setBarcode('all');
+    setWarehouse('all');
   };
 
   const { extra, rows, pagination } = list;
@@ -240,7 +300,9 @@ export function ReturnsScreen() {
    * control the door would refuse is not drawn. The number on it is the list's own total — every page of the filters
    * that are chosen now — because that is the set the door walks.
    */
-  const receiveAllTotal = extra?.mayReceiveAll && extra.view === 'pending' ? pagination.total : 0;
+  // F10: not while ONE warehouse is chosen — the press walks the list's other filters, not the warehouse, so the number on
+  // it would be a promise the door does not keep. «كل المخازن» brings it back.
+  const receiveAllTotal = extra?.mayReceiveAll && extra.view === 'pending' && (!places || warehouse === 'all') ? pagination.total : 0;
 
   const filters: ToolbarFilter[] | undefined = extra && [
     {
@@ -290,6 +352,22 @@ export function ReturnsScreen() {
         { value: 'none', label: `بلا باركود (${extra.facts.noBarcode ?? 0})` },
       ],
     },
+    // F10: a placed store only — the warehouses this person reaches, and «بلا مخزن» for what was shipped before the placement.
+    ...(places
+      ? [
+          {
+            key: 'warehouse',
+            label: 'المخزن',
+            value: warehouse,
+            onChange: setWarehouse,
+            options: withChosen(warehouse, [
+              { value: 'all', label: 'كل المخازن' },
+              ...places.map((w) => ({ value: w.id, label: w.name })),
+              { value: 'none', label: 'بلا مخزن' },
+            ]),
+          },
+        ]
+      : []),
     ...(view === DEFAULT_VIEW
       ? [
           {
@@ -373,7 +451,13 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    { key: 'courier', label: 'شركة الشحن', render: places ? courierOnly : courierCell },
+                    // F10: the warehouse the parcel left from, a placed store only.
+                    ...(places
+                      ? [
+                          { key: 'warehouse', label: 'المخزن', render: warehouseCell },
+                        ]
+                      : []),
                     ...contactColumns,
                     { key: 'reason', label: 'السبب', render: (r) => returnReasonText(r.returnReason) },
                     { key: 'since', label: 'المدّة', render: (r) => since((r as PendingRow).daysWaited) },
@@ -401,7 +485,13 @@ export function ReturnsScreen() {
                       ),
                     },
                     { key: 'customer', label: 'العميل', primary: true, render: (r) => r.customer.fullName },
-                    { key: 'courier', label: 'شركة الشحن', render: (r) => r.deliveryProvider?.name ?? '—' },
+                    { key: 'courier', label: 'شركة الشحن', render: places ? courierOnly : courierCell },
+                    // F10: the warehouse the parcel left from, a placed store only.
+                    ...(places
+                      ? [
+                          { key: 'warehouse', label: 'المخزن', render: warehouseCell },
+                        ]
+                      : []),
                     ...contactColumns,
                     {
                       key: 'counted',
@@ -533,8 +623,11 @@ function ReceiveAllDialog({
   onClose: () => void;
   onDone: (line: string) => void;
 }) {
+  /** W2b: a placed store — the press names ONE warehouse for every parcel. */
+  const warehouses = useReceiveWarehouses();
   const toast = useToast();
   const [acknowledged, setAcknowledged] = useState(false);
+  const [into, setInto] = useState('');
   const [running, setRunning] = useState(false);
   const [totals, setTotals] = useState<ReceiveAllTotals>(emptyTotals());
   const stop = useRef(false);
@@ -560,7 +653,7 @@ function ReceiveAllDialog({
         const answer: ReceiveAllAnswer = await apiJson<ReceiveAllAnswer>('/api/ops/returns/receive-all', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...filters, countedAndInspected: true, cursor }),
+          body: JSON.stringify({ ...filters, countedAndInspected: true, cursor, ...(warehouses ? { warehouseId: into } : {}) }),
         });
         t = addAnswer(t, answer);
         setTotals(t);
@@ -590,7 +683,7 @@ function ReceiveAllDialog({
             </Button>
           ) : (
             <>
-              <Button key="yes" size="md" className="flex-1" disabled={!acknowledged} onClick={() => void run()}>
+              <Button key="yes" size="md" className="flex-1" disabled={!acknowledged || (!!warehouses && !into)} onClick={() => void run()}>
                 نعم، استلم الكل
               </Button>
               <Button key="cancel" size="md" variant="secondary" onClick={onClose}>
@@ -616,12 +709,20 @@ function ReceiveAllDialog({
           <p className="font-medium text-[var(--sys-heading)]">رح أستلم {total} مرتجع، كل اللي بالقائمة بالفلاتر الحالية — مش بس هالصفحة.</p>
           <ul className="space-y-1">
             <li>كل طرد بينستلم كامل وسليم: لا تالف ولا ناقص.</li>
-            <li>البضاعة بترجع على الرف.</li>
+            <li>{warehouses ? 'البضاعة بترجع على المخزن اللي بتختاره تحت، كلها على نفس المخزن.' : 'البضاعة بترجع على الرف.'}</li>
             <li>عمولة الطلب بتنعكس.</li>
             <li>بلا أجرة إرجاع على شركة الشحن.</li>
             <li>التوصيل الجزئي بينترك، بينستلم من نافذته لحاله.</li>
           </ul>
           <p className="font-medium text-[var(--sys-destructive)]">ما في تراجع بعد الضغطة.</p>
+          {warehouses && (
+            <Select
+              label="استلمتها بمخزن"
+              value={into}
+              onChange={(e) => setInto(e.target.value)}
+              options={[{ value: '', label: 'اختار المخزن' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
+            />
+          )}
           <div className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2">
             <Checkbox id="returns-receive-all-ack" checked={acknowledged} onChange={setAcknowledged} label="أقرّ إني عددت وفحصت المرتجعات" />
           </div>
@@ -642,6 +743,13 @@ function ReceiveDialog({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
+  /** W2b: a placed store — where the parcel is received; the warehouse it left from comes chosen. */
+  const warehouses = useReceiveWarehouses();
+  /** The warehouse it left from, when this person may receive into it (names are unique within a country). */
+  const fromSource = warehouses?.find((w) => w.name === order.sourceWarehouseName);
+  const [picked, setInto] = useState<string | null>(null);
+  /** Until the person picks, the warehouse it left from is the choice. */
+  const into = picked ?? fromSource?.id ?? '';
   const toast = useToast();
   const phone = useIsPhone();
   const formId = useId();
@@ -674,7 +782,12 @@ function ReceiveDialog({
   const actionRow = (
     <div className="flex gap-2 pt-1">
       {!gated && (
-        <Button type="submit" form={phone ? formId : undefined} disabled={busy || !acknowledged} className={phone ? 'flex-1' : undefined}>
+        <Button
+          type="submit"
+          form={phone ? formId : undefined}
+          disabled={busy || !acknowledged || (!!warehouses && !into)}
+          className={phone ? 'flex-1' : undefined}
+        >
           {busy ? 'جارٍ الحفظ…' : 'تأكيد الاستلام'}
         </Button>
       )}
@@ -698,6 +811,8 @@ function ReceiveDialog({
           countedAndInspected: acknowledged,
           chargeCourierFee: courierFee,
           note: note || undefined,
+          // W2b: a placed store's receipt names its warehouse. Absent otherwise — today's body.
+          ...(warehouses ? { warehouseId: into } : {}),
         }),
       });
       onDone(
@@ -769,6 +884,26 @@ function ReceiveDialog({
             </div>
           ))}
         </div>
+
+        {/* THE DEFAULT RECEIVER (W4d), SAID ONLY: the warehouse the parcel left from. Nothing here picks a warehouse or
+            sends one — the receipt is written exactly as before. A parcel with no source warehouse draws nothing. */}
+        {order.sourceWarehouseName && (
+          <p className="text-note text-[var(--sys-muted-foreground)]">
+            طلع من مخزن {order.sourceWarehouseName} — رجّعه عليه.
+          </p>
+        )}
+        {/* W2b: WHERE IT IS RECEIVED — a placed store only. The warehouse it left from comes chosen; another may be picked. */}
+        {warehouses && (
+          <Select
+            label="استلمته بمخزن"
+            value={into}
+            onChange={(e) => setInto(e.target.value)}
+            options={[
+              { value: '', label: 'اختار المخزن' },
+              ...warehouses.map((w) => ({ value: w.id, label: w.id === fromSource?.id ? `${w.name} (طلع منه)` : w.name })),
+            ]}
+          />
+        )}
 
         {/*
           THE EXTRA ACTION.

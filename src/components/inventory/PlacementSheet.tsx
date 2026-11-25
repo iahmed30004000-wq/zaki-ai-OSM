@@ -9,6 +9,7 @@ import { Segmented } from '@/components/ui/Segmented';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { apiJson } from '@/lib/api-client';
+import { CombinationBoxes, badBox, typedCombinations } from './CombinationBoxes';
 
 /**
  * THE OPENING PLACEMENT SHEET — once per store, the keepers' counts divide the book between the warehouses
@@ -44,11 +45,20 @@ interface PlacementRow {
   hasVariants: boolean;
 }
 
+/** 20/11 (W8c): one combination of a product, as the door sends it — its label and its store-level count. */
+interface Combination {
+  variantId: string;
+  label: string;
+  onHand: number;
+}
+
 interface Gate {
   placed?: boolean;
   warehouses?: Warehouse[];
   rows?: PlacementRow[];
   variantsNote?: string;
+  /** Present only when some product of the store has combinations. */
+  combinations?: Record<string, Combination[]>;
 }
 
 interface Check {
@@ -127,6 +137,7 @@ export function PlacementBanner({ onPlaced }: { onPlaced: () => void }) {
           warehouses={gate.warehouses}
           rows={gate.rows ?? []}
           variantsNote={gate.variantsNote ?? null}
+          combinations={gate.combinations ?? {}}
           onClose={() => setOpen(false)}
           onDone={() => {
             setOpen(false);
@@ -143,16 +154,20 @@ function PlacementSheet({
   warehouses,
   rows,
   variantsNote,
+  combinations,
   onClose,
   onDone,
 }: {
   warehouses: Warehouse[];
   rows: PlacementRow[];
   variantsNote: string | null;
+  combinations: Record<string, Combination[]>;
   onClose: () => void;
   onDone: () => void;
 }) {
   const [typed, setTyped] = useState<Record<string, Record<string, string>>>({});
+  /** 20/11 (W8c): the combination boxes as typed — by product, then warehouse, then combination. */
+  const [typedV, setTypedV] = useState<Record<string, Record<string, Record<string, string>>>>({});
   const [countedByName, setCountedByName] = useState('');
   const [countedAt, setCountedAt] = useState(nowForBox);
   const [note, setNote] = useState('');
@@ -169,30 +184,47 @@ function PlacementSheet({
   const box = (productId: string, warehouseId: string) => typed[productId]?.[warehouseId] ?? '';
   const setBox = (productId: string, warehouseId: string, value: string) =>
     setTyped((t) => ({ ...t, [productId]: { ...t[productId], [warehouseId]: value } }));
+  const comboValues = (productId: string, warehouseId: string) => typedV[productId]?.[warehouseId] ?? {};
+  const setComboBox = (productId: string, warehouseId: string, variantId: string, value: string) =>
+    setTypedV((t) => ({ ...t, [productId]: { ...t[productId], [warehouseId]: { ...t[productId]?.[warehouseId], [variantId]: value } } }));
 
-  /** The counts as the door reads them: every warehouse in the order shown, a line for every box with something in it. */
-  const { counts, invalid } = useMemo(() => {
+  /**
+   * The counts as the door reads them: every warehouse in the order shown, a line for every box with something in it.
+   * 20/11 (W8c): a line of a product with combinations carries the combination boxes typed under it (a zero is a count,
+   * a blank is not sent); whether they add up to the line is the preview's to say. Combinations typed under a blank
+   * product box are not a line — the sheet asks for the product's own count first.
+   */
+  const { counts, invalid, missing } = useMemo(() => {
     const bad = new Set<string>();
+    const noTotal = new Set<string>();
     const out = warehouses.map((w) => ({
       warehouseId: w.id,
       lines: rows.flatMap((r) => {
         const raw = (typed[r.productId]?.[w.id] ?? '').trim();
-        if (raw === '') return [];
+        const mine = combinations[r.productId] ?? [];
+        const values = typedV[r.productId]?.[w.id] ?? {};
+        // Its own key: the box under the product says nothing about a combination box (which says it itself).
+        if (mine.some((c) => badBox(values[c.variantId]))) bad.add(`${r.productId}:${w.id}:combination`);
+        const variants = typedCombinations(mine, values, { dropZero: false });
+        if (raw === '') {
+          if (variants.length > 0) noTotal.add(`${r.productId}:${w.id}`);
+          return [];
+        }
         if (!WHOLE.test(raw)) {
           bad.add(`${r.productId}:${w.id}`);
           return [];
         }
-        return [{ productId: r.productId, quantity: Number(raw) }];
+        return [{ productId: r.productId, quantity: Number(raw), ...(variants.length > 0 ? { variants } : {}) }];
       }),
     }));
-    return { counts: out, invalid: bad };
-  }, [typed, warehouses, rows]);
+    return { counts: out, invalid: bad, missing: noTotal };
+  }, [typed, typedV, warehouses, rows, combinations]);
   const key = JSON.stringify(counts);
 
   // THE LIVE CHECK: the preview, a moment after the last key, about exactly these counts. An older answer that lands late
   // is dropped — it is about boxes that are no longer what the screen shows.
   useEffect(() => {
-    if (invalid.size > 0) return;
+    if (invalid.size > 0 || missing.size > 0) return;
     let live = true;
     const timer = setTimeout(() => {
       apiJson<Omit<Check, 'key'>>('/api/inventory/placement/preview', {
@@ -208,9 +240,9 @@ function PlacementSheet({
       live = false;
       clearTimeout(timer);
     };
-  }, [key, invalid.size, again]);
+  }, [key, invalid.size, missing.size, again]);
 
-  const current = answer !== null && answer.key === key && answer.round === again && invalid.size === 0;
+  const current = answer !== null && answer.key === key && answer.round === again && invalid.size === 0 && missing.size === 0;
   const check = current && answer.check ? answer.check : null;
   const checkError = current && answer.error ? answer.error : null;
   const shownRows = answer?.check?.rows ?? rows;
@@ -299,6 +331,10 @@ function PlacementSheet({
           <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-sm text-[var(--sys-destructive)]">
             في خانة مش رقم صحيح. العدد لازم يكون رقم صحيح من صفر وطالع.
           </p>
+        ) : missing.size > 0 ? (
+          <p className="rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-2.5 text-sm text-[var(--sys-destructive)]">
+            في منتج كتبت عدد خياراته بمخزن وما كتبت عدده هو. اكتب عدد المنتج بهالمخزن كمان.
+          </p>
         ) : !fresh ? (
           <p className="text-note text-[var(--sys-muted-foreground)]">عم نقارن مع الدفتر…</p>
         ) : check.exact ? (
@@ -385,10 +421,6 @@ function PlacementSheet({
                 <p className="mt-1.5 text-note text-[var(--sys-muted)]">
                   على الرف {r.onHand} · مع الشحن {r.withCourier}
                 </p>
-                {r.hasVariants && variantsNote && (
-                  <p className="mt-1.5 text-note leading-relaxed text-[var(--sys-muted-foreground)]">{variantsNote}</p>
-                )}
-
                 <div className="mt-2.5 grid grid-cols-2 gap-2 md:grid-cols-4">
                   {warehouses.map((w) => {
                     const bad = invalid.has(`${r.productId}:${w.id}`);
@@ -406,6 +438,22 @@ function PlacementSheet({
                     );
                   })}
                 </div>
+
+                {/* 20/11 (W8c): its combinations, a grid per warehouse — the store-level count beside each is the server's. */}
+                {(combinations[r.productId] ?? []).length > 0 && (
+                  <div className="mt-2.5 space-y-3">
+                    {warehouses.map((w) => (
+                      <CombinationBoxes
+                        key={w.id}
+                        title={`${w.name}: كم قطعة من كل خيار؟`}
+                        combos={(combinations[r.productId] ?? []).map((c) => ({ variantId: c.variantId, label: c.label, hint: `بالمتجر كله ${c.onHand}` }))}
+                        values={comboValues(r.productId, w.id)}
+                        onChange={(variantId, value) => setComboBox(r.productId, w.id, variantId, value)}
+                        ariaOf={(label) => `عدد «${r.name}» «${label}» بـ${w.name}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </Card>
             ))}
           </div>

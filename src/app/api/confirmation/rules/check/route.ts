@@ -20,6 +20,9 @@ import {
 import { roundsSwitch } from '@/lib/no-answer-rounds-switch';
 import { workFirstGate } from '@/lib/work-first';
 import { deskKeyLabel } from '@/lib/desk-readiness';
+import { confirmationRuleOnce } from '@/lib/confirmation-rule-settings';
+import { confirmationRulesOnce, employeeNumbers, numbersAnswer } from '@/lib/employee-numbers';
+import { numbersInForce } from '@/lib/confirmation-own-rules';
 
 /**
  * GET /api/confirmation/rules/check?userId= — «افحص موظفة»: for ONE person of this store, what the desk would tell her NOW.
@@ -30,7 +33,9 @@ import { deskKeyLabel } from '@/lib/desk-readiness';
  *   · how many orders she holds (in her hands + held for her) against her limit — the mode's hand limit where the mode is on,
  *     the cap of 500 otherwise — and how many of them nobody has rung yet, against that cap;
  *   · her pulls in the pace window against the pace;
- *   · what «اسحب الطلب التالي» would answer her now: its refusal code and its Arabic sentence, or «open».
+ *   · what «اسحب الطلب التالي» would answer her now: its refusal code and its Arabic sentence, or «open»;
+ *   · HER numbers (request Q4b, 21/11) — hand limit, idle minutes, pull pace — each with the rule it came from («من القاعدة الأساسية» or «من قاعدة «…»»). The hand and
+ *     the pace above are hers too: an owner's rule that names her changes what the pull would tell her, and only her.
  *
  * HOW: from the very read-only pieces the pull asks, in the pull's own order (`pullNextOrder`): her key first (the door's
  * `requirePermission('confirmation.pull')`), then `pullRefusal` (the caps and the untouched order) with the mode's hand,
@@ -89,8 +94,15 @@ export async function GET(request: NextRequest) {
     };
     // Read as the pull reads them (cached switches): the rounds, the mode, and the mode's hand — absent, the cap of 500.
     const rounds = await roundsSwitch(db, companyId);
-    const returns = await readReturnsMode(db, companyId, { now, calendar: () => cal, rounds });
-    const hand = returns ? (await returnsLimits(db, companyId, now.getTime())).handLimit : undefined;
+    const rule = confirmationRuleOnce(db, companyId, now.getTime());
+    const her = { userId: person.id, storeId, timezone: country.timezone, rules: confirmationRulesOnce(db, companyId, now.getTime()) };
+    const returns = await readReturnsMode(db, companyId, { now, calendar: () => cal, rounds, rule });
+    // Her numbers (Q4b): the pull's own reading — her hand where the mode is on, her pace always.
+    const mine = await employeeNumbers(db, companyId, now.getTime(), await rule(), her);
+    const hand = returns ? (await returnsLimits(db, companyId, now.getTime(), rule, her)).handLimit : undefined;
+    const perHour = mine.pullPerHour.value;
+    // Request Q4c (21/11, the Q4b reviewer's note): whether each of her numbers acts NOW — a rule's hand shown while the switches it rides on are off is not in force.
+    const inForce = await numbersInForce(db, companyId, now, cal, rule).catch(() => null);
 
     const since = new Date(now.getTime() - PULL_PACE.windowMinutes * 60_000);
     const [counts, pulls] = await Promise.all([
@@ -110,7 +122,7 @@ export async function GET(request: NextRequest) {
       if (!refusal) {
         refusal = await workFirstGate(db, { scope, userId: person.id, cal, now, rounds, open: OPEN_CONFIRMATION, room: CLAIM_CAPS.total, held: counts.total, returns });
       }
-      if (!refusal) refusal = pullPaceRefusal(pulledAt, now);
+      if (!refusal) refusal = pullPaceRefusal(pulledAt, now, perHour);
     }
 
     return NextResponse.json({
@@ -125,7 +137,9 @@ export async function GET(request: NextRequest) {
         withoutAttempt: counts.withoutAttempt,
         withoutAttemptLimit: CLAIM_CAPS.withoutAttempt,
       },
-      pace: { pulled: pulledAt.length, perHour: PULL_PACE.perHour, windowMinutes: PULL_PACE.windowMinutes },
+      pace: { pulled: pulledAt.length, perHour, windowMinutes: PULL_PACE.windowMinutes },
+      // Her three numbers and where each came from (Q4b). The hand acts where the mode is on (`hold.limitFrom` says it); the idle minutes where the plan or «أولوية الطابور» is.
+      numbers: { ...numbersAnswer(mine), inForce },
       pull: refusal
         ? { open: false, code: refusal.code, sentence: refusal.message }
         : { open: true, code: null, sentence: 'السحب مفتوح إلها هلّق — بتاخد الطلب التالي إذا في طلب بالطابور.' },

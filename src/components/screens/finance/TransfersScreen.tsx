@@ -19,7 +19,11 @@ import { PageShell } from '@/components/ui/PageShell';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { routeLabel } from '@/lib/route-registry';
-import { RiArrowGoBackLine, RiArrowUpDownLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
+import { RiArrowGoBackLine, RiArrowUpDownLine, RiEyeLine, RiLoader4Line, RiRepeatLine } from '@remixicon/react';
+import { IconButton } from '@/components/ui/IconButton';
+import { Input } from '@/components/ui/Input';
+import { RealDateCell, TransferDetails } from './RealDateDetails';
+import { boxMoment, fromBox } from '@/lib/real-date';
 import { useApp } from '@/context/AppContext';
 import { userCan } from '@/lib/can';
 import { TRANSFER_STATE_AR, type TransferState } from '@/lib/transfer-reversal';
@@ -32,6 +36,7 @@ import { WalletPicture } from '@/components/ui/WalletPicture';
 import { arDateTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useIsPhone } from '@/hooks/useIsPhone';
+import { HistoryExport } from './HistoryExport';
 
 /**
  * /finance/transfers — moving money between wallets, or changing one currency
@@ -76,6 +81,12 @@ interface TransferRow {
   exchangeRate: number;
   note: string | null;
   createdAt: string;
+  /** The real date (22/11): the typed one, or the registration when none was typed — the server's answer. */
+  realDate?: string | null;
+  /** The registration fell on another day of the store than the real date: the row says «سُجّلت …» under it. */
+  registeredOnAnotherDay?: boolean;
+  /** Who registered it — the details panel says so. */
+  createdByName?: string | null;
   kindLabel?: string;
   from: TransferEnd | null;
   to: TransferEnd | null;
@@ -141,6 +152,10 @@ export function TransfersScreen() {
   /** Which of the three boxes is showing. Flipping it changes the view, never the deal. */
   const [view, setView] = useState<Face>('A');
   const [note, setNote] = useState('');
+  // «تاريخ الحركة الفعلي» (22/11): now, unless moved back. The registration is the server's, never typed.
+  const [occurredAt, setOccurredAt] = useState(() => boxMoment(new Date()));
+  // The eye: which transfer's details are open, read-only.
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   /**
@@ -330,6 +345,7 @@ export function TransfersScreen() {
                 // The amount that arrives is what the card says; the door stores it as the record and derives the rate.
                 ...(crossCurrency ? { amountIn: deal!.amountIn } : {}),
                 note: note.trim(),
+                ...(fromBox(occurredAt) ? { occurredAt: fromBox(occurredAt) } : {}),
                 // What the screen told the person they were doing. If the
                 // server reads it differently, it refuses rather than
                 // recording something nobody can explain later.
@@ -340,6 +356,7 @@ export function TransfersScreen() {
             setAmountOut('');
             setTypedFor({ face: typed.face, text: '', pair });
             setNote('');
+            setOccurredAt(boxMoment(new Date()));
             // The next transfer is a new attempt.
             attempt.current = null;
             await load();
@@ -485,6 +502,16 @@ export function TransfersScreen() {
           />
         </label>
 
+        <Input
+          label="تاريخ الحركة الفعلي"
+          type="datetime-local"
+          dir="ltr"
+          value={occurredAt}
+          max={boxMoment(new Date())}
+          onChange={(e) => setOccurredAt(e.target.value)}
+          helperText="متى صار التحويل فعلاً. تاريخ التسجيل بينحفظ لحالو."
+        />
+
         {error && <p className="text-sm text-[var(--sys-destructive)]">{error}</p>}
         {done && <p className="text-sm text-[var(--sys-success)]">{done}</p>}
 
@@ -509,6 +536,14 @@ export function TransfersScreen() {
       </form>
       </Card>
 
+      {/* «سحب السجل» (22/11, F5): the transfers as Excel or a page to print, by the filters chosen here. */}
+      <HistoryExport
+        list="transfers"
+        choices={[
+          { key: 'walletId', label: 'المحفظة', options: wallets.map((w) => ({ value: w.id, label: `${w.name} · ${w.currencyCode}` })) },
+          { key: 'currency', label: 'العملة', options: [...new Set(wallets.map((w) => w.currencyCode))].map((c) => ({ value: c, label: c })) },
+        ]}
+      />
       <Card plain className="overflow-hidden">
         <h2 className="text-sm font-medium text-[var(--sys-heading)] px-4 py-3 border-b border-[var(--sys-border)]">آخر التحويلات</h2>
         {!rows ? (
@@ -524,7 +559,7 @@ export function TransfersScreen() {
             columns={[
               { key: 'c0', label: "التاريخ", primary: true,
                 render: (t) => (
-                  <>{arDateTime(t.createdAt)}</>
+                  <RealDateCell realDate={t.realDate} createdAt={t.createdAt} registeredOnAnotherDay={t.registeredOnAnotherDay} />
                 ) },
               { key: 'c1', label: "النوع", primary: true,
                 render: (t) => (
@@ -563,6 +598,14 @@ export function TransfersScreen() {
               { key: 'c8', label: "الحالة", wide: true,
                 render: (t) => {
                   const state = t.state ?? 'ACTIVE';
+                  // The eye (22/11) lives in this cell too, for the same reason the press does: no column of its own, no empty strip.
+                  const eye = (
+                    <span className="block">
+                      <IconButton size="sm" label="تفاصيل التحويل" onClick={() => setDetailsId(t.id)} className="mt-1">
+                        <RiEyeLine className="w-4 h-4" />
+                      </IconButton>
+                    </span>
+                  );
                   const press =
                     mayCash && state !== 'REVERSED' ? (
                       <span className="block">
@@ -581,6 +624,7 @@ export function TransfersScreen() {
                     return (
                       <div className="max-w-[10rem] break-words">
                         <span className="text-note text-[var(--sys-muted)]">{TRANSFER_STATE_AR.ACTIVE}</span>
+                        {eye}
                         {press}
                       </div>
                     );
@@ -604,6 +648,7 @@ export function TransfersScreen() {
                           الطرف الآخر لسا قائم{mayCash ? ' — «قيد عكسي» بيكمّل عكسه' : ''}
                         </span>
                       )}
+                      {eye}
                       {press}
                     </div>
                   );
@@ -618,6 +663,11 @@ export function TransfersScreen() {
           />
         )}
       </Card>
+
+      {/* The eye: one transfer, read-only — both dates, who, both ends and amounts, the rate, the note, the reversal. */}
+      {detailsId && rows?.some((t) => t.id === detailsId) && (
+        <TransferDetails transfer={rows.find((t) => t.id === detailsId)!} onClose={() => setDetailsId(null)} />
+      )}
 
       {reversing && (
         <ReverseTransferDialog

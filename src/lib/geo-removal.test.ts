@@ -241,7 +241,21 @@ describe('asking about many stores at once', () => {
     // 19/11 (request Q2a): 32 → 33 — the confirmation desk's refusal log (`desk_refusals`) has a storeId and no foreign key, so it is a stopper too.
     // 19/11 (W1a): 33 → 34 — the opening placement of the warehouse plan (`warehouse_placements`) is a stopper too: a
     // store whose stock was divided between warehouses has a history.
-    expect(one.asked.length).toBe(34);
+    // 20/11 (W3a): 34 → 35 — the stock transfers between a store's warehouses (`stock_transfers`) are a stopper too: a
+    // document of goods that moved, never deleted.
+    // 20/11 (W8a, merged after W3a): 35 → 36 — the ledger of a combination's count per warehouse (`variant_stock_movements`)
+    // has a storeId and no foreign key to the store, so it is a stopper too: a store with one has a stock history.
+    // 20/11 (W6a): 36 → 37 — the exits of goods from a store's warehouses (`stock_exits`) are a stopper too: a document of
+    // goods that left, never deleted.
+    // 20/11 (Q4a): 37 → 38 — the owner's own confirmation rules (`confirmation_rules`) have a storeId and no foreign key to the
+    // store, so they are a stopper too: stopped, never deleted.
+    // 21/11 (W5a): 38 → 39 — the count sheets of a store's goods in its warehouses (`stock_counts`) are a stopper too: a
+    // document of what was counted and approved, never deleted.
+    // 22/11 (F3): 39 → 40 — the partners' withdrawals (`partner_withdrawals`) have a storeId and no foreign key to the store, so
+    // they are a stopper too: a record of what a partner took from the store, never deleted.
+    // 23/11 (landing key per store): 40 → 42 — a system key bound to the store (`system_tokens`, RESTRICT) and the landing
+    // chat threads such a key opened (`landing_chat_threads`, no foreign key) are stoppers too.
+    expect(one.asked.length).toBe(42);
   });
 
   it('and no stores asks nothing at all', async () => {

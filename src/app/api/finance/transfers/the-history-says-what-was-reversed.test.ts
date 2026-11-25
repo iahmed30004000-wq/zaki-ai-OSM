@@ -90,10 +90,15 @@ describe('what the read asks', () => {
     expect([...where.referenceId.in].sort()).toEqual(['t-done', 't-half', 't-live']);
   });
 
-  it('asks for the writers’ names only when something was reversed', async () => {
+  /*
+   * UPDATED 22/11 (the real date and the eye). Old: «asks for the writers' names only when something was reversed» — the names were
+   * read only for the reversals' writers, and not at all when nothing was reversed. New: the details panel says WHO REGISTERED each
+   * transfer, so the one read of names also carries every listed transfer's registrar. Still ONE read, still only the ids it needs.
+   */
+  it('asks for the names in ONE read: the reversals’ writers and each listed transfer’s registrar, nobody else', async () => {
     await GET();
     expect(db.user.findMany).toHaveBeenCalledTimes(1);
-    expect(db.user.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['u2'] } });
+    expect([...db.user.findMany.mock.calls[0][0].where.id.in].sort()).toEqual(['u1', 'u2']);
 
     vi.clearAllMocks();
     requireContext.mockResolvedValue({ companyId: 'co' });
@@ -102,7 +107,8 @@ describe('what the read asks', () => {
     db.walletTransfer.findMany.mockResolvedValue([transfer('t-live')]);
     db.walletMovement.findMany.mockResolvedValue([leg('a-out', 't-live', 'sham'), leg('a-in', 't-live', 'binance')]);
     await GET();
-    expect(db.user.findMany).not.toHaveBeenCalled();
+    expect(db.user.findMany).toHaveBeenCalledTimes(1);
+    expect(db.user.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['u1'] } });
   });
 
   it('asks no movement at all when there is no transfer to read', async () => {

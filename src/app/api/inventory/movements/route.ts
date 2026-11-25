@@ -6,6 +6,8 @@ import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { inStore } from '@/lib/store-filter';
 import { typed } from '@/lib/text-search';
+import { storeIsPlaced } from '@/lib/warehouse-intake';
+import { HIDDEN_ON_ROAD_AR, transfersBlindTo } from '@/lib/stock-transfers';
 
 /**
  * GET /api/inventory/movements — the stock ledger.
@@ -25,7 +27,7 @@ import { typed } from '@/lib/text-search';
  */
 export async function GET(req: Request) {
   try {
-    const { companyId, storeId } = await requireContext();
+    const { user, companyId, storeId } = await requireContext();
     await requirePermission('inventory.view');
 
     const q = new URL(req.url).searchParams;
@@ -35,8 +37,17 @@ export async function GET(req: Request) {
     const limit = readLimit(q, 100, 300);
     const before = q.get('before');
 
+    /*
+     * WHICH WAREHOUSE (the warehouse plan, W2c) — only for a store placed in warehouses. Its lines name the shelf they
+     * moved (`InventoryMovement.warehouseId`); `?warehouse=<id>` keeps one warehouse's lines. A store that is not placed
+     * has no such line: the parameter is not read and the answer is the very answer it was.
+     */
+    const placed = await storeIsPlaced(storeId);
+    const warehouseId = placed ? q.get('warehouse')?.trim() || null : null;
+
     const where = {
       ...inStore(companyId, storeId),
+      ...(warehouseId ? { warehouseId } : {}),
       ...(productId ? { productId } : {}),
       ...(type && type !== 'all' ? { type } : {}),
       ...(before ? { createdAt: { lt: new Date(before) } } : {}),
@@ -57,6 +68,7 @@ export async function GET(req: Request) {
       include: {
         product: { select: { id: true, name: true, sku: true } },
         batch: { select: { batchNumber: true } },
+        ...(placed ? { warehouse: { select: { name: true } } } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -67,6 +79,14 @@ export async function GET(req: Request) {
       ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
       : [];
     const nameOf = new Map(actors.map((a) => [a.id, a.name]));
+
+    /*
+     * 20/11 (W3b review): a transfer still on the road is counted BLIND by its receiver. Its `TRANSFER_OUT` line is kept,
+     * but its figure and its reason (which names the destination) are told only to the sender until it is received or
+     * cancelled (`stock-transfers.transfersBlindTo`). No such line in the page = no read, the answer it always was.
+     */
+    const blind = await transfersBlindTo(db, companyId, user.id, movements);
+    const hidden = (m: { type: string; referenceId: string | null }) => m.type === 'TRANSFER_OUT' && !!m.referenceId && blind.has(m.referenceId);
 
     // Types present in this company, so the filter offers only real ones.
     const types = await db.inventoryMovement.groupBy({
@@ -82,18 +102,34 @@ export async function GET(req: Request) {
       movements: movements.map((m) => ({
         id: m.id,
         type: m.type,
-        quantity: m.quantity,
+        quantity: hidden(m) ? null : m.quantity,
         balanceAfter: m.balanceAfter,
-        reason: m.reason,
+        reason: hidden(m) ? HIDDEN_ON_ROAD_AR : m.reason,
+        ...(hidden(m) ? { hiddenOnRoad: true } : {}),
         createdAt: m.createdAt,
         product: m.product,
         batchNumber: m.batch?.batchNumber ?? null,
         createdByName: m.createdById ? nameOf.get(m.createdById) ?? null : null,
+        // Placed store only: the warehouse whose shelf moved, by name — null for a line of the whole store.
+        ...(placed ? { warehouseName: (m as { warehouse?: { name: string } | null }).warehouse?.name ?? null } : {}),
       })),
       types: types.map((t) => ({ type: t.type, count: t._count.type })),
       hasMore: movements.length === limit,
+      // Placed store only: the warehouses its lines name, for the filter.
+      ...(placed ? { warehouses: await warehousesNamed(companyId, storeId) } : {}),
     });
   } catch (error) {
     return apiErrorResponse(error);
   }
+}
+
+/** The warehouses this store's ledger names, by name — one grouped read and one read of their names. */
+async function warehousesNamed(companyId: string, storeId: string | null) {
+  const named = await db.inventoryMovement.groupBy({
+    by: ['warehouseId'],
+    where: { ...inStore(companyId, storeId), warehouseId: { not: null } },
+  });
+  const ids = named.map((n) => n.warehouseId).filter((id): id is string => !!id);
+  if (ids.length === 0) return [];
+  return db.warehouse.findMany({ where: { companyId, id: { in: ids } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 }

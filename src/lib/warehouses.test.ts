@@ -124,10 +124,50 @@ describe('the warehouses a store may place its goods in', () => {
 });
 
 describe('why a warehouse may not stop', () => {
-  const client = (n: number) => {
+  // 20/11 (W3a): the client answers the open-transfer question too (old: only `productionBatch.count`); 0 open = today.
+  // 20/11 (W6a): …and the pending-exit question (old: batches + transfers); 0 pending = the answer before W6a.
+  // 21/11 (W5a): …and the open-count question (old: batches + transfers + exits); 0 open sheets = the answer before W5a.
+  const client = (n: number, open = 0, pending = 0, counting = 0) => {
     const count = vi.fn().mockResolvedValue(n);
-    return { client: { productionBatch: { count } } as never, count };
+    const transfers = vi.fn().mockResolvedValue(open);
+    const exits = vi.fn().mockResolvedValue(pending);
+    const sheets = vi.fn().mockResolvedValue(counting);
+    return {
+      client: { productionBatch: { count }, stockTransfer: { count: transfers }, stockExit: { count: exits }, stockCount: { count: sheets } } as never,
+      count,
+      transfers,
+      exits,
+      sheets,
+    };
   };
+
+  it('NEGATIVE (W5a): an open count sheet on it is a blocker — being counted or waiting for its second hand', async () => {
+    const { client: c, sheets } = client(0, 0, 0, 1);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'OPEN_COUNT', count: 1, ar: expect.stringContaining('جرد') }]);
+    // THIS company, THIS warehouse, only a sheet OPEN or SUBMITTED (an approved or voided one holds nothing).
+    expect(sheets).toHaveBeenCalledWith({ where: { companyId: 'c1', warehouseId: 'w1', status: { in: ['OPEN', 'SUBMITTED'] } } });
+  });
+
+  it('NEGATIVE (W6a): a pending exit from it is a blocker — its units are held for an approval in this warehouse', async () => {
+    const { client: c, exits } = client(0, 0, 1);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'PENDING_EXIT', count: 1, ar: expect.stringContaining('إخراج') }]);
+    // THIS company, THIS warehouse, only the PENDING ones (an approved or rejected exit holds nothing).
+    expect(exits).toHaveBeenCalledWith({ where: { companyId: 'c1', warehouseId: 'w1', status: 'PENDING' } });
+  });
+
+  it('NEGATIVE (W3a): an open transfer from or to it is a blocker — units on the road have no warehouse', async () => {
+    const { client: c, transfers } = client(0, 2);
+    expect(await warehouseStopBlockers(c, 'c1', 'w1')).toEqual([{ code: 'OPEN_TRANSFER', count: 2, ar: expect.stringContaining('نقل مفتوح') }]);
+    expect(transfers).toHaveBeenCalledWith({
+      where: {
+        companyId: 'c1',
+        OR: [{ fromWarehouseId: 'w1' }, { toWarehouseId: 'w1' }],
+        // 20/11 (W7b): a transfer to another country AWAITING the owner holds its units too, so it keeps the warehouse
+        // running (was: SENT and the unapproved difference only).
+        AND: [{ OR: [{ status: 'AWAITING_APPROVAL' }, { status: 'SENT' }, { status: 'RECEIVED_WITH_DIFFERENCE', differenceApprovedAt: null }] }],
+      },
+    });
+  });
 
   it('asks for batches of THIS company and THIS warehouse with any units, positive or owed', async () => {
     const { client: c, count } = client(0);
@@ -182,6 +222,112 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     // 19/11, W1b (the placement sheet): the screen of the placement doors above. It reads no column; it writes the door's
     // own body field `counts[].warehouseId` (W1a's `countsSchema`), which this sweep cannot tell from a column by its name.
     'src/components/inventory/PlacementSheet.tsx',
+    // 20/11, W8a (a combination's count per warehouse): the one writer and its ledger, the draw-down and the restock that
+    // hand a placed store's pieces to it (the draw reads the order's source warehouse), and the variants door's count.
+    'src/lib/variant-stock.ts',
+    'src/lib/product-variants.ts',
+    'src/app/api/products/[id]/variants/route.ts',
+    // 19/11, W2c (the stock screens show places): the balances and the ledger read where units are; the runs list and the
+    // product page fold a split row into its run; the receive dialog sends the receive door's own `warehouseId` field.
+    'src/app/api/inventory/movements/route.ts',
+    'src/app/api/products/[id]/route.ts',
+    'src/components/inventory/ReceiveDialog.tsx',
+    'src/components/screens/InventoryBalancesScreen.tsx',
+    'src/lib/batch-grade.ts',
+    'src/lib/stock-places.ts',
+    // 20/11, W3a (the transfer inside one store): the transfer lib and its door helper, the four doors (send + list,
+    // receive, cancel, difference), and the kind file that holds the stop door's «open transfer» question.
+    'src/lib/stock-transfers.ts',
+    'src/lib/stock-transfer-door.ts',
+    'src/lib/stock-transfer-kind.ts',
+    'src/app/api/inventory/transfers/route.ts',
+    'src/app/api/inventory/transfers/[id]/receive/route.ts',
+    'src/app/api/inventory/transfers/[id]/cancel/route.ts',
+    'src/app/api/inventory/transfers/[id]/difference/route.ts',
+    // 20/11, W6a (goods out of a warehouse for good): the exit lib, its door helper and its three doors (request + list,
+    // approve, reject). They name the exit's own `warehouseId` and draw from it (`receiving.drawDownStock`).
+    'src/lib/stock-exits.ts',
+    'src/lib/stock-exit-door.ts',
+    'src/app/api/inventory/exits/route.ts',
+    'src/app/api/inventory/exits/[id]/approve/route.ts',
+    'src/app/api/inventory/exits/[id]/reject/route.ts',
+    // 20/11, W3b (the «نقل البضاعة» screen): the screen of the four transfer doors above. It reads no column; it hands
+    // `stock-transfer-kind.readStockTransfer` the end's own field `warehouseId` (`StockTransferEnd`) to say the kind before
+    // the press, which this sweep cannot tell from a column by its name.
+    'src/components/screens/StockTransfersScreen.tsx',
+    // 20/11, W6b (the «إخراج بضاعة» screen and its month): the screen sends the request door's own body field `warehouseId`
+    // (W6a's `requestSchema`); the month's report reads each approved exit's `warehouseId` and its warehouse's NAME only
+    // (`db.warehouse.findMany` — id and name), to say where the units left from. Neither reads a stock column.
+    'src/components/screens/StockExitsScreen.tsx',
+    'src/lib/stock-exit-report.ts',
+    // 20/11, W4a (a shipment is made in ONE warehouse): the shipment's place and the warehouse's shelf for the blocks; the
+    // two doors that open a trolley and the preparation list that may be asked per warehouse; the two «off the trolley»
+    // column lists that drop the order's source; the doors that put an order on an existing trolley (assign to a batch,
+    // move to another courier's trolley before the handover) so a trolley never mixes warehouses.
+    'src/lib/shipment-warehouse.ts',
+    'src/lib/shipment-cancel.ts',
+    'src/app/api/ops/shipments/route.ts',
+    'src/app/api/shipping-batches/route.ts',
+    'src/app/api/ops/preparation/route.ts',
+    'src/app/api/orders/[id]/shipping/route.ts',
+    'src/app/api/ops/tracking/transfer/route.ts',
+    // 20/11, W4c (the shipping screens by warehouse): «إنشاء شحنة» sends the warehouse the press leaves from (`warehouseId`),
+    // for a placed store only — the body W4a's door asks for.
+    'src/components/screens/ShipmentsNewScreen.tsx',
+    // 20/11, W4d (the order says where it left from): READ ONLY — the name lookup, and the three doors that read the
+    // order's `sourceWarehouseId` to send the warehouse's name (order window, tracking row, returns desk). None writes it.
+    'src/lib/order-source-warehouse.ts',
+    'src/app/api/orders/[id]/route.ts',
+    'src/app/api/ops/tracking/route.ts',
+    'src/app/api/ops/returns/route.ts',
+    // 20/11, W3c («بالطريق» where it matters): the notice of a sent transfer reads the two ends' names and the
+    // destination's keeper rows (`userWarehouseAccess`) to tell the keepers who may receive — no stock column, no unit.
+    'src/lib/stock-transfer-alerts.ts',
+    // 20/11, W8b (combinations in the stock documents): the module that moves a combination's pieces with a transfer, an
+    // exit and the opening placement — it reads a combination's place in a warehouse (`warehouseId`) and on a road.
+    'src/lib/variant-lines.ts',
+    // 20/11, W8c (the combination grid in the stock screens): READ ONLY — it reads the variants door's own answer
+    // (`places[].warehouseId`, W8a) to print one combination's shelf figure in the form's source warehouse. No column, no write.
+    'src/components/inventory/CombinationBoxes.tsx',
+    // 20/11, W4b (the delivery takes the units from the order's warehouse — the owner's word on the cost point): the one
+    // function every delivery door shares reads the order's `sourceWarehouseId`, hands it to the draw as `prefer` and
+    // writes it on the SALE line; the warehouse names of a «فرق مكان» come from `order-source-warehouse.ts`.
+    'src/lib/stock-consumption.ts',
+    // 20/11, W2b (returns and the quick count name a warehouse — the owner's decision 4): the receipt reads the order's
+    // `sourceWarehouseId` (the desk's default receiver) and whether its store has a `warehousePlacement`; the receive-all
+    // door sends one `warehouseId` for the press; the quick count of one warehouse reads its rows and the orders that
+    // left it (`warehouse-count.ts`); the two screens send the warehouse the person picked.
+    'src/lib/return-receipt.ts',
+    'src/app/api/ops/returns/receive-all/route.ts',
+    'src/lib/warehouse-count.ts',
+    'src/components/screens/ReturnsScreen.tsx',
+    // 21/11, W5a (the count against the keeper): the count lib (a sheet names its warehouse; the expected figure is
+    // `warehouse-count.expectedInWarehouse`; a combination's expected reads its place in the warehouse and the orders that
+    // left it), its door helper, its five doors, and the freeze (a sheet's `warehouseId` that every stock door asks about).
+    'src/lib/stock-counts.ts',
+    'src/lib/stock-count-freeze.ts',
+    'src/lib/stock-count-door.ts',
+    'src/app/api/inventory/counts/route.ts',
+    'src/app/api/inventory/counts/[id]/route.ts',
+    'src/app/api/inventory/counts/[id]/submit/route.ts',
+    'src/app/api/inventory/counts/[id]/approve/route.ts',
+    'src/app/api/inventory/counts/[id]/void/route.ts',
+    // 21/11, W5b (the «الجرد» screen and «كشف عهدة الأمين»): the screen sends the open door's own body field `warehouseId`
+    // (W5a's `openSchema`) and the statement's `?warehouseId=`; the statement door reads that one warehouse (id, country,
+    // name) to ask the count doors' reach rule; the statement reads the approved sheets OF that warehouse (their
+    // `warehouseId` filter) and its keepers' names (`userWarehouseAccess`). None reads or writes a stock column.
+    'src/components/screens/StockCountsScreen.tsx',
+    'src/app/api/inventory/counts/statement/route.ts',
+    'src/lib/keeper-statement.ts',
+    // 22/11, F1 (the owner's «صلحها»: a placed store works from its screens): the choices a screen offers (the store's
+    // running warehouses this person reaches, and the one she keeps — `userWarehouseAccess`), and the two screens that send
+    // the doors' own body field `warehouseId` (production run, a combination's count). None reads or writes a stock column.
+    'src/lib/placed-warehouse-choices.ts',
+    'src/components/screens/ManufacturingScreen.tsx',
+    'src/components/products/ProductVariants.tsx',
+    // 25/11, F10 («من أي مخزن طلع المرتجع»): the returns desk's filter reads `sourceWarehouseId` as a `where` — a placed
+    // store only, read only. It reads or writes no stock column.
+    'src/lib/returns-warehouse-filter.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.

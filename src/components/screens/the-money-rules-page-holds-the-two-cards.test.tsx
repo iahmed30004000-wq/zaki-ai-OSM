@@ -28,6 +28,8 @@ const CARDS = {
 } as const;
 vi.mock('@/components/settings/PerLineSettlementCard', () => ({ PerLineSettlementCard: () => <div data-card="PerLineSettlementCard" /> }));
 vi.mock('@/components/settings/PartnersCard', () => ({ PartnersCard: () => <div data-card="PartnersCard" /> }));
+// 23/11 (F8): «أسعار الصرف» is a third card on this page (its own test: the-exchange-rates-card-types-the-owners-rate.test.tsx).
+vi.mock('@/components/settings/ExchangeRatesCard', () => ({ ExchangeRatesCard: () => <div data-card="ExchangeRatesCard" /> }));
 vi.mock('@/components/settings/PerformanceSettingsCard', () => ({ PerformanceSettingsCard: () => <div data-card="PerformanceSettingsCard" /> }));
 vi.mock('@/components/settings/PenaltyRulesCard', () => ({ PenaltyRulesCard: () => <div data-card="PenaltyRulesCard" /> }));
 vi.mock('@/components/settings/PostOrderOfferCard', () => ({ PostOrderOfferCard: () => <div data-card="PostOrderOfferCard" /> }));
@@ -119,7 +121,8 @@ describe('2 · the two cards, on this page and on no other', () => {
   it('both are drawn, once each, in order — the settlement first, then the partners — under the title «قواعد المال»', () => {
     const { container } = render(<FinanceRulesScreen />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('قواعد المال');
-    expect(marks(container)).toEqual(['PerLineSettlementCard', 'PartnersCard']);
+    // 23/11 (F8): was ['PerLineSettlementCard', 'PartnersCard'] — «أسعار الصرف» (the rates a partner's draw is converted at) joined after the partners.
+    expect(marks(container)).toEqual(['PerLineSettlementCard', 'PartnersCard', 'ExchangeRatesCard']);
   });
 
   it('each is imported from the settings folder, unchanged, and drawn bare — no prop the old screen did not pass', () => {

@@ -85,6 +85,9 @@ export const GUIDED_PATHS: readonly string[] = [
   '/inventory/balances',
   '/manufacturing',
   '/inventory/movements',
+  '/inventory/transfers',
+  '/inventory/exits',
+  '/inventory/counts',
   // المال — بقية الشاشات
   '/finance/wallets',
   '/finance/transfers',
@@ -95,6 +98,7 @@ export const GUIDED_PATHS: readonly string[] = [
   '/control/discount-alerts',
   '/control/penalties',
   '/control/audit',
+  '/control/app-errors',
   '/control/blacklist',
   // النمو والذكاء
   '/growth/performance',

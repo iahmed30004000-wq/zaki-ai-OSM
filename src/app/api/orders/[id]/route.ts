@@ -55,6 +55,7 @@ import { heldFor, reservationHoursLeft } from '@/lib/order-reservation';
 import { resolveDeliveryFee } from '@/lib/delivery-fees';
 import { isBenchStore } from '@/lib/bench-store';
 import { BENCH_FORWARD_SHIPPING, BENCH_STOPS_AR, BENCH_STOPS_CODE, benchStopsHere } from '@/lib/test-store';
+import { sourceWarehouseNames } from '@/lib/order-source-warehouse';
 
 /** Why a quantity or a product is not changed in place for an order whose goods are reserved. */
 const RESERVED_GOODS_EDIT_AR =
@@ -543,11 +544,13 @@ export async function GET(
     // The store row stays on the server too: the screen is told only whether it is a bench (B2), derived, never stored.
     const { assignee: _heldFor, store: _store, ...orderToSend } = order;
     const testStore = _store?.isTest === true;
+    // «طلع من مخزن كذا» (W4d): the name, only when the order has a source warehouse — no read and no new key otherwise.
+    const placeName = (await sourceWarehouseNames(db, companyId, [order.sourceWarehouseId])).get(order.sourceWarehouseId ?? '');
 
     return NextResponse.json({
       // Cost, profit and other people's commission only to those whose screens show money — see order-projection.ts.
       order: projectOrder(
-        { ...orderToSend, items, state, testStore, reservedFor, zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
+        { ...orderToSend, items, state, testStore, reservedFor, ...(placeName ? { sourceWarehouseName: placeName } : {}), zone: getZone(state), commission: maySeeOrderCost(user) ? commission : undefined, closing },
         user,
       ),
       // The store's own currency, so the detail screen shows the same money

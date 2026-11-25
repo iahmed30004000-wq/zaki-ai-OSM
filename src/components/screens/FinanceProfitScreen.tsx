@@ -40,6 +40,8 @@ import {
 } from '@/lib/expense-grade';
 import type { Trust } from '@/lib/cod-vitals';
 import { PartnersSection } from '@/components/screens/finance/PartnersSection';
+import { WithdrawalsSection } from '@/components/screens/finance/WithdrawalsSection';
+import { Tabs } from '@/components/ui/Tabs';
 
 /**
  * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───
@@ -219,6 +221,10 @@ export function FinanceProfitScreen() {
   // Opens on TODAY (the owner, 17/11). The figures below are of this span only; clearing it brings back «since the beginning».
   const [range, setRange] = useState<Range>(todayRange);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  // «المسحوبات» (22/11): a tab of its own beside the profit, for who holds the partners' key only. The profit tab is byte for byte what it was.
+  const mayWithdrawals = userCan(currentUser, 'finance.partners');
+  const [tab, setTab] = useState<'profit' | 'withdrawals'>('profit');
+  const onWithdrawals = mayWithdrawals && tab === 'withdrawals';
 
   // Expense Form State
   const [title, setTitle] = useState('');
@@ -351,7 +357,7 @@ export function FinanceProfitScreen() {
           </Button>
         }
         // The span box (D2) and its one sentence act on every figure of the screen: the frame's toolbar row. Its lines are byte-for-byte the same.
-        toolbar={<>
+        toolbar={onWithdrawals ? undefined : <>
           <div className="w-56">
             <DateRange value={range} onChange={setRange} label="منذ البداية" />
           </div>
@@ -360,6 +366,14 @@ export function FinanceProfitScreen() {
           </p>
         </>}
       >
+        {mayWithdrawals && (
+          <Tabs
+            tabs={[{ key: 'profit', label: 'الأرباح' }, { key: 'withdrawals', label: 'المسحوبات' }]}
+            value={tab}
+            onChange={(k) => setTab(k === 'withdrawals' ? 'withdrawals' : 'profit')}
+          />
+        )}
+        {onWithdrawals ? <WithdrawalsSection /> : <>
         {/* Real Profit KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
@@ -594,6 +608,7 @@ export function FinanceProfitScreen() {
             )}
           </CardContent>
         </Card>
+        </>}
       </PageShell>
 
       {/* Record Expense Modal */}

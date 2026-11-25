@@ -124,7 +124,19 @@ WITH req(action, needs) AS (VALUES
   -- 13/11: «تراجع عن التسليم» on the tracking screen. Granted by no migration — a pair here would be a person the owner ticked it for who lost the tracking key.
   ('ops.undo_delivery','ops.track'),
   -- 13/11: «الشركاء والسحوبات» (the partners' shares, statement and draws). Granted by no migration — a pair here would be a person the owner ticked it for who lost the finance view.
-  ('finance.partners','finance.view')
+  ('finance.partners','finance.view'),
+  -- 20/11 (warehouse plan W3a): the three hands of a stock transfer — «نقل بضاعة بين المخازن», «استلام نقل بضاعة بالعدّ», «اعتماد فرق نقل البضاعة». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
+  ('inventory.transfer','inventory.view'),
+  ('inventory.transfer_receive','inventory.view'),
+  ('inventory.difference_approve','inventory.view'),
+  -- 20/11 (warehouse plan W6a): the two hands of goods leaving a warehouse for good — «طلب إخراج بضاعة من المخزن», «اعتماد أو رفض إخراج بضاعة من المخزن». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
+  ('inventory.exit','inventory.view'),
+  ('inventory.exit_approve','inventory.view'),
+  -- 20/11 (warehouse plan W7b): «نقل بضاعة لبلد تاني (بعد اعتماد المالك)». Granted by no migration — a pair here would be a person the owner ticked it for who lost the send key.
+  ('inventory.transfer_abroad','inventory.transfer'),
+  -- 21/11 (warehouse plan W5a): the two hands of a count sheet — «جرد مخزن بورقة جرد (بدون ما يشوف رقم الدفتر)», «اعتماد ورقة جرد وفروقاتها». Granted by no migration — a pair here would be a person the owner ticked one for who lost the inventory view.
+  ('inventory.count','inventory.view'),
+  ('inventory.count_approve','inventory.view')
 )
 SELECT 'role_permissions' AS "table", r."name" AS "role", r."companyId", q.action, q.needs
 FROM "role_permissions" rp

@@ -105,7 +105,13 @@ async function draw() {
 }
 const tokens = (el: Element) => new Set(el.className.split(/\s+/).filter(Boolean));
 /** The kit's `Button` draws its words inside a span and starts its class list with these two. */
-const isKit = (b: Element) => tokens(b).has('relative') && tokens(b).has('cursor-pointer');
+/*
+ * 22/11 (F5, «سحب السجل»): the screen now draws the kit's `DateRange` above the ledger, whose opener is its own press (a
+ * `button[aria-expanded]` directly inside the kit's `relative` box). Old: only `Button`'s classes were the kit. New: that opener
+ * is the kit too. Why: it is `components/ui/DateRange`, not a raw press of this screen.
+ */
+const isDateRange = (b: Element) => b.hasAttribute('aria-expanded') && !!b.parentElement && tokens(b.parentElement).has('relative') && !!b.querySelector('svg');
+const isKit = (b: Element) => (tokens(b).has('relative') && tokens(b).has('cursor-pointer')) || isDateRange(b);
 const byName = (name: string) => document.querySelector(`button[aria-label="${name}"]`) as HTMLButtonElement;
 const press = (root: HTMLElement, name: string) => within(root).getByRole('button', { name });
 const card = (name: string) => screen.getAllByText(name).map((n) => n.closest('button')).find(Boolean) as HTMLButtonElement;

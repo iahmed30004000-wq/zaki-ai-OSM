@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { holdingWhere } from './reservation';
+import { drawPlacedVariants, restorePlacedVariant, variantsArePlaced } from './variant-stock';
 
 /**
  * A PRODUCT WITH VARIANTS — the owner's decision of 2026-11-18 (docs/planner-questions.md, «متغيّرات المنتج»).
@@ -26,6 +27,11 @@ import { holdingWhere } from './reservation';
  * the product's own availability reads. So reservation (at confirmation), release (cancel / unconfirm), draw-down
  * (delivery) and restock (a counted return) move the combination at the same moments they move the product. The
  * product's batches stay the ledger of the product's total and of its cost.
+ *
+ * 19/11 (W8a): in a store PLACED in warehouses the count lives per warehouse and `onHand` is their sum, written by
+ * `variant-stock.ts` alone, with a ledger line per change — the draw-down and the restock below hand a placed store's
+ * pieces to it. What a combination can still promise stays the store's: `onHand` (= Σ of its places) minus what open
+ * orders hold, read exactly as before. A store that is not placed runs the code it always ran.
  */
 
 type Tx = Prisma.TransactionClient | typeof db;
@@ -423,12 +429,27 @@ export async function carryPieces(
   return dropped;
 }
 
-/** At delivery: every chosen piece leaves its combination's count (never below zero — a delivery is a fact). */
+/**
+ * At delivery: every chosen piece leaves its combination's count (never below zero — a delivery is a fact).
+ * 19/11 (W8a): a placed store's pieces leave their places (`variant-stock.drawPlacedVariants`: the order's warehouse,
+ * then «بلا مكان», then the fullest); any other store's, the store-level count, as before.
+ */
 export async function drawDownVariants(tx: Tx, orderId: string) {
   const pieces = await tx.orderItemVariant.findMany({
     where: { orderId, variantId: { not: null } },
     select: { variantId: true, quantity: true, freeQuantity: true },
   });
+  if (pieces.length > 0) {
+    const order = await tx.order.findFirst({ where: { id: orderId }, select: { companyId: true, storeId: true, sourceWarehouseId: true } });
+    if (order && (await variantsArePlaced(tx, order.storeId))) {
+      await drawPlacedVariants(
+        tx,
+        { companyId: order.companyId, storeId: order.storeId, orderId, sourceWarehouseId: order.sourceWarehouseId ?? null },
+        pieces.map((x) => ({ variantId: x.variantId!, quantity: x.quantity + x.freeQuantity }))
+      );
+      return;
+    }
+  }
   for (const x of pieces) {
     const row = await tx.productVariant.findFirst({ where: { id: x.variantId! }, select: { onHand: true } });
     if (!row) continue;
@@ -440,8 +461,15 @@ export async function drawDownVariants(tx: Tx, orderId: string) {
  * A COUNTED RETURN puts `take` pieces of a line's product back — onto the combinations they left, in the line's own
  * order (paid pieces, then gifts). The returns desk counts per line, not per combination, so on a partial return the
  * first pieces of the line are the ones restored; a wrong guess is put right from the product's variants screen.
+ *
+ * 19/11 (W8a): in a placed store the pieces go back onto `warehouseId` — the warehouse the returns desk names, passed
+ * by W2b when it is built — and with none named onto «بلا مكان», where the product's own return batch lands today.
+ *
+ * 20/11 (W2b): the desk now passes it (`stock-consumption.restoreOrderStock`, after `warehouse-intake.returnPlace` checked
+ * it for the person). It is checked AGAIN here, on its own facts, because it decides where pieces land: a warehouse of the
+ * order's company and of its store's country, or nothing is written (`assertReturnWarehouse`).
  */
-export async function restoreVariants(tx: Tx, p: { orderId: string; productId: string; take: number }) {
+export async function restoreVariants(tx: Tx, p: { orderId: string; productId: string; take: number; warehouseId?: string | null }) {
   let left = p.take;
   if (left <= 0) return;
   const pieces = await tx.orderItemVariant.findMany({
@@ -449,10 +477,38 @@ export async function restoreVariants(tx: Tx, p: { orderId: string; productId: s
     orderBy: { createdAt: 'asc' },
     select: { variantId: true, quantity: true, freeQuantity: true },
   });
+  if (pieces.length > 0) {
+    const order = await tx.order.findFirst({ where: { id: p.orderId }, select: { companyId: true, storeId: true } });
+    if (order && (await variantsArePlaced(tx, order.storeId))) {
+      if (p.warehouseId) await assertReturnWarehouse(tx, { companyId: order.companyId, storeId: order.storeId }, p.warehouseId);
+      for (const x of pieces) {
+        if (left <= 0) break;
+        const back = Math.min(left, x.quantity + x.freeQuantity);
+        left -= back;
+        await restorePlacedVariant(
+          tx,
+          { companyId: order.companyId, storeId: order.storeId, orderId: p.orderId, warehouseId: p.warehouseId ?? null },
+          { variantId: x.variantId!, quantity: back }
+        );
+      }
+      return;
+    }
+  }
   for (const x of pieces) {
     if (left <= 0) break;
     const back = Math.min(left, x.quantity + x.freeQuantity);
     left -= back;
     await tx.productVariant.update({ where: { id: x.variantId! }, data: { onHand: { increment: back } } });
   }
+}
+
+/** Refused before any piece moves: the receiving warehouse is not one of this order's company and store's country (W2b). */
+export const RETURN_WAREHOUSE_REFUSED_AR = 'المخزن اللي استلم المرتجع مش من مخازن بلد هالمتجر. ما انكتب شي.';
+
+async function assertReturnWarehouse(tx: Tx, order: { companyId: string; storeId: string | null }, warehouseId: string) {
+  const warehouse = await tx.warehouse.findFirst({ where: { id: warehouseId, companyId: order.companyId }, select: { countryId: true } });
+  const store = order.storeId
+    ? await tx.store.findFirst({ where: { id: order.storeId, companyId: order.companyId }, select: { countryId: true } })
+    : null;
+  if (!warehouse || !store || warehouse.countryId !== store.countryId) throw new Error(RETURN_WAREHOUSE_REFUSED_AR);
 }

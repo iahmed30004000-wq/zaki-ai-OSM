@@ -65,6 +65,9 @@ const { db, tx, tables, calls, current, requireContext, logAudit, commission, st
   return { db, tx, tables, calls, current: { keys: [] as string[] }, requireContext: vi.fn(), logAudit: vi.fn(), commission: vi.fn(async () => 12.7), statementCalled: vi.fn() };
 });
 
+// 23/11 (F8): the draws door now fills «ما يعادله» from today's rate when it is left empty. These tests pin what happens with NO rate
+// (F7's rule: written in its own currency with no store value), so the rates read here answer «no rate». The filled case: the-draw-fills-its-equivalent-at-todays-rate.test.ts.
+vi.mock('@/lib/exchange-rates', () => ({ drawEquivalent: async () => ({ ok: false, missing: ['JOD'], sentence: 'ما في سعر — اكتب سعر JOD بالإعدادات' }) }));
 vi.mock('@/lib/db', () => ({ db }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/audit', () => ({ logAudit: (...a: unknown[]) => logAudit(...a) }));
@@ -184,17 +187,15 @@ describe('a draw from a wallet in the store’s own currency', () => {
 });
 
 describe('THE CURRENCY: a wallet in another currency than the store’s', () => {
-  it('without «ما يعادله بعملة المتجر» NOTHING is written — a silent 1:1 between dinars and dollars is not acceptable', async () => {
+  // 23/11 (F7) — UPDATED. Old: without «ما يعادله» the draw was refused (STORE_VALUE_REQUIRED). New: it is written in the wallet's own
+  // currency with NO store value — never a silent 1:1 — and the partners' statement counts it in no share. Why: «أحمد سحب 1000 USDT
+  // و1000 دينار و1000 ليرة … بدون ما يجيني سعر الصرف» (the owner).
+  it('without «ما يعادله بعملة المتجر» the draw is written in its own currency with NO store value — never a silent 1:1', async () => {
     const res = await post(draw({ walletId: W_JOD, amount: 70 }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.code).toBe('STORE_VALUE_REQUIRED');
-    expect(body.error).toContain('ما يعادله');
-    expect(body.error).toContain('USD');
-    expect(body.error).toContain('JOD');
-    expect(written()).toHaveLength(0);
-    expect(db.$transaction).not.toHaveBeenCalled();
-    expect(logAudit).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(written()).toHaveLength(1);
+    expect(written()[0]).toMatchObject({ category: 'PARTNER_DRAW', direction: 'OUT', amount: 70, currencyCode: 'JOD' });
+    expect(written()[0].valueInStoreCurrency ?? null).toBeNull();
   });
 
   it('with it, the movement keeps the wallet’s amount and carries the store’s worth: 70 JOD = 98.70 USD', async () => {

@@ -263,6 +263,31 @@ describe('GET — the table to count against, and then «placed»', () => {
       ['p2', 5, 2, 3],
     ]);
     expect(body.variantsNote).toMatch(/الخيارات/);
+    // 20/11 (W8c): NEGATIVE — a store with no combinations gets no «combinations» key: the answer of before.
+    expect('combinations' in body).toBe(false);
+  });
+
+  it('20/11 (W8c): the ACTIVE combinations of the products that have them, by product, with their store-level count', async () => {
+    S.data.productVariant = [
+      { id: 'v1', companyId: C1, productId: 'p2', label: 'أسود · L', status: 'ACTIVE', sortOrder: 0, onHand: 3 },
+      { id: 'v2', companyId: C1, productId: 'p2', label: 'كحلي · M', status: 'ACTIVE', sortOrder: 1, onHand: 2 },
+      { id: 'v0', companyId: C1, productId: 'p2', label: 'قديم', status: 'ARCHIVED', sortOrder: 2, onHand: 0 },
+    ];
+    await as('u-admin');
+    const { body } = await get();
+    expect(body.rows.map((r: Row) => [r.productId, r.hasVariants])).toEqual([
+      ['p1', false],
+      ['p2', true],
+    ]);
+    expect(body.combinations).toEqual({
+      p2: [
+        { variantId: 'v1', label: 'أسود · L', onHand: 3 },
+        { variantId: 'v2', label: 'كحلي · M', onHand: 2 },
+      ],
+    });
+    // The sentence is the new truth: the combinations are counted here, a blank one stays «بلا مكان».
+    expect(body.variantsNote).toMatch(/بلا مكان/);
+    expect(body.variantsNote).not.toMatch(/على مستوى المتجر لهلق/);
   });
 
   it('a keeper sees only the warehouse she keeps', async () => {

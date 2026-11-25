@@ -314,8 +314,14 @@ describe('the cached reader', () => {
   });
 });
 
-describe('inert: nothing but its own door reads the stored rule in this request', () => {
-  it('no file under src imports confirmation-rule-settings except the door (and tests)', () => {
+/*
+ * UPDATED 2026-11-19 (request Q3b — «the engine reads the rule it is given»): this guard was «INERT: no file under src imports this module except the door» — the blocker
+ * of Q3a. Q3b is the request that makes the engine read it, so the list is now EXACTLY the door and the engine's readers named by the row (its doors, its job, its
+ * libraries) — a new importer still turns it red, and so does any screen: the desk's bundle is at its ceiling and gets the rule's numbers from the server. The scan also
+ * sees `import('…')` and `require('…')` now (the Q3a review: the old pattern saw only `from '…'`).
+ */
+describe('who reads the stored rule: the door and the engine — never a screen', () => {
+  it('the files under src that import confirmation-rule-settings are exactly the door and the engine (tests aside)', () => {
     const root = join(__dirname, '..');
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -327,8 +333,47 @@ describe('inert: nothing but its own door reads the stored rule in this request'
     };
     walk(root);
     const importers = files
-      .filter((f) => /from\s+['"][^'"]*confirmation-rule-settings['"]/.test(readFileSync(f, 'utf8')))
-      .map((f) => relative(root, f).replace(/\\/g, '/'));
-    expect(importers).toEqual(['app/api/settings/confirmation-rule/route.ts']);
+      .filter((f) => /(from\s+|import\s*\(\s*|require\s*\(\s*)['"][^'"]*confirmation-rule-settings['"]/.test(readFileSync(f, 'utf8')))
+      .map((f) => relative(root, f).replace(/\\/g, '/'))
+      .sort();
+    expect(importers).toEqual([
+      'app/api/confirmation/mine/route.ts',
+      'app/api/confirmation/queue/route.ts',
+      // ADDED 2026-11-21 (request Q4c): the stop / rename / dates door of «قواعد خاصة» (see below) — a door, not a screen.
+      'app/api/confirmation/rules/[id]/route.ts',
+      // ADDED 2026-11-21 (request Q4b): «افحص موظفة» reads the rule in force once, to give her numbers over it — a door, not a screen.
+      'app/api/confirmation/rules/check/route.ts',
+      // ADDED 2026-11-21 (request Q4c): the doors of «قواعد خاصة» — the list and the save read `nextWorkStart` (a rule starts «من بداية الدوام الجاي»), the
+      // stop / rename / dates door the same, and the preview the same — doors, not screens. Was 16 readers; 20 with these and their lib below.
+      'app/api/confirmation/rules/preview/route.ts',
+      'app/api/confirmation/rules/route.ts',
+      'app/api/orders/[id]/confirmation/route.ts',
+      'app/api/orders/[id]/contact-attempts/route.ts',
+      // ADDED 2026-11-20 (request Q3c): the door of «مين بيقدر يعدّل» reads the stored document for the authors' ids of its versions — a door, not a screen.
+      'app/api/settings/confirmation-rule/editors/route.ts',
+      'app/api/settings/confirmation-rule/route.ts',
+      // ADDED 2026-11-21 (request Q4c): the lib of those doors — the base rule for the preview, the ranges of the numbers the dialog offers. Server only.
+      'lib/confirmation-own-rules.ts',
+      'lib/confirmation-queue.ts',
+      'lib/confirmation-rule-summary.ts',
+      // ADDED 2026-11-20 (request Q4a): the owner's own rules (`confirmation-rules.ts`) hold every payload to the base rule's validator and fall back to its default —
+      // the engine's resolver (inert until Q4b), never a screen.
+      'lib/confirmation-rules.ts',
+      // ADDED 2026-11-21 (request Q4b): her numbers over the base rule (`employee-numbers.ts`, a type import) and the returning-customer hold, which now reads the rule once per run to give each agent her own hand.
+      'lib/employee-numbers.ts',
+      'lib/jobs/definitions/release-stale-claims.ts',
+      'lib/no-answer-cadence.ts',
+      'lib/no-answer-watch.ts',
+      // ADDED 2026-11-21 (request Q4d): an order's numbers over the base rule (`order-numbers.ts`, type imports only) — the doors' resolver for one order, never a screen.
+      'lib/order-numbers.ts',
+      'lib/order-timeline.ts',
+      // ADDED 2026-11-21 (request Q5a): the PRIORITY rules' filter asks `ruleFor` with the DEFAULT rule (its `first` answer never reads a number) — the engine, never a screen.
+      'lib/priority-rules.ts',
+      'lib/reserve-returning-customers.ts',
+      // ADDED 2026-11-21 (request Q5b): the ROUTING rules' filter asks `ruleFor` with the DEFAULT rule (its `onlyFor` answer never reads a number) — the engine, never a screen.
+      'lib/routing-rules.ts',
+    ]);
+    // …and no screen at all: a component or a client file that read it would put the reader (and the database client behind it) into a bundle.
+    expect(importers.filter((f) => f.startsWith('components/') || /^'use client'/m.test(readFileSync(join(root, f), 'utf8')))).toEqual([]);
   });
 });

@@ -6,12 +6,14 @@ import { db } from '@/lib/db';
 import { inStore } from '@/lib/store-filter';
 import { requireContext } from '@/lib/geo-context';
 import { batchTotal, batchUnitCost } from '@/lib/product-cost';
+import { foldSplitRows } from '@/lib/batch-grade';
 import { onHandTotal } from '@/lib/receiving';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
 import { zodMessage } from '@/lib/zod-message';
 import { intakePlace, IntakePlaceRefused, intakeRefusalBody } from '@/lib/warehouse-intake';
 import { reachesWarehouse } from '@/lib/warehouses';
+import { placedWarehouseChoices } from '@/lib/placed-warehouse-choices';
 
 export async function GET(req: Request) {
   try {
@@ -37,11 +39,24 @@ export async function GET(req: Request) {
       orderBy: { productionDate: 'desc' },
     });
 
+    /*
+     * A ROW SPLIT OFF A RUN IS NOT A RUN (the warehouse plan, W2c). When goods change place a twin row holds them
+     * (`batch-split.ts`, quantity produced 0): it is listed under its run, not beside it — the run shows what it and every
+     * row split from it still hold and what was sold out of them (`batch-grade.foldSplitRows`). A store that was never
+     * placed has no twin, and the list is the very list it was.
+     */
+    const runs = foldSplitRows(batches);
+
     // The country's own currency. The screen printed "$" beside every
     // production cost in a system that runs pounds and dinars side by side,
     // so a batch costing 12,000 Syrian pounds read as twelve thousand
     // dollars.
-    return NextResponse.json({ batches, currency: country.currencyCode });
+    /*
+     * 22/11 (F1): A PLACED STORE'S RUN NAMES ITS WAREHOUSE, so the screen is told which ones it may offer — the very list
+     * the POST below accepts (`placed-warehouse-choices.ts`). A store that is not placed: the answer is the one it was.
+     */
+    const choices = await placedWarehouseChoices(user, companyId, storeId);
+    return NextResponse.json({ batches: runs, currency: country.currencyCode, ...(choices ? { placed: true, ...choices } : {}) });
   } catch (error: any) {
     return apiErrorResponse(error);
   }

@@ -2,6 +2,9 @@ import { db } from './db';
 import { computeEffectiveGrants } from './permissions-core';
 import { attachGrants } from './authorization';
 import { seesAllCountries } from './geo-context';
+import { OPEN_TRANSFER_WHERE } from './stock-transfer-kind';
+import { PENDING_EXIT } from './stock-exit-reasons';
+import { OPEN_COUNT_STATUSES } from './stock-count-freeze';
 import type { SessionUser } from '@/types/auth';
 
 /**
@@ -176,14 +179,28 @@ export async function warehousesOfStore(companyId: string, storeId: string) {
  * the exits of the later requests add their own line HERE — an open transfer
  * to or from it, an open count sheet, a pending exit — so the stop door keeps
  * one question.
+ *
+ * 20/11 (W3a): an OPEN transfer from or to it — units on the road, or a
+ * shortfall still waiting for its approval (`stock-transfer-kind.OPEN_TRANSFER_WHERE`).
+ * Units on the road have no warehouse, so the batch count above cannot see
+ * them: without this line the source could be stopped with its goods half
+ * way to the destination, and the destination stopped with goods arriving.
+ *
+ * 20/11 (W6a): a PENDING exit from it — units held for an exit that waits for its
+ * second hand. Stopping the warehouse would leave the approver a request on a
+ * place nobody may use any more; it is approved or rejected first.
+ *
+ * 21/11 (W5a): an OPEN count sheet on it (being counted, or waiting for its
+ * second hand). Stopping it would leave a count that can no longer be
+ * applied; the sheet is approved or voided first.
  */
 export interface StopBlocker {
-  code: 'HOLDS_UNITS';
+  code: 'HOLDS_UNITS' | 'OPEN_TRANSFER' | 'PENDING_EXIT' | 'OPEN_COUNT';
   count: number;
   ar: string;
 }
 
-type Reader = Pick<typeof db, 'productionBatch'>;
+type Reader = Pick<typeof db, 'productionBatch' | 'stockTransfer' | 'stockExit' | 'stockCount'>;
 
 export async function warehouseStopBlockers(client: Reader, companyId: string, warehouseId: string): Promise<StopBlocker[]> {
   const blockers: StopBlocker[] = [];
@@ -192,6 +209,20 @@ export async function warehouseStopBlockers(client: Reader, companyId: string, w
   });
   if (batches > 0) {
     blockers.push({ code: 'HOLDS_UNITS', count: batches, ar: `فيه بضاعة (${batches} دفعة)` });
+  }
+  const transfers = await client.stockTransfer.count({
+    where: { companyId, OR: [{ fromWarehouseId: warehouseId }, { toWarehouseId: warehouseId }], AND: [OPEN_TRANSFER_WHERE] },
+  });
+  if (transfers > 0) {
+    blockers.push({ code: 'OPEN_TRANSFER', count: transfers, ar: `في نقل مفتوح منه أو عليه (${transfers})` });
+  }
+  const exits = await client.stockExit.count({ where: { companyId, warehouseId, status: PENDING_EXIT } });
+  if (exits > 0) {
+    blockers.push({ code: 'PENDING_EXIT', count: exits, ar: `في طلب إخراج بضاعة منه مستني اعتماد (${exits})` });
+  }
+  const counts = await client.stockCount.count({ where: { companyId, warehouseId, status: { in: [...OPEN_COUNT_STATUSES] } } });
+  if (counts > 0) {
+    blockers.push({ code: 'OPEN_COUNT', count: counts, ar: `في ورقة جرد مفتوحة عليه (${counts})` });
   }
   return blockers;
 }

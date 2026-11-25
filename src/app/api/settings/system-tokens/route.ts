@@ -59,7 +59,34 @@ const createSchema = z.object({
   // buyer, 60 for the replies system.
   rateLimitPerMin: z.number().int().min(1).max(600).optional(),
   days: z.number().int().min(1).max(365).default(TOKEN_DAYS),
+  // «البلد» (2026-11-21): one active country of this company, or absent / null for every country — what every key
+  // made before this was. Honoured by the landing door; every other door refuses a country-bound key (system-token.ts).
+  countryId: z.string().uuid().nullable().optional(),
+  // «المتجر» (2026-11-23, Zaki Pages per store): one store of this company — the key then sees that store only, and is
+  // bound to its country too. Absent / null: every store of the country chosen above (or of the company), as before.
+  storeId: z.string().uuid().nullable().optional(),
 });
+
+/** The countries a key may be bound to: this company's active ones. */
+async function activeCountries(companyId: string) {
+  return db.country.findMany({
+    where: { companyId, isActive: true },
+    orderBy: [{ name: 'asc' }, { code: 'asc' }],
+    select: { id: true, code: true, name: true },
+  });
+}
+
+/**
+ * The stores a key may be bound to: this company's real stores (never a test bench, which no outside system sells from)
+ * in an active country, with the country each belongs to — the screen offers those of the country chosen.
+ */
+async function bindableStores(companyId: string) {
+  return db.store.findMany({
+    where: { companyId, isTest: false, country: { isActive: true } },
+    orderBy: [{ name: 'asc' }],
+    select: { id: true, name: true, countryId: true },
+  });
+}
 
 const revokeSchema = z.object({ id: z.string().uuid() });
 
@@ -85,6 +112,8 @@ export async function GET() {
         revokedAt: true,
         lastUsedAt: true,
         createdAt: true,
+        country: { select: { id: true, code: true, name: true } },
+        store: { select: { id: true, name: true } },
       },
     });
 
@@ -104,6 +133,10 @@ export async function GET() {
       // from — the media buyer's three, read-only, beside the replies five.
       systems: V1_SYSTEMS.map((s) => ({ key: s.key, ar: s.ar, scopes: s.scopes, rateLimitPerMin: s.rateLimitPerMin })),
       defaultDays: TOKEN_DAYS,
+      // «البلد: كل البلدان / <each active country>» — the choice the screen offers when a key is made.
+      countries: await activeCountries(companyId),
+      // «المتجر: كل متاجر البلد / <each store of it>» (2026-11-23).
+      stores: await bindableStores(companyId),
       tokens: rows.map((t) => ({
         id: t.id,
         name: t.name,
@@ -114,6 +147,10 @@ export async function GET() {
         expiresAt: t.expiresAt,
         lastUsedAt: t.lastUsedAt,
         createdAt: t.createdAt,
+        // Null: every country of the company.
+        country: t.country,
+        // Null: every store of that country (or of the company).
+        store: t.store ?? null,
         // One word a person can act on, computed here rather than in the
         // browser: «موقوف» is a decision somebody made and «منتهي» is the
         // clock, and the two need different buttons.
@@ -153,6 +190,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: msg, errorAr: msg, code: 'SCOPE_BEYOND_MINTER' }, { status: 403 });
     }
 
+    // A country is one of THIS company's active ones, or none at all: an id from elsewhere is refused, never ignored —
+    // ignoring it would make a key for every country that its maker meant for one.
+    // A store is one of THIS company's real stores, the same way; a key bound to it is bound to its country as well, so a
+    // store of another country than the one chosen is refused rather than either choice being dropped.
+    const storeId = v.storeId ?? null;
+    const store = storeId ? (await bindableStores(companyId)).find((s) => s.id === storeId) ?? null : null;
+    if (storeId && !store) {
+      const msg = 'المتجر غير موجود أو غير متاح. أعد تحميل الصفحة.';
+      return NextResponse.json({ error: msg, errorAr: msg, code: 'STORE_UNKNOWN' }, { status: 400 });
+    }
+    if (store && v.countryId && v.countryId !== store.countryId) {
+      const msg = 'المتجر من بلد غير البلد المختار.';
+      return NextResponse.json({ error: msg, errorAr: msg, code: 'STORE_OTHER_COUNTRY' }, { status: 400 });
+    }
+    const countryId = store ? store.countryId : v.countryId ?? null;
+    const country = countryId ? (await activeCountries(companyId)).find((c) => c.id === countryId) ?? null : null;
+    if (countryId && !country) {
+      const msg = 'البلد غير موجود أو غير مفعّل. أعد تحميل الصفحة.';
+      return NextResponse.json({ error: msg, errorAr: msg, code: 'COUNTRY_UNKNOWN' }, { status: 400 });
+    }
+
     const minted = mintToken();
     const expiresAt = new Date(Date.now() + v.days * 24 * 60 * 60 * 1000);
 
@@ -166,6 +224,8 @@ export async function POST(req: Request) {
         scopes: JSON.stringify(v.scopes),
         rateLimitPerMin: v.rateLimitPerMin,
         expiresAt,
+        countryId,
+        ...(store ? { storeId: store.id } : {}),
         createdById: user.id,
       },
       select: { id: true, name: true, system: true, prefix: true, expiresAt: true, createdAt: true },
@@ -180,12 +240,12 @@ export async function POST(req: Request) {
       action: 'SYSTEM_TOKEN_CREATED',
       entity: 'SystemToken',
       entityId: row.id,
-      newData: { name: v.name, system: v.system, prefix: minted.prefix, scopes: v.scopes, expiresAt },
+      newData: { name: v.name, system: v.system, prefix: minted.prefix, scopes: v.scopes, expiresAt, country: country?.code ?? null, ...(store ? { store: store.name } : {}) },
     });
 
     return NextResponse.json(
       {
-        token: { ...row, scopes: v.scopes, rateLimitPerMin: v.rateLimitPerMin, state: 'ACTIVE' },
+        token: { ...row, scopes: v.scopes, rateLimitPerMin: v.rateLimitPerMin, country, store: store ? { id: store.id, name: store.name } : null, state: 'ACTIVE' },
         // ── THE ONE AND ONLY TIME THIS VALUE EXISTS OUTSIDE A HEADER ──
         // It is not stored, not logged and not returned by GET. The screen
         // says so beside it, because a person who closes the box without

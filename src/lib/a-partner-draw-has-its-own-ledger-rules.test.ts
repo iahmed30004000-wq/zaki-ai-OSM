@@ -54,11 +54,22 @@ describe('recordMovement writes a partner draw only when it is whole', () => {
     expect(db.walletMovement.create).not.toHaveBeenCalled();
   });
 
-  it('a draw with no store value, a zero one, or a negative one, is refused — it could not be added to a ledger', async () => {
-    for (const bad of [undefined, 0, -3, Number.NaN]) {
+  // 23/11 (F7) — UPDATED. Old: a draw with NO store value was refused too. New: the value is optional («بدون ما يجيني سعر الصرف», the
+  // owner) — a draw without it is written and counted in no share; a zero, negative or NaN one is still refused. Why: draws in USDT,
+  // dinars and lira, each in its own currency.
+  it('a draw with a zero, negative or NaN store value is refused — it could not be added to a ledger', async () => {
+    for (const bad of [0, -3, Number.NaN]) {
       await expect(recordMovement(db as never, draw({ valueInStoreCurrency: bad })), String(bad)).rejects.toThrow(/store currency/);
     }
     expect(db.walletMovement.create).not.toHaveBeenCalled();
+  });
+
+  it('a draw with NO store value is written in its own currency, with no store value at all (23/11, F7)', async () => {
+    await recordMovement(db as never, draw({ valueInStoreCurrency: undefined }));
+    expect(db.walletMovement.create).toHaveBeenCalledTimes(1);
+    const data = (db.walletMovement.create as unknown as { mock: { calls: [{ data: Record<string, unknown> }][] } }).mock.calls[0][0].data;
+    expect(data.category).toBe('PARTNER_DRAW');
+    expect(data.valueInStoreCurrency).toBeUndefined();
   });
 
   it('a partner or a store value on any OTHER kind of movement is refused — nothing stores them beside a category that never reads them', async () => {

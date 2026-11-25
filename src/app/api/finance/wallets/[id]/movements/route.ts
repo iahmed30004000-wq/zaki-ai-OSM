@@ -10,6 +10,9 @@ import { logAudit } from '@/lib/audit';
 import { ExpenseRefused, MOVEMENT_CATEGORIES, PartnerDrawRefused, recordMovement, reverseMovement, walletBalance } from '@/lib/wallets';
 import { zodMessage } from '@/lib/zod-message';
 import { handMovementRefusal } from '@/lib/hand-movement-rules';
+import { readOccurredAt } from '@/lib/real-date';
+import { movementListRows } from '@/lib/history-export';
+import { NO_FILTERS, movementsWhere } from '@/lib/history-export-core';
 
 /**
  * Wallet movements.
@@ -28,6 +31,11 @@ const createSchema = z.object({
   party: z.string().trim().min(2, 'اذكر الطرف').max(120),
   category: z.enum(MOVEMENT_CATEGORIES),
   note: z.string().trim().min(3, 'الملاحظة إلزامية').max(300),
+  /**
+   * «تاريخ الحركة الفعلي» (22/11): when the money really moved, an ISO moment. Absent = the registration moment. Read by
+   * `readOccurredAt` below (future beyond five minutes, malformed, or before 2020 → an Arabic refusal with its code).
+   */
+  occurredAt: z.unknown().optional(),
 });
 
 const reverseSchema = z.object({
@@ -45,7 +53,7 @@ const reverseSchema = z.object({
 async function walletOf(id: string, companyId: string, storeId: string | null) {
   return db.wallet.findFirst({
     where: { id, ...inStore(companyId, storeId) },
-    include: { country: { select: { minorUnit: true } } },
+    include: { country: { select: { minorUnit: true, timezone: true } } },
   });
 }
 
@@ -60,30 +68,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!wallet) return NextResponse.json({ error: 'المحفظة غير موجودة' }, { status: 404 });
 
     const take = readLimit(new URL(req.url).searchParams, 100, 300);
-    const movements = await db.walletMovement.findMany({
-      where: { walletId: id },
-      orderBy: { createdAt: 'desc' },
-      take,
-      include: { reversalOf: { select: { id: true, note: true } }, reversedBy: { select: { id: true } } },
-    });
-
-    const actorIds = [...new Set(movements.map((m) => m.createdById))];
-    const actors = actorIds.length
-      ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true } })
-      : [];
-    const nameOf = new Map(actors.map((a) => [a.id, a.name]));
+    /*
+     * THE LATEST REGISTRATIONS, SHOWN BY THEIR REAL DATE (22/11). Which rows: the newest `take` by registration, as always (so a
+     * movement registered today with yesterday's date is on the list the moment it is written). In what order: the real date, then
+     * the registration (lib/real-date `byRealDateDesc`). `reversedBy` carries the reversing entry's reason and moment for the panel.
+     */
+    // The STORE's day, which is the wallet's country's: «سُجّلت …» is said only when the two moments fall on different days there.
+    const timeZone = wallet.country.timezone ?? 'Asia/Damascus';
+    // The list's body lives in lib/history-export (22/11, F5) so the history file reads the same rows through the same code; this
+    // door's clause is the builder's with no filter: `{ walletId }`, as it always was.
+    const movements = await movementListRows(movementsWhere({ walletId: id }, NO_FILTERS, timeZone), take, timeZone);
 
     return NextResponse.json({
       balance: await walletBalance(db, id, wallet.country.minorUnit),
-      movements: movements.map((m) => ({
-        ...m,
-        amount: Number(m.amount),
-        // A partner draw's worth in the store's currency: a number, like the amount beside it (a Decimal is a string on the wire).
-        ...(m.valueInStoreCurrency != null ? { valueInStoreCurrency: Number(m.valueInStoreCurrency) } : {}),
-        createdByName: nameOf.get(m.createdById) ?? null,
-        isReversal: !!m.reversalOfId,
-        wasReversed: !!m.reversedBy,
-      })),
+      movements,
     });
   } catch (error) {
     return apiErrorResponse(error);
@@ -114,6 +112,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const refused = handMovementRefusal(parsed.data.category, parsed.data.direction);
     if (refused) return NextResponse.json(refused, { status: 409 });
 
+    // The real date, when one was typed. The registration (`createdAt`) is the database's own and cannot be sent.
+    const real = readOccurredAt(parsed.data.occurredAt, new Date());
+    if (!real.ok) return NextResponse.json({ error: real.errorAr, errorAr: real.errorAr, code: real.code }, { status: 400 });
+
     const movement = await recordMovement(db, {
       companyId,
       walletId: id,
@@ -122,13 +124,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       party: parsed.data.party,
       category: parsed.data.category,
       note: parsed.data.note,
+      ...(real.value ? { occurredAt: real.value } : {}),
       createdById: user.id,
     });
 
+    const { occurredAt: _typed, ...said } = parsed.data;
+    void _typed;
     await logAudit({
       companyId, userId: user.id, action: 'WALLET_MOVEMENT_RECORDED',
       entity: 'WalletMovement', entityId: movement.id,
-      newData: { wallet: wallet.name, ...parsed.data },
+      newData: { wallet: wallet.name, ...said, ...(real.value ? { occurredAt: real.value.toISOString() } : {}) },
     });
 
     return NextResponse.json(

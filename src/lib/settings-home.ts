@@ -116,6 +116,6 @@ export const SETTINGS_CARDS: readonly SettingsCard[] = [
     key: 'control',
     title: 'الرقابة',
     why: 'ما طُلب تعديله، وما أُعطي من خصم، وما خُصم من راتب، ومن فعل ماذا، ومن هو ممنوع.',
-    paths: ['/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/blacklist'],
+    paths: ['/control/change-requests', '/control/discount-alerts', '/control/penalties', '/control/audit', '/control/app-errors', '/control/blacklist'],
   },
 ];
