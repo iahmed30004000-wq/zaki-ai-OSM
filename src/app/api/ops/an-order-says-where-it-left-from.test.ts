@@ -316,13 +316,19 @@ describe('an unplaced store — the doors answer what they answered before, byte
          * from the receipt the list ALREADY selected, so no new database question). Checked to be a boolean and taken off the same
          * way; `asked` and `rows` and every other byte stay held to the golden.
          */
+        /*
+         * 25/11 (F14, «تراجع عن إقفال القديمة»): ONE more additive boolean per row, `legacyClosed` (the close's mark still live on a
+         * SETTLED parcel) — read only for whoever holds `ops.close_legacy`, which this person does not, so it is false and no new
+         * database question is put (`asked` stays held). Checked to be false and taken off the same way.
+         */
         let body = answered;
         if (q.startsWith('tracking')) {
           for (const row of answered.orders as Record<string, unknown>[]) expect(typeof row.handover, `${seed} ${q}`).toBe('boolean');
           for (const row of answered.orders as Record<string, unknown>[]) expect(typeof row.returnCounted, `${seed} ${q}`).toBe('boolean');
+          for (const row of answered.orders as Record<string, unknown>[]) expect(row.legacyClosed, `${seed} ${q}`).toBe(false);
           body = {
             ...answered,
-            orders: (answered.orders as Record<string, unknown>[]).map(({ handover: _handover, returnCounted: _returnCounted, ...rest }) => rest),
+            orders: (answered.orders as Record<string, unknown>[]).map(({ handover: _handover, returnCounted: _returnCounted, legacyClosed: _legacyClosed, ...rest }) => rest),
           };
         }
         now[`${seed} ${q}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('base64url'), rows: body.orders.length, asked: [...calls] };

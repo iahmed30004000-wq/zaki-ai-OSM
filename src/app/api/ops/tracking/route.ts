@@ -16,6 +16,7 @@ import { readTrackingList } from '@/lib/parcel-tracking/list';
 import { readDifferenceRows } from '@/lib/parcel-tracking/difference';
 import { sightWhere, unseenKey, withoutMoney, type TrackingSight } from '@/lib/parcel-tracking/sight';
 import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
+import { LEGACY_CLOSE_ACTION } from '@/lib/legacy-closeout-words';
 
 /**
  * GET /api/ops/tracking?q=&status=&task=&courier=&region=&age=&said=&page=&limit=
@@ -259,6 +260,17 @@ export async function GET(req: Request) {
     const thresholdOf = new Map(fees.map((f) => [`${f.deliveryProviderId}|${f.regionId}`, f.lateThresholdDays]));
     // The warehouses these parcels left from, in one read — and no read at all for a page with none (an unplaced store).
     const places = await sourceWarehouseNames(db, companyId, orders.map((o) => o.sourceWarehouseId));
+    /*
+     * «تراجع عن إقفال القديمة» (25/11): which SETTLED parcels of THIS page still carry the close's live mark — asked only for whoever
+     * holds the close's own key, and only when the page has a settled parcel, so nobody else's read gains a statement. What to draw, never
+     * what to allow: the door measures the money traces itself.
+     */
+    const settledIds = can(user, 'ops.close_legacy') ? orders.filter((o) => o.settlementStatus === 'SETTLED').map((o) => o.id) : [];
+    const legacyClosed = new Set(
+      settledIds.length
+        ? (await db.orderActivity.findMany({ where: { companyId, orderId: { in: settledIds }, action: LEGACY_CLOSE_ACTION }, select: { orderId: true } })).map((r) => r.orderId)
+        : []
+    );
 
     const built = orders.map((order) => {
       // The lines, the add-ons and the return receipt are what the
@@ -300,6 +312,8 @@ export async function GET(req: Request) {
         collectionStatus: o.settlementStatus,
         // «تراجع عن المرتجع» (25/11): whether the returns desk counted it back in — the answer, not the receipt (which stays off the wire).
         returnCounted: _returnReceipt != null,
+        // «تراجع عن إقفال القديمة» (25/11): «مسوّى» by the no-money close, mark still live — false for anyone without the close's key.
+        legacyClosed: legacyClosed.has(o.id),
         // «تسليم مندوب» or the old hand door (F9): the statement's own rule, judged here so the screen only reads it.
         handover: handoverTakes(o, country.currencyCode),
         // What the company itself says, when it disagrees with our state: judged once for the whole list, only shown here.
