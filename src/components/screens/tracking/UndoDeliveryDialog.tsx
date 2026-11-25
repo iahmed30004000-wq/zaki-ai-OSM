@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Money } from '@/components/ui/Money';
 import { UNDO_REASON_MAX, UNDO_REASON_MIN, type UndoMeasure } from '@/lib/delivery-undo-words';
+import type { ReturnUndoMeasure } from '@/lib/return-undo-words';
 
 /**
  * «تراجع عن التسليم» — taking back a delivery that was recorded by mistake (13/11).
@@ -27,17 +28,50 @@ import { UNDO_REASON_MAX, UNDO_REASON_MIN, type UndoMeasure } from '@/lib/delive
  * WHAT WAS PRESSED WHEN IT OPENED IS WHAT IT ASKS ABOUT, and only that: the list behind may be read again, the question does not move.
  */
 
-const DOOR = '/api/ops/tracking/undo-delivery';
+/**
+ * «تراجع عن المرتجع» (25/11) IS THE SAME DIALOG FOR THE OTHER MISTAKE: a return «رجعت» recorded at the door by mistake. Same shape (measure,
+ * reason, one tick, the fingerprint back), its own door and its own words. The sentences of the measure are the server's either way.
+ */
+type Kind = 'delivery' | 'return';
+const WORDS: Record<Kind, { door: string; title: string; subtitle: string; what: string; when: string; refused: string; placeholder: string; ack: string; failed: string }> = {
+  delivery: {
+    door: '/api/ops/tracking/undo-delivery',
+    title: 'تراجع عن التسليم',
+    subtitle: 'بيرجع الطلب لحالتو قبل التسليم',
+    what: 'بتلغي تسجيل التسليم اللي انكتب بالغلط، وبيرجع الطلب لحالتو قبل التسليم، وبعدها بيكمّل مساره العادي (إرجاع أو تسليم صح).',
+    when: 'مفتوح بأي وقت — ما في مدة محددة. بس بيرفض إذا انسوّى حسابو أو ذكرو كشف أو انعدّ مرتجعو أو صارت عمولتو قابلة للدفع.',
+    refused: 'ما بيتراجع عن هالتسليم:',
+    placeholder: 'مثال: انسجّل تسليمو بالغلط — الشركة بتقول تم إرجاعها',
+    ack: 'أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون وعمولتو، وبيتسجّل باسمي.',
+    failed: 'تعذّر التراجع',
+  },
+  return: {
+    door: '/api/ops/tracking/undo-return',
+    title: 'تراجع عن المرتجع',
+    subtitle: 'بيرجع الطلب لحالتو قبل «رجعت»',
+    what: 'بتلغي تسجيل «رجعت» اللي انكتب بالغلط، وبيرجع الطلب لحالتو قبلها، وبعدها بيكمّل مساره العادي (كشف الشركة أو «استلم»).',
+    when: 'مفتوح بأي وقت — ما في مدة محددة. بس بيرفض إذا انعدّ المرتجع بالقسم أو في مصاري عالطلب أو طلب إلغاء أو تأجيل مفتوح. الكشف اللي بيذكر الطلب مش مانع.',
+    refused: 'ما بيتراجع عن هالمرتجع:',
+    placeholder: 'مثال: انسجّل مرتجع بالغلط — الشركة بتقول تم توصيلها',
+    ack: 'أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون، وبيتسجّل باسمي.',
+    failed: 'تعذّر التراجع',
+  },
+};
 
 export function UndoDeliveryDialog({
   order,
   onClose,
   onDone,
+  kind = 'delivery',
 }: {
   order: { id: string; orderNumber: string; merchantRef: string | null };
   onClose: () => void;
   onDone: (message: string) => void;
+  /** Which mistake is taken back: a delivery (the default, as it always was) or a return «رجعت». */
+  kind?: Kind;
 }) {
+  const [w] = useState(() => WORDS[kind]);
+  const DOOR = w.door;
   const [id] = useState(() => order.id);
   const [label] = useState(() => order.merchantRef ?? order.orderNumber);
   /** Asking again after a refusal. */
@@ -49,7 +83,7 @@ export function UndoDeliveryDialog({
    * the tick is taken back, and a late answer to an old question can never be drawn — with nothing reset by hand.
    */
   const key = again;
-  const [loaded, setLoaded] = useState<{ key: number; measure: UndoMeasure } | null>(null);
+  const [loaded, setLoaded] = useState<{ key: number; measure: UndoMeasure | ReturnUndoMeasure } | null>(null);
   const [failed, setFailed] = useState<{ key: number; message: string } | null>(null);
   const [ackKey, setAckKey] = useState<number | null>(null);
   const [reason, setReason] = useState('');
@@ -60,7 +94,7 @@ export function UndoDeliveryDialog({
 
   useEffect(() => {
     let current = true;
-    apiJson<UndoMeasure>(DOOR, {
+    apiJson<UndoMeasure | ReturnUndoMeasure>(DOOR, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'measure', orderId: id }),
@@ -74,7 +108,7 @@ export function UndoDeliveryDialog({
     return () => {
       current = false;
     };
-  }, [id, again]);
+  }, [id, again, DOOR]);
 
   const measure = loaded?.key === key ? loaded.measure : null;
   const loadError = failed?.key === key ? failed.message : null;
@@ -101,7 +135,7 @@ export function UndoDeliveryDialog({
       onDone(res.message);
     } catch (e) {
       sent.current = false;
-      setRefusal(e instanceof Error ? e.message : 'تعذّر التراجع');
+      setRefusal(e instanceof Error ? e.message : w.failed);
       // What changed is what the person must see: the numbers are read again, and the tick is taken back.
       setAgain((n) => n + 1);
       throw e;
@@ -112,13 +146,13 @@ export function UndoDeliveryDialog({
     <Modal
       isOpen
       onClose={onClose}
-      title="تراجع عن التسليم"
-      subtitle={`${label} — بيرجع الطلب لحالتو قبل التسليم`}
+      title={w.title}
+      subtitle={`${label} — ${w.subtitle}`}
       maxWidth="md"
       footer={
         <div className="flex gap-2">
           <Button size="md" className="flex-1" disabled={!canPress} onClick={press}>
-            تراجع عن التسليم
+            {w.title}
           </Button>
           <Button size="md" variant="secondary" onClick={onClose}>
             إلغاء
@@ -128,12 +162,8 @@ export function UndoDeliveryDialog({
     >
       <div className="space-y-3 text-sm text-[var(--sys-foreground)]">
         <Card plain padding="sm" className="text-note space-y-1">
-          <p className="text-[var(--sys-foreground)]">
-            بتلغي تسجيل التسليم اللي انكتب بالغلط، وبيرجع الطلب لحالتو قبل التسليم، وبعدها بيكمّل مساره العادي (إرجاع أو تسليم صح).
-          </p>
-          <p className="text-[var(--sys-muted)]">
-            مفتوح بأي وقت — ما في مدة محددة. بس بيرفض إذا انسوّى حسابو أو ذكرو كشف أو انعدّ مرتجعو أو صارت عمولتو قابلة للدفع.
-          </p>
+          <p className="text-[var(--sys-foreground)]">{w.what}</p>
+          <p className="text-[var(--sys-muted)]">{w.when}</p>
         </Card>
 
         {loadError && <p className="text-sm text-[var(--sys-destructive)]">{loadError}</p>}
@@ -149,7 +179,7 @@ export function UndoDeliveryDialog({
             className="flex gap-2 rounded-lg border border-[var(--sys-destructive-border)] bg-[var(--sys-destructive-soft)] p-3 text-note leading-relaxed text-[var(--sys-destructive)]"
           >
             <span>
-              <b>ما بيتراجع عن هالتسليم:</b> {measure.refusal.text}
+              <b>{w.refused}</b> {measure.refusal.text}
             </span>
           </div>
         )}
@@ -162,7 +192,7 @@ export function UndoDeliveryDialog({
                 {measure.lines.map((l) => (
                   <div key={l.key} className="px-3 py-1.5 text-note text-[var(--sys-foreground)]">
                     {l.text}
-                    {l.amount && (
+                    {'amount' in l && l.amount && (
                       <>
                         {' '}
                         <b className="tabular-nums">
@@ -188,7 +218,7 @@ export function UndoDeliveryDialog({
               label="سبب التراجع *"
               rows={2}
               maxLength={UNDO_REASON_MAX}
-              placeholder="مثال: انسجّل تسليمو بالغلط — الشركة بتقول تم إرجاعها"
+              placeholder={w.placeholder}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               helperText="بينكتب على الطلب وبسجل التدقيق باسمك."
@@ -199,7 +229,7 @@ export function UndoDeliveryDialog({
               className="bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/30 rounded-lg px-2"
               checked={acknowledged}
               onChange={(checked) => setAckKey(checked ? key : null)}
-              label="أقرّ: التراجع بيغيّر حالة الطلب وسجل الزبون وعمولتو، وبيتسجّل باسمي."
+              label={w.ack}
             />
           </div>
         )}

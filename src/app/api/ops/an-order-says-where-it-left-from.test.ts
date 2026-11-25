@@ -311,12 +311,18 @@ describe('an unplaced store — the doors answer what they answered before, byte
          * every row and then taken off before hashing, so every other byte of the body — and `asked` and `rows` — is still held
          * to osm/main's golden, unchanged. Nothing else is stripped; the delivery door's body is untouched.
          */
+        /*
+         * 25/11 (A2, «تراجع عن المرتجع»): ONE more additive boolean per row, `returnCounted` (did the returns desk count it — read
+         * from the receipt the list ALREADY selected, so no new database question). Checked to be a boolean and taken off the same
+         * way; `asked` and `rows` and every other byte stay held to the golden.
+         */
         let body = answered;
         if (q.startsWith('tracking')) {
           for (const row of answered.orders as Record<string, unknown>[]) expect(typeof row.handover, `${seed} ${q}`).toBe('boolean');
+          for (const row of answered.orders as Record<string, unknown>[]) expect(typeof row.returnCounted, `${seed} ${q}`).toBe('boolean');
           body = {
             ...answered,
-            orders: (answered.orders as Record<string, unknown>[]).map(({ handover: _handover, ...rest }) => rest),
+            orders: (answered.orders as Record<string, unknown>[]).map(({ handover: _handover, returnCounted: _returnCounted, ...rest }) => rest),
           };
         }
         now[`${seed} ${q}`] = { body: createHash('sha256').update(JSON.stringify(body)).digest('base64url'), rows: body.orders.length, asked: [...calls] };

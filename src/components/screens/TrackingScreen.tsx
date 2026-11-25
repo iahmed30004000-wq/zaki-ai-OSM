@@ -112,6 +112,8 @@ interface Row {
   difference?: DifferenceOnTheRow | null;
   /** «طلع من مخزن كذا» (W4d): the warehouse it left from — sent only when the order has one, so an unplaced store draws nothing new. */
   sourceWarehouseName?: string;
+  /** The returns desk counted this parcel back in (a return receipt exists). Only an explicit «false» draws «تراجع عن المرتجع». */
+  returnCounted?: boolean;
 }
 
 interface Extra {
@@ -257,6 +259,7 @@ export function TrackingScreen() {
   const [writeOffFor, setWriteOffFor] = useState<Row | null>(null);
   /** The delivered parcel whose delivery somebody is about to take back. */
   const [undoFor, setUndoFor] = useState<Row | null>(null);
+  const [undoReturnFor, setUndoReturnFor] = useState<Row | null>(null);
   const [noting, setNoting] = useState<string | null>(null);
   /** The order whose door outcome is being written, so its buttons wait. */
   const [settling, setSettling] = useState<string | null>(null);
@@ -1368,6 +1371,22 @@ export function TrackingScreen() {
                   تراجع عن التسليم…
                 </Button>
               )}
+              {/*
+                «تراجع عن المرتجع» (25/11): the mirror, on a RETURNED parcel the returns desk has not counted. «رجعت» recorded by mistake is
+                taken back so the company's statement («تم توصيلها») can deliver it. The same owner's key, the same quiet target.
+              */}
+              {acts.undoDelivery && o.shippingStatus === 'RETURNED' && o.returnCounted === false && (
+                <Button
+                  type="button"
+                  variant={quiet}
+                  size="sm"
+                  onClick={() => setUndoReturnFor(o)}
+                  className={quietFit}
+                  title="رجّع الطلب لحالتو قبل «رجعت» — لما انسجّل مرتجع بالغلط"
+                >
+                  تراجع عن المرتجع…
+                </Button>
+              )}
               {acts.transfer && (
               <Button
                 type="button"
@@ -1497,6 +1516,20 @@ export function TrackingScreen() {
           onClose={() => setUndoFor(null)}
           onDone={async (message) => {
             setUndoFor(null);
+            setDone(message);
+            setError(null);
+            await list.reload();
+          }}
+        />
+      )}
+
+      {undoReturnFor && (
+        <UndoDeliveryDialog
+          kind="return"
+          order={undoReturnFor}
+          onClose={() => setUndoReturnFor(null)}
+          onDone={async (message) => {
+            setUndoReturnFor(null);
             setDone(message);
             setError(null);
             await list.reload();
