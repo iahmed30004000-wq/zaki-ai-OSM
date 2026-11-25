@@ -342,6 +342,21 @@ export function normalizeProductCode(raw: string): string | null {
   return normalizeAuthenticityCode(text);
 }
 
+/**
+ * EVERY WAY A SCANNED STRING CAN MATCH A SAVED CODE, in order (25/11, owner: «الباركود يكون يقدر يكون كلشي — روابط او
+ * رموز»). A code may be anything the owner saved, links included — even this page's own link with no `?code=`:
+ *   1. the code inside a piece link (`…/v/<slug>?code=X` → X), as `normalizeProductCode` reads it;
+ *   2. the whole string, exactly as it was saved (`normalizeAuthenticityCode`: trimmed, a plain code upper-cased).
+ * The first that is a saved code of this product wins. Nothing new is revealed: still only `{ genuine }`.
+ */
+export function productCodeCandidates(raw: string): string[] {
+  const out: string[] = [];
+  for (const c of [normalizeProductCode(raw), normalizeAuthenticityCode(raw.trim())]) {
+    if (c && !out.includes(c)) out.push(c);
+  }
+  return out;
+}
+
 /** The active page with this public id, for the public check and media routes. */
 export async function activePageByPublicId(publicId: string) {
   if (!PUBLIC_ID.test(publicId)) return null;

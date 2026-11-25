@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { activePageByPublicId, isGenuineForProduct, normalizeProductCode, PUBLIC_ID } from '@/lib/product-verify';
+import { activePageByPublicId, isGenuineForProduct, productCodeCandidates, PUBLIC_ID } from '@/lib/product-verify';
 import { getClientIp, rateLimit, rateLimitByIp, UNKNOWN_IP } from '@/lib/rate-limit';
 
 /**
@@ -70,7 +70,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ publicI
       return NextResponse.json({ genuine: false }, { status: 200, headers: CORS });
     }
 
-    const genuine = await isGenuineForProduct(page.companyId, page.productId, normalizeProductCode(raw));
+    // Any saved code matches: a plain code, or a link of any shape (25/11, owner): see productCodeCandidates.
+    let genuine = false;
+    for (const code of productCodeCandidates(raw)) {
+      if (await isGenuineForProduct(page.companyId, page.productId, code)) {
+        genuine = true;
+        break;
+      }
+    }
     return NextResponse.json({ genuine }, { status: 200, headers: CORS });
   } catch (e) {
     console.error('POST /api/public/verify-product', e);

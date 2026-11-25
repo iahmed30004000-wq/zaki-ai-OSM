@@ -2750,12 +2750,12 @@
     "tabs": 0
   },
   "src/components/settings/ProductVerifyEditor.tsx": {
-    "buttons": 16,
-    "inputs": 15,
+    "buttons": 19,
+    "inputs": 16,
     "columns": 0,
     "cards": 6,
     "modals": 0,
-    "icons": 17,
+    "icons": 20,
     "links": 0,
     "tabs": 0,
     "switches": 1

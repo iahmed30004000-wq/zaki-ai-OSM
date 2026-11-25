@@ -65,6 +65,24 @@ describe('genuine — and nothing else', () => {
     expect(await (await scan('https://crm.example/v/krem?code=p-0042')).json()).toEqual({ genuine: true });
     expect(db.authenticityCode.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { companyId_code: { companyId: 'co-1', code: 'P-0042' } } }));
   });
+
+  // 25/11 (owner): «الباركود يكون يقدر يكون كلشي». The owner saved this page's own link as a code; scanning it is genuine.
+  it('a saved link of any shape — even the page link with no ?code= — is genuine', async () => {
+    const link = 'https://crm.example/v/vara-harir';
+    db.authenticityCode.findUnique.mockImplementation(async ({ where }: { where: { companyId_code: { code: string } } }) =>
+      where.companyId_code.code === link ? { id: 'c9', productId: PRODUCT } : null,
+    );
+    expect(await (await scan(link)).json()).toEqual({ genuine: true });
+  });
+
+  it('a piece link whose inner code is not saved, but the whole link is: genuine', async () => {
+    const link = 'https://crm.example/v/krem?code=old-label';
+    db.authenticityCode.findUnique.mockImplementation(async ({ where }: { where: { companyId_code: { code: string } } }) =>
+      where.companyId_code.code === link ? { id: 'c9', productId: PRODUCT } : null,
+    );
+    expect(await (await scan(link)).json()).toEqual({ genuine: true });
+    expect(db.authenticityCode.findUnique).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('not genuine, all in the same shape', () => {

@@ -306,7 +306,7 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
 
         <section {...rise(' vp-card vp-check')} aria-labelledby={`${uid}-check`}>
           <h2 id={`${uid}-check`}>تحقق من قطعتك</h2>
-          <p className="vp-sub">صوّر الرمز الموجود على القطعة بالكاميرا، أو اكتبه بإيدك.</p>
+          <p className="vp-sub">صوّر الرمز الموجود على القطعة بالكاميرا.</p>
 
           <div className="vp-cta">
             {preview ? (
@@ -318,7 +318,6 @@ export function ProductVerifyView({ design, publicId, initialCode, preview }: Pr
             )}
           </div>
 
-          <p className="vp-or">أو اكتب الرمز</p>
           <form
             className="vp-form"
             onSubmit={(e) => {
