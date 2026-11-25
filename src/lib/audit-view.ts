@@ -104,7 +104,7 @@ const ACTION_AR: Record<string, string> = {
   PARTNER_DRAWS_BACKFILLED: 'تعبئة «ما يعادله» لسحوبات قديمة بسعر اليوم (استثناء)', PARTNER_DRAW_EQUIVALENT_EDITED: 'تعديل أو مسح «ما يعادله» لسحب انعبّى بسعر اليوم',
   WALLET_OPENING_COUNTED: 'جرد افتتاحي لمحفظة', WALLET_STOPPED: 'إيقاف محفظة', DAILY_CLOSING_RECORDED: 'تسجيل إغلاق يومي',
   DAILY_CLOSING_APPROVED: 'اعتماد إغلاق يومي', STATEMENT_APPROVED: 'اعتماد كشف', STATEMENT_IMPORTED: 'استيراد كشف',
-  STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', COMMISSION_PAID: 'صرف عمولات',
+  STATEMENT_MATCHED: 'مطابقة كشف', SETTLEMENT_DIFFERENCE_RESOLVED: 'تسوية فرق كشف', SETTLEMENT_DIFFERENCES_RESOLVED_BULK: 'بتّ جماعي في فروق كشف', SETTLEMENT_UNLINKED_LINES_PARKED: 'تركين كل أسطر كشف بلا طلب (قيد المراجعة)', COMMISSION_PAID: 'صرف عمولات',
   STATEMENT_UNMENTIONED_ORDER_ANSWERED: 'قرار بشأن طلب لم يذكره كشف', STATEMENT_LINE_LINKED_BY_HAND: 'ربط سطر كشف بطلب يدوياً',
   SALARY_PAID: 'صرف راتب', EXPENSE_RECORDED: 'تسجيل مصروف', EXPENSE_VOIDED: 'إلغاء مصروف', STOCK_RECEIVED: 'استلام مخزون', STOCK_RECOUNTED: 'إعادة جرد مخزون',
   // The warehouses (`/api/geo/warehouses/**`): created, renamed and stopped read «verb + مخزن»; these two do not end in a verb that says it.

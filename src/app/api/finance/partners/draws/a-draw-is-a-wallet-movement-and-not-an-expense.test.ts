@@ -56,6 +56,8 @@ const { db, tx, tables, calls, current, requireContext, logAudit, commission, st
     partner: { findFirst: vi.fn(async ({ where }: { where: Row }) => tables.partner.find((p) => p.id === where.id && p.companyId === where.companyId) ?? null) },
     order: { findMany: vi.fn(async () => tables.order) },
     expense: { findMany: vi.fn(async () => tables.expense), create: vi.fn() },
+    // 25/11 (A1): `profitToDate` reads the store's profit epoch from its courier statements; none here — the same figures as before.
+    courierStatement: { findMany: vi.fn(async () => []) },
     $transaction: vi.fn((fn: (t: unknown) => Promise<unknown>) => {
       const run = chain.then(() => fn(tx));
       chain = run.catch(() => undefined);

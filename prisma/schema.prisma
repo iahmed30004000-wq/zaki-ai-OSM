@@ -83,6 +83,7 @@ model Company {
   abandonedCartAliases  AbandonedCartAlias[]
   landingChatThreads    LandingChatThread[]
   authenticityCodes     AuthenticityCode[]
+  productVerifyPages    ProductVerifyPage[]
 
   @@map("companies")
 }
@@ -386,6 +387,7 @@ model User {
   reviewsAdded                  ProductReview[]         @relation("ReviewAuthor")
   reviewsHidden                 ProductReview[]         @relation("ReviewHider")
   authenticityCodesAdded        AuthenticityCode[]      @relation("AuthenticityCodeCreator")
+  productVerifyPagesAdded       ProductVerifyPage[]     @relation("ProductVerifyPageCreator")
   abandonedCartsAssigned        AbandonedCart[]         @relation("AbandonedCartAssignee")
   abandonedCartEvents           AbandonedCartActivity[]
 
@@ -494,6 +496,8 @@ model Product {
   fixedCost          ProductFixedCost?
   abandonedCarts     AbandonedCart[]
   variants           ProductVariant[]
+  /// «باركود المنتجات»: this product's own public authenticity page, when the owner designed one.
+  verifyPage         ProductVerifyPage?
 
   @@unique([companyId, storeId, sku])
   @@index([companyId, storeId])
@@ -5303,4 +5307,70 @@ model AuthenticityCode {
   @@unique([companyId, code])
   @@index([companyId])
   @@map("authenticity_codes")
+}
+
+// ─── PRODUCT BARCODE PAGES (additive) ───
+// «باركود المنتجات» (25/11, owner): each product may have ONE public page of its own, designed by the owner, at
+// `/verify/p/<publicId>`. The product's barcode (its QR) is the link to that page; a piece's QR is the same link with
+// `?code=<its authenticity code>`, and the page checks the code against `authenticity_codes` — a code tagged to THIS
+// product, or to no product. So a copied product barcode alone proves nothing: the per-piece code is what is checked.
+//
+// `publicId` is the only key the world ever sees (random, ~12 url-safe characters) — never the product id or the row
+// id. The page shows the product (that is its point); it never says anything about a code beyond genuine true/false.
+// Every design field is optional: null reads as «take it from the product» (name, image) or the page's own default.
+model ProductVerifyPage {
+  id                String   @id @default(uuid())
+  companyId         String
+  /// One page per product. A product id is globally unique, so this is also unique per company.
+  productId         String   @unique @map("product_id")
+  publicId          String   @unique @map("public_id")
+  /// The SHORT public address, `/v/<slug>` (25/11, owner: «الروابط بكون بقدر اعدل عليها واخليها اقصر»). Lowercase latin,
+  /// digits and dashes, 3–40. Globally unique — there is no company in the path — and never equal to a slug another page
+  /// once had (`ProductVerifyPageSlug`), so a printed QR never opens somebody else's product.
+  slug              String   @unique
+  active            Boolean  @default(true)
+  headline          String?
+  nameOverride      String?  @map("name_override")
+  /// An https URL, or an image uploaded here (a private `/api/media/...` link into the product's folder, served to the
+  /// public only through this page's own media route while the page is active).
+  imageUrl          String?  @map("image_url")
+  logoUrl           String?  @map("logo_url")
+  /// `#rrggbb`. Null → the page's defaults.
+  primaryColor      String?  @map("primary_color")
+  backgroundColor   String?  @map("background_color")
+  description       String?
+  /// The bullet features, as a JSON array of strings (the same JSON-in-TEXT shape `SystemToken.scopes` uses).
+  features          String   @default("[]")
+  genuineMessage    String?  @map("genuine_message")
+  notGenuineMessage String?  @map("not_genuine_message")
+  /// Digits only, with the country code. Null → no WhatsApp button.
+  whatsappNumber    String?  @map("whatsapp_number")
+  /// 'landing' (the product's newest published landing page) · 'custom' (`reorderUrl`) · 'none'.
+  reorderMode       String   @default("landing") @map("reorder_mode")
+  reorderUrl        String?  @map("reorder_url")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdById       String?  @map("created_by_id")
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("ProductVerifyPageCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  oldSlugs  ProductVerifyPageSlug[]
+
+  @@index([companyId])
+  @@map("product_verify_pages")
+}
+
+// A slug a product page USED to have. Printed barcodes carry it for ever, so `/v/<old>` answers a permanent redirect
+// (308) to the page's current slug, and the old slug can never be given to another page. Kept for good: there is no
+// screen that deletes one, and the row goes only with its page.
+model ProductVerifyPageSlug {
+  slug      String   @id
+  pageId    String   @map("page_id")
+  createdAt DateTime @default(now())
+
+  page ProductVerifyPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@map("product_verify_page_slugs")
 }

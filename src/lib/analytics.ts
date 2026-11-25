@@ -8,6 +8,7 @@ import { AiBusinessContext } from './ai';
 import { endOfLocalDay, startOfLocalDay } from './local-day';
 import { notSuperseded } from './superseded';
 import { expensesOf } from './expense-scope';
+import { whereRevenueIsCollected, whereRevenueIsPrice } from './delivered-revenue';
 
 export interface DateFilter {
   period?: 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'last_month' | 'all';
@@ -292,13 +293,15 @@ export async function getCompanyAnalytics(
     }),
     // COALESCE has no Prisma aggregate, so the two halves are summed apart:
     // orders where the door recorded a figure, and orders where it did not.
+    // The two halves are the ONE revenue rule (`delivered-revenue.ts`, 25/11) that the profit screen reads row by row — the same
+    // clauses as before, moved there so the two screens cannot drift apart.
     Promise.all([
       db.order.aggregate({
-        where: { ...deliveredWhere, collectedAmount: { not: null } },
+        where: { ...deliveredWhere, ...whereRevenueIsCollected() },
         _sum: { collectedAmount: true },
       }),
       db.order.aggregate({
-        where: { ...deliveredWhere, collectedAmount: null },
+        where: { ...deliveredWhere, ...whereRevenueIsPrice() },
         _sum: { totalAmount: true },
       }),
     ]),

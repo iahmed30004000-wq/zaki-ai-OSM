@@ -211,6 +211,9 @@ export interface PartnerStatement extends StatementLines {
   uncounted: number;
   /** The newest draws, reversed ones marked. */
   draws: PartnerDrawRow[];
+  /** Where the profit they are cut from starts (A1): the day of the store's first courier statement (YYYY-MM-DD) and its first instant. ABSENT for a store with no statement — its figures are since the beginning, and its statement is exactly what it was. */
+  since?: string;
+  sinceDay?: string;
 }
 
 /**

@@ -14,6 +14,8 @@ const { db, orders, expenses, commission } = vi.hoisted(() => {
   const orders: Row[] = [];
   const expenses: Row[] = [];
   const ok = (have: unknown, want: unknown): boolean => {
+    // 25/11 (A1): delivered is `whereDelivered()` — `shippingStatus: { in: [...] }`.
+    if (want && typeof want === 'object' && Array.isArray((want as { in?: unknown[] }).in)) return (want as { in: unknown[] }).in.includes(have);
     if (want && typeof want === 'object' && !(want instanceof Date)) {
       const w = want as { gte?: Date; lt?: Date };
       const t = (have as Date | null)?.getTime();
@@ -27,6 +29,8 @@ const { db, orders, expenses, commission } = vi.hoisted(() => {
   const db = {
     expense: { findMany: vi.fn(async ({ where }: { where: Row }) => expenses.filter((r) => matches(r, where))) },
     order: { findMany: vi.fn(async ({ where }: { where: Row }) => orders.filter((r) => matches(r, where))) },
+    // 25/11 (A1): the store's profit epoch is read from its courier statements. None here: no floor, the span is the span asked for.
+    courierStatement: { findMany: vi.fn(async () => []) },
   };
   return { db, orders, expenses, commission: vi.fn(async (_where: Row) => 0) };
 });
@@ -45,9 +49,9 @@ beforeEach(() => {
   commission.mockClear();
   // Damascus is UTC+3 in this period: the 17th local runs from 16th 21:00Z to 17th 21:00Z.
   orders.push(
-    { id: 'o1', companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: 100, shippingCost: 5, estimatedCostOfGoods: 30, deliveredAt: at('2026-11-17T10:00:00Z') },
-    { id: 'o2', companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: 200, shippingCost: 5, estimatedCostOfGoods: 50, deliveredAt: at('2026-11-17T22:30:00Z') }, // 18th, 01:30 local
-    { id: 'o3', companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: 400, shippingCost: 5, estimatedCostOfGoods: 90, deliveredAt: at('2026-11-10T10:00:00Z') }
+    { id: 'o1', companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: 100, shippingCost: 5, estimatedCostOfGoods: 30, deliveredAt: at('2026-11-17T10:00:00Z') },
+    { id: 'o2', companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: 200, shippingCost: 5, estimatedCostOfGoods: 50, deliveredAt: at('2026-11-17T22:30:00Z') }, // 18th, 01:30 local
+    { id: 'o3', companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: 400, shippingCost: 5, estimatedCostOfGoods: 90, deliveredAt: at('2026-11-10T10:00:00Z') }
   );
   expenses.push(
     { id: 'e1', companyId: 'c1', storeId: 's1', amount: 20, expenseDate: at('2026-11-17T09:00:00Z'), voidedAt: null },
@@ -77,7 +81,8 @@ describe('profitToDate over a window', () => {
     const r = await profitToDate(SCOPE);
     expect(r.summary.totalRevenue).toBe(700);
     expect(r.summary.totalOperationalExpenses).toBe(90);
-    expect(commission.mock.calls[0][0]).toEqual({ companyId: 'c1', storeId: 's1', shippingStatus: 'DELIVERED' });
+    // MOVED 25/11 (A1): was `shippingStatus: 'DELIVERED'` — the commissions are asked over the revenue's own set, `whereDelivered()`.
+    expect(commission.mock.calls[0][0]).toEqual({ companyId: 'c1', storeId: 's1', shippingStatus: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } });
   });
 
   it('with the 17th of the store: only the orders delivered that local day and the expenses spent that day — the evening one counts for the 18th', async () => {
@@ -95,7 +100,8 @@ describe('profitToDate over a window', () => {
     const r = await profitToDate(SCOPE, w);
     expect(r.deliveredOrders.map((o) => o.id).sort()).toEqual(['o1', 'o2']);
     expect(r.summary.totalRevenue).toBe(300);
-    expect(commission.mock.calls[0][0]).toEqual({ companyId: 'c1', storeId: 's1', shippingStatus: 'DELIVERED', deliveredAt: { gte: w.start, lt: w.end } });
+    // MOVED 25/11 (A1): the same set as the revenue (`whereDelivered()`), the same window.
+    expect(commission.mock.calls[0][0]).toEqual({ companyId: 'c1', storeId: 's1', shippingStatus: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] }, deliveredAt: { gte: w.start, lt: w.end } });
   });
 
   it('a span with nothing in it is zeros, not a throw', async () => {
