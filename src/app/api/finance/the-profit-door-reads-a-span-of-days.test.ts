@@ -10,7 +10,11 @@ const { profitToDate, requireContext } = vi.hoisted(() => ({
 }));
 // 18/11 (H2): `aggregate` — the door now reads the store's live expenses as they stand (count, sum, newest) to name its kept answer.
 vi.mock('@/lib/db', () => ({
-  db: { expense: { groupBy: vi.fn(async () => []), aggregate: vi.fn(async () => ({ _count: { _all: 0 }, _sum: { amount: null }, _max: { createdAt: null } })) } },
+  // 25/11 (A1): `courierStatement` — the door reads the store's profit epoch; none here, so the span is handed on exactly as asked.
+  db: {
+    expense: { groupBy: vi.fn(async () => []), aggregate: vi.fn(async () => ({ _count: { _all: 0 }, _sum: { amount: null }, _max: { createdAt: null } })) },
+    courierStatement: { findMany: vi.fn(async () => []) },
+  },
 }));
 vi.mock('@/lib/geo-context', () => ({ requireContext: (...a: unknown[]) => requireContext(...a) }));
 vi.mock('@/lib/authorization', () => ({ requirePermission: vi.fn(async () => ({})) }));

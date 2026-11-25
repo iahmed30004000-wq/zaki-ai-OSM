@@ -343,3 +343,19 @@ describe('NO NEW CSS — every class the section uses is one the product already
     expect(brandNew, `classes nobody else ships: ${brandNew.join(' ')}`).toEqual([]);
   });
 });
+
+// 25/11 (A1): «من البداية» names the same start the profit screen names — the day of the first courier statement.
+describe('where the profit the shares are cut from starts', () => {
+  it('with a first statement: the card names its day, and says the draws are all counted', async () => {
+    answer = statementOf({ since: '2026-10-27T21:00:00.000Z', sinceDay: '2026-10-28' });
+    await tables();
+    expect(screen.getByText((t) => t.includes('الأرباح محسوبة من 28 أكتوبر 2026 — يوم أول كشف مرفوع. السحوبات كلها من البداية'))).toBeTruthy();
+    expect(screen.queryByText((t) => t.includes('كل الأرقام من البداية'))).toBeNull();
+  });
+
+  it('NEGATIVE: with no statement it reads as it always did', async () => {
+    await tables();
+    expect(screen.getByText((t) => t.includes('كل الأرقام من البداية'))).toBeTruthy();
+    expect(screen.queryByText((t) => t.includes('يوم أول كشف مرفوع'))).toBeNull();
+  });
+});

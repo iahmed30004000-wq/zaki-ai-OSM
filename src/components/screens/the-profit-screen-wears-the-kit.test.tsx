@@ -133,8 +133,11 @@ describe('«الأرباح» — the frame', () => {
     expect(row.querySelector('button')).not.toBeNull();
   });
 
-  it('the span box line is byte-for-byte the one on main (D2 stays as it is)', () => {
-    expect(src(SCREEN)).toContain('<DateRange value={range} onChange={setRange} label="منذ البداية" />');
+  // MOVED 25/11 (A1): the box was `label="منذ البداية"`. With a first courier statement the profit is counted from that day, so
+  // «since the beginning» would be false: the empty box now names the day (`من <التاريخ>`), and keeps «منذ البداية» for a store
+  // with no statement. The box itself — same component, same value, same handler — is unchanged.
+  it('the span box is the same DateRange on the same range; its empty label names where the profit starts', () => {
+    expect(src(SCREEN)).toContain("<DateRange value={range} onChange={setRange} label={sinceDay ? `من ${sinceDate(sinceDay)}` : 'منذ البداية'} />");
   });
 
   it('«سجّل مصروفاً» is the one primary act of the header, and it opens the form', async () => {

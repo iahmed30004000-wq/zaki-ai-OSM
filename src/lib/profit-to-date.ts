@@ -1,7 +1,10 @@
 import { db } from './db';
 import { commissionCostForOrders } from './commission';
 import { expensesOf } from './expense-scope';
-import { dayRange } from './eod-report';
+import { dayRange, localDay } from './eod-report';
+import { whereDelivered } from './order-state';
+import { revenueOf } from './delivered-revenue';
+import { isManualDraftHash } from './manual-statement-rules';
 import type { ProfitSummary } from './profit-summary';
 
 /**
@@ -10,17 +13,22 @@ import type { ProfitSummary } from './profit-summary';
  * «الربح لازم يتم توزيعه وفق هاي النسب — الربح الصافي انا بحكي» (the owner). The shares are cut from the number he sees under
  * «صافي الربح» on the profit screen, so there must be exactly one place that number is made. It was made inline in
  * `GET /api/finance`; a second copy for the partners would have agreed with the first today and drifted on the day a rule changed,
- * which is the defect `every-money-writer-is-known` exists to name. The block below is that inline code MOVED, not rewritten:
- * every query and every line of arithmetic is the one the route had, in the same order, and
- * `api/finance/the-profit-summary-is-pinned.test.ts` — written against the route BEFORE the move — holds the figures.
+ * which is the defect `every-money-writer-is-known` exists to name.
  *
- * WHAT IT IS, SO THE PARTNERS DO NOT READ MORE INTO IT THAN IT SAYS. Since the beginning, for ONE store: the delivered orders
- * (the legacy `status` column, as the screen has always read it), their cost of goods, their shipping, the commissions the ledger
- * holds for them, and the store's live expenses. With no `window` there is no period: that is what the partners read, and it is unchanged.
+ * WHAT IT IS, SO THE PARTNERS DO NOT READ MORE INTO IT THAN IT SAYS. For ONE store: the delivered orders, their cost of goods,
+ * their shipping, the commissions the ledger holds for them, and the store's live expenses — counted from the store's PROFIT EPOCH
+ * (below) when it has one, and since the beginning when it has none.
  *
- * A WINDOW (D2, the owner 17/11: «حط الأشياء ع اليوم التاريخ»). The profit screen may ask for a span of days. The window is a filter on the SAME three reads and nothing else: the delivered orders
- * and the commissions of those same orders by the day they were DELIVERED, the expenses by the day they were SPENT. Not one line of arithmetic below changes, and a window never reaches the partners'
- * statement (it calls this with none). The days are the store's own days (`profitWindow`), never clamped: a span that was asked for is the span that is added up.
+ * WHICH ORDERS ARE DELIVERED, AND WHAT EACH ONE BROUGHT IN (25/11, A1 — the fix for a month that read 125). This read the LEGACY
+ * `status` column, which only the order's own shipping door keeps in step; the three roads the business delivers by (the statement
+ * close, the «استلم» door, the per-line settle) write `shippingStatus` alone, so their orders never reached this figure. Delivered is
+ * now `whereDelivered()` (`order-state.ts`, DELIVERED or PARTIALLY_DELIVERED) — the dashboard's set — and an order's revenue is
+ * `revenueOf` (`delivered-revenue.ts`): what the courier paid for it, or its price before its statement arrives — the dashboard's rule.
+ * The commissions are asked over the SAME set. Cost of goods, shipping, commissions and expenses are added up exactly as before.
+ *
+ * A WINDOW (D2, the owner 17/11: «حط الأشياء ع اليوم التاريخ»). The profit screen may ask for a span of days. The window is a filter
+ * on the SAME three reads and nothing else: the delivered orders and the commissions of those same orders by the day they were
+ * DELIVERED, the expenses by the day they were SPENT. The days are the store's own days (`profitWindow`).
  */
 export interface ProfitWindow {
   /** The first instant of the first day. */
@@ -37,7 +45,7 @@ function isRealDay(day: string): boolean {
   return d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]);
 }
 
-/** «from» and «to» as days of the store (YYYY-MM-DD, inclusive) → the instants they cover. Null when either is missing or not a day, or the span runs backwards: then there is no window and the figures are since the beginning, as before. */
+/** «from» and «to» as days of the store (YYYY-MM-DD, inclusive) → the instants they cover. Null when either is missing or not a day, or the span runs backwards: then there is no window and the figures are since the epoch (or the beginning), as before. */
 export function profitWindow(from: string | null | undefined, to: string | null | undefined, timeZone: string): ProfitWindow | null {
   if (!from || !to || !isRealDay(from) || !isRealDay(to)) return null;
   const a = dayRange(from, timeZone);
@@ -46,10 +54,65 @@ export function profitWindow(from: string | null | undefined, to: string | null 
   return { start: a.start, end: b.end };
 }
 
-export async function profitToDate(scope: { companyId: string; storeId: string }, window?: ProfitWindow | null) {
+/** The schema's own default for a country's clock (`Country.timezone`), used only when the store's country cannot be read. */
+const DEFAULT_TIMEZONE = 'Asia/Damascus';
+
+/**
+ * THE PROFIT EPOCH (25/11, A1) — the owner: «الأرباح المفروض تبلّش من أول ما صرنا نرفع كشوفات، هيك الأدق».
+ *
+ * The first instant of the store's local DAY on which its earliest courier statement was created. The open manual draft is not a
+ * statement yet (`isManualDraftHash`) and does not count. Null when the store has no statement: then nothing changes for that store.
+ *
+ * Before it the store's books hold the old system's imported history against no expenses at all, so a profit «since the
+ * beginning» was the old system's revenue with nothing taken off it — and the partners' shares were cut from that.
+ */
+export interface ProfitEpoch {
+  /** The first instant of that day of the store. */
+  at: Date;
+  /** The same day as the store writes it (YYYY-MM-DD) — what the screens print, never re-derived in another clock. */
+  day: string;
+}
+
+export async function profitEpoch(scope: { companyId: string; storeId: string }, timeZone?: string | null): Promise<ProfitEpoch | null> {
   const { companyId, storeId } = scope;
-  const spent = window ? { expenseDate: { gte: window.start, lt: window.end } } : {};
-  const delivered = window ? { deliveredAt: { gte: window.start, lt: window.end } } : {};
+  const statements = await db.courierStatement.findMany({
+    where: { companyId, storeId },
+    select: { createdAt: true, fileHash: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const first = statements.find((s) => !isManualDraftHash(s.fileHash));
+  if (!first) return null;
+  let zone = timeZone ?? null;
+  if (!zone) {
+    const store = await db.store.findUnique({ where: { id: storeId }, select: { country: { select: { timezone: true } } } });
+    zone = store?.country?.timezone ?? DEFAULT_TIMEZONE;
+  }
+  const day = localDay(first.createdAt, zone);
+  const range = dayRange(day, zone);
+  return range ? { at: range.start, day } : null;
+}
+
+/**
+ * The span the figures are added up over: the window asked for, floored at the epoch. No epoch → the window as asked (or none).
+ * A window that ends on or before the epoch is an empty span — zeros, never a throw and never a silent move of the window.
+ */
+function countedSpan(window: ProfitWindow | null | undefined, epoch: Date | null | undefined): { gte?: Date; lt?: Date } | null {
+  if (!epoch) return window ? { gte: window.start, lt: window.end } : null;
+  if (!window) return { gte: epoch };
+  return { gte: window.start.getTime() > epoch.getTime() ? window.start : epoch, lt: window.end };
+}
+
+export async function profitToDate(
+  scope: { companyId: string; storeId: string; timeZone?: string | null },
+  window?: ProfitWindow | null,
+  /** The epoch, when the caller already read it (the profit door needs it for its cache key). Left out, it is read here. */
+  known?: { epoch: ProfitEpoch | null }
+) {
+  const { companyId, storeId } = scope;
+  const epoch = known ? known.epoch : await profitEpoch({ companyId, storeId }, scope.timeZone);
+  const span = countedSpan(window, epoch?.at);
+  const spent = span ? { expenseDate: span } : {};
+  const delivered = span ? { deliveredAt: span } : {};
 
   /*
    * THIS STORE'S EXPENSES, AND THE ONES FROM BEFORE EXPENSES HAD A STORE.
@@ -64,31 +127,29 @@ export async function profitToDate(scope: { companyId: string; storeId: string }
   });
   const liveExpenses = expenses.filter((e) => !e.voidedAt);
 
-  const deliveredOrders = await db.order.findMany({
-    where: { companyId, storeId, status: 'DELIVERED', ...delivered },
+  const rows = await db.order.findMany({
+    where: { companyId, storeId, ...whereDelivered(), ...delivered },
     select: {
       id: true,
       orderNumber: true,
       totalAmount: true,
+      collectedAmount: true,
       shippingCost: true,
       estimatedCostOfGoods: true,
       deliveredAt: true,
     },
     orderBy: { deliveredAt: 'desc' },
   });
+  // The rows go out in the shape they always had; `collectedAmount` is read for the revenue only.
+  const deliveredOrders = rows.map(({ id, orderNumber, totalAmount, shippingCost, estimatedCostOfGoods, deliveredAt }) => ({
+    id, orderNumber, totalAmount, shippingCost, estimatedCostOfGoods, deliveredAt,
+  }));
 
-  const totalRevenue = deliveredOrders.reduce((s, o) => s + o.totalAmount, 0);
-  const totalCOGS = deliveredOrders.reduce((s, o) => s + o.estimatedCostOfGoods, 0);
-  const totalShipping = deliveredOrders.reduce((s, o) => s + o.shippingCost, 0);
-  // From the LEDGER — the one commission source. Summing
-  // Order.moderatorCommission here gave this screen a different total
-  // from the commission screen for the same orders.
-  // NOTE: the delivered-order query above still selects on the legacy
-  // `status` column, so revenue and commission here are computed over
-  // slightly different sets of orders. That mismatch predates this change
-  // and is reported, not silently repaired — correcting it moves the
-  // revenue figure on this screen.
-  const totalCommissions = await commissionCostForOrders({ companyId, storeId, shippingStatus: 'DELIVERED', ...delivered });
+  const totalRevenue = rows.reduce((s, o) => s + revenueOf(o), 0);
+  const totalCOGS = rows.reduce((s, o) => s + o.estimatedCostOfGoods, 0);
+  const totalShipping = rows.reduce((s, o) => s + o.shippingCost, 0);
+  // From the LEDGER — the one commission source — over the SAME delivered set and the same span as the revenue.
+  const totalCommissions = await commissionCostForOrders({ companyId, storeId, ...whereDelivered(), ...delivered });
   const totalOperationalExpenses = liveExpenses.reduce((s, e) => s + e.amount, 0);
 
   const netProfit =
@@ -115,5 +176,5 @@ export async function profitToDate(scope: { companyId: string; storeId: string }
     profitMargin: totalRevenue > 0 ? Number(((netProfit / totalRevenue) * 100).toFixed(1)) : 0,
   };
 
-  return { expenses, liveExpenses, deliveredOrders, summary };
+  return { expenses, liveExpenses, deliveredOrders, summary, since: epoch };
 }

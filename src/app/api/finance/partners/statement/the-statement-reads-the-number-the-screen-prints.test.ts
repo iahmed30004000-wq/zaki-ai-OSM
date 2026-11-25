@@ -14,11 +14,19 @@ type Row = Record<string, any>;
 const { db, tables, current, commission, requireContext } = vi.hoisted(() => {
   const tables = {
     partner: [] as Row[], walletMovement: [] as Row[], user: [] as Row[], order: [] as Row[], expense: [] as Row[],
+    // 25/11 (A1): the store's courier statements, read by both doors for the profit epoch.
+    courierStatement: [] as Row[],
   };
   const matches = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
       if (key === 'OR') return (want as Row[]).some((w) => matches(row, w));
-      if (key === 'id' && want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row.id);
+      // 25/11 (A1): any `in` list — delivered is `shippingStatus: { in: [...] }`.
+      if (want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row[key]);
+      // 25/11 (A1): a floored span (`deliveredAt` / `expenseDate` with `gte` and maybe `lt`).
+      if (want && typeof want === 'object' && ('gte' in want || 'lt' in want)) {
+        const t = (row[key] as Date | null)?.getTime();
+        return t !== undefined && (want.gte === undefined || t >= want.gte.getTime()) && (want.lt === undefined || t < want.lt.getTime());
+      }
       if (want && typeof want === 'object' && !(want instanceof Date) && !Array.isArray(want) && key !== 'id') return matches((row[key] ?? {}) as Row, want as Row);
       return row[key] === want;
     });
@@ -31,6 +39,7 @@ const { db, tables, current, commission, requireContext } = vi.hoisted(() => {
     order: { findMany: finder('order') },
     // 18/11 (H2): `aggregate` — the profit door now reads the store's live expenses as they stand to name its kept answer (a key only; the figures
     // compared below still come from `profitToDate`).
+    courierStatement: { findMany: finder('courierStatement') },
     expense: { findMany: finder('expense'), groupBy: vi.fn(async () => []), aggregate: vi.fn(async () => ({ _count: { _all: 0 }, _sum: { amount: null }, _max: { createdAt: null } })) },
   };
   return { db, tables, current: { keys: [] as string[] }, commission: vi.fn(async () => 12.7), requireContext: vi.fn() };
@@ -56,7 +65,8 @@ import { GET as statement } from './route';
 import { GET as profitScreen } from '../../route';
 
 const order = (id: string, total: number, shipping: number, cost: number): Row => ({
-  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
+  // 25/11 (A1): delivered by `shippingStatus`; the legacy column kept in step, as the shipping door writes it.
+  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
   deliveredAt: new Date('2026-11-05T10:00:00Z'),
 });
 const expense = (id: string, storeId: string | null, amount: number, voidedAt: Date | null = null): Row => ({
@@ -82,7 +92,7 @@ beforeEach(() => {
   for (const t of Object.values(tables)) t.length = 0;
   current.keys = ['finance.view', 'finance.partners'];
   commission.mockResolvedValue(12.7);
-  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { currencyCode: 'USD', minorUnit: 2 } });
+  requireContext.mockResolvedValue({ user: { id: 'u1' }, companyId: 'c1', storeId: 's1', country: { currencyCode: 'USD', minorUnit: 2, timezone: 'Asia/Damascus' } });
   tables.partner.push(
     { id: 'pa', companyId: 'c1', name: 'شريك أ', sharePercent: 15, isActive: true, sortOrder: 0, createdAt: new Date(0) },
     { id: 'pb', companyId: 'c1', name: 'شريك ب', sharePercent: 15, isActive: true, sortOrder: 1, createdAt: new Date(1) },

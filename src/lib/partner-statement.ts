@@ -20,6 +20,10 @@ import { profitToDate } from './profit-to-date';
  * THERE IS NO PERIOD. The profit screen shows the net profit since the beginning and has no period filter, so the entitlement, the
  * draws and the balance are all «since the beginning» — which is what makes an over-draw carry forward by construction. The shares
  * are TODAY'S shares for all history: nothing remembers what they were.
+ *
+ * THE START OF THE PROFIT (25/11, A1). «Since the beginning» of the PROFIT is now the store's profit epoch — the day of its first
+ * courier statement (`profitEpoch`) — read inside `profitToDate`, the same start the profit screen names; a store with no statement
+ * keeps the beginning. The draws are not floored: a draw is cash that left a wallet, and every one still stands against the shares.
  */
 
 /** How many draws the list carries. The sums read them all. */
@@ -84,6 +88,8 @@ export async function partnerStatement(scope: {
     currency,
     minorUnit,
     netProfit,
+    // The same start the profit screen names (A1); left out entirely when the store has no statement, so that statement is what it was.
+    ...(profit.since ? { since: profit.since.at.toISOString(), sinceDay: profit.since.day } : {}),
     trust: trustOf({ present: costed, population: profit.deliveredOrders.length, subject: 'كلفة البضاعة' }),
     uncounted,
     draws: listed.map((m) => ({
