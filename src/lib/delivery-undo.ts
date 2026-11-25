@@ -3,7 +3,8 @@ import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { reverseForOrder } from './commission';
 import { LEGACY_DELIVERED, NO_MONEY_SETTLEMENT } from './legacy-closeout';
-import { statementNamingRefusal, type LinkedLine, type NamingLine } from './settlement-gates';
+import { readCourierWord } from './couriers/words';
+import { undoDeliveryNamingRefusal, type UndoLinkedLine, type UndoNamingLine } from './settlement-gates';
 import { SHIPPING_STATUS_AR } from './shipping-workflow';
 import {
   DELIVERY_UNDO_ACTION,
@@ -171,16 +172,23 @@ const ORDER_SELECT = {
 } satisfies Prisma.OrderSelect;
 
 const STATEMENT_SELECT = { reference: true, status: true, approvedAt: true, deliveryProviderId: true } as const;
+/** What a line states: the three figures and the company's word — enough to know a zero «returned» line. */
+const LINE_FIGURES_SELECT = { amount: true, collected: true, fee: true, status: true } as const;
+/** A match row read whole: its result, whether anybody answered it, whether the approval settled it, whether a person made it. */
+const ROW_SELECT = { result: true, resolution: true, appliedAt: true, matchedBy: true } as const;
 
 /**
  * THE STATEMENTS THAT SPEAK FOR THIS ORDER — read exactly the way the collect door reads them (`collect/route.ts`): a line names an order by
  * our reference, or by the courier's barcode WITHIN THAT COURIER; a line a person tied by hand is found through the match row that holds the
  * link. The gate's own sentence is kept, so the owner reads the words he would have read from «استلمت منه».
+ *
+ * ONE DIFFERENCE, THIS DOOR'S ONLY (25/11): a line at ZERO whose word reads RETURNED, and whose rows nobody answered, does not speak for
+ * the order (`undoDeliveryNamingRefusal`) — the company saying «تم إرجاعها» for nothing is the reason to undo, not a reason to refuse.
  */
 export async function readNaming(tx: Tx, scope: UndoScope, order: UndoOrder): Promise<NamedBy | null> {
   const refs = order.merchantRef ? [order.merchantRef] : [];
   const barcodes = order.trackingNumber ? [order.trackingNumber] : [];
-  const lines: NamingLine[] =
+  const rawLines =
     refs.length + barcodes.length === 0
       ? []
       : await tx.statementLine.findMany({
@@ -191,17 +199,24 @@ export async function readNaming(tx: Tx, scope: UndoScope, order: UndoOrder): Pr
           select: {
             merchantRef: true,
             barcode: true,
+            ...LINE_FIGURES_SELECT,
             statement: { select: STATEMENT_SELECT },
-            // A line the matching EXCLUDED («تم إرجاعها» at zero) carries no money for the order.
-            matches: { select: { result: true } },
+            // A line the matching EXCLUDED («تم إرجاعها» at zero) carries no money for the order — and neither does a zero «returned»
+            // line whose rows nobody answered (`undoDeliveryNamingRefusal`): the rows are read whole for that.
+            matches: { select: ROW_SELECT },
           },
         });
-  const links: LinkedLine[] = await tx.settlementMatch.findMany({
+  const rawLinks = await tx.settlementMatch.findMany({
     where: { companyId: scope.companyId, orderId: order.id, statementLineId: { not: null } },
-    select: { orderId: true, result: true, statement: { select: STATEMENT_SELECT } },
+    select: { orderId: true, ...ROW_SELECT, statement: { select: STATEMENT_SELECT }, statementLine: { select: LINE_FIGURES_SELECT } },
   });
-  if (lines.length === 0 && links.length === 0) return null;
-  const why = statementNamingRefusal(
+  if (rawLines.length === 0 && rawLinks.length === 0) return null;
+  const lines: UndoNamingLine[] = rawLines.map(({ status, ...l }) => ({ ...l, word: readCourierWord(status) }));
+  const links: UndoLinkedLine[] = rawLinks.map(({ statementLine, ...k }) => ({
+    ...k,
+    line: statementLine ? { amount: statementLine.amount, collected: statementLine.collected, fee: statementLine.fee, word: readCourierWord(statementLine.status) } : null,
+  }));
+  const why = undoDeliveryNamingRefusal(
     [{ id: order.id, orderNumber: order.orderNumber, merchantRef: order.merchantRef, trackingNumber: order.trackingNumber, deliveryProviderId: order.deliveryProviderId }],
     lines,
     links

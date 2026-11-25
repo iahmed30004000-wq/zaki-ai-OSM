@@ -1,3 +1,4 @@
+import { MANUAL_MATCH } from './match-integrity';
 import { EXCLUDED_RESULT } from './statement-open-lines';
 
 /**
@@ -362,6 +363,103 @@ export function statementNamingRefusal(
     error: sentences.join(' · '),
     orders: named,
   };
+}
+
+/* ───────────────────── «تراجع عن التسليم» ONLY — a zero «returned» line is not the order's money ───────────────────── */
+
+/**
+ * The company's word on a line, as `readCourierWord` read it. The CALLER reads it: this file is imported by screens and
+ * stays free of the word table (it reads nothing and imports nothing that does).
+ */
+export interface LineWord {
+  outcome: string;
+  known: boolean;
+}
+
+type Figure = number | string | { toString(): string } | null | undefined;
+
+/** What a statement line states, for the undo-delivery door: its three figures and the company's word, read. */
+export interface StatedLine {
+  /** The net the company hands over for the line. */
+  amount: Figure;
+  collected?: Figure;
+  fee?: Figure;
+  word: LineWord | null;
+}
+
+/** One match row of such a line, read whole: the undo needs to know nobody answered it and a new matching rebuilds it. */
+export interface UndoLineRow {
+  result: string;
+  resolution: string | null;
+  appliedAt: Date | string | null;
+  matchedBy: string | null;
+}
+
+/** The results a zero «returned» line sits in while nobody answered it: a difference (our side says delivered), or excluded. */
+export const ZERO_RETURN_ROW_RESULTS = ['MISMATCHED', EXCLUDED_RESULT] as const;
+
+/**
+ * Does this line say «the parcel came back, and nothing was paid for it»? Its net is ZERO, it states no other collected
+ * figure and no fee (a fee is a charge — RV807 — and stays a question), and the company's word is one we KNOW reads RETURNED.
+ * «مؤجلة», an empty cell, an unknown word or «delivered» at zero are not this.
+ */
+export function isZeroReturnedLine(l: StatedLine): boolean {
+  if (l.amount == null || Number(l.amount) !== 0) return false;
+  if (l.collected != null && Number(l.collected) !== 0) return false;
+  if (l.fee != null && Number(l.fee) !== 0) return false;
+  return !!l.word && l.word.known && l.word.outcome === 'RETURNED';
+}
+
+/**
+ * Will a new matching rebuild this row as the machine sees it? Nobody answered it, the approval did not settle its order, a person
+ * did not make it (a hand link is kept by every matching), and it is a difference or an exclusion. Each field must have been READ:
+ * `undefined` is not «nobody answered».
+ */
+export function rowRebuiltUnanswered(r: UndoLineRow): boolean {
+  return (
+    r.resolution === null &&
+    r.appliedAt === null &&
+    (r.matchedBy === null || (typeof r.matchedBy === 'string' && r.matchedBy !== MANUAL_MATCH)) &&
+    (ZERO_RETURN_ROW_RESULTS as readonly string[]).includes(r.result)
+  );
+}
+
+/** A zero «returned» line whose every row (if any) is still the machine's, unanswered: it carries no money for the order. */
+export function zeroReturnCarriesNoMoney(line: StatedLine, rows: UndoLineRow[]): boolean {
+  return isZeroReturnedLine(line) && rows.every(rowRebuiltUnanswered);
+}
+
+/** A line as the undo-delivery door reads it: the naming line, its figures and word, and its rows read whole. */
+export interface UndoNamingLine extends NamingLine, StatedLine {
+  matches: UndoLineRow[];
+}
+
+/** A match row tied to the order, as the undo-delivery door reads it, with the line it sits on. */
+export interface UndoLinkedLine extends Omit<LinkedLine, 'result'>, UndoLineRow {
+  line: StatedLine | null;
+}
+
+/**
+ * «تراجع عن التسليم» — DOES A STATEMENT SPEAK FOR THIS ORDER? The collect door's rule (`statementNamingRefusal`, unchanged), asked
+ * WITHOUT the lines that say the parcel came back at zero.
+ *
+ * Such a line is the very reason the button exists: the company says «تم إرجاعها» and paid nothing, while our side recorded a
+ * delivery. Against the delivered order the matching wrote it MISMATCHED (a zero against an expectation), and that row used to block
+ * the undo as «the statement owns the order's money». It owns none. After the undo the order is in flight again, and the next
+ * matching rebuilds the row as EXCLUDED (`isExcludedLine`) — which is why only a row the matching rebuilds is set aside here.
+ *
+ * Only for the undo: «استلمت منه» keeps asking `statementNamingRefusal` exactly as before.
+ */
+export function undoDeliveryNamingRefusal(
+  orders: CollectOrderRef[],
+  lines: UndoNamingLine[],
+  links: UndoLinkedLine[] = []
+): ReturnType<typeof statementNamingRefusal> {
+  return statementNamingRefusal(
+    orders,
+    lines.filter((l) => !zeroReturnCarriesNoMoney(l, l.matches)),
+    links.filter((k) => !(k.line && zeroReturnCarriesNoMoney(k.line, [k])))
+  );
 }
 
 /**
