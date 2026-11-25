@@ -122,8 +122,12 @@ vi.mock('@/lib/geo-context', () => ({
   requireContext: (...a: unknown[]) => requireContext(...a),
   geoReach: async () => current.reach,
 }));
+// 25/11 (F13): the dashboard now reads each store's profit epoch (`profitEpoch`). Old: the mock answered `profitToDate` only. New: it
+// also answers «no epoch» — the stores here have no courier statement, so every figure below is what it was. The epoch case is pinned
+// in src/lib/draws-before-the-profit-epoch.test.ts.
 vi.mock('@/lib/profit-to-date', () => ({
   profitToDate: async () => ({ summary: { netProfit: 1000 }, deliveredOrders: [] }),
+  profitEpoch: async () => null,
 }));
 vi.mock('@/lib/authorization', async (orig) => {
   const real = await orig<typeof import('@/lib/authorization')>();

@@ -6,6 +6,8 @@ import { readTransferReversals } from './transfer-reversal';
 import { TRANSFER_KIND_LABEL } from './transfer-kind';
 import { DIRECTION_AR, HISTORY_ROW_CAP, TOO_MANY_ROWS, movementSheet, movementsWhere, transferSheet, transfersWhere, withdrawalSheet, drawsWhere, type HistoryFilters, type HistoryRefusal, type HistorySheet } from './history-export-core';
 import { MOVEMENT_CATEGORY_AR } from './movement-category-words';
+import { profitEpoch } from './profit-to-date';
+import { drawBeforeProfit } from './draw-epoch';
 
 /**
  * «سحب السجل» — THE THREE LISTS, READ ONCE FOR THE SCREEN AND FOR THE FILE (22/11, F5).
@@ -248,8 +250,11 @@ export async function transferHistory(scope: Scope, f: HistoryFilters): Promise<
  */
 export async function withdrawalHistory(scope: Scope, f: HistoryFilters): Promise<HistoryAnswer> {
   const { companyId, storeId } = scope;
-  const lines = await drawListLines(scope, drawsWhere(companyId, [storeId], f, scope.timeZone), HISTORY_ROW_CAP + 1);
-  if (lines.length > HISTORY_ROW_CAP) return { ok: false, refusal: TOO_MANY_ROWS };
+  const listed = await drawListLines(scope, drawsWhere(companyId, [storeId], f, scope.timeZone), HISTORY_ROW_CAP + 1);
+  if (listed.length > HISTORY_ROW_CAP) return { ok: false, refusal: TOO_MANY_ROWS };
+  // F13 (25/11): a draw before the store's profit epoch is marked as the dashboard marks it. No epoch → the lines as they were.
+  const epoch = await profitEpoch({ companyId, storeId }, scope.timeZone);
+  const lines = epoch ? listed.map((w) => (drawBeforeProfit(w, epoch.at) ? { ...w, beforeProfit: true } : w)) : listed;
   const storeName = lines[0]?.storeName ?? (await db.store.findFirst({ where: { id: storeId, companyId }, select: { name: true } }))?.name ?? '—';
   const partner = f.partnerId ? await db.partner.findFirst({ where: { id: f.partnerId, companyId }, select: { name: true } }) : null;
   const filtersAr = [

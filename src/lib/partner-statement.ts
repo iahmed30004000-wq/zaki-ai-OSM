@@ -3,6 +3,7 @@ import { trustOf } from './cod-vitals';
 import { toMinorUnits } from './money';
 import { partnerLines, type PartnerStatement, type StatementPartner } from './partner-statement-core';
 import { profitToDate } from './profit-to-date';
+import { drawBeforeProfit } from './draw-epoch';
 
 /**
  * THE PARTNERS' STATEMENT FOR ONE STORE — the single source for the profit screen's «الشركاء», the wallet dialog's live hint and
@@ -23,7 +24,13 @@ import { profitToDate } from './profit-to-date';
  *
  * THE START OF THE PROFIT (25/11, A1). «Since the beginning» of the PROFIT is now the store's profit epoch — the day of its first
  * courier statement (`profitEpoch`) — read inside `profitToDate`, the same start the profit screen names; a store with no statement
- * keeps the beginning. The draws are not floored: a draw is cash that left a wallet, and every one still stands against the shares.
+ * keeps the beginning.
+ *
+ * THE DRAWS START THERE TOO (25/11, F13 — the owner's choice «ب»). A draw whose REAL date (the typed moment, else its registration:
+ * the date the ledger shows) falls before the profit epoch is not counted against a share: not in the draws, the balance or «مكسور
+ * عليه», and not in «uncounted». It is still LISTED, marked `beforeProfit` (`draw-epoch.ts`). A reversal follows its original:
+ * only originals are dated, the pair is nothing either way. A store with no statement has no epoch: its statement is byte for byte
+ * what it was — no field is added (`beforeProfitCount` and the row mark exist only beside `since`).
  */
 
 /** How many draws the list carries. The sums read them all. */
@@ -45,7 +52,7 @@ export async function partnerStatement(scope: {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true, walletId: true, direction: true, amount: true, currencyCode: true, valueInStoreCurrency: true,
-        partnerId: true, party: true, note: true, reversalOfId: true, createdAt: true, createdById: true,
+        partnerId: true, party: true, note: true, reversalOfId: true, createdAt: true, occurredAt: true, createdById: true,
         wallet: { select: { name: true } },
       },
     }),
@@ -62,10 +69,15 @@ export async function partnerStatement(scope: {
   const reversed = new Set(movements.flatMap((m) => (m.reversalOfId ? [m.reversalOfId] : [])));
   const originals = movements.filter((m) => !m.reversalOfId && m.direction === 'OUT');
 
+  // F13: the draws from before the profit epoch (their real date) stand against nothing. No epoch → none is.
+  const epochAt = profit.since?.at ?? null;
+  const before = new Set(originals.filter((m) => drawBeforeProfit(m, epochAt)).map((m) => m.id));
+
   const drawsUnits: Record<string, number> = {};
   let uncounted = 0;
   for (const m of originals) {
     if (reversed.has(m.id)) continue;
+    if (before.has(m.id)) continue;
     if (!m.partnerId || m.valueInStoreCurrency === null || m.valueInStoreCurrency === undefined) {
       uncounted += 1;
       continue;
@@ -90,6 +102,8 @@ export async function partnerStatement(scope: {
     netProfit,
     // The same start the profit screen names (A1); left out entirely when the store has no statement, so that statement is what it was.
     ...(profit.since ? { since: profit.since.at.toISOString(), sinceDay: profit.since.day } : {}),
+    // F13: how many standing draws are before that start (listed, marked, counted nowhere) — only beside `since`.
+    ...(profit.since ? { beforeProfitCount: originals.filter((m) => before.has(m.id) && !reversed.has(m.id)).length } : {}),
     trust: trustOf({ present: costed, population: profit.deliveredOrders.length, subject: 'كلفة البضاعة' }),
     uncounted,
     draws: listed.map((m) => ({
@@ -105,6 +119,7 @@ export async function partnerStatement(scope: {
       createdAt: m.createdAt.toISOString(),
       createdByName: nameOfActor.get(m.createdById) ?? null,
       reversed: reversed.has(m.id),
+      ...(before.has(m.id) ? { beforeProfit: true as const } : {}),
     })),
   };
 }

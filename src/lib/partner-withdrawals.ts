@@ -5,6 +5,9 @@ import { drawListLines } from './history-export';
 import type { SessionUser } from '@/types/auth';
 import { hasFullAccess } from './authorization';
 import { readRateTable } from './exchange-rates';
+// F13 (25/11): the profit's START, a date — never the profit's figures (see the-withdrawals-move-no-money-and-change-no-profit).
+import { profitEpoch, type ProfitEpoch } from './profit-to-date';
+import { BEFORE_PROFIT_AR, drawBeforeProfit } from './draw-epoch';
 import {
   amountOrRefusal,
   currencyOrRefusal,
@@ -81,7 +84,7 @@ async function reachedStores(user: SessionUser, companyId: string) {
       ...(reach ? { countryId: { in: reach.countryIds }, ...(reach.storeIds ? { id: { in: reach.storeIds } } : {}) } : {}),
     },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, country: { select: { currencyCode: true, minorUnit: true } } },
+    select: { id: true, name: true, country: { select: { currencyCode: true, minorUnit: true, timezone: true } } },
   });
 }
 
@@ -122,17 +125,30 @@ export async function withdrawalsBook(scope: {
   const storeOf = new Map(stores.map((s) => [s.id, s]));
   const storeMinorOf = (id: string) => (id === storeId ? country.minorUnit : storeOf.get(id)?.country.minorUnit ?? 3);
 
+  /*
+   * F13 (25/11, the owner's «ب»): each store's PROFIT EPOCH, on its own clock. A draw whose real date is before its store's epoch is
+   * listed and marked, and kept OUT of the counted totals and «المجموع بالدولار» — on a line of its own. No store with an epoch → the
+   * book is exactly what it was (no `beforeProfit` key at all).
+   */
+  const epochs = new Map<string, ProfitEpoch | null>(
+    await Promise.all(
+      storeIds.map(async (id) => [id, await profitEpoch({ companyId, storeId: id }, id === storeId ? timeZone : storeOf.get(id)?.country.timezone)] as const)
+    )
+  );
+  const epochOf = (id: string) => epochs.get(id)?.at ?? null;
+
   // THE TOTALS: every draw of the span, of every store he reaches — a reversed one is read with its reversal and left out.
   const ledger = await db.walletMovement.findMany({
     where: drawsWhere(companyId, storeIds, filters, timeZone),
     orderBy: { createdAt: 'desc' },
     select: {
-      partnerId: true, amount: true, currencyCode: true, valueInStoreCurrency: true,
+      partnerId: true, amount: true, currencyCode: true, valueInStoreCurrency: true, occurredAt: true, createdAt: true,
       reversedBy: { select: { id: true } }, wallet: { select: { storeId: true } },
     },
   });
-  const byStore = drawTotals(
-    ledger.flatMap((m) =>
+  const isBefore = (m: (typeof ledger)[number]) => !!m.wallet.storeId && drawBeforeProfit(m, epochOf(m.wallet.storeId));
+  const asTotals = (picked: typeof ledger) => drawTotals(
+    picked.flatMap((m) =>
       m.partnerId && m.wallet.storeId
         ? [{
             storeId: m.wallet.storeId,
@@ -147,9 +163,19 @@ export async function withdrawalsBook(scope: {
     minorOf,
     storeMinorOf
   );
-
   const partnerName = new Map(partners.map((p) => [p.id, p.name]));
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
+  const byStore = asTotals(ledger.filter((m) => !isBefore(m)));
+  const beforeByStore = asTotals(ledger.filter(isBefore));
+  const hereEpoch = epochs.get(storeId) ?? null;
+  const withNames = <T extends { storeId: string; partnerId: string; currencyCode: string }>(t: T) => ({
+    ...t,
+    storeName: storeName.get(t.storeId) ?? '—',
+    partnerName: partnerName.get(t.partnerId) ?? '—',
+    minorUnit: minorOf(t.currencyCode),
+    storeCurrency: t.storeId === storeId ? country.currencyCode : storeOf.get(t.storeId)?.country.currencyCode ?? '',
+    storeMinor: storeMinorOf(t.storeId),
+  });
 
   // THE OLD RECORD of this store (22/11–23/11): read-only, counted nowhere.
   const legacy = await db.partnerWithdrawal.findMany({
@@ -166,7 +192,10 @@ export async function withdrawalsBook(scope: {
     storeCurrency: { code: country.currencyCode, minorUnit: country.minorUnit },
     partners,
     currencies,
-    rows: await drawListLines({ companyId, storeId, timeZone }, drawsWhere(companyId, [storeId], filters, timeZone), LIST_LIMIT),
+    // F13: a row dated before this store's profit epoch carries `beforeProfit: true` (absent otherwise).
+    rows: (await drawListLines({ companyId, storeId, timeZone }, drawsWhere(companyId, [storeId], filters, timeZone), LIST_LIMIT)).map(
+      (r): typeof r & { beforeProfit?: true } => (drawBeforeProfit(r, hereEpoch?.at) ? { ...r, beforeProfit: true } : r)
+    ),
     // This store, per partner and WALLET currency — never summed across currencies; the store-currency worth only where one was typed.
     totals: byStore
       .filter((t) => t.storeId === storeId)
@@ -175,14 +204,21 @@ export async function withdrawalsBook(scope: {
     equivalentSums: equivalentSums(byStore.filter((t) => t.storeId === storeId), country.minorUnit),
     equivalentSumLabel: equivalentSumLabel(country.currencyCode),
     // Every store he reaches, per store, partner and wallet currency.
-    byStore: byStore.map((t) => ({
-      ...t,
-      storeName: storeName.get(t.storeId) ?? '—',
-      partnerName: partnerName.get(t.partnerId) ?? '—',
-      minorUnit: minorOf(t.currencyCode),
-      storeCurrency: t.storeId === storeId ? country.currencyCode : storeOf.get(t.storeId)?.country.currencyCode ?? '',
-      storeMinor: storeMinorOf(t.storeId),
-    })),
+    byStore: byStore.map(withNames),
+    /*
+     * F13: the draws before the profit epoch — the same shape as the counted totals, per store, partner and WALLET currency, OUTSIDE
+     * them and outside «المجموع بالدولار». Present only when a store he reaches has an epoch.
+     */
+    ...([...epochs.values()].some(Boolean)
+      ? {
+          beforeProfit: {
+            label: BEFORE_PROFIT_AR,
+            sinceDay: hereEpoch?.day ?? null,
+            totals: beforeByStore.filter((t) => t.storeId === storeId).map(withNames),
+            byStore: beforeByStore.map(withNames),
+          },
+        }
+      : {}),
     // The old record's own sums, per partner and currency (a cancelled row is nothing) — shown in its block, added to no other total.
     legacyTotals: totalsByPartner(
       withdrawalTotals(legacy.map((r) => ({ ...r, amount: Number(r.amount) })), minorOf),
