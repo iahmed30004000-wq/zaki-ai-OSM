@@ -325,6 +325,9 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/lib/placed-warehouse-choices.ts',
     'src/components/screens/ManufacturingScreen.tsx',
     'src/components/products/ProductVariants.tsx',
+    // 25/11, F10 («من أي مخزن طلع المرتجع»): the returns desk's filter reads `sourceWarehouseId` as a `where` — a placed
+    // store only, read only. It reads or writes no stock column.
+    'src/lib/returns-warehouse-filter.ts',
   ]);
   // 19/11, W1a: WIDENED, never loosened — to the RELATION names as well (a door could read a batch's place through
   // `include: { warehouse: true }` or walk `splits` without naming one column) and to the placement table.
