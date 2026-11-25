@@ -124,7 +124,7 @@ describe('the menu is ten lines', () => {
     // (`/settings/product-barcodes`), side by side right after آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ», on `settings.view`. Not one address moved; no more line (cards of an existing door).
     expect(ALL_ROUTES).toHaveLength(63);
     expect(NAV).toHaveLength(9);
-    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 7, 9, 5, 2, 21]);
+    expect(NAV.map((g) => g.routes.length)).toEqual([1, 6, 5, 5, 7, 9, 5, 2, 23]);
     expect(NAV.map((g) => (g.hub === 'loose' ? g.routes.length : 1))).toEqual([1, 1, 1, 1, 1, 1, 1, 2, 1]);
     expect(lines(NAV), 'عدد أسطر القائمة').toBe(10);
   });
