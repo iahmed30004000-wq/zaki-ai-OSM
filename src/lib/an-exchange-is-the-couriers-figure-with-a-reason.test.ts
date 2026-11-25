@@ -381,6 +381,8 @@ describe('every door that writes an answer writes its qualifier too', () => {
     expect(writers.map((s) => s.name).sort()).toEqual([
       'src/app/api/finance/statements/[id]/decisions/route.ts',
       'src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
+      // 25/11: «ركّن كل السطور بلا طلب» writes the single door's «قيد المراجعة» with the same writer, and clears the qualifier like the bulk door.
+      'src/app/api/finance/statements/[id]/park-unlinked/route.ts',
     ]);
     for (const w of writers) {
       expect(w.code, w.name).toMatch(/\.\.\.decisionData\(\{[^}]*\}\),\s*\.\.\.decisionKind\(/);

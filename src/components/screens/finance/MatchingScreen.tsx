@@ -15,6 +15,7 @@ import { NextStepButton } from '@/components/ui/NextStep';
 import { DifferenceActions } from '@/components/screens/finance/DifferenceActions';
 import { CourierReason } from '@/components/screens/finance/CourierReason';
 import { BulkDecide } from '@/components/screens/finance/BulkDecide';
+import { ParkUnlinkedLines } from '@/components/screens/finance/ParkUnlinkedLines';
 import { DifferencesByPerson } from '@/components/screens/finance/DifferencesByPerson';
 import { NotMentionedActions } from '@/components/screens/finance/NotMentionedActions';
 import { LinkLineDialog } from '@/components/screens/finance/LinkLineDialog';
@@ -454,6 +455,10 @@ export function MatchingScreen({ queuesStartOpen = false }: { queuesStartOpen?: 
             rows={queue('MISMATCHED')}
             hint="راجع الطلب نفسه: تسليم جزئي غير مسجَّل، أو أجرة توصيل أعلى من المتفق عليه. التصحيح يكون على الطلب، وبعد الاعتماد بكشف تسوية — لا بتعديل الكشف."
           />
+          {/* «ركّن كل السطور بلا طلب»: the single door's «قيد المراجعة» for every line no order carries, counted before the press. */}
+          {mayReview && !closed && (
+            <ParkUnlinkedLines statementId={selected} rows={queue('MISSING_IN_SYSTEM')} onDone={() => void load(selected!)} />
+          )}
           <Queue
             title="في الكشف وليس عندنا"
             {...viewOf('MISSING_IN_SYSTEM')}
