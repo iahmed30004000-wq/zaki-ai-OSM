@@ -659,7 +659,7 @@ export function ProductVerifyEditor({
                         alt={`QR ${justAdded.code}`}
                         width={132}
                         height={132}
-                        className="rounded-md bg-white p-1"
+                        style={{ background: 'white', padding: 4, borderRadius: 6 }}
                       />
                       <div className="min-w-0 flex-1 space-y-2 text-note">
                         <p className="font-mono font-semibold text-[var(--sys-foreground)]" dir="ltr" style={{ wordBreak: 'break-all' }}>
