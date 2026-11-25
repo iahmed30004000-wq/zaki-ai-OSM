@@ -584,10 +584,10 @@ export function ProductVerifyEditor({
                   <RiFileCopyLine className="h-4 w-4" /> نسخ الرابط
                 </Button>
                 <Button variant="quiet" size="sm" onClick={() => download(qr('&format=png&download=1'))}>
-                  <RiDownload2Line className="h-4 w-4" /> تنزيل PNG
+                  <RiDownload2Line className="h-4 w-4" /> نزّل PNG
                 </Button>
                 <Button variant="quiet" size="sm" onClick={() => download(qr('&format=svg&download=1'))}>
-                  <RiDownload2Line className="h-4 w-4" /> تنزيل SVG
+                  <RiDownload2Line className="h-4 w-4" /> نزّل SVG
                 </Button>
                 <Button size="sm" onClick={printProduct}>
                   <RiPrinterLine className="h-4 w-4" /> طباعة ملصق

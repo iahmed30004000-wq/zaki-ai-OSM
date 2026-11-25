@@ -345,10 +345,10 @@ export function AuthenticityCodesCard() {
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button variant="quiet" size="sm" onClick={() => download(qrFor.id, 'png')}>
-                <RiDownload2Line className="h-4 w-4" /> تنزيل PNG
+                <RiDownload2Line className="h-4 w-4" /> نزّل PNG
               </Button>
               <Button variant="quiet" size="sm" onClick={() => download(qrFor.id, 'svg')}>
-                <RiDownload2Line className="h-4 w-4" /> تنزيل SVG
+                <RiDownload2Line className="h-4 w-4" /> نزّل SVG
               </Button>
               <Button size="sm" onClick={() => printOne(qrFor)}>
                 <RiPrinterLine className="h-4 w-4" /> طباعة
