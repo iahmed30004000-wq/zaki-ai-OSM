@@ -396,6 +396,8 @@ describe('every write to a match row says `appliedAt: null` in its own call', ()
     expect(found.map((f) => f.p).sort()).toEqual([
       'src/app/api/finance/statements/[id]/decisions/route.ts',
       'src/app/api/finance/statements/[id]/matches/[matchId]/resolve/route.ts',
+      // new (25/11, «ركّن كل السطور بلا طلب»): one conditional write over the no-order lines of one statement.
+      'src/app/api/finance/statements/[id]/park-unlinked/route.ts',
       'src/lib/hand-link.ts',
       'src/lib/parcel-swap.ts',
       'src/lib/settlement.ts',
@@ -403,7 +405,7 @@ describe('every write to a match row says `appliedAt: null` in its own call', ()
     ]);
   });
 
-  it.each(['decisions/route.ts', 'resolve/route.ts', 'hand-link.ts', 'parcel-swap.ts', 'settlement.ts', 'statement-close.ts'])(
+  it.each(['decisions/route.ts', 'resolve/route.ts', 'park-unlinked/route.ts', 'hand-link.ts', 'parcel-swap.ts', 'settlement.ts', 'statement-close.ts'])(
     '%s — each edit or delete carries the condition',
     (name) => {
       const file = found.find((f) => f.p.endsWith(name))!;
@@ -411,11 +413,13 @@ describe('every write to a match row says `appliedAt: null` in its own call', ()
     }
   );
 
-  it('the counts: 1 · 1 · 2 · 2 · 1 · 1 — a new writer is a decision, not a diff', () => {
+  // 25/11: was «1 · 1 · 2 · 2 · 1 · 1»; the bulk park («ركّن كل السطور بلا طلب») is a new writer with ONE edit, and it says `appliedAt: null`.
+  it('the counts: 1 · 1 · 1 · 2 · 2 · 1 · 1 — a new writer is a decision, not a diff', () => {
     const counts = Object.fromEntries(found.map((f) => [f.p.split('/').slice(-2).join('/'), f.calls.length]));
     expect(counts).toEqual({
       'decisions/route.ts': 1,
       'resolve/route.ts': 1,
+      'park-unlinked/route.ts': 1,
       'lib/hand-link.ts': 2,
       'lib/parcel-swap.ts': 2,
       'lib/settlement.ts': 1,

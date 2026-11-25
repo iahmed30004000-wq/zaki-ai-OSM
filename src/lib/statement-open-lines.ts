@@ -71,3 +71,20 @@ export function openLineWhere(): Prisma.SettlementMatchWhereInput {
 export function mayOnlyBeParked(m: LineAnswer): boolean {
   return m.result === 'MISSING_IN_SYSTEM' && !m.orderId;
 }
+
+/**
+ * «ركّن كل السطور بلا طلب» — WHICH ROWS ONE PRESS PARKS, written once for the screen and for the door.
+ *
+ * A line with no order that nobody has answered yet: exactly the rows the single door may park (`mayOnlyBeParked`) AND
+ * that are still a question (`isOpenLine`). A row already answered — parked, or anything else — is not touched again, so
+ * a second press parks nothing; a row tied to an order, a difference in money, an excluded or a matched row are not
+ * this question at all.
+ */
+export function isParkableLine(m: LineAnswer): boolean {
+  return mayOnlyBeParked(m) && isOpenLine(m);
+}
+
+/** The same rule as a filter, for the door's read and its write. */
+export function parkableLineWhere(): Prisma.SettlementMatchWhereInput {
+  return { result: 'MISSING_IN_SYSTEM', orderId: null, resolution: null };
+}
