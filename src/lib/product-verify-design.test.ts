@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RESERVED_SLUGS,
+  VERIFY_NIGHT,
   isDarkColor,
   normalizeSlug,
   normalizeWhatsapp,
@@ -9,6 +10,7 @@ import {
   slugify,
   suggestSlug,
   contactWhatsappUrl,
+  verifyPageBackground,
 } from './product-verify-design';
 
 /**
@@ -91,5 +93,16 @@ describe('the links', () => {
     expect(isDarkColor('#050912')).toBe(true);
     expect(isDarkColor('#f5f7fb')).toBe(false);
     expect(isDarkColor('not-a-colour')).toBe(false);
+  });
+
+  it('the page is always a night: a light background is ignored, a mid one only tints it, a dark one is kept', () => {
+    expect(verifyPageBackground('#f5f7fb')).toBe(VERIFY_NIGHT);
+    expect(verifyPageBackground('#FFFFFF')).toBe(VERIFY_NIGHT);
+    expect(verifyPageBackground('#0A0F1F')).toBe('#0a0f1f');
+    const tinted = verifyPageBackground('#3b82f6');
+    expect(tinted).toMatch(/^#[0-9a-f]{6}$/);
+    expect(tinted).not.toBe(VERIFY_NIGHT);
+    expect(isDarkColor(tinted)).toBe(true);
+    expect(verifyPageBackground('nope')).toBe(VERIFY_NIGHT);
   });
 });
