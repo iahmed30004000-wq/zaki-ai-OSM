@@ -41,6 +41,9 @@ import { appendDeliveryAttempt } from './delivery-attempts';
 import { proposeShortfalls } from './shortfall';
 import { consumeOrderStock } from './stock-consumption';
 import { EXCLUDED_RESULT } from './statement-open-lines';
+import { runMatching } from './settlement';
+import { LEGACY_DELIVERED, NO_MONEY_SETTLEMENT } from './legacy-closeout';
+import { LEGACY_CLOSE_ACTION } from './legacy-closeout-words';
 import {
   BACK_TO_AWAITING,
   UndoStopped,
@@ -1868,5 +1871,218 @@ describe('the sources — no time window, no money writer, no stock writer', () 
     const src = read('src/lib/delivery-undo.ts');
     expect(src).not.toMatch(/'SETTLED'|'PARTIALLY_SETTLED'|'REFUNDED'|'PARTIALLY_REFUNDED'/);
     expect(src).toContain(`BACK_TO_AWAITING = 'PENDING_COLLECTION'`);
+  });
+});
+
+/* ═════════════════════════ 10 · A ZERO «RETURNED» LINE IS NOT THE ORDER'S MONEY (25/11) ═════════════════════════ */
+
+/**
+ * The company wrote the parcel at ZERO and said «تم إرجاعها»; our side recorded it delivered. The matching made that line a MISMATCHED
+ * row (a zero against what we expected), and the undo used to refuse it as «the statement owns the order's money» — the very case the
+ * button was built for. For THIS door only, such a line carries no money; after the undo the order is in flight, and the next matching
+ * rebuilds the row as EXCLUDED. Every other line still speaks for the order.
+ */
+describe('a zero «returned» line does not block the undo — and everything else on a statement still does', () => {
+  const ST = (over: Row = {}) => ({ reference: 'ST-9', status: 'APPROVED', approvedAt: new Date(), deliveryProviderId: 'p1', ...over });
+  const row = (over: Row = {}) => ({ result: 'MISMATCHED', resolution: null, appliedAt: null, matchedBy: 'BARCODE', ...over });
+  const zeroLine = (over: Row = {}, rowOver: Row = {}) => ({
+    merchantRef: null,
+    barcode: '100550615867',
+    amount: 0,
+    collected: 0,
+    fee: 0,
+    status: 'تم إرجاعها',
+    statement: ST(),
+    matches: [row(rowOver)],
+    ...over,
+  });
+  /** The match row that holds the order, with the line it sits on — what the second read of the undo finds by the order's id. */
+  const linkOf = (line: Row, rowOver: Row = {}) => ({
+    orderId: 'o1',
+    ...row(rowOver),
+    statement: line.statement,
+    statementLine: { amount: line.amount, collected: line.collected, fee: line.fee, status: line.status },
+  });
+  const recorded = async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w));
+    return w;
+  };
+  const withLine = async (over: Row = {}, rowOver: Row = {}) => {
+    const w = await recorded();
+    const line = zeroLine(over, rowOver);
+    w.state.lines.push(line);
+    w.state.links.push(linkOf(line, rowOver));
+    return w;
+  };
+  const refusedUntouched = async (w: World) => {
+    const before = w.snapshot();
+    const e = await refusedBy(w);
+    expect(e.body.code).toBe('ON_A_STATEMENT');
+    expect(e.body.error).toContain('ORD-2026-1696');
+    expect(w.snapshot(), 'a refusal changed something').toEqual(before);
+    return e;
+  };
+
+  /** The REAL matching, asked about the same line against the order as the world holds it now. */
+  const rematch = async (w: World) => {
+    const created: Row[] = [];
+    const tx = {
+      statementLine: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([{ id: 'sl1', merchantRef: null, barcode: '100550615867', amount: 0, collected: 0, fee: 0, status: 'تم إرجاعها' }])
+          .mockResolvedValue([]),
+      },
+      courierStatement: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'st9', deliveryProviderId: 'p1', periodFrom: null, periodTo: null, createdAt: new Date('2026-11-01T00:00:00Z'), fileHash: 'cd'.repeat(32) }),
+      },
+      settlementMatch: {
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findMany: vi.fn().mockResolvedValue([]),
+        create: vi.fn(async ({ data }: { data: Row }) => {
+          created.push(data);
+          return {};
+        }),
+      },
+      orderChangeRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      order: {
+        findFirst: vi.fn().mockResolvedValue({ ...clone(w.state.order), totalAmount: 50, items: clone(w.state.items), addOns: [] }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+    await runMatching(tx as never, { companyId: 'c1', storeId: 's1', statementId: 'st9', minorUnit: 2 });
+    return created;
+  };
+
+  it('the worked case: delivered at the door, the company says «تم إرجاعها» at zero (MISMATCHED) — the measure allows it and the press undoes it', async () => {
+    const w = await withLine();
+    // before the undo the REAL matching calls that line a difference against the delivered order — the row that used to block
+    expect((await rematch(w)).map((r) => r.result)).toEqual(['MISMATCHED']);
+
+    const { measure } = await measureOf(w);
+    expect(measure.allowed).toBe(true);
+    expect(measure.refusal).toBeNull();
+    await press(w);
+    expect(w.state.order.shippingStatus).toBe('SHIPPED');
+    expect(w.forbidden).toEqual([]);
+  });
+
+  it('after the undo the order is in flight, and the REAL matching rebuilds that line as EXCLUDED — not money, nobody\'s question', async () => {
+    const w = await withLine();
+    await press(w);
+    const rows = await rematch(w);
+    expect(rows.map((r) => [r.orderId, r.result])).toEqual([['o1', EXCLUDED_RESULT]]);
+    expect(rows[0].note).toContain('«تم إرجاعها»');
+  });
+
+  it('the same holds on an unapproved statement, for a line not matched yet (no rows), and for a row already EXCLUDED', async () => {
+    for (const [what, over, rowOver] of [
+      ['a draft statement', { statement: ST({ status: 'DRAFT', approvedAt: null }) }, {}],
+      ['the plain spelling «تم ارجاعها»', { status: 'تم ارجاعها' }, {}],
+      ['no collected and no fee cells', { collected: null, fee: null }, {}],
+      ['an EXCLUDED row', {}, { result: EXCLUDED_RESULT }],
+    ] as [string, Row, Row][]) {
+      const w = await withLine(over, rowOver);
+      await press(w);
+      expect(w.state.order.shippingStatus, what).toBe('SHIPPED');
+    }
+    const w = await recorded();
+    w.state.lines.push(zeroLine({ matches: [] }));
+    await press(w);
+    expect(w.state.order.shippingStatus, 'a line no matching has read yet').toBe('SHIPPED');
+  });
+
+  it('the press reads the statements AGAIN after its claim, by the same rule: the zero line does not stop it there either', async () => {
+    const w = await withLine();
+    w.trace = [];
+    await press(w);
+    expect(w.trace.filter((t) => t === 'statementLine.findMany').length).toBeGreaterThanOrEqual(2);
+    expect(w.state.activities[w.state.activities.length - 1].action).toBe(DELIVERY_UNDO_ACTION);
+  });
+
+  it('NEGATIVE — a line that carries money still blocks, by name', async () => {
+    await refusedUntouched(await withLine({ amount: 25, collected: 30, fee: 5, status: 'تم توصيلها' }));
+    // money beside the word «returned» is money too
+    await refusedUntouched(await withLine({ amount: 25, collected: 30, fee: 5 }));
+  });
+
+  it('NEGATIVE — a zero line whose word is «مؤجلة» still blocks', async () => {
+    await refusedUntouched(await withLine({ status: 'مؤجلة' }));
+    await refusedUntouched(await withLine({ status: 'مؤجل' }));
+  });
+
+  it('NEGATIVE — a zero line whose word is empty still blocks (and so does a word nobody knows, «delivered» or «cancelled»)', async () => {
+    for (const status of [null, '', '   ', 'حالة جديدة', 'تم توصيلها', 'ملغاة']) await refusedUntouched(await withLine({ status }));
+  });
+
+  it('NEGATIVE — a non-zero RETURNED line still blocks: the return fee the company charged (net −3), or a fee beside a zero net', async () => {
+    await refusedUntouched(await withLine({ amount: -3, collected: 0, fee: 3 }));
+    await refusedUntouched(await withLine({ amount: 0, collected: 3, fee: 3 }));
+    await refusedUntouched(await withLine({ amount: 0, collected: null, fee: 3 }));
+    await refusedUntouched(await withLine({ amount: 0, collected: -2, fee: null }));
+  });
+
+  it('NEGATIVE — a zero «returned» line whose row a person answered, the approval settled, or a person tied by hand still blocks (no matching rebuilds it)', async () => {
+    await refusedUntouched(await withLine({}, { resolution: 'ACCEPTED_COURIER' }));
+    await refusedUntouched(await withLine({}, { resolution: 'UNDER_REVIEW' }));
+    await refusedUntouched(await withLine({}, { appliedAt: new Date() }));
+    await refusedUntouched(await withLine({}, { matchedBy: 'MANUAL' }));
+    await refusedUntouched(await withLine({}, { result: 'MATCHED' }));
+  });
+
+  it('NEGATIVE — a zero «returned» line beside another line with money for the same order: the money line speaks', async () => {
+    const w = await withLine();
+    w.state.lines.push({ ...zeroLine({ amount: 25, collected: 30, fee: 5, status: 'تم توصيلها', statement: ST({ reference: 'ST-10' }) }) });
+    const e = await refusedUntouched(w);
+    expect(e.body.error).toContain('ST-10');
+    expect(e.body.error).not.toContain('ST-9');
+  });
+
+  it('NEGATIVE — only the hand-tied row is a zero «returned» one, but the line found by reference carries money: refused', async () => {
+    const w = await recorded();
+    w.state.lines.push(zeroLine({ merchantRef: 'MR-1696', barcode: null, amount: 40, collected: 45, fee: 5, status: 'تم توصيلها' }));
+    w.state.links.push(linkOf(zeroLine()));
+    await refusedUntouched(w);
+  });
+});
+
+/**
+ * «إقفال القديمة» — the orders it reads (delivered, whole or in part, with NO money recorded) can be undone with a zero «returned» line
+ * on a statement. An order the press already moved to SETTLED is a different fact: this door still refuses it as money recorded
+ * (`MONEY_RECORDED`), exactly as on main — taking a SETTLED back is not this change's to decide.
+ */
+describe('«إقفال القديمة» and the undo', () => {
+  it('every state the closeout reads as «no money» (NO_MONEY_SETTLEMENT), on both delivered states (LEGACY_DELIVERED): undone, with a zero «returned» line on a statement', async () => {
+    expect([...LEGACY_DELIVERED]).toEqual(['DELIVERED', 'PARTIALLY_DELIVERED']);
+    for (const delivered of LEGACY_DELIVERED) {
+      for (const s of NO_MONEY_SETTLEMENT) {
+        const w = new World();
+        const lines =
+          delivered === 'DELIVERED' ? allTaken(w) : [{ itemId: 'i1', deliveredQty: 1 }, { itemId: 'i2', deliveredQty: 0 }];
+        await recordAtTheDoor(w, lines);
+        expect(w.state.order.shippingStatus).toBe(delivered);
+        w.state.order.settlementStatus = s;
+        const line = { merchantRef: 'MR-1696', barcode: null, amount: 0, collected: null, fee: null, status: 'تم إرجاعها', statement: { reference: 'ST-9', status: 'APPROVED', approvedAt: new Date(), deliveryProviderId: 'p1' }, matches: [{ result: 'MISMATCHED', resolution: null, appliedAt: null, matchedBy: 'MERCHANT_REF' }] };
+        w.state.lines.push(line);
+        const { measure } = await measureOf(w);
+        expect(measure.allowed, `${delivered} / ${s}`).toBe(true);
+        await press(w);
+        expect(w.state.order.shippingStatus, `${delivered} / ${s}`).toBe('SHIPPED');
+        expect(w.state.order.settlementStatus, `${delivered} / ${s}: the undo writes no settlement word here`).toBe(s);
+      }
+    }
+  });
+
+  it('an order the closeout already moved to SETTLED (its mark on the order) is refused as money recorded — as on main; the zero line changes nothing about that', async () => {
+    const w = new World();
+    await recordAtTheDoor(w, allTaken(w));
+    w.state.order.settlementStatus = 'SETTLED';
+    w.state.activities.push({ id: 'lc1', companyId: 'c1', orderId: 'o1', action: LEGACY_CLOSE_ACTION, previousStatus: 'PENDING_COLLECTION', newStatus: 'SETTLED', metadata: null });
+    w.state.lines.push({ merchantRef: 'MR-1696', barcode: null, amount: 0, collected: null, fee: null, status: 'تم إرجاعها', statement: { reference: 'ST-9', status: 'APPROVED', approvedAt: new Date(), deliveryProviderId: 'p1' }, matches: [{ result: 'MISMATCHED', resolution: null, appliedAt: null, matchedBy: 'MERCHANT_REF' }] });
+    const before = w.snapshot();
+    const e = await refusedBy(w);
+    expect(e.body).toEqual({ code: 'MONEY_RECORDED', error: UNDO_WHY_AR.moneyState('SETTLED') });
+    expect(w.snapshot()).toEqual(before);
   });
 });
