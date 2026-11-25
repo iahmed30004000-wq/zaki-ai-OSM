@@ -337,6 +337,11 @@ describe('the dialog says nothing a person cannot read — no English, no jargon
     const src = readFileSync(join(process.cwd(), 'src/components/screens/tracking/UndoDeliveryDialog.tsx'), 'utf8');
     const jsxText = [...src.matchAll(/>\s*([^<>{}\n]*[؀-ۿ][^<>{}\n]*)\s*</g)].map((m) => m[1]);
     const props = [...src.matchAll(/(?:title|subtitle|label|placeholder|helperText)="([^"]+)"/g)].map((m) => m[1]);
+    // 25/11 (A2 «تراجع عن المرتجع»): the dialog now asks about either mistake, so its own sentences moved from the JSX into one table
+    // per kind (`WORDS`), drawn as `{w.title}` and the like. Those entries are read too — the count and the rule are unchanged.
+    const table = [...src.matchAll(/\b(?:title|subtitle|what|when|refused|placeholder|ack|failed): '([^']+)'/g)].map((m) => m[1]);
+    expect(table.length).toBeGreaterThanOrEqual(16);
+    props.push(...table);
     expect(jsxText.length + props.length).toBeGreaterThan(8);
     for (const s of [...jsxText, ...props]) expect(s, s).not.toMatch(/[A-Za-z]{2,}/);
   });

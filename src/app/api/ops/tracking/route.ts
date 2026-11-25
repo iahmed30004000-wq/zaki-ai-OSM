@@ -298,6 +298,8 @@ export async function GET(req: Request) {
         late: transit.late,
         // Delivery, settlement and collection stay three separate facts.
         collectionStatus: o.settlementStatus,
+        // «تراجع عن المرتجع» (25/11): whether the returns desk counted it back in — the answer, not the receipt (which stays off the wire).
+        returnCounted: _returnReceipt != null,
         // «تسليم مندوب» or the old hand door (F9): the statement's own rule, judged here so the screen only reads it.
         handover: handoverTakes(o, country.currencyCode),
         // What the company itself says, when it disagrees with our state: judged once for the whole list, only shown here.
@@ -395,6 +397,7 @@ export async function GET(req: Request) {
         writeOff: can(user, 'ops.write_off'),
         closeLegacy: can(user, 'ops.close_legacy'),
         // `undoDelivery` is «تراجع عن التسليم» (13/11): a button on a delivered parcel's row, the owner's own key; its door asks it again.
+        // The same key draws «تراجع عن المرتجع» (25/11) on a returned parcel the desk has not counted; its own door asks it again too.
         undoDelivery: can(user, 'ops.undo_delivery'),
         // «فيه فرق»: answering a difference from the row is `settlement.review` — the matching screen's own door asks it again.
         decide: mayDecide,

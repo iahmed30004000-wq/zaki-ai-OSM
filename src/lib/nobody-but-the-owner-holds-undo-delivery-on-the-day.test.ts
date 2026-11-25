@@ -35,8 +35,10 @@ describe('who holds «تراجع عن التسليم» on the day', () => {
   it('the catalog offers it on the roles screen, in Arabic, behind the tracking key — and says there is no time limit', () => {
     const item = catalogItem(KEY);
     expect(item?.requires).toBe('ops.track');
-    expect(item?.ar).toBe('التراجع عن تسجيل تسليم بالغلط (بلا مدة زمنية)');
-    expect(item?.en).toBe('Take back a delivery that was recorded by mistake');
+    // 25/11 (A2 «تراجع عن المرتجع»): was «التراجع عن تسجيل تسليم بالغلط» / «Take back a delivery…». The same key now also opens the
+    // undo of a return «رجعت» recorded by mistake, so its words say both — the owner reads on the roles screen what he ticks.
+    expect(item?.ar).toBe('التراجع عن تسجيل تسليم أو مرتجع بالغلط (بلا مدة زمنية)');
+    expect(item?.en).toBe('Take back a delivery or a return that was recorded by mistake');
   });
 
   it('SUPER_ADMIN holds it — its full access is every key', async () => {

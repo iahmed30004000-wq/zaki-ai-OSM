@@ -429,7 +429,7 @@ export const PERMISSION_MODULES: CatalogModule[] = [
        * commission). Granted to NOBODY by any migration, seed or fallback: the owner's full access holds it, and he ticks it for whoever
        * he wants.
        */
-      { key: 'ops.undo_delivery', requires: 'ops.track', ar: 'التراجع عن تسجيل تسليم بالغلط (بلا مدة زمنية)', en: 'Take back a delivery that was recorded by mistake' },
+      { key: 'ops.undo_delivery', requires: 'ops.track', ar: 'التراجع عن تسجيل تسليم أو مرتجع بالغلط (بلا مدة زمنية)', en: 'Take back a delivery or a return that was recorded by mistake' },
       /*
        * «بدي زر استلام الكل مع صلاحية للمالك» (11/11). One press receives every pending return the list's filters select,
        * whole and sound, back on the shelf, commission reversed — with no undo. Granted to NOBODY by any migration, seed or
