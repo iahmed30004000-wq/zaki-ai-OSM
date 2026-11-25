@@ -254,6 +254,9 @@ const ACTIVITY_AR: Record<string, string> = {
   // «أقفل القديمة بلا باركود» (12/11): the mark the owner's press leaves on each order it closed. The settlement log line beside it says
   // from what to what; this says what KIND of close it was — and that no money moved, so a reader never wonders where the wallet line is.
   LEGACY_CLOSED_NO_MONEY: 'اتقفل كمحصَّل بقرار المالك — بلا حركة مال',
+  // «تراجع عن إقفال القديمة» (25/11): the mark renamed (never deleted) when the owner took the close back, and the take-back itself.
+  LEGACY_CLOSED_NO_MONEY_UNDONE: 'اتقفل كمحصَّل بقرار المالك — بلا حركة مال (انتراجع عن الإقفال بعدين)',
+  LEGACY_CLOSE_TAKEN_BACK: 'تراجع عن «إقفال القديمة» — رجعت تسوية الطلب لحالتها قبل الإقفال، بلا حركة مال',
   // «طلبات لم يذكرها أي كشف»: what a person decided about it, on the order itself.
   ...NOT_MENTIONED_ACTIVITY_AR,
 };
