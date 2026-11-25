@@ -32,6 +32,8 @@ const { db, orders, expenses, commission, requireContext, requirePermission } = 
   const matches = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
       if (key === 'OR') return (want as Row[]).some((w) => matches(row, w));
+      // 25/11 (A1): delivered is `whereDelivered()` — `shippingStatus: { in: [...] }` — so the fake reads an `in` list.
+      if (want && typeof want === 'object' && Array.isArray((want as Row).in)) return ((want as Row).in as unknown[]).includes(row[key]);
       return row[key] === want;
     });
   const db = {
@@ -48,6 +50,9 @@ const { db, orders, expenses, commission, requireContext, requirePermission } = 
     order: {
       findMany: vi.fn(async ({ where }: { where: Row }) => orders.filter((r) => matches(r, where))),
     },
+    // 25/11 (A1): the door reads the store's profit epoch (its first courier statement). This store has none, so nothing is floored
+    // and every figure below is the one it always was.
+    courierStatement: { findMany: vi.fn(async () => []) },
   };
   return { db, orders, expenses, commission: vi.fn(async () => 12.7), requireContext: vi.fn(), requirePermission: vi.fn() };
 });
@@ -65,8 +70,10 @@ vi.mock('@/lib/analytics', () => ({
 
 import { GET } from './route';
 
+// 25/11 (A1): an order is delivered by its `shippingStatus` now (the legacy `status` is no longer read for money). The worked example's
+// orders are written the way the shipping door writes them — both columns in step — so every figure pinned below is unchanged.
 const order = (id: string, storeId: string, totalAmount: number, shippingCost: number, estimatedCostOfGoods: number, status = 'DELIVERED'): Row => ({
-  id, orderNumber: id, companyId: 'c1', storeId, status, totalAmount, shippingCost, estimatedCostOfGoods, deliveredAt: new Date('2026-11-05T10:00:00Z'),
+  id, orderNumber: id, companyId: 'c1', storeId, status, shippingStatus: status === 'DELIVERED' ? 'DELIVERED' : 'NOT_SHIPPED', totalAmount, shippingCost, estimatedCostOfGoods, deliveredAt: new Date('2026-11-05T10:00:00Z'),
 });
 const expense = (id: string, storeId: string | null, amount: number, voidedAt: Date | null = null, companyId = 'c1'): Row => ({
   id, companyId, storeId, amount, voidedAt, category: 'OTHER', title: id, expenseDate: new Date('2026-11-10T10:00:00Z'), walletId: 'w1',
@@ -119,12 +126,17 @@ describe('the profit screen’s figures, over the worked example', () => {
     expect(body.expenses.map((e: Row) => e.id)).toEqual(['e1', 'e2', 'e3']);
     expect(body.recentDeliveredOrders.map((o: Row) => o.id)).toEqual(['o1', 'o2', 'o3']);
     expect(body.currency).toBe('USD');
+    // 25/11 (A1): no courier statement in this store → no start line; the figures are since the beginning.
+    expect(body.since).toBeNull();
+    expect(body.sinceDay).toBeNull();
   });
 
   it('the commission is asked for THIS store’s delivered orders, through the one commission function', async () => {
     await read();
     expect(commission).toHaveBeenCalledTimes(1);
-    expect(commission).toHaveBeenCalledWith({ companyId: 'c1', storeId: 's1', shippingStatus: 'DELIVERED' });
+    // MOVED 25/11 (A1): was `shippingStatus: 'DELIVERED'`. The commissions are now asked over the SAME set as the revenue —
+    // `whereDelivered()`, which takes in the partial deliveries the revenue counts.
+    expect(commission).toHaveBeenCalledWith({ companyId: 'c1', storeId: 's1', shippingStatus: { in: ['DELIVERED', 'PARTIALLY_DELIVERED'] } });
   });
 
   it('a loss stays a loss: the net is negative and is not floored here — the floor is the partners’ rule, not the profit’s', async () => {

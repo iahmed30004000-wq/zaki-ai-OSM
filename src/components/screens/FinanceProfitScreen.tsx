@@ -19,6 +19,7 @@ import { apiJson } from '@/lib/api-client';
 import { userCan } from '@/lib/can';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { ZERO_SUMMARY, type ProfitSummary } from '@/lib/profit-summary';
+import { earlierDaysNote, profitSinceSentence, sinceDate, startsBefore } from '@/lib/profit-since-words';
 import { RiAddCircleLine, RiArrowRightDownLine, RiArrowUpCircleLine, RiFileList3Line, RiMoneyDollarCircleLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -344,6 +345,8 @@ export function FinanceProfitScreen() {
   // copy was missing `shippingAndCommissions`, and the line that reads it
   // took the whole screen down whenever the server did not answer.
   const summary: ProfitSummary = data?.summary ?? ZERO_SUMMARY;
+  // Where the figures start (A1): the day of the store's first courier statement, as the store writes it. Null: since the beginning.
+  const sinceDay: string | null = data?.sinceDay ?? null;
 
   return (
     <>
@@ -356,14 +359,19 @@ export function FinanceProfitScreen() {
             <span>سجّل مصروفاً</span>
           </Button>
         }
-        // The span box (D2) and its one sentence act on every figure of the screen: the frame's toolbar row. Its lines are byte-for-byte the same.
+        // The span box (D2) and its one sentence act on every figure of the screen: the frame's toolbar row. A1 (25/11): with a first statement, it names the day the profit starts, and says so when the span starts earlier.
         toolbar={onWithdrawals ? undefined : <>
           <div className="w-56">
-            <DateRange value={range} onChange={setRange} label="منذ البداية" />
+            <DateRange value={range} onChange={setRange} label={sinceDay ? `من ${sinceDate(sinceDay)}` : 'منذ البداية'} />
           </div>
           <p className="text-note text-[var(--sys-muted)]">
-            {range.from && range.to ? 'الأرقام للمدة المختارة: الموصَّل فيها، ومصاريفها.' : 'الأرقام منذ البداية — كل الموصَّل وكل المصاريف.'}
+            {range.from && range.to ? 'الأرقام للمدة المختارة: الموصَّل فيها، ومصاريفها.' : sinceDay ? `${profitSinceSentence(sinceDay)}. كل الموصَّل وكل المصاريف من يومها.` : 'الأرقام منذ البداية — كل الموصَّل وكل المصاريف.'}
           </p>
+          {sinceDay && range.from && range.to && (
+            <p className="text-note text-[var(--sys-muted)]">
+              {profitSinceSentence(sinceDay)}.{startsBefore(range.from, sinceDay) ? ` ${earlierDaysNote(sinceDay)}` : ''}
+            </p>
+          )}
         </>}
       >
         {mayWithdrawals && (
@@ -380,7 +388,7 @@ export function FinanceProfitScreen() {
             title="إيراد الموصَّل"
             rule="مجموع المحصَّل فعلاً للطلبات اللي انحصّلت، زائد إجمالي الموصَّلة اللي ما انسجّل إلها تحصيل. الموصَّل وحده، بالمدّة المختارة."
             value={<Money value={summary.totalRevenue} currency={data?.currency} />}
-            subtitle="الطلبات المسلَّمة فعلاً، لا المؤكدة"
+            subtitle="ما دفعته شركة الشحن بالكشف، أو سعر الطلب قبل وصول كشفه"
             icon={RiArrowUpCircleLine}
           />
           <KpiCard

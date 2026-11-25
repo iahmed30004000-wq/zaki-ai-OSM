@@ -20,11 +20,19 @@ const { db, tables, commission } = vi.hoisted(() => {
     user: [] as Row[],
     order: [] as Row[],
     expense: [] as Row[],
+    // 25/11 (A1): the store's courier statements — the profit epoch is read from them. Empty unless a test says otherwise.
+    courierStatement: [] as Row[],
   };
   const matches = (row: Row, where: Row): boolean =>
     Object.entries(where).every(([key, want]) => {
       if (key === 'OR') return (want as Row[]).some((w) => matches(row, w));
-      if (key === 'id' && want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row.id);
+      // 25/11 (A1): any `in` list, not only ids — delivered is `shippingStatus: { in: [...] }` (`whereDelivered()`).
+      if (want && typeof want === 'object' && 'in' in want) return (want.in as unknown[]).includes(row[key]);
+      // 25/11 (A1): a floored span (`deliveredAt` / `expenseDate` from the epoch).
+      if (want && typeof want === 'object' && ('gte' in want || 'lt' in want)) {
+        const t = (row[key] as Date | null)?.getTime();
+        return t !== undefined && (want.gte === undefined || t >= want.gte.getTime()) && (want.lt === undefined || t < want.lt.getTime());
+      }
       if (want && typeof want === 'object' && !(want instanceof Date) && !Array.isArray(want) && key !== 'id') {
         return matches((row[key] ?? {}) as Row, want as Row);
       }
@@ -59,6 +67,8 @@ const { db, tables, commission } = vi.hoisted(() => {
     user: { findMany: finder('user') },
     order: { findMany: finder('order') },
     expense: { findMany: finder('expense') },
+    courierStatement: { findMany: finder('courierStatement') },
+    store: { findUnique: vi.fn(async () => ({ country: { timezone: 'Asia/Damascus' } })) },
   };
   return { db, tables, commission: vi.fn(async () => 12.7) };
 });
@@ -74,7 +84,8 @@ const partner = (id: string, name: string, sharePercent: number, sortOrder: numb
   id, companyId: 'c1', name, sharePercent, isActive, sortOrder, createdAt: new Date(2026, 10, 13, 0, sortOrder),
 });
 const order = (id: string, total: number, shipping: number, cost: number): Row => ({
-  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
+  // 25/11 (A1): delivered by `shippingStatus`, as every road now writes it; the legacy column kept in step, as the shipping door writes it.
+  id, orderNumber: id, companyId: 'c1', storeId: 's1', status: 'DELIVERED', shippingStatus: 'DELIVERED', totalAmount: total, shippingCost: shipping, estimatedCostOfGoods: cost,
   deliveredAt: new Date('2026-11-05T10:00:00Z'),
 });
 const expense = (id: string, storeId: string | null, amount: number, voidedAt: Date | null = null): Row => ({
@@ -104,6 +115,24 @@ beforeEach(() => {
 });
 
 const lineOf = (s: Awaited<ReturnType<typeof partnerStatement>>, id: string) => s.lines.find((l) => l.id === id)!;
+
+// 25/11 (A1): a store with no courier statement carries NO `since` / `sinceDay` key — not even an undefined one.
+describe('where the profit starts', () => {
+  it('NEGATIVE: no statement → the statement has no start keys at all (strict)', async () => {
+    const s = await partnerStatement(SCOPE);
+    const { since: _since, sinceDay: _sinceDay, ...rest } = s;
+    expect(s).toStrictEqual(rest);
+  });
+
+  it('a first statement → its day and instant, and the profit floored at it', async () => {
+    tables.courierStatement.push({ companyId: 'c1', storeId: 's1', createdAt: new Date('2026-11-05T12:00:00Z'), fileHash: 'sha' });
+    // 2026-11-05 local (Damascus, read from the store's country): the three orders (05 Nov 10:00Z) count, the expenses of 10 Nov too.
+    const s = await partnerStatement(SCOPE);
+    expect(s.sinceDay).toBe('2026-11-05');
+    expect(s.since).toBe('2026-11-04T21:00:00.000Z');
+    expect(s.netProfit).toBe(277.91);
+  });
+});
 
 describe('the statement over the profit screen’s worked example', () => {
   it('cuts 277.91 — the number the profit screen prints — into the four shares, adding up to it exactly', async () => {

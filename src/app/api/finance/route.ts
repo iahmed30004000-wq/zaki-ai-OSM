@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
 import { logAudit } from '@/lib/audit';
 import { requirePermission } from '@/lib/authorization';
-import { profitToDate, profitWindow } from '@/lib/profit-to-date';
+import { profitEpoch, profitToDate, profitWindow } from '@/lib/profit-to-date';
 import { expensesOf } from '@/lib/expense-scope';
 import { cancelExpense } from '@/lib/expense-void';
 import { ExpenseRefused } from '@/lib/wallets';
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
      * never counted), its delivered orders, their cost, shipping and commissions, and the `summary` below — moved there
      * unchanged, so that «صافي الربح» on this screen and the partners' shares of it are one number made in one place.
      */
-    // An optional span of days of the store (?from=YYYY-MM-DD&to=YYYY-MM-DD). Without it, or with a bad one, the figures are since the beginning — what every caller got before.
+    // An optional span of days of the store (?from=YYYY-MM-DD&to=YYYY-MM-DD). Without it, or with a bad one, the figures are since the store's profit epoch (A1), or since the beginning for a store with no statement.
     const url = new URL(req.url);
     const window = profitWindow(url.searchParams.get('from'), url.searchParams.get('to'), country.timezone);
     /*
@@ -103,16 +103,22 @@ export async function GET(req: Request) {
       _sum: { amount: true },
       _max: { createdAt: true },
     });
+    /*
+     * THE PROFIT EPOCH (25/11, A1): the day of the store's first courier statement. The figures are counted from it — with no span and
+     * inside one — and it is part of the kept answer's key, so the day a first statement is uploaded the figures move at once.
+     */
+    const epoch = await profitEpoch({ companyId, storeId }, country.timezone);
     const profitKey = [
       'finance-profit',
       companyId,
       storeId,
       window ? `${window.start.toISOString()}~${window.end.toISOString()}` : 'all',
+      epoch ? `since:${epoch.at.toISOString()}` : 'since:none',
       stamp._count._all,
       stamp._sum.amount ?? 0,
       stamp._max.createdAt?.toISOString() ?? '',
     ].join('|');
-    const { expenses, liveExpenses, deliveredOrders, summary } = await heavyOnce(profitKey, REPORT_TTL_MS, () => profitToDate({ companyId, storeId }, window));
+    const { expenses, liveExpenses, deliveredOrders, summary } = await heavyOnce(profitKey, REPORT_TTL_MS, () => profitToDate({ companyId, storeId }, window, { epoch }));
 
     /**
      * ─── WHERE THE MONEY GOES, BY KIND OF SPENDING ───
@@ -212,6 +218,10 @@ export async function GET(req: Request) {
       // figure in a system that runs Syrian pounds, dinars and Egyptian
       // pounds side by side.
       currency: country.currencyCode,
+      // Where the profit figures start (A1): the first instant of the day of the first statement, and that day as the store writes it.
+      // Null for a store with no statement — its figures are since the beginning, as they always were.
+      since: epoch ? epoch.at.toISOString() : null,
+      sinceDay: epoch ? epoch.day : null,
       summary,
       expenses,
       recentDeliveredOrders: deliveredOrders.slice(0, 20),
