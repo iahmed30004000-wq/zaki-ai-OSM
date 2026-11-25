@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { db as Db } from './db';
 import {
   AGES,
@@ -44,12 +45,26 @@ export const NO_COURIER_AR = 'بلا شركة شحن';
  * Not narrowed by the other dropdowns: «مرتجع (12)» is how many of the pending parcels are in that state, so with
  * nothing else chosen — the state the screen opens in — it is exactly how many rows will appear.
  */
-export async function returnsFacts(db: Client, input: { scope: ReturnsScope; view: View; now: Date }): Promise<ReturnsFacts> {
-  const pending = viewScope('pending', input.scope);
-  const current = viewScope(input.view, input.scope);
+export async function returnsFacts(
+  db: Client,
+  input: {
+    scope: ReturnsScope;
+    view: View;
+    now: Date;
+    /**
+     * F10 (25/11): the warehouse a placed store's list was narrowed to (the clause built by
+     * `returns-warehouse-filter.ts`). It narrows EVERY number here — the tabs included — because it says which parcels the
+     * desk is looking at, not which pile of them. Absent: every question is exactly the one it was.
+     */
+    narrow?: Prisma.OrderWhereInput;
+  }
+): Promise<ReturnsFacts> {
+  const within = (w: Prisma.OrderWhereInput): Prisma.OrderWhereInput => (input.narrow ? { ...w, ...input.narrow } : w);
+  const pending = within(viewScope('pending', input.scope));
+  const current = within(viewScope(input.view, input.scope));
 
   const [views, byStatus, byCourier, ages, noBarcode] = await Promise.all([
-    Promise.all(VIEWS.map((v) => db.order.count({ where: viewScope(v, input.scope) }))),
+    Promise.all(VIEWS.map((v) => db.order.count({ where: within(viewScope(v, input.scope)) }))),
     db.order.groupBy({ by: ['shippingStatus'], where: pending, _count: { _all: true } }),
     db.order.groupBy({ by: ['deliveryProviderId'], where: current, _count: { _all: true } }),
     // The pile AND the pending scope, both: spreading `pending` and giving `AND` a new list keeps the scope at the top.
