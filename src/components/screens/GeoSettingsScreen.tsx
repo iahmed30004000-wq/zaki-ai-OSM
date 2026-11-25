@@ -11,6 +11,7 @@ import { workHoursError } from '@/lib/work-hours';
 import { CurrencyPicker, currencyChoiceReady, type CurrencyChoice } from '@/components/ui/CurrencyPicker';
 import { StorefrontSettings } from '@/components/settings/StorefrontSettings';
 import { StoreIdentityCard } from '@/components/settings/StoreIdentityCard';
+import { WaybillPrintCard } from '@/components/settings/WaybillPrintCard';
 import { WarehousesCard } from '@/components/geo/WarehousesCard';
 import { storeTypeLabel } from '@/lib/store-types';
 import { RiAddCircleLine, RiCloseLine, RiDeleteBinLine, RiEarthLine, RiLoader4Line, RiStore2Line } from '@remixicon/react';
@@ -417,6 +418,8 @@ export function GeoSettingsScreen() {
               {storefrontFor === s.id && (
                 <li className="space-y-3 bg-[var(--sys-surface)] p-4">
                   <StoreIdentityCard store={s as never} onSaved={load} />
+                  {/* F15 (25/11): what this store's waybill prints — its logo and its parts — beside the identity it reads. */}
+                  <WaybillPrintCard storeId={s.id} mayManage={mayManage} />
                   <StorefrontSettings store={s as never} onSaved={load} />
                 </li>
               )}
