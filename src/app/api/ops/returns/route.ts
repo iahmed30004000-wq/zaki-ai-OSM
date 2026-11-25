@@ -17,6 +17,7 @@ import { returnsFacts } from '@/lib/returns-list';
 import { receiveReturn } from '@/lib/return-receipt';
 import { sourceWarehouseNames, withSourceWarehouseName } from '@/lib/order-source-warehouse';
 import { reachesWarehouse } from '@/lib/warehouses';
+import { returnsWarehouseFilter } from '@/lib/returns-warehouse-filter';
 
 /**
  * Return receiving.
@@ -63,6 +64,7 @@ const receiveSchema = z.object({
  *   ?courier=<id>|none           which delivery company carried it, or none
  *   ?age=fresh|few|week|old      how long since the courier last spoke of it                          (pending only)
  *   ?barcode=none                only the parcels with NO barcode (13/11: «وضيف للفلتر بلا باركود»)    (either view)
+ *   ?warehouse=<id>|none         the warehouse the parcel left from, or none — a PLACED store only (F10, 25/11)        (either view)
  *   ?q=                          order number, reference, waybill, the customer's name — and phone, for whoever may read phones
  *   ?page= ?limit=               25 a page, 100 at most
  *
@@ -81,6 +83,15 @@ export async function GET(req: Request) {
 
     const parsed = returnsFilters(searchParams, { now, maySeeContact });
     if (!parsed.ok) return NextResponse.json({ error: parsed.error, errorAr: parsed.errorAr }, { status: 400 });
+
+    /*
+     * F10 (25/11) «من أي مخزن طلع المرتجع»: `?warehouse=` — a PLACED store only (`returns-warehouse-filter.ts`). Absent, it
+     * asks nothing; for a store that is not placed it is not read. A warehouse this person does not reach is refused.
+     */
+    const place = await returnsWarehouseFilter(searchParams, { user, companyId, storeId });
+    if (!place.ok) return NextResponse.json(place.body, { status: 400 });
+    // ANDed with the other choices, like them — so the count and the rows ask it too.
+    if (place.clause) parsed.clauses.push(place.clause);
 
     const scope = { companyId, storeId };
     // The scope stays at the TOP of the question — spread, never nested — and what was chosen is ANDed onto it.
@@ -123,7 +134,8 @@ export async function GET(req: Request) {
               }),
         },
       }),
-      returnsFacts(db, { scope, view: parsed.view, now }),
+      // The tabs and the numbers beside the options follow the warehouse: they count the parcels the desk is looking at.
+      returnsFacts(db, { scope, view: parsed.view, now, ...(place.clause ? { narrow: place.clause } : {}) }),
     ]);
     const orders = list.rows;
 
@@ -153,7 +165,7 @@ export async function GET(req: Request) {
        */
       pagination: { total: list.total, page: list.page, limit: list.limit, totalPages: list.totalPages },
       facts,
-      applied: parsed.applied,
+      applied: place.warehouse ? { ...parsed.applied, warehouse: place.warehouse } : parsed.applied,
       // The fee tick-box's own key (PR-8), so the screen draws no box the door would refuse.
       mayChargeFee: can(user, 'ops.return_fee'),
       // «استلام الكل»'s own key — granted to nobody; the owner's full access holds it. No key, no button.

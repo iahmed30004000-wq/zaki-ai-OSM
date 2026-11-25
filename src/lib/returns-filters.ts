@@ -166,6 +166,11 @@ export interface ReturnsApplied {
   q: string | null;
   /** Present only when the parcels with no barcode were asked for. */
   barcode?: BarcodeFilter;
+  /**
+   * F10 (25/11): present only when a placed store's list was narrowed to the parcels of one warehouse (its id) or to
+   * those with none (`none`). Read by the door from `returns-warehouse-filter.ts`, not here: it needs the database.
+   */
+  warehouse?: string;
 }
 
 export type ReturnsFilterResult =

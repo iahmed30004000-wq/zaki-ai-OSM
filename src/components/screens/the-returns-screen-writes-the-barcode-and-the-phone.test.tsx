@@ -94,8 +94,11 @@ let facts: Record<string, unknown>;
 let total: number;
 let rowsOf: (view: string) => unknown[];
 
+// 25/11 (F10): the desk now asks its warehouses door once on opening (its warehouses door, to know a PLACED store's
+// column and filter). Old: every GET was the list's. New: the list's questions are the GETs to the list itself. Why: the
+// list's own question is what these tests pin, and it is unchanged.
 const gets = () =>
-  api.mock.calls.filter((c) => !(c[1] && (c[1] as RequestInit).method)).map((c) => new URL(c[0] as string, 'http://x').searchParams);
+  api.mock.calls.filter((c) => !(c[1] && (c[1] as RequestInit).method) && c[0] !== '/api/ops/returns/warehouses').map((c) => new URL(c[0] as string, 'http://x').searchParams);
 const posts = () => api.mock.calls.filter((c) => c[1] && (c[1] as RequestInit).method === 'POST');
 const lastAsked = () => gets().at(-1)!;
 
