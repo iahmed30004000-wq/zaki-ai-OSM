@@ -104,14 +104,32 @@ describe('three days: what is untouched goes back to the win-back pool, marked �
 });
 
 describe('one full shift untouched → the active agent with the fewest open rows', () => {
-  it('the last full shift is the last working day, whole, in the store’s hours (a weekend is skipped)', () => {
-    // Sunday 2026-11-29 08:00 Damascus = 05:00Z → the last working day is Thursday 26/11 (Fri, Sat off).
+  // 25/11 (the coordinator's «شيك»): old — the configured work hours (09:00–17:00); new — the WHOLE last working day, local midnight to
+  // local midnight: agents work past the hours, and the list is worked in idle time.
+  it('the last full shift is the last working day, WHOLE (local 00:00 → next 00:00), a weekend skipped', () => {
+    // Sunday 2026-11-29 08:00 Damascus (UTC+3) = 05:00Z → the last working day is Thursday 26/11 (Fri, Sat off).
     const s = lastFullShift(CAL, new Date('2026-11-29T05:00:00Z'))!;
-    expect(s.start.toISOString()).toBe('2026-11-26T06:00:00.000Z');
-    expect(s.end.toISOString()).toBe('2026-11-26T14:00:00.000Z');
-    // Wednesday 18:00 local: yesterday (Tuesday) is the last FULL one; today's shift is not over until it is.
+    expect(s.start.toISOString()).toBe('2026-11-25T21:00:00.000Z');
+    expect(s.end.toISOString()).toBe('2026-11-26T21:00:00.000Z');
+    // Wednesday 18:00 local: today is not over, so the last full day is Tuesday.
     const w = lastFullShift(CAL, new Date('2026-11-25T15:00:00Z'))!;
-    expect(w.start.toISOString()).toBe('2026-11-24T06:00:00.000Z');
+    expect(w.start.toISOString()).toBe('2026-11-23T21:00:00.000Z');
+    expect(w.end.toISOString()).toBe('2026-11-24T21:00:00.000Z');
+  });
+
+  it('a DST edge: the day the clocks move is still local midnight to local midnight (23 or 25 hours)', () => {
+    const NY = { workHoursStart: '09:00', workHoursEnd: '17:00', weekendDays: [0, 6], timezone: 'America/New_York' };
+    // Monday 2026-11-02 10:00 local (EST, UTC-5) → the last working day is Friday 30/10 (EDT, UTC-4): 04:00Z → 31/10 04:00Z.
+    const fri = lastFullShift(NY, new Date('2026-11-02T15:00:00Z'))!;
+    expect(fri.start.toISOString()).toBe('2026-10-30T04:00:00.000Z');
+    expect(fri.end.toISOString()).toBe('2026-10-31T04:00:00.000Z');
+    // Monday 2026-03-09 (EDT) → Friday 06/03 (EST): 05:00Z → 07/03 05:00Z; and a day that holds the change itself — Sunday 08/03 is a
+    // weekend there, so a calendar with no weekend shows it: 23 hours, local midnight to local midnight.
+    const noWeekend = { ...NY, weekendDays: [] };
+    const sun = lastFullShift(noWeekend, new Date('2026-03-09T15:00:00Z'))!;
+    expect(sun.start.toISOString()).toBe('2026-03-08T05:00:00.000Z');
+    expect(sun.end.toISOString()).toBe('2026-03-09T04:00:00.000Z');
+    expect((sun.end.getTime() - sun.start.getTime()) / 3_600_000).toBe(23);
   });
 
   it('rows go one by one to the active agent with the fewest open rows; never back to the idle holder; nobody active, nothing moves', () => {
@@ -133,7 +151,7 @@ describe('one full shift untouched → the active agent with the fewest open row
   });
 
   it('end to end: an idle holder’s untouched rows move; a holder who touched her list keeps hers; the clock is not reset', async () => {
-    const now = new Date('2026-11-29T05:00:00Z'); // shift = Thu 26/11 06:00–14:00Z
+    const now = new Date('2026-11-29T05:00:00Z'); // shift = Thu 26/11, local 00:00–24:00 = 25/11 21:00Z → 26/11 21:00Z
     const before = new Date('2026-11-25T10:00:00Z');
     const writes: { where: Record<string, unknown>; data: Record<string, unknown> }[] = [];
     const client = {
@@ -169,7 +187,7 @@ describe('one full shift untouched → the active agent with the fewest open row
     }
     // the rows read were handed out before the shift began, and only untouched ones, in this store
     const where = (client.order.findMany.mock.calls[0] as unknown as [{ where: Record<string, any> }])[0].where;
-    expect(where).toMatchObject({ ...SCOPE, winbackListSince: { lt: new Date('2026-11-26T06:00:00.000Z') }, contactAttempts: { none: {} } });
+    expect(where).toMatchObject({ ...SCOPE, winbackListSince: { lt: new Date('2026-11-25T21:00:00.000Z') }, contactAttempts: { none: {} } });
     expect(before.getTime()).toBeLessThan(where.winbackListSince.lt.getTime());
   });
 
@@ -199,6 +217,68 @@ describe('one full shift untouched → the active agent with the fewest open row
     // and a status line by her on ANOTHER list's order is not touching hers
     const c2 = moveClient([{ employeeId: 'mona', order: { winbackListUserId: null } }], [{ changedById: 'abeer', order: { winbackListUserId: 'mona' } }]);
     expect(await autoMoveIdleLists(c2 as never, SCOPE, CAL, new Date('2026-11-29T05:00:00Z'), ['abeer', 'mona'])).toBe(1);
+  });
+
+  /** A client whose attempts and decisions are filtered by the window the code asks — so the hour of an attempt matters. */
+  const timed = (attempts: Array<{ employeeId: string; list: string | null; at: string }>, decisions: Array<{ by: string; list: string; at: string }> = []) => {
+    const inWin = (at: string, w: { gte: Date; lt: Date }) => new Date(at) >= w.gte && new Date(at) < w.lt;
+    return {
+      order: {
+        findMany: vi.fn(async () => [{ id: 'a1', winbackListUserId: 'abeer' }]),
+        groupBy: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      orderContactAttempt: {
+        findMany: vi.fn(async ({ where }: any) =>
+          attempts.filter((a) => inWin(a.at, where.createdAt)).map((a) => ({ employeeId: a.employeeId, order: { winbackListUserId: a.list } }))
+        ),
+      },
+      orderStatusLog: {
+        findMany: vi.fn(async ({ where }: any) =>
+          decisions.filter((d) => inWin(d.at, where.createdAt)).map((d) => ({ changedById: d.by, order: { winbackListUserId: d.list } }))
+        ),
+      },
+      orderActivity: { create: vi.fn() },
+    };
+  };
+  // Sunday 29/11 08:00 Damascus → the shift is Thursday 26/11, local 00:00–24:00 (25/11 21:00Z → 26/11 21:00Z).
+  const SUN = new Date('2026-11-29T05:00:00Z');
+  const ELIGIBLE = ['abeer', 'mona'];
+
+  it('an attempt on HER list at 19:00 local (after the configured hours) is working her list: nothing moves', async () => {
+    const c = timed([{ employeeId: 'abeer', list: 'abeer', at: '2026-11-26T16:00:00Z' }, { employeeId: 'mona', list: null, at: '2026-11-26T10:00:00Z' }]);
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, SUN, ELIGIBLE)).toBe(0);
+  });
+
+  it('an attempt at 08:00 local (before the configured hours) is working her list too: nothing moves', async () => {
+    const c = timed([{ employeeId: 'abeer', list: 'abeer', at: '2026-11-26T05:00:00Z' }, { employeeId: 'mona', list: null, at: '2026-11-26T10:00:00Z' }]);
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, SUN, ELIGIBLE)).toBe(0);
+  });
+
+  it('a colleague who worked only at 21:00 local counts as active and receives the rows', async () => {
+    const c = timed([{ employeeId: 'mona', list: null, at: '2026-11-26T18:00:00Z' }]);
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, SUN, ELIGIBLE)).toBe(1);
+    expect((c.order.updateMany.mock.calls[0] as any[])[0].data.winbackListUserId).toBe('mona');
+  });
+
+  it('today’s work does not count for the last day: an attempt this morning (Sunday) leaves Thursday untouched', async () => {
+    const c = timed([
+      { employeeId: 'abeer', list: 'abeer', at: '2026-11-29T04:30:00Z' },
+      { employeeId: 'mona', list: null, at: '2026-11-26T10:00:00Z' },
+    ]);
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, SUN, ELIGIBLE)).toBe(1);
+  });
+
+  it('a weekend day is skipped: Friday and Saturday work is not the shift (Thursday is)', async () => {
+    const c = timed([
+      { employeeId: 'abeer', list: 'abeer', at: '2026-11-27T12:00:00Z' },
+      { employeeId: 'mona', list: null, at: '2026-11-28T12:00:00Z' },
+    ]);
+    // nobody worked Thursday → nobody is active → nothing moves; and her Friday work did not count either way
+    expect(await autoMoveIdleLists(c as never, SCOPE, CAL, SUN, ELIGIBLE)).toBe(0);
+    const windows = (c.orderContactAttempt.findMany.mock.calls as any[]).map((x) => x[0].where.createdAt);
+    expect(windows[0].gte.toISOString()).toBe('2026-11-25T21:00:00.000Z');
+    expect(windows[0].lt.toISOString()).toBe('2026-11-26T21:00:00.000Z');
   });
 
   it('nobody active in the shift: nothing moves', async () => {

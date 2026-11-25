@@ -147,22 +147,23 @@ export async function expireLists(client: Client, scope: { companyId: string; st
 }
 
 /**
- * THE LAST FULL SHIFT — the store country's last whole business day before today (local), as an instant window. A weekend day is
- * skipped; null when the calendar cannot say (a broken zone).
+ * THE LAST FULL SHIFT — the store's last whole WORKING DAY before today, in its own time zone: local 00:00 to the next local 00:00
+ * (the coordinator's «شيك», 25/11). Not the configured work hours: agents here work past them — into the evening — and the list is
+ * worked in idle time, so an attempt at 19:00 is work on that day. A weekend day is skipped; the day counts once it has ended (it ends
+ * before today began, by construction). Local midnights are read from the zone, so a day of 23 or 25 hours (a DST change) is whole.
+ * Null when the calendar cannot say (a broken zone).
  */
 export function lastFullShift(cal: BusinessCalendar, now: Date): { start: Date; end: Date } | null {
   try {
     const today = zonedParts(now, cal.timezone);
-    const [sh, sm] = cal.workHoursStart.split(':').map(Number);
-    const [eh, em] = cal.workHoursEnd.split(':').map(Number);
-    // Walk back from yesterday (local noon keeps the date arithmetic away from a midnight edge) to a working day.
-    let probe = zonedTimeToInstant(cal.timezone, today.year, today.month, today.day, 12, 0);
+    // Calendar arithmetic on the DATE (UTC noon of the local date), never on instants: a DST day is not 24 hours long.
+    const date = new Date(Date.UTC(today.year, today.month - 1, today.day, 12));
     for (let i = 0; i < 14; i++) {
-      probe = new Date(probe.getTime() - DAY_MS);
-      const p = zonedParts(probe, cal.timezone);
-      if (cal.weekendDays.includes(p.weekday)) continue;
-      const start = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, sh || 0, sm || 0);
-      const end = zonedTimeToInstant(cal.timezone, p.year, p.month, p.day, eh || 0, em || 0);
+      date.setUTCDate(date.getUTCDate() - 1);
+      if (cal.weekendDays.includes(date.getUTCDay())) continue;
+      const next = new Date(date.getTime() + DAY_MS);
+      const start = zonedTimeToInstant(cal.timezone, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), 0, 0);
+      const end = zonedTimeToInstant(cal.timezone, next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), 0, 0);
       if (end.getTime() > start.getTime() && end.getTime() <= now.getTime()) return { start, end };
     }
     return null;
