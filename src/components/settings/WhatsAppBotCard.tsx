@@ -201,7 +201,7 @@ export function WhatsAppBotCard({ embedded = false, onSaved }: { embedded?: bool
           <p className="text-note text-[var(--sys-muted-foreground)]">بيقولها البوت للزبون إذا سأل عن منتج بطلبه. الأسعار والعروض دايمًا من النظام، مش من هون.</p>
           {notes.map((n, i) => (
             <div key={i} className="flex flex-wrap items-start gap-2">
-              <div className="w-full sm:w-56">
+              <div className="w-full">
               <Select
                 label="المنتج"
                 value={n.productId}
