@@ -126,7 +126,17 @@ export async function botAgent(companyId: string): Promise<BotAgent> {
   try {
     const row = await db.whatsAppBotSettings.findUnique({ where: { companyId }, select: { enabled: true, name: true, avatarText: true, apiKeyEncrypted: true } });
     const name = row?.name?.trim() || DEFAULT_BOT_NAME;
-    return { active: row?.enabled === true && !!row.apiKeyEncrypted, name, avatarText: row?.avatarText?.trim() || initialOf(name) };
+    // «On» only with a key the server can open — the same answer the engine gives (`botActive`), so the inbox never says
+    // «شغّال» for a bot that cannot speak.
+    let readable = false;
+    if (row?.enabled && row.apiKeyEncrypted) {
+      try {
+        readable = !!decryptSecret(row.apiKeyEncrypted);
+      } catch {
+        readable = false;
+      }
+    }
+    return { active: readable, name, avatarText: row?.avatarText?.trim() || initialOf(name) };
   } catch {
     return { active: false, name: DEFAULT_BOT_NAME, avatarText: initialOf(DEFAULT_BOT_NAME) };
   }

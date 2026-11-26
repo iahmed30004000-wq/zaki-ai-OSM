@@ -163,7 +163,7 @@ export function WhatsAppBotCard({ embedded = false, onSaved }: { embedded?: bool
   return (
     <Card plain={embedded}>
       <CardHeader
-        title="بوت الطلبات على واتساب"
+        title={embedded ? 'شو بيعمل البوت' : 'بوت الطلبات على واتساب'}
         subtitle="بيرد على الزبون اللي بيكتب أول: بيلاقي طلبه من رقمه، بيأكده بعد «إي» واضحة، وبيعدّل الاسم والعنوان والمدينة والملاحظات والعرض وهو جديد. ما بيلغي، ولا بيغيّر سعر، ولا بيعمل طلب جديد. أول ما يرد موظف بالمحادثة بيسكت."
       />
       <CardContent className="space-y-5">
