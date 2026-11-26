@@ -1,3 +1,4 @@
+import { offTheListIf } from '@/lib/winback-private-list';
 import { STATE_LABEL_AR, deriveCoreState, getZone, type StateSource } from '@/lib/order-state';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
@@ -174,6 +175,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         signedAt: null,
         // transfer breaks the previous owner's editing lock
         lockedById: null, lockedAt: null, lockExpiresAt: null,
+        // F12: a row of a private win-back list goes onto the TARGET's list (outside her hand too); the 3-day clock is kept.
+        // A «انعرض من قبل» row (no list) handed to somebody leaves the win-back pool whole.
+        ...(order.winbackListUserId ? { winbackListUserId: target.id, winbackListSince: now } : offTheListIf(order)),
         version: { increment: 1 },
       },
     });

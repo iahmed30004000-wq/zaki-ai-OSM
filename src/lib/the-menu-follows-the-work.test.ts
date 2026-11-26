@@ -231,8 +231,9 @@ describe('nothing was moved that a link, a bookmark or a saved layout points at'
     // 21/11 (W5b): 60 with `/inventory/counts` «الجرد» — the count against the keeper (open a sheet, count blind, a second hand approves the difference, «كشف عهدة الأمين»), the last tab of «المخزون والمنتجات», on `inventory.view` like its neighbours; counting asks `inventory.count`, approving and the statement `inventory.count_approve`. Not one address moved.
     // 22/11 («Zaki Orders»): 61 with `/control/app-errors` «أعطال التطبيق», beside «سجل التدقيق» in «الإدارة», on `audit.view`. Not one address moved.
     // 25/11 (the owner): 63 with `/settings/authenticity` آ«ط±ظ…ظˆط² ط§ظ„ط£طµط§ظ„ط©آ» (the codes card of آ«ط¥ط¹ط¯ط§ط¯ط§طھ ط§ظ„ظ†ط¸ط§ظ…آ», moved whole) and `/settings/product-barcodes` آ«ط¨ط§ط±ظƒظˆط¯ ط§ظ„ظ…ظ†طھط¬ط§طھآ», side by side in آ«ط§ظ„ط¥ط¯ط§ط±ط©آ», on `settings.view`. Not one address moved.
-    expect(paths).toHaveLength(63);
-    expect(new Set(paths).size).toBe(63);
+    // 25/11 (F12, the owner's ruling «A»): 64 with `/confirmation/winback-list` «قايمة الاسترجاع» — her private win-back list, a tab of «التأكيد», on `confirmation.work`. Not one address moved.
+    expect(paths).toHaveLength(64);
+    expect(new Set(paths).size).toBe(64);
     // The settings stand behind ONE menu line now; not one of them moved.
     for (const path of ['/settings/geo', '/settings/couriers', '/settings/tracking', '/apps/store', '/admin/jobs']) {
       expect(paths, path).toContain(path);

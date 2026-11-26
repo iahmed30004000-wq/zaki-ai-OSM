@@ -34,7 +34,8 @@ import { join, relative } from 'node:path';
 
 const { db, requireContext, requirePermission, logAudit, orderRefFields } = vi.hoisted(() => {
   const db = {
-    order: { findFirst: vi.fn(), create: vi.fn() },
+    // 25/11 (F12): the offer now asks the customer's own history (two cancellations, winback-customer.ts) — one order.findMany; none here = eligible, what these claims were written under.
+    order: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(async () => [] as unknown[]) },
     // The offer reads the company's own rule; none stored means the defaults, which is what these claims were written under.
     company: { findUnique: vi.fn(async () => ({ settings: null })) },
     orderItem: { findMany: vi.fn(), createMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },

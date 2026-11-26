@@ -43,7 +43,7 @@ Rules:
 ## Navigation — nine groups, drawn as ten lines
 
 The registry (`src/lib/route-registry.ts`, constant `NAV`) is the one list, and this section
-is its contract. It holds **63 pages in 9 groups**; the menu draws them as **10 lines**.
+is its contract. It holds **64 pages in 9 groups**; the menu draws them as **10 lines**.
 
 Since 18/11 each line is one kind of work (the owner: «القائمة من 16 سطر لـ9»). Ten and not nine until
 the storefront's two lines fold into one. What moved on 18/11 was only which group a screen belongs to:
@@ -102,6 +102,7 @@ being a page keeps its old address as a permanent redirect (`next.config.ts`).
 الطلبات الجديدة           /confirmation/queue      (the SUPERVISOR's view of the pool; an agent is sent to طلباتي)
 طلباتي                   /confirmation/mine       (the pull panel is at its top)
 المتابعة                  /confirmation/follow-up  (two tabs: the postponed orders and the cancelled-before ones)
+قايمة الاسترجاع           /confirmation/winback-list (HER private win-back list — outside her hand, never pulled; F12, 25/11)
 الإشكالات                /confirmation/issues
 قواعد مركز التأكيد        /confirmation/rules      (the eight confirmation-rule cards, moved from إعدادات النظام on 18/11)
 ```
@@ -226,6 +227,7 @@ asks the same keys again.
 | `/products` | products.view |
 | `/confirmation/queue` · `/confirmation/follow-up` | confirmation.supervise |
 | `/confirmation/mine` | confirmation.work · confirmation.pull |
+| `/confirmation/winback-list` | confirmation.work |
 | `/confirmation/issues` | confirmation.issues |
 | `/confirmation/rules` | settings.view |
 | `/ops/preparation` · `/ops/shipments/new` · `/ops/batches` · `/ops/tracking` · `/ops/returns` | ops.prepare · ops.ship · ops.batches · ops.track · ops.returns |

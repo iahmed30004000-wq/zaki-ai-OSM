@@ -112,6 +112,9 @@ const WRITERS = [
    */
   'src/app/api/orders/[id]/delivery-included/route.ts',
   'src/app/api/confirmation/winback/route.ts',
+  // 25/11 (F12, the owner's ruling «1 modified»): the 1 ↔ 3 pieces switch of a win-back list order — its total is the owner's setting,
+  // through `computeCod`, never a figure from the request.
+  'src/app/api/confirmation/winback/list/[id]/route.ts',
   'src/app/api/public/landing-pages/[slug]/orders/[orderNumber]/add-product/route.ts',
   /*
    * «العرض بعد الطلب». It writes `totalAmount` and nothing else of the

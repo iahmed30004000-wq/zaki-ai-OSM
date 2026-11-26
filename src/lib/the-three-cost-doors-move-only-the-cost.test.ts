@@ -88,6 +88,8 @@ const { db, world, writes, mocks } = vi.hoisted(() => {
     },
     order: {
       findFirst: () => (world.order ? { ...world.order } : null),
+      // 25/11 (F12): the offer now asks the customer's own history (two cancellations, winback-customer.ts) — one order.findMany; none here = eligible.
+      findMany: () => [],
       create: ({ data }: Row) => ({ id: 'o-new', orderNumber: data.orderNumber, createdAt: NOW, source: data.source }),
       update: () => ({}),
     },

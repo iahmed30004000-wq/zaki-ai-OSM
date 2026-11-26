@@ -68,6 +68,8 @@ export const GUIDED_PATHS: readonly string[] = [
   '/confirmation/queue',
   '/confirmation/mine',
   '/confirmation/follow-up',
+  // F12 (25/11): her private win-back list
+  '/confirmation/winback-list',
   '/confirmation/issues',
   '/confirmation/rules',
   // الشحن — the five stops of one parcel's road

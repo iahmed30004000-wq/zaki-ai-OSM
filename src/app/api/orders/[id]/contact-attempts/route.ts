@@ -385,6 +385,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const returned =
         returnsOn &&
         order.claimedById === user.id &&
+        // F12: a row of her PRIVATE win-back list stays on her list — «لا يرد» never sends it to the pool.
+        !order.winbackListUserId &&
         (NO_ANSWER_RESULTS as readonly string[]).includes(result!) &&
         // Under the plan only a COUNTED press releases: an early one is kept and told, and leaves the order where it was.
         (!cad || cad.counted) &&

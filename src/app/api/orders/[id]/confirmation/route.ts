@@ -489,7 +489,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
        * it is asked of the switches only when a date is being saved at all. The write below is untouched — status and dates are what the
        * action made them — and `returnToThePool` is conditional, so an order that moved in the same instant is left where it is.
        */
-      const releasesOnDate = writesADate && order.claimedById === user.id && (await returnsModeOn(db, companyId));
+      // F12: a row of her PRIVATE win-back list stays on her list — a date never sends it to the pool.
+      const releasesOnDate = writesADate && order.claimedById === user.id && !order.winbackListUserId && (await returnsModeOn(db, companyId));
       /*
        * «إثبات المكالمات» (step A of Confirmation Center v2) — two ways onto «لا يرد» that must not be a side door around the thirty seconds, asked only with the
        * company switch on (read here, and only when one of the two applies — no other action pays for the read):

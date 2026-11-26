@@ -1,3 +1,4 @@
+import { offTheListIf } from '@/lib/winback-private-list';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
       where: { id: orderId, companyId, storeId },
       select: {
         id: true, orderNumber: true, confirmationStatus: true, claimedById: true,
-        postponedUntil: true, nextFollowUpAt: true, version: true,
+        postponedUntil: true, nextFollowUpAt: true, version: true, winbackListUserId: true, winbackListAt: true,
       },
     });
     if (!order) return NextResponse.json({ error: 'الطلب غير موجود' }, { status: 404 });
@@ -197,6 +198,8 @@ export async function POST(req: Request) {
         claimedById: null,
         claimedAt: null,
         currentOwnerId: null,
+        // F12: a list row (or a «انعرض من قبل» one) leaving by this door leaves the list WHOLE — all three marks — and rejoins the normal flow.
+        ...offTheListIf(order),
         lockedById: null,
         lockedAt: null,
         version: { increment: 1 },

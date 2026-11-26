@@ -126,7 +126,8 @@ const person = (grants: string[], over: Record<string, unknown> = {}) => ({
 /** Salwa: a desk, the preparation, the tracking, her orders — and her profile, which everybody has. */
 const SALWA_KEYS = ['orders.view', 'confirmation.work', 'confirmation.pull', 'ops.prepare', 'ops.track'];
 // «السلات المهجورة» (15/11) opens on `orders.view`, so whoever sees the orders sees it too.
-const SALWA_PATHS = ['/orders', '/abandoned-carts', '/confirmation/mine', '/ops/preparation', '/ops/tracking', '/admin/profile'];
+// 25/11 (F12, the owner's ruling «A»): old six screens; new seven — her private «قايمة الاسترجاع» (/confirmation/winback-list, on confirmation.work) beside «طلباتي».
+const SALWA_PATHS = ['/orders', '/abandoned-carts', '/confirmation/mine', '/confirmation/winback-list', '/ops/preparation', '/ops/tracking', '/admin/profile'];
 const SALWA_GROUPS = ['main', 'confirmation', 'ops', 'admin'];
 const owner = () => ({
   id: 'u-owner',
@@ -162,7 +163,7 @@ beforeEach(() => {
 });
 
 describe('the fixtures say what they claim — or every claim below could pass by looking at nothing', () => {
-  it('Salwa opens exactly six screens in four groups, and the owner opens more', () => {
+  it('Salwa opens exactly seven screens in four groups, and the owner opens more', () => {
     const mine = visibleNav(session.user as never, can);
     expect(mine.flatMap((g) => g.routes.map((r) => r.path))).toEqual(SALWA_PATHS);
     expect(mine.map((g) => g.key)).toEqual(SALWA_GROUPS);

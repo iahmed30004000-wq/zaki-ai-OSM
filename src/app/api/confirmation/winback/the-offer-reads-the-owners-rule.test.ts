@@ -20,7 +20,8 @@ import { join } from 'node:path';
 
 const { db, requireContext, requirePermission, logAudit, orderRefFields, stored } = vi.hoisted(() => {
   const db = {
-    order: { findFirst: vi.fn(), create: vi.fn() },
+    // 25/11 (F12): the offer now asks the customer's own history (two cancellations, winback-customer.ts) — one order.findMany; none here = eligible, what these claims were written under.
+    order: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(async () => [] as unknown[]) },
     orderItem: { findMany: vi.fn(), createMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     orderStatusLog: { findFirst: vi.fn(), findMany: vi.fn() },
     orderNote: { create: vi.fn() },
@@ -400,7 +401,9 @@ describe('and it is the same reader as the list', () => {
 
   it('and both doors read the rule through the one function, never a constant of their own', () => {
     const route = readFileSync(join(process.cwd(), 'src/app/api/confirmation/winback/route.ts'), 'utf8');
-    expect((route.match(/winbackRule\(companyId\)/g) ?? []).length).toBe(2); // the list, and the offer
+    // 25/11 (F12): old 2 (the list, and the offer); new 3 — the bulk run reads the same rule through the same function for its pool,
+    // and each order it makes is still judged by the offer's own read.
+    expect((route.match(/winbackRule\(companyId\)/g) ?? []).length).toBe(3); // the list, the offer, and the bulk run's pool
     expect(route).not.toMatch(/WINBACK_COOLING_DAYS|WINBACK_MAX_DISCOUNT_SHARE|LOOKBACK_DAYS\s*=/);
     expect(route).toContain('winbackVerdict(');
     expect(route).toContain('rule.maxDiscountShare');

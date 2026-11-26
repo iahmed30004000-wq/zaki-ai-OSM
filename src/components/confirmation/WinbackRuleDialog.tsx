@@ -11,6 +11,7 @@ import {
   DEFAULT_WINBACK_RULE,
   NEVER_WINBACK_REASONS,
   OPTIONAL_WINBACK_REASONS,
+  SELECTABLE_RIDERS,
   WINBACK_BOUNDS,
   WINBACK_REASONS,
   validateWinbackRule,
@@ -145,6 +146,7 @@ export function WinbackRuleDialog({
         <fieldset className="space-y-1">
           <legend className="mb-1 text-xs font-semibold text-[var(--sys-heading)]">الأسباب التي نتّصل لأجلها — للملغى قبل الشحن</legend>
           {WINBACK_REASONS.map(box)}
+          {SELECTABLE_RIDERS.map(box)}
           <p className="pt-2 text-xs text-[var(--sys-muted-foreground)]">
             وهذه ثلاثةٌ على مسؤوليتك — الأصل أنّ العميل فيها قال كلمته فلا يُعاد عليه:
           </p>

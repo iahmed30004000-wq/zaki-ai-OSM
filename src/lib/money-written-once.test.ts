@@ -172,10 +172,17 @@ describe('one rounding rule, and the money that is written goes through it', () 
      * `false`. The figure must be computed under the SAME policy the row
      * records, or the order says one thing and its total means another.
      */
-    const call = src.slice(src.indexOf('computeCod({'));
-    expect(call.slice(0, call.indexOf('});'))).toMatch(/priceIncludesDelivery: order\.priceIncludesDelivery/);
+    /*
+     * 25/11 (F12, the bulk win-back): the policy is ONE variable now, `includesDelivery` — the cancelled order's own flag for a
+     * typed offer, and «included» for the owner's win-back price (the price is the TOTAL, delivery inside it). Old pin: both places
+     * spelled `order.priceIncludesDelivery`; new pin: both read the same `includesDelivery`, which is still set from the order's flag.
+     * And the call asked is the one whose answer is written (`const money = computeCod({`): the priced path asks the subtotal first.
+     */
+    expect(src).toMatch(/const includesDelivery = priced \? true : \(order\.priceIncludesDelivery \?\? false\);/);
+    const call = src.slice(src.indexOf('const money = computeCod({'));
+    expect(call.slice(0, call.indexOf('});'))).toMatch(/priceIncludesDelivery: includesDelivery/);
     const row = src.slice(src.indexOf('tx.order.create('));
-    expect(row.slice(0, 900)).toMatch(/priceIncludesDelivery: order\.priceIncludesDelivery/);
+    expect(row.slice(0, 900)).toMatch(/priceIncludesDelivery: includesDelivery/);
     // The hand arithmetic is gone, not merely unused.
     expect(src).not.toMatch(/Math\.max\(0, unit \* quantity/);
   });

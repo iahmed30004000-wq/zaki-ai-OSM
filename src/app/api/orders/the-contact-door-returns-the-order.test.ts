@@ -171,6 +171,19 @@ describe('ON — only the holder’s press releases', () => {
     expect(await res.json()).not.toHaveProperty('returnedToQueue');
   });
 
+  // 25/11 (F12, the owner's ruling «A»): a row of her PRIVATE win-back list stays on her list — her «لا يرد» never sends it to the pool.
+  it('a row of her private win-back list stays with her: the attempt is recorded, nothing is released', async () => {
+    assertOrderAccess.mockResolvedValue({
+      allowed: true,
+      order: { id: 'o1', claimedById: 'u1', winbackListUserId: 'u1', confirmationStatus: 'IN_PROGRESS', nextFollowUpAt: null, followUpStatus: null, shippingStatus: 'NOT_READY' },
+    });
+    const res = await press('NO_ANSWER');
+    expect(res.status).toBe(200);
+    expect(db.orderContactAttempt.create).toHaveBeenCalledTimes(1);
+    expect(db.order.updateMany).not.toHaveBeenCalled();
+    expect(await res.json()).not.toHaveProperty('returnedToQueue');
+  });
+
   it('an order nobody holds is not “hers”: nothing to release', async () => {
     assertOrderAccess.mockResolvedValue({
       allowed: true,

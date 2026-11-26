@@ -1,3 +1,4 @@
+import { notAWinbackListOrder } from '@/lib/winback-private-list';
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireContext } from '@/lib/geo-context';
@@ -108,7 +109,8 @@ export async function GET() {
     const isSupervisor = can(user, 'confirmation.supervise');
     const rows = isSupervisor
       ? await db.order.findMany({
-          where: { ...scope, claimedById: null, confirmationStatus: { in: OPEN_CONFIRMATION }, shippingStatus: 'NOT_READY' },
+          // F12: the pool as the pull reads it — a win-back list order (on a list, or let go) is never in it.
+          where: { ...scope, claimedById: null, confirmationStatus: { in: OPEN_CONFIRMATION }, shippingStatus: 'NOT_READY', ...notAWinbackListOrder },
           orderBy: [{ postponedUntil: 'asc' }, { createdAt: 'asc' }],
           take: 200,
           select: {

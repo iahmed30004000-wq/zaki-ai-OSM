@@ -181,8 +181,11 @@ describe('with the mode off the predicates are today’s, byte for byte', () => 
   const now = t(2, 12);
 
   it('ready: the open list without postponed — and, for an agent, only what is not held for a colleague', () => {
+    // 25/11 (F12, the owner's ruling «A», and the review's round 3): old — without the clause; new — no NEW order carrying the win-back mark
+    // (on a list, or let go) is ever in the pool; the mark is inert for any other status. Was
+    // the pool the pull reads. NEW orders always come first; the list is opened by its holder. Every other clause is today's.
     expect(readyToPullWhere(scope)).toEqual({
-      ...scope, claimedById: null, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED'] }, shippingStatus: 'NOT_READY',
+      ...scope, claimedById: null, confirmationStatus: { in: ['NEW', 'IN_PROGRESS', 'NO_ANSWER', 'FOLLOW_UP_REQUIRED'] }, shippingStatus: 'NOT_READY', OR: [{ winbackListAt: null }, { confirmationStatus: { not: 'NEW' } }],
     });
     expect(Object.keys(readyToPullWhere(scope, 'sara', now))).toContain('AND');
     expect((readyToPullWhere(scope, 'sara', now) as { AND: unknown[] }).AND).toHaveLength(1);

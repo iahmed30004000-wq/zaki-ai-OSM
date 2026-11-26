@@ -21,8 +21,10 @@ import { queueHealthJob } from './queue-health';
 import { convertWaitingCartsJob } from './convert-waiting-carts';
 import { pruneDeskRefusals } from './prune-desk-refusals';
 import { refreshExchangeRatesJob } from './refresh-exchange-rates';
+import { winbackLists } from './winback-lists';
 
 export {
+  winbackLists,
   pruneDeskRefusals,
   pullAdSpendNight,
   convertWaitingCartsJob,
@@ -92,6 +94,8 @@ export const JOBS: JobDefinition[] = [
   pruneDeskRefusals,
   // «سعر الصرف التلقائي» (23/11, F8): the fiat rates and the USDT price, once a day, from two public sources with no key.
   refreshExchangeRatesJob,
+  // «قوايم الاسترجاع» (25/11, F12): the 3-day return of untouched list rows and the one-shift move to an active agent. Lists only.
+  winbackLists,
 ];
 
 export function jobByName(name: string): JobDefinition | undefined {

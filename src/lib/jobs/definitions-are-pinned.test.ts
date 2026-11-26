@@ -51,6 +51,8 @@ const PINNED: Array<[string, number, string | undefined]> = [
   ['prune-desk-refusals', 86_400, undefined],
   // Appended 23/11 (F8): «سعر الصرف التلقائي» — the fiat rates and the USDT price once a day. No clock time (same reason as above).
   ['refresh-exchange-rates', 86_400, undefined],
+  // Appended 25/11 (F12, the owner's ruling «A»): «قوايم الاسترجاع» — every 15 minutes, store by store: the 3-day return of untouched private-list rows, and the one-shift move to an active agent.
+  ['winback-lists', 900, undefined],
 ];
 
 describe('the jobs table', () => {

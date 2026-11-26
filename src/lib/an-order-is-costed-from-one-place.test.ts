@@ -71,6 +71,8 @@ const DOORS: Array<{ file: string; asks: RegExp; names: string[]; what: string; 
   { file: 'src/lib/replacement-order.ts', asks: /fixedCostsOf\(\s*tx\b[\s\S]*costOfACopy\(/, names: ['fixedCostsOf', 'costOfACopy'], what: 'a replacement and a box handed to another customer' },
   { file: 'src/lib/telegram/order-creation.ts', asks: /unitCostsOf\(\s*db\b/, names: ['unitCostsOf'], what: 'Telegram — the same unit cost as every other door since RV574' },
   { file: 'src/app/api/confirmation/winback/route.ts', asks: /fixedCostsOf\(\s*db\b[\s\S]*costWhenEveryLineHasAFigure\(/, names: ['fixedCostsOf', 'costWhenEveryLineHasAFigure'], what: 'the win-back — the figures when every line has one, else the copied cost (RV575)' },
+  // 25/11 (F12, the owner's ruling «1 modified»): the 1 ↔ 3 pieces switch costs the new pieces as any door does.
+  { file: 'src/app/api/confirmation/winback/list/[id]/route.ts', asks: /fixedCostsOf\(\s*db\b/, names: ['fixedCostsOf'], what: 'the win-back list order switched between 1 and 3 pieces — the fixed figure, else the old order per piece' },
 ];
 
 describe('each door that writes an order’s cost asks the owner’s figure — by the call, not by the import', () => {

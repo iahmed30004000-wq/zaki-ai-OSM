@@ -138,11 +138,14 @@ describe('what it offers, and what it will not', () => {
   it('— seven reasons to tick, exactly: the four, and the three at his own risk — and the switch, outside them', () => {
     open();
     const names = within(screen.getByRole('group')).getAllByRole('checkbox').map((c) => c.closest('label')?.textContent);
+    // 25/11 (F12, the owner's ruling «5 is selectable»): old 7 ticks with no box for the five-attempt close; new 8 — its own box after the four
+    // (it still rides on «three», so a rule that ticks three keeps reading it).
     expect(names).toEqual([
       'السعر مرتفع',
       'وجدها أرخص عند غيرنا',
       'غيّر رأيه',
       'أُغلق بعد ثلاث محاولات بلا ردّ',
+      'أُغلق بعد خمس محاولات بلا ردّ',
       'لا يريد المنتج',
       'خارج نطاق التغطية',
       'سبب آخر',
@@ -191,7 +194,9 @@ describe('the plan on — the tick’s words, and not what is sent', () => {
 
   it('reads the number-free tick — the same box in the same place, ticked as stored', () => {
     render(<WinbackRuleDialog rule={STORED} planOn isOpen onClose={onClose} onSaved={onSaved} />);
-    expect(groupNames()).toEqual(['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', NUMBER_FREE, 'لا يريد المنتج', 'خارج نطاق التغطية', 'سبب آخر']);
+    // 25/11 (F12, the owner's ruling «5 is selectable»): old 7 ticks with no box for the five-attempt close; new 8 — its own box after the four
+    // (it still rides on «three», so a rule that ticks three keeps reading it).
+    expect(groupNames()).toEqual(['السعر مرتفع', 'وجدها أرخص عند غيرنا', 'غيّر رأيه', NUMBER_FREE, 'أُغلق بعد خمس محاولات بلا ردّ', 'لا يريد المنتج', 'خارج نطاق التغطية', 'سبب آخر']);
     expect(reason(NUMBER_FREE).checked).toBe(true);
     expect(screen.queryByRole('checkbox', { name: NUMBERED })).toBeNull();
   });
@@ -202,11 +207,13 @@ describe('the plan on — the tick’s words, and not what is sent', () => {
     expect(screen.queryByRole('checkbox', { name: NUMBER_FREE })).toBeNull();
   });
 
-  it('never offers a box for the five-attempt code, in either world — it rides on its host', () => {
+  // 25/11 (F12): old «never offers a box for the five-attempt code»; the owner made it selectable — ONE box, in either world, unticked
+  // unless the stored rule lists it.
+  it('offers ONE box for the five-attempt code, in either world, unticked unless the rule lists it', () => {
     for (const planOn of [false, true]) {
       render(<WinbackRuleDialog rule={STORED} planOn={planOn} isOpen onClose={onClose} onSaved={onSaved} />);
-      expect(screen.queryByRole('checkbox', { name: 'أُغلق بعد خمس محاولات بلا ردّ' })).toBeNull();
-      expect(groupNames()).toHaveLength(7);
+      expect((screen.getByRole('checkbox', { name: 'أُغلق بعد خمس محاولات بلا ردّ' }) as HTMLInputElement).checked).toBe(false);
+      expect(groupNames()).toHaveLength(8);
       cleanup();
     }
   });
@@ -597,6 +604,7 @@ describe('how it is built', () => {
   it('and the form is a real form: a submit button and a field set, not a div with click handlers', () => {
     open();
     expect(screen.getByRole('button', { name: 'احفظ القاعدة' }).getAttribute('type')).toBe('submit');
-    expect(within(screen.getByRole('group')).getAllByRole('checkbox')).toHaveLength(7);
+    // 25/11 (F12): 7 → 8, the five-attempt close's own box.
+    expect(within(screen.getByRole('group')).getAllByRole('checkbox')).toHaveLength(8);
   });
 });
