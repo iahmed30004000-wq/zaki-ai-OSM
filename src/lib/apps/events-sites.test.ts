@@ -51,12 +51,16 @@ const SRC = join(process.cwd(), 'src');
  *   · `lib/v1/landing-chat.ts` — `order.confirmed` when the landing confirmation chat confirms (contract oms-lp.v1 §8,
  *     13/11): the agent's confirmation taken by the chat, announced after the commit with the confirmation door's own
  *     fields. No new event and no new field.
+ *   · `lib/whatsapp/bot/order-door.ts` — `order.confirmed` when the WhatsApp order bot confirms on the customer's clear
+ *     yes (the owner, 2026-11-26): the landing chat's confirmation step for step, announced after the commit with the
+ *     same fields. No new event and no new field.
  */
 const ALLOWED = [
   'lib/public-order.ts',
   'lib/order-cancel.ts',
   'lib/parcel-swap-events.ts',
   'lib/v1/landing-chat.ts',
+  'lib/whatsapp/bot/order-door.ts',
   'app/api/orders/[id]/confirmation/route.ts',
   'app/api/orders/[id]/shipping/route.ts',
   'app/api/shipping-batches/[id]/route.ts',

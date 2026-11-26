@@ -12,7 +12,7 @@ import { db } from '../db';
 import { requireCompanyTenant, requirePermission } from '../auth';
 import { getAccessToken, getPhoneNumberId } from './config';
 import { getActiveConnection, effectiveStatus } from './connection';
-import { sendMediaMessage, sendReaction, sendTemplateMessage, sendTextMessage, uploadMedia } from './cloud-api';
+import { sendMediaMessage, sendReaction, sendTemplateMessage, sendTextMessage, sendTypingIndicator, uploadMedia } from './cloud-api';
 import { rateLimit } from '../rate-limit';
 import { logAudit } from '../audit';
 import { inboxScopeWhere } from './inbox-scope';
@@ -31,9 +31,18 @@ const MAX_TEXT = 4096;
 const MAX_CAPTION = 1024;
 
 type Ready = {
-  user: Awaited<ReturnType<typeof requirePermission>>;
+  /** The person sending; null = the order bot (`sendBotText`). */
+  user: Awaited<ReturnType<typeof requirePermission>> | null;
   companyId: string;
-  conv: { id: string; customerPhone: string; customerName: string | null; customerId: string | null; connectionId: string; lastInboundAt: Date | null };
+  conv: {
+    id: string;
+    customerPhone: string;
+    customerName: string | null;
+    customerId: string | null;
+    connectionId: string;
+    lastInboundAt: Date | null;
+    botPaused?: boolean;
+  };
   conn: { id: string };
   token: string;
   phoneNumberId: string;
@@ -101,6 +110,7 @@ async function record(
   movesPreview = true
 ) {
   const { companyId, conv, conn, user } = ready;
+  const byBot = user === null;
   const message = await db.whatsAppMessage.create({
     data: {
       ...(data.id ? { id: data.id } : {}),
@@ -114,6 +124,7 @@ async function record(
       status: 'SENT',
       senderPhone: null,
       recipientPhone: conv.customerPhone,
+      ...(byBot ? { sentByBot: true } : {}),
       meta: (data.meta ?? undefined) as Prisma.InputJsonObject | undefined,
       reactionToExternalId: data.reactionToExternalId ?? null,
       ...(data.media
@@ -129,11 +140,16 @@ async function record(
     },
   });
   const now = new Date();
+  /*
+   * ANY MESSAGE A PERSON SENDS SILENCES THE ORDER BOT HERE (the owner, 2026-11-26): text, photo, file, reaction, template.
+   * In the same write as the preview, and only when it was not already silent — a second reply does not move the time.
+   */
+  const silence = !byBot && conv.botPaused === false ? { botPaused: true, botPausedReason: 'STAFF_REPLIED', botPausedAt: now } : {};
   await db.whatsAppConversation.update({
     where: { id: conv.id },
     data: movesPreview
-      ? { lastMessageAt: now, lastMessagePreview: previewOf(data.messageType, data.text, data.meta), lastMessageType: data.messageType }
-      : { lastMessageAt: now },
+      ? { lastMessageAt: now, lastMessagePreview: previewOf(data.messageType, data.text, data.meta), lastMessageType: data.messageType, ...silence }
+      : { lastMessageAt: now, ...silence },
   });
   await db.whatsAppConnection.update({
     where: { id: conn.id },
@@ -141,13 +157,56 @@ async function record(
   });
   logAudit({
     companyId,
-    userId: user.id,
-    action: data.messageType === 'TEXT' ? 'whatsapp.message.send' : `whatsapp.${data.messageType.toLowerCase()}.send`,
+    userId: user?.id ?? null,
+    action: byBot ? 'whatsapp.bot.message.send' : data.messageType === 'TEXT' ? 'whatsapp.message.send' : `whatsapp.${data.messageType.toLowerCase()}.send`,
     entity: 'WhatsAppMessage',
     entityId: message.id,
-    newData: { conversationId: conv.id },
+    newData: { conversationId: conv.id, ...(Object.keys(silence).length ? { botPaused: 'STAFF_REPLIED' } : {}) },
   }).catch(() => {});
   return message;
+}
+
+/**
+ * THE ORDER BOT'S REPLY — a plain text, through the same checks as a person's (the connection, Meta's 24-hour window) and
+ * the same record, marked `sentByBot`. No session and no permission: the bot is not a person, and the conversation is
+ * found by its id and company only. It refuses when the conversation was paused meanwhile (a person answered while the
+ * model was thinking). Never a template: the bot only answers a customer who wrote, inside the window.
+ */
+export async function sendBotText(companyId: string, conversationId: string, text: string): Promise<SendResult> {
+  const trimmed = (text || '').trim();
+  if (!trimmed || trimmed.length > MAX_TEXT) return { ok: false, error: 'الرسالة غير صالحة', status: 400 };
+  const conv = await db.whatsAppConversation.findFirst({ where: { id: conversationId, companyId } });
+  if (!conv) return { ok: false, error: 'المحادثة غير موجودة', status: 404 };
+  if (conv.botPaused) return { ok: false, error: 'البوت موقوف بهالمحادثة', status: 409, code: 'BOT_PAUSED' };
+  const conn = await getActiveConnection(companyId);
+  if (!conn || conv.connectionId !== conn.id || (await effectiveStatus(conn)) !== 'CONNECTED') {
+    return { ok: false, error: 'الاتصال غير مكتمل', status: 400 };
+  }
+  if (!serviceWindow(conv.lastInboundAt ?? null).open) {
+    return { ok: false, error: WINDOW_CLOSED_MESSAGE, status: 409, code: 'WINDOW_CLOSED' };
+  }
+  const token = await getAccessToken();
+  const phoneNumberId = await getPhoneNumberId();
+  if (!token || !phoneNumberId) return { ok: false, error: 'الاتصال غير مكتمل', status: 400 };
+  const ready: Ready = { user: null, companyId, conv, conn, token, phoneNumberId };
+  const res = await sendTextMessage({ phoneNumberId, token, to: conv.customerPhone, text: trimmed });
+  if (!res.ok || !res.wamid) return metaRefused(ready, res);
+  const message = await record(ready, { wamid: res.wamid, messageType: 'TEXT', text: trimmed });
+  return { ok: true, message };
+}
+
+/** «يكتب…» on the customer's phone while the bot prepares its answer. Best-effort: false on anything missing. */
+export async function botTyping(companyId: string, inboundWamid: string): Promise<boolean> {
+  try {
+    const conn = await getActiveConnection(companyId);
+    if (!conn || (await effectiveStatus(conn)) !== 'CONNECTED') return false;
+    const token = await getAccessToken();
+    const phoneNumberId = await getPhoneNumberId();
+    if (!token || !phoneNumberId) return false;
+    return await sendTypingIndicator({ phoneNumberId, token, messageId: inboundWamid });
+  } catch {
+    return false;
+  }
 }
 
 export async function sendOutboundMessage(conversationId: string, text: string): Promise<SendResult> {

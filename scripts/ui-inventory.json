@@ -1930,12 +1930,12 @@
     "iconButtons": 1
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
-    "buttons": 5,
+    "buttons": 9,
     "inputs": 2,
     "columns": 0,
     "cards": 5,
-    "modals": 0,
-    "icons": 15,
+    "modals": 1,
+    "icons": 20,
     "links": 3,
     "tabs": 0,
     "iconButtons": 1
@@ -2896,6 +2896,29 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/settings/WhatsAppBotCard.tsx": {
+    "buttons": 5,
+    "inputs": 8,
+    "columns": 0,
+    "cards": 3,
+    "modals": 0,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1,
+    "switches": 1
+  },
+  "src/components/settings/WhatsAppBotSandbox.tsx": {
+    "buttons": 1,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 4,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
   "src/components/settings/WinbackV2Card.tsx": {
     "buttons": 0,
     "inputs": 1,
@@ -3572,7 +3595,7 @@
     "columns": 0,
     "cards": 0,
     "modals": 0,
-    "icons": 12,
+    "icons": 13,
     "links": 3,
     "tabs": 0,
     "iconButtons": 2
@@ -3583,7 +3606,7 @@
     "columns": 0,
     "cards": 0,
     "modals": 1,
-    "icons": 1,
+    "icons": 2,
     "links": 1,
     "tabs": 0,
     "iconButtons": 1

@@ -22,6 +22,12 @@
 @source not "../components/verify/product-verify-style.ts";
 
 /*
+ * The WhatsApp inbox's own look (`wa-style.ts`) is one string of rules under `.wa`, drawn by the inbox itself: its words
+ * are CSS, not class names, and must not grow this sheet either.
+ */
+@source not "../components/whatsapp/wa-style.ts";
+
+/*
  * What EVERY page loads: the utility classes, and nothing that styles a
  * page by itself. The dashboard's own look is src/app/(system)/system.css;
  * a landing page's and a storefront's is their theme (--store-*). A rule here

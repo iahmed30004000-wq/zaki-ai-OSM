@@ -249,6 +249,29 @@ export async function markMessageRead(opts: {
   return res.ok;
 }
 
+/**
+ * «يكتب…» ON THE CUSTOMER'S PHONE while the order bot prepares its answer — one call that also marks their message read
+ * (Meta's typing indicator rides on the read receipt and lasts up to 25 seconds or until the reply). Best-effort.
+ */
+export async function sendTypingIndicator(opts: {
+  phoneNumberId: string;
+  token: string;
+  messageId: string;
+}): Promise<boolean> {
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${opts.phoneNumberId}/messages`;
+  const res = await metaFetch(url, {
+    method: 'POST',
+    headers: authHeaders(opts.token),
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: opts.messageId,
+      typing_indicator: { type: 'text' },
+    }),
+  });
+  return res.ok;
+}
+
 /** Fetch phone-number metadata for the WABA (used by test/reconnect). */
 export async function getPhoneNumberInfo(opts: {
   wabaId: string;

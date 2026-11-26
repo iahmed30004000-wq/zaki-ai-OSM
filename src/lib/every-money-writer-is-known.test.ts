@@ -144,6 +144,12 @@ const READS_ONLY: Record<string, string> = {
    */
   'src/lib/v1/landing-chat.ts': 'يقرأ إجمالي الطلب ليعرضه في محادثة التأكيد وليضعه في حدث التأكيد؛ تبديل العرض وأرقامه في landing-door.ts — لا يحسب مالاً ولا يكتب أيّاً من الأربعة',
   /*
+   * The WhatsApp order bot (the owner, 2026-11-26): the landing chat's confirmation in the bot's name. It READS `totalAmount`
+   * to show the order and to put it in the `order.confirmed` event; its offer swap is `rewriteLandingOffer` and its edits of
+   * the customer's details are `amendSystemOrder` (both on the list above).
+   */
+  'src/lib/whatsapp/bot/order-door.ts': 'يقرأ إجمالي الطلب ليعرضه للبوت وليضعه في حدث التأكيد؛ تبديل العرض في landing-door.ts وتعديل البيانات في order-amend.ts — لا يحسب مالاً ولا يكتب أيّاً من الأربعة',
+  /*
    * THE ONE HELPER THAT ENDS AN ORDER. It READS `totalAmount` to put it in the
    * `order.cancelled` event and writes no figure of any order: its update sets a
    * status, takes the parcel off its trolley and clears the waybill — the COD

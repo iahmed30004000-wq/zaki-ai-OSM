@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { RiArrowDownLine } from '@remixicon/react';
+import { RiArrowDownLine, RiSparkling2Line } from '@remixicon/react';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Modal } from '@/components/ui/Modal';
@@ -14,14 +14,19 @@ export interface ThreadViewProps {
   loadingOlder: boolean;
   onLoadOlder: () => void;
   onReact?: (messageId: string, emoji: string) => void;
+  /** The order bot's name, over the lines it wrote and its «يكتب…». */
+  botName?: string;
+  /** The bot is preparing an answer now: its typing bubble closes the thread. */
+  botTyping?: boolean;
 }
 
 /**
- * THE THREAD — messages grouped under day separators («اليوم», «أمس», a date), reactions gathered under the message they mark
- * (a reaction is not drawn as a message of its own), photos opened large in a lightbox, and the view kept at the newest message
- * unless the person scrolled up to read — then a «الأحدث» press brings them back.
+ * THE THREAD, ON WHATSAPP'S WALLPAPER — messages grouped under day chips («اليوم», «أمس», a date), the first of each run
+ * from one side wearing the tail, reactions gathered under the message they mark (a reaction is not a message of its own),
+ * photos opened large in a lightbox, the bot's «يكتب…» at the end while it answers, and the view kept at the newest
+ * message unless the person scrolled up to read — then a «الأحدث» press brings them back.
  */
-export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onReact }: ThreadViewProps) {
+export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onReact, botName, botTyping = false }: ThreadViewProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [awayFromEnd, setAwayFromEnd] = useState(false);
@@ -50,7 +55,7 @@ export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onRe
     }
     prevFirst.current = firstId;
     prevHeight.current = el.scrollHeight;
-  }, [lastId, firstId]);
+  }, [lastId, firstId, botTyping]);
 
   useEffect(() => {
     const el = scroller.current;
@@ -66,8 +71,8 @@ export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onRe
   }, []);
 
   return (
-    <div className="relative flex-1 min-h-0">
-      <div ref={scroller} className="h-full overflow-y-auto px-4 py-4 space-y-1.5 bg-[var(--sys-surface)]" dir="ltr" aria-live="polite" aria-relevant="additions">
+    <div className="wa-wall">
+      <div ref={scroller} className="wa-scroll" dir="ltr" aria-live="polite" aria-relevant="additions">
         {hasOlder && (
           <div className="flex justify-center pb-2">
             <Button variant="secondary" size="sm" onClick={onLoadOlder} loading={loadingOlder}>
@@ -77,17 +82,18 @@ export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onRe
         )}
         {visible.map((m, i) => {
           const separator = i === 0 || dayKey(m.createdAt) !== dayKey(visible[i - 1].createdAt);
+          const first = separator || visible[i - 1].direction !== m.direction;
           return (
             <React.Fragment key={m.id}>
               {separator && (
-                <div className="flex justify-center py-2" role="separator" aria-label={dayLabel(m.createdAt)}>
-                  <span className="px-3 py-1 rounded-full bg-[var(--sys-card)] text-note font-semibold text-[var(--sys-muted-foreground)] shadow-raised" dir="rtl">
-                    {dayLabel(m.createdAt)}
-                  </span>
+                <div className="wa-day" role="separator" aria-label={dayLabel(m.createdAt)} dir="rtl">
+                  {dayLabel(m.createdAt)}
                 </div>
               )}
               <MessageBubble
                 message={m}
+                first={first}
+                botName={botName}
                 reactions={reactions.get(m.id)}
                 onOpenImage={(src, caption) => setLightbox({ src, caption })}
                 onReact={m.messageType === 'REACTION' ? undefined : onReact}
@@ -95,9 +101,22 @@ export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onRe
             </React.Fragment>
           );
         })}
+        {botTyping && (
+          <div className="wa-typing" role="status" aria-label={`${botName || 'البوت'} يكتب…`}>
+            <span className="wa-by">
+              <RiSparkling2Line aria-hidden="true" />
+              {botName || 'البوت'}
+            </span>
+            <span className="wa-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        )}
       </div>
       {awayFromEnd && (
-        <div className="absolute bottom-3 end-3">
+        <div className="wa-jump">
           <IconButton
             variant="secondary"
             label="الانتقال إلى أحدث رسالة"

@@ -28,7 +28,8 @@ export interface ComposerProps {
 }
 
 /**
- * THE REPLY BOX — a face for emojis, a picture and a paperclip for files, the text, and «إرسال».
+ * THE REPLY BOX, AS WHATSAPP DRAWS IT — one rounded field holding the face for emojis, the text, a picture and a paperclip
+ * for files, and the round green «إرسال» beside it.
  *
  * Enter sends and Shift+Enter starts a new line. A picked (or pasted) photo or file waits above the box with its name and size;
  * what is typed then becomes its caption, and «إرسال» sends both. The box grows with what is typed, up to a few lines.
@@ -108,7 +109,7 @@ export function Composer({ value, onChange, onSend, onSendFile, sending, onRefus
         </Suspense>
       )}
       {pending && (
-        <div className="mb-2 flex items-center gap-3 p-2 rounded-lg bg-[var(--sys-surface)] min-w-0">
+        <div className="wa-attach min-w-0">
           {pending.preview ? (
             // eslint-disable-next-line @next/next/no-img-element -- a local preview of the picked file
             <img src={pending.preview} alt="معاينة الصورة" className="w-14 h-14 rounded-lg object-cover shrink-0" />
@@ -128,18 +129,13 @@ export function Composer({ value, onChange, onSend, onSendFile, sending, onRefus
           </IconButton>
         </div>
       )}
-      <div className="flex items-end gap-1.5">
+      <div className="wa-compose">
+        <div className="wa-pill">
         <span data-emoji-toggle className="shrink-0">
-          <IconButton label="إيموجي" onClick={() => setEmojiOpen((o) => !o)} aria-expanded={emojiOpen} className="shrink-0">
+          <IconButton label="إيموجي" onClick={() => setEmojiOpen((o) => !o)} aria-expanded={emojiOpen} className="wa-ib shrink-0">
             <RiEmotionHappyLine className="w-5 h-5" />
           </IconButton>
         </span>
-        <IconButton label="إرفاق صورة" onClick={() => imageInput.current?.click()} className="shrink-0">
-          <RiImageLine className="w-5 h-5" />
-        </IconButton>
-        <IconButton label="إرفاق ملف" onClick={() => fileInput.current?.click()} className="shrink-0">
-          <RiAttachment2 className="w-5 h-5" />
-        </IconButton>
         <input
           ref={imageInput}
           type="file"
@@ -185,10 +181,17 @@ export function Composer({ value, onChange, onSend, onSendFile, sending, onRefus
           dir="auto"
           aria-label={pending ? 'تعليق على المرفق' : 'نص الرسالة'}
           placeholder={pending ? 'أضف تعليقاً...' : 'اكتب رسالة...'}
-          className="flex-1 min-w-0 resize-none max-h-32 px-3 py-2.5 text-sm rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] text-[var(--sys-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
+          className="flex-1 min-w-0"
         />
-        <IconButton variant="primary" label="إرسال" onClick={() => { void submit(); }} loading={sending} disabled={sending || !canSubmit} className="shrink-0">
-          <RiSendPlaneLine className="icon-mirror w-4 h-4" />
+        <IconButton label="إرفاق صورة" onClick={() => imageInput.current?.click()} className="wa-ib shrink-0">
+          <RiImageLine className="w-5 h-5" />
+        </IconButton>
+        <IconButton label="إرفاق ملف" onClick={() => fileInput.current?.click()} className="wa-ib shrink-0">
+          <RiAttachment2 className="w-5 h-5" />
+        </IconButton>
+        </div>
+        <IconButton variant="primary" label="إرسال" onClick={() => { void submit(); }} loading={sending} disabled={sending || !canSubmit} className="wa-send shrink-0">
+          <RiSendPlaneLine className="icon-mirror w-5 h-5" />
         </IconButton>
       </div>
     </div>

@@ -23,6 +23,8 @@ export interface WaConversation {
   windowEndsAt?: string | null;
   templateReady?: boolean;
   hasOlder?: boolean;
+  bot?: WaConversationBot;
+  botAgent?: WaBotAgent;
 }
 
 export interface WaMedia {
@@ -48,6 +50,24 @@ export interface WaMessage {
   contacts?: { name: string; phones: string[] }[] | null;
   replyTo?: { id: string; direction: string; messageType: string; text: string | null } | null;
   reactionToId?: string | null;
+  /** Written by the order bot (the thread labels it with the bot's name). */
+  byBot?: boolean;
+}
+
+/** The order bot in one conversation (`whatsapp/bot/state.ts`). */
+export interface WaConversationBot {
+  paused: boolean;
+  reason: string | null;
+  reasonAr: string | null;
+  handoff: boolean;
+  typing: boolean;
+}
+
+/** The company's bot, as the inbox draws it: on, its name and the letter on its picture. */
+export interface WaBotAgent {
+  active: boolean;
+  name: string;
+  avatarText: string;
 }
 
 /** Two letters for an avatar: the first letters of the first two words of a name, or a number's last two digits. */

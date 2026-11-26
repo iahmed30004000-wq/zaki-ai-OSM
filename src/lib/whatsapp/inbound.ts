@@ -20,6 +20,8 @@ export interface InboundProcessingResult {
   skipped: number;
   /** Rows whose file is still on Meta's side: the webhook fetches them after it has answered (`prefetchMedia`). */
   mediaMessageIds: string[];
+  /** The customer messages that arrived (reactions aside): the order bot answers them after the webhook has answered. */
+  botInbound?: Array<{ conversationId: string; messageId: string }>;
 }
 
 /**
@@ -177,6 +179,7 @@ export async function processWebhookPayload(
           where: { id: conn.id },
           data: { lastMessageAt: ts },
         });
+        if (!isReaction) (result.botInbound ??= []).push({ conversationId: conv.id, messageId: createdId });
         result.processed++;
       }
 

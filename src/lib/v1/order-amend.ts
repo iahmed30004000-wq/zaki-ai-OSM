@@ -170,6 +170,28 @@ export async function loadOwnOrder(caller: SystemCaller, orderId: string): Promi
   return order;
 }
 
+/**
+ * THE SAME ORDER, FOR A CALLER THAT PROVED THE CUSTOMER ANOTHER WAY — the WhatsApp order bot, which only reaches the orders
+ * of the number that wrote to it (`whatsapp/bot/order-door.ts`). The company is still in the WHERE; the source is not,
+ * because the customer's order may have come from any door.
+ */
+export async function loadCompanyOrder(companyId: string, orderId: string): Promise<OwnOrder> {
+  const order = await db.order.findFirst({ where: { id: orderId, companyId }, select: ORDER_SELECT });
+  if (!order) throw new V1Fault(404, V1_CODE.NOT_FOUND, 'No such order');
+  return order;
+}
+
+/**
+ * Who the history line names, when it is not the calling system's own door: the WhatsApp order bot writes its own
+ * action and its own name, so the desk never reads «نظام الردود» for a change the bot made.
+ */
+export interface AmendActor {
+  action?: string;
+  whoAr?: string;
+  via?: string;
+  auditAction?: string;
+}
+
 export interface AmendResult {
   orderId: string;
   orderNumber: string;
@@ -199,8 +221,9 @@ const lineWords = (l: { name: string; quantity: number; free?: number }) =>
 /**
  * AMEND. Reads the order, checks every rule that can refuse, then writes once, in one transaction, under the order's version.
  */
-export async function amendSystemOrder(caller: SystemCaller, o: OwnOrder, change: V1AmendInput): Promise<AmendResult> {
+export async function amendSystemOrder(caller: SystemCaller, o: OwnOrder, change: V1AmendInput, as: AmendActor = {}): Promise<AmendResult> {
   const { companyId } = caller;
+  const who = as.whoAr ?? systemAr(caller.system);
   const country = o.store?.country;
   if (!orderEditable(o)) throw notEditable('This order can no longer be edited from here — the confirmation desk has it');
   if (!o.store || !country) throw notEditable('This order is not placed in a store');
@@ -406,10 +429,10 @@ export async function amendSystemOrder(caller: SystemCaller, o: OwnOrder, change
         orderId: o.id,
         // No employee did this: the words carry the system, as the creation line does.
         userId: null,
-        action: AMEND_ACTION,
+        action: as.action ?? AMEND_ACTION,
         metadata: JSON.stringify({
-          source: systemAr(caller.system),
-          via: 'api/v1',
+          source: who,
+          via: as.via ?? 'api/v1',
           system: caller.system,
           diff,
           amendReason: change.reason?.trim() || null,
@@ -423,7 +446,7 @@ export async function amendSystemOrder(caller: SystemCaller, o: OwnOrder, change
   await logAudit({
     companyId,
     userId: null,
-    action: 'ORDER_AMENDED_API_V1',
+    action: as.auditAction ?? 'ORDER_AMENDED_API_V1',
     entity: 'Order',
     entityId: o.id,
     // Which fields moved, never what they held: the history line has the words.
@@ -435,7 +458,7 @@ export async function amendSystemOrder(caller: SystemCaller, o: OwnOrder, change
     audience: { permission: 'confirmation.supervise', userIds: [o.moderatorId, o.assignedToId, o.currentOwnerId] },
     actorId: null,
     title: 'تعديل طلب من المحادثة',
-    message: `عدّل ${systemAr(caller.system)} الطلب #${o.orderNumber} بطلب من الزبون — التفاصيل في سجلّ الطلب.`,
+    message: `عدّل ${who} الطلب #${o.orderNumber} بطلب من الزبون — التفاصيل في سجلّ الطلب.`,
     type: 'SYSTEM_ALERT',
     link: `/orders?highlight=${o.id}`,
     orderId: o.id,

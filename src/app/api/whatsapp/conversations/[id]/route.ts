@@ -18,6 +18,8 @@ import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 import { viewsOf } from '@/lib/whatsapp/message-view';
 import { serviceWindow } from '@/lib/whatsapp/service-window';
 import { templateReady } from '@/lib/whatsapp/send';
+import { conversationBotView } from '@/lib/whatsapp/bot/state';
+import { botAgent } from '@/lib/whatsapp/bot/settings';
 
 export async function GET(
   req: Request,
@@ -117,6 +119,10 @@ export async function GET(
         windowEndsAt: window.endsAt,
         templateReady: window.open ? false : await templateReady(companyId),
         hasOlder,
+        // The order bot in this conversation: paused or not and why, handed to staff, and «يكتب…» while a turn runs —
+        // and the company's bot itself (on, its name), inside the conversation so the answer keeps its four keys.
+        bot: conversationBotView(conv),
+        botAgent: await botAgent(companyId),
       },
       customer: mayCustomer ? conv.customer : null,
       messages,
