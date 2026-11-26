@@ -2093,6 +2093,8 @@ model WhatsAppConversation {
   assignedUserId     String?
   lastMessageAt      DateTime?
   lastMessagePreview String?
+  lastMessageType    String? // the list's icon: IMAGE, AUDIO, … (20261126120000)
+  lastInboundAt      DateTime? // the customer's last message — Meta's 24-hour window opens from it
   unreadCount        Int       @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -2113,19 +2115,33 @@ model WhatsAppConversation {
 // Individual WhatsApp message. externalMessageId (Meta wamid) is unique so
 // duplicate webhook deliveries can never create duplicate messages.
 model WhatsAppMessage {
-  id                String   @id @default(uuid())
-  companyId         String
-  conversationId    String
-  connectionId      String
-  externalMessageId String
-  direction         String // INBOUND, OUTBOUND
-  messageType       String   @default("TEXT") // TEXT (IMAGE/VIDEO/AUDIO/DOCUMENT/TEMPLATE reserved)
-  text              String?
-  status            String   @default("RECEIVED") // RECEIVED, SENT, DELIVERED, READ, FAILED
-  senderPhone       String?
-  recipientPhone    String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  companyId            String
+  conversationId       String
+  connectionId         String
+  externalMessageId    String
+  direction            String // INBOUND, OUTBOUND
+  messageType          String   @default("TEXT") // TEXT, IMAGE, AUDIO, VIDEO, DOCUMENT, STICKER, LOCATION, CONTACTS, REACTION, INTERACTIVE, BUTTON, TEMPLATE, UNSUPPORTED
+  text                 String? // the body, a media caption, a button's title, or a reaction's emoji
+  status               String   @default("RECEIVED") // RECEIVED, SENT, DELIVERED, READ, FAILED
+  senderPhone          String?
+  recipientPhone       String?
+  // Media and the rest of a non-text message (20261126120000).
+  mediaId              String? // Meta's media id
+  mimeType             String?
+  fileName             String?
+  mediaSha256          String?
+  mediaKey             String? // storage key under uploads/ — never sent to a browser; served by /api/whatsapp/messages/[id]/media
+  mediaSize            Int?
+  mediaStatus          String? // PENDING, STORED, FAILED, TOO_LARGE
+  latitude             Float?
+  longitude            Float?
+  replyToExternalId    String? // context.id — the wamid this message answers
+  reactionToExternalId String? // reaction.message_id — the wamid a REACTION row is about
+  meta                 Json? // a safe subset: voice flag, place name/address, contact cards, the button's id
+  statusError          String? // Meta's reason when a send FAILED
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -2133,6 +2149,7 @@ model WhatsAppMessage {
 
   @@unique([externalMessageId])
   @@index([companyId, conversationId, createdAt])
+  @@index([companyId, conversationId, updatedAt])
   @@index([companyId, status])
   @@map("whatsapp_messages")
 }

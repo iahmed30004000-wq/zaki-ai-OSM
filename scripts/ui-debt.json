@@ -398,8 +398,7 @@
       "rawButtons": 1
     },
     "src/components/screens/WhatsAppInboxScreen.tsx": {
-      "rawButtons": 1,
-      "textXs": 9
+      "rawButtons": 1
     },
     "src/components/screens/WinbackScreen.tsx": {
       "textXs": 2

@@ -1930,15 +1930,15 @@
     "iconButtons": 1
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
-    "buttons": 4,
-    "inputs": 3,
+    "buttons": 5,
+    "inputs": 2,
     "columns": 0,
     "cards": 5,
     "modals": 0,
-    "icons": 16,
+    "icons": 15,
     "links": 3,
     "tabs": 0,
-    "iconButtons": 2
+    "iconButtons": 1
   },
   "src/components/screens/WhatsAppSettingsScreen.tsx": {
     "buttons": 2,
@@ -3533,5 +3533,70 @@
     "icons": 0,
     "links": 1,
     "tabs": 0
+  },
+  "src/components/whatsapp/Composer.tsx": {
+    "buttons": 0,
+    "inputs": 3,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 6,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 5
+  },
+  "src/components/whatsapp/EmojiPicker.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 1,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
+  },
+  "src/components/whatsapp/KindIcon.tsx": {
+    "buttons": 0,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 9,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/whatsapp/MessageBubble.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 12,
+    "links": 3,
+    "tabs": 0,
+    "iconButtons": 2
+  },
+  "src/components/whatsapp/ThreadView.tsx": {
+    "buttons": 1,
+    "inputs": 0,
+    "columns": 0,
+    "cards": 0,
+    "modals": 1,
+    "icons": 1,
+    "links": 1,
+    "tabs": 0,
+    "iconButtons": 1
+  },
+  "src/components/whatsapp/VoicePlayer.tsx": {
+    "buttons": 1,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 3,
+    "links": 0,
+    "tabs": 0,
+    "iconButtons": 1
   }
 }

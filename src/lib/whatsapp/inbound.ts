@@ -9,24 +9,28 @@
  *
  * Unknown events are ignored safely. No secrets are ever logged.
  */
+import type { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { normalizePhoneNumber } from '../phone';
+import { isMediaKind, parseInboundMessage, previewOf } from './message-kinds';
 
 export interface InboundProcessingResult {
   processed: number;
   statuses: number;
   skipped: number;
+  /** Rows whose file is still on Meta's side: the webhook fetches them after it has answered (`prefetchMedia`). */
+  mediaMessageIds: string[];
 }
 
-/** Extract the text body of any supported message payload (text today). */
-function extractText(msg: any): { type: string; text: string | null } {
-  if (msg?.type === 'text' && typeof msg.text?.body === 'string') {
-    return { type: 'TEXT', text: msg.text.body };
-  }
-  // Media/document/template types are stored typed (no text) — ready for
-  // richer rendering later without schema changes.
-  const t = typeof msg?.type === 'string' ? msg.type.toUpperCase() : 'UNKNOWN';
-  return { type: t, text: null };
+/**
+ * A TICK ONLY MOVES FORWARD. Meta does not promise the order of status deliveries: a «delivered» that arrives after «read» must
+ * not take the blue ticks away. FAILED wins from anything but READ (a message the customer read did not fail).
+ */
+const STATUS_RANK: Record<string, number> = { SENT: 1, DELIVERED: 2, READ: 3 };
+export function statusesBelow(next: string): string[] {
+  if (next === 'FAILED') return ['SENT', 'DELIVERED'];
+  const r = STATUS_RANK[next] ?? 0;
+  return Object.keys(STATUS_RANK).filter((s) => STATUS_RANK[s] < r);
 }
 
 /** Match an existing CRM customer by phone (exact wa_id or normalized). */
@@ -56,7 +60,7 @@ export async function processWebhookPayload(
   /** limit processing to a known connection id (defense in depth) */
   allowedConnectionIds?: Set<string>
 ): Promise<InboundProcessingResult> {
-  const result: InboundProcessingResult = { processed: 0, statuses: 0, skipped: 0 };
+  const result: InboundProcessingResult = { processed: 0, statuses: 0, skipped: 0, mediaMessageIds: [] };
   const entries = Array.isArray(payload?.entry) ? payload.entry : [];
   for (const entry of entries) {
     const changes = Array.isArray(entry?.changes) ? entry.changes : [];
@@ -84,7 +88,9 @@ export async function processWebhookPayload(
           result.skipped++;
           continue;
         }
-        const { type, text } = extractText(msg);
+        const parsed = parseInboundMessage(msg);
+        const type = parsed.messageType;
+        const text = parsed.text;
         const ts = typeof msg?.timestamp === 'string' && /^\d+$/.test(msg.timestamp)
           ? new Date(Number(msg.timestamp) * 1000)
           : new Date();
@@ -117,8 +123,10 @@ export async function processWebhookPayload(
           update: {},
         });
 
+        const hasMedia = isMediaKind(type) && Boolean(parsed.mediaId);
+        let createdId: string;
         try {
-          await db.whatsAppMessage.create({
+          const created = await db.whatsAppMessage.create({
             data: {
               companyId: conn.companyId,
               conversationId: conv.id,
@@ -130,21 +138,37 @@ export async function processWebhookPayload(
               status: 'RECEIVED',
               senderPhone: from,
               recipientPhone: conn.phoneNumberId,
+              mediaId: parsed.mediaId,
+              mimeType: parsed.mimeType,
+              fileName: parsed.fileName,
+              mediaSha256: parsed.mediaSha256,
+              mediaStatus: hasMedia ? 'PENDING' : null,
+              latitude: parsed.latitude,
+              longitude: parsed.longitude,
+              replyToExternalId: parsed.replyToExternalId,
+              reactionToExternalId: parsed.reactionToExternalId,
+              meta: (parsed.meta ?? undefined) as Prisma.InputJsonObject | undefined,
             },
+            select: { id: true },
           });
+          createdId = created.id;
         } catch {
           // Unique violation race → duplicate webhook delivery, safe to skip
           result.skipped++;
           continue;
         }
+        if (hasMedia) result.mediaMessageIds.push(createdId);
 
-        const preview = (text || `[${type}]`).slice(0, 120);
+        // A reaction is a mark on another message, not a new one to answer: it moves the preview but adds nothing unread.
+        const isReaction = type === 'REACTION';
         await db.whatsAppConversation.update({
           where: { id: conv.id },
           data: {
             lastMessageAt: ts,
-            lastMessagePreview: preview,
-            unreadCount: { increment: 1 },
+            lastMessagePreview: previewOf(type, text, parsed.meta),
+            lastMessageType: type,
+            lastInboundAt: ts,
+            ...(isReaction ? {} : { unreadCount: { increment: 1 } }),
             customerName: customer?.fullName ?? conv.customerName,
             customerId: customer?.id ?? conv.customerId,
           },
@@ -171,9 +195,13 @@ export async function processWebhookPayload(
           result.skipped++;
           continue;
         }
+        const reason =
+          mapped === 'FAILED' && Array.isArray(st?.errors) && st.errors[0]
+            ? String(st.errors[0].title || st.errors[0].message || st.errors[0].code || '').slice(0, 200) || null
+            : null;
         const updated = await db.whatsAppMessage.updateMany({
-          where: { externalMessageId: wamid, companyId: conn.companyId, direction: 'OUTBOUND' },
-          data: { status: mapped },
+          where: { externalMessageId: wamid, companyId: conn.companyId, direction: 'OUTBOUND', status: { in: statusesBelow(mapped) } },
+          data: { status: mapped, ...(mapped === 'FAILED' ? { statusError: reason } : {}) },
         });
         if (updated.count === 0) result.skipped++;
         else result.statuses++;
