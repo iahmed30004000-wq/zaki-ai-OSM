@@ -7,10 +7,11 @@
  *        payloads (Meta retries on non-2xx); malformed/unauthorized → 4xx.
  * No secrets are ever returned or logged.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getVerifyToken } from '@/lib/whatsapp/config';
 import { verifyMetaSignature } from '@/lib/whatsapp/signature';
 import { processWebhookPayload } from '@/lib/whatsapp/inbound';
+import { prefetchMedia } from '@/lib/whatsapp/media';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -58,7 +59,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    await processWebhookPayload(payload);
+    const result = await processWebhookPayload(payload);
+    // The files of this delivery (photos, voice notes…) are fetched from Meta AFTER the 200 has gone, so a slow download never
+    // makes Meta retry. Best-effort: the media door fetches on first view whatever this did not.
+    const ids = result?.mediaMessageIds ?? [];
+    if (ids.length > 0) {
+      try {
+        after(() => prefetchMedia(ids));
+      } catch {
+        /* outside a request scope (tests, scripts): the first view fetches instead */
+      }
+    }
   } catch (e) {
     // Never expose internals; Meta will retry on 500 anyway
     console.error('[whatsapp] webhook processing failed:', (e as Error)?.name || 'unknown');

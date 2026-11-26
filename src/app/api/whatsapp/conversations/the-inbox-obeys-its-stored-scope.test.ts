@@ -78,6 +78,8 @@ beforeEach(() => {
   h.db.whatsAppConversation.findFirst.mockResolvedValue({
     id: 'cv1', customerPhone: '0790', customerName: 'ن', status: 'OPEN', unreadCount: 0, lastMessageAt: null, assignedUserId: null, assignedTo: null,
     customerId: 'cu1', customer: { id: 'cu1', fullName: 'عميل', phone: '0790', rawPhone: '0790', city: 'عمّان' }, connectionId: 'cn1',
+    // The customer wrote a minute ago: Meta's 24-hour window is open, so a free-form answer is allowed (send.ts asks).
+    lastInboundAt: new Date(Date.now() - 60_000),
   });
   h.db.whatsAppConversation.update.mockResolvedValue({ status: 'CLOSED', assignedUserId: 'me', assignedTo: null });
   h.db.whatsAppMessage.findMany.mockResolvedValue([]);

@@ -15,6 +15,9 @@ import { orderListWhere } from '@/lib/rbac';
 import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
+import { viewsOf } from '@/lib/whatsapp/message-view';
+import { serviceWindow } from '@/lib/whatsapp/service-window';
+import { templateReady } from '@/lib/whatsapp/send';
 
 export async function GET(
   req: Request,
@@ -27,7 +30,12 @@ export async function GET(
     const { companyId } = await tenantOf(viewer);
     const { id } = await params;
     const { searchParams } = new URL(req.url);
-    const after = searchParams.get('after')?.trim() || ''; // incremental fetch
+    const after = searchParams.get('after')?.trim() || ''; // incremental fetch (new messages only)
+    // The open thread's poll: everything that CHANGED since — new messages and ticks that moved (a status update bumps updatedAt).
+    const since = searchParams.get('since')?.trim() || '';
+    // «عرض الأقدم»: the page before the oldest message on screen.
+    const before = searchParams.get('before')?.trim() || '';
+    const validDate = (s: string) => (s && Number.isFinite(new Date(s).getTime()) ? new Date(s) : null);
 
     const mine = inboxScopeWhere(viewer);
     const conv = await db.whatsAppConversation.findFirst({
@@ -42,15 +50,35 @@ export async function GET(
     }
 
     const take = 200;
-    const messages = await db.whatsAppMessage.findMany({
-      where: {
-        conversationId: id,
-        companyId,
-        ...(after ? { createdAt: { gt: new Date(after) } } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-      take,
-    });
+    const sinceAt = validDate(since);
+    const beforeAt = validDate(before);
+    let rows;
+    let hasOlder = false;
+    if (after) {
+      rows = await db.whatsAppMessage.findMany({
+        where: { conversationId: id, companyId, createdAt: { gt: new Date(after) } },
+        orderBy: { createdAt: 'asc' },
+        take,
+      });
+    } else if (sinceAt) {
+      // Two seconds of overlap: a row written in the same instant as the last poll is asked again, and merged by id.
+      rows = await db.whatsAppMessage.findMany({
+        where: { conversationId: id, companyId, updatedAt: { gt: new Date(sinceAt.getTime() - 2000) } },
+        orderBy: { createdAt: 'asc' },
+        take,
+      });
+    } else {
+      // The LATEST page (it used to be the oldest 200 — a long conversation never showed its newest messages).
+      const page = await db.whatsAppMessage.findMany({
+        where: { conversationId: id, companyId, ...(beforeAt ? { createdAt: { lt: beforeAt } } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: take + 1,
+      });
+      hasOlder = page.length > take;
+      rows = page.slice(0, take).reverse();
+    }
+    const messages = await viewsOf(rows, { companyId, conversationId: id });
+    const window = serviceWindow(conv.lastInboundAt ?? null);
 
     // Customer panel: recent orders (safe subset) when linked — the viewer's own envelope of orders, and the customer tier for the card.
     const mayCustomer = can(viewer, 'customers.view_basic') || can(viewer, 'customers.view');
@@ -84,6 +112,11 @@ export async function GET(
         assignedUserId: conv.assignedUserId,
         assignedTo: conv.assignedTo,
         customerId: conv.customerId,
+        // Meta's 24-hour window, and whether its way out (an approved template) is configured — asked only when it is closed.
+        windowOpen: window.open,
+        windowEndsAt: window.endsAt,
+        templateReady: window.open ? false : await templateReady(companyId),
+        hasOlder,
       },
       customer: mayCustomer ? conv.customer : null,
       messages,

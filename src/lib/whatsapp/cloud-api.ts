@@ -3,6 +3,7 @@
  * Never logs or throws with the token; error surfaces are sanitized.
  */
 import { GRAPH_BASE, GRAPH_VERSION } from './config';
+import type { OutboundMediaKind } from './outbound-rules';
 
 export interface MetaResult<T = any> {
   ok: boolean;
@@ -120,6 +121,113 @@ export async function sendTemplateMessage(opts: {
   const wamid = res.data?.messages?.[0]?.id;
   if (!wamid) return { ok: false, error: 'تعذر إرسال الرسالة', code: 'NO_WAMID' };
   return { ok: true, wamid };
+}
+
+export type { OutboundMediaKind };
+
+/**
+ * UPLOAD A FILE TO META — `POST /{phone-number-id}/media` (multipart), the media id comes back. The bytes were validated by the
+ * caller (type sniffed, size capped); this only carries them. The token goes in the header and never into an error.
+ */
+export async function uploadMedia(opts: {
+  phoneNumberId: string;
+  token: string;
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+}): Promise<{ ok: boolean; mediaId?: string; error?: string; code?: string }> {
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${opts.phoneNumberId}/media`;
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', opts.mimeType);
+  form.append('file', new Blob([new Uint8Array(opts.bytes)], { type: opts.mimeType }), opts.fileName);
+  // No Content-Type here: fetch writes the multipart boundary itself.
+  const res = await metaFetch(url, { method: 'POST', headers: { Authorization: `Bearer ${opts.token}` }, body: form });
+  if (!res.ok) return { ok: false, error: res.error, code: res.status === 429 ? 'RATE_LIMIT' : 'META_ERROR' };
+  const mediaId = typeof res.data?.id === 'string' ? res.data.id : null;
+  if (!mediaId) return { ok: false, error: 'تعذر رفع الملف إلى واتساب', code: 'NO_MEDIA_ID' };
+  return { ok: true, mediaId };
+}
+
+/** Send an uploaded media by its id, with an optional caption (image/video/document) and a file name (document). */
+export async function sendMediaMessage(opts: {
+  phoneNumberId: string;
+  token: string;
+  to: string;
+  kind: OutboundMediaKind;
+  mediaId: string;
+  caption?: string | null;
+  fileName?: string | null;
+}): Promise<{ ok: boolean; wamid?: string; error?: string; code?: string }> {
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${opts.phoneNumberId}/messages`;
+  const media: Record<string, unknown> = { id: opts.mediaId };
+  if (opts.caption && opts.kind !== 'audio') media.caption = opts.caption;
+  if (opts.kind === 'document' && opts.fileName) media.filename = opts.fileName;
+  const res = await metaFetch(url, {
+    method: 'POST',
+    headers: authHeaders(opts.token),
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: opts.to,
+      type: opts.kind,
+      [opts.kind]: media,
+    }),
+  });
+  if (!res.ok) return { ok: false, error: res.error, code: res.status === 429 ? 'RATE_LIMIT' : 'META_ERROR' };
+  const wamid = res.data?.messages?.[0]?.id;
+  if (!wamid) return { ok: false, error: 'تعذر إرسال الرسالة', code: 'NO_WAMID' };
+  return { ok: true, wamid };
+}
+
+/** React to a message (an empty emoji removes the reaction). */
+export async function sendReaction(opts: {
+  phoneNumberId: string;
+  token: string;
+  to: string;
+  targetWamid: string;
+  emoji: string;
+}): Promise<{ ok: boolean; wamid?: string; error?: string; code?: string }> {
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${opts.phoneNumberId}/messages`;
+  const res = await metaFetch(url, {
+    method: 'POST',
+    headers: authHeaders(opts.token),
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: opts.to,
+      type: 'reaction',
+      reaction: { message_id: opts.targetWamid, emoji: opts.emoji },
+    }),
+  });
+  if (!res.ok) return { ok: false, error: res.error, code: res.status === 429 ? 'RATE_LIMIT' : 'META_ERROR' };
+  const wamid = res.data?.messages?.[0]?.id;
+  if (!wamid) return { ok: false, error: 'تعذر إرسال التفاعل', code: 'NO_WAMID' };
+  return { ok: true, wamid };
+}
+
+/**
+ * WHERE META KEEPS A MEDIA FILE — `GET /{media-id}` answers a short-lived URL, the type, the size and the sha256.
+ * Only the fields are returned; the URL is checked by the caller before any byte is asked of it.
+ */
+export async function getMediaInfo(opts: {
+  mediaId: string;
+  token: string;
+}): Promise<{ ok: true; url: string; mimeType: string | null; size: number | null; sha256: string | null } | { ok: false; error: string; status: number }> {
+  if (!/^[A-Za-z0-9_.-]{1,128}$/.test(opts.mediaId)) return { ok: false, error: 'معرّف ملف غير صالح', status: 400 };
+  const url = `${GRAPH_BASE}/${GRAPH_VERSION}/${encodeURIComponent(opts.mediaId)}`;
+  const res = await metaFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${opts.token}` } });
+  if (!res.ok) return { ok: false, error: res.error || 'تعذر الاتصال بواتساب', status: res.status };
+  const d = res.data ?? {};
+  if (typeof d.url !== 'string') return { ok: false, error: 'تعذر الاتصال بواتساب', status: 502 };
+  const size = typeof d.file_size === 'number' ? d.file_size : typeof d.file_size === 'string' ? Number(d.file_size) : null;
+  return {
+    ok: true,
+    url: d.url,
+    mimeType: typeof d.mime_type === 'string' ? d.mime_type : null,
+    size: size !== null && Number.isFinite(size) ? size : null,
+    sha256: typeof d.sha256 === 'string' ? d.sha256 : null,
+  };
 }
 
 /** Mark an inbound message as read on Meta (best-effort). */

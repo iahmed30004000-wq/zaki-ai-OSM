@@ -4,47 +4,46 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi, qs } from '@/lib/screen-api';
-import { findRoute, routeLabel } from '@/lib/route-registry';
-import { RiArrowRightSLine, RiChat3Line, RiCheckDoubleLine, RiCheckLine, RiCloseLine, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSendPlaneLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiUserLine } from '@remixicon/react';
+import { routeLabel } from '@/lib/route-registry';
+import { RiArrowRightSLine, RiChat3Line, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiTimeLine, RiUserLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { Card } from '@/components/ui/Card';
 import { Segmented } from '@/components/ui/Segmented';
-import { arTime } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { userCan } from '@/lib/can';
 import { FAST_POLL_MS, listSignature, paceFor } from '@/lib/inbox-pace';
-
-interface Conversation {
-  id: string;
-  customerPhone: string;
-  customerName: string | null;
-  status: string;
-  unreadCount: number;
-  lastMessageAt: string | null;
-  lastMessagePreview?: string | null;
-  assignedUserId?: string | null;
-  assignedTo?: { id: string; name: string } | null;
-  customerId?: string | null;
-  customer?: { id: string; fullName: string; phone: string; rawPhone?: string; city?: string } | null;
-}
-
-interface WMsg {
-  id: string;
-  direction: string;
-  messageType: string;
-  text: string | null;
-  status: string;
-  createdAt: string;
-}
+import { WINDOW_CLOSED_MESSAGE } from '@/lib/whatsapp/service-window';
+import { initials, latestStamp, listTime, mergeMessages, type WaConversation as Conversation, type WaMessage as WMsg } from '@/components/whatsapp/chat-model';
+import { Composer } from '@/components/whatsapp/Composer';
+import { ThreadView } from '@/components/whatsapp/ThreadView';
+import { KindIcon } from '@/components/whatsapp/KindIcon';
+import { useFitToWindow } from '@/components/whatsapp/useFitToWindow';
 
 const STATUS_COLORS: Record<string, string> = {
   CONNECTED: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]',
   NEEDS_SETUP: 'bg-[var(--sys-warning-soft)] text-[var(--sys-warning)]',
 };
+
+/** A sent file, through the same door rules as JSON: the refusal's Arabic words come back as the error. */
+async function postForm(path: string, form: FormData): Promise<any> {
+  const res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.errorAr || data?.error || 'تعذر إرسال الملف');
+  return data;
+}
+
+function Avatar({ name, phone, size = 'md' }: { name: string | null; phone: string; size?: 'sm' | 'md' | 'lg' }) {
+  const box = size === 'lg' ? 'w-16 h-16 text-lg' : size === 'sm' ? 'w-9 h-9 text-sm' : 'w-11 h-11 text-sm';
+  return (
+    <div aria-hidden="true" className={`${box} rounded-full bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] flex items-center justify-center shrink-0 font-bold`}>
+      {initials(name, phone)}
+    </div>
+  );
+}
 
 export function WhatsAppInboxScreen() {
   const { currentUser } = useApp();
@@ -61,11 +60,13 @@ export function WhatsAppInboxScreen() {
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<WMsg[]>([]);
   const [msgsLoading, setMsgsLoading] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
-  const [composing, setComposing] = useState('');
+  const [composing, setComposingState] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [retryText, setRetryText] = useState<string | null>(null);
+  const [sendingTemplate, setSendingTemplate] = useState(false);
 
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [assigning, setAssigning] = useState(false);
@@ -95,7 +96,26 @@ export function WhatsAppInboxScreen() {
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
+  // The messages on screen, for the poll's «what changed since» — read from a ref so the poll's callback stays one callback.
+  const messagesRef = useRef<WMsg[]>([]);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const inFlightRef = useRef(false);
+
+  /*
+   * DRAFTS: one per conversation, kept while the inbox is open — an answer half-typed to one customer is still there after
+   * looking at another. In memory only, on purpose: a draft is words to a customer (an address, a price), and the browser's
+   * storage keeps nothing about a customer (`exposure.test.ts`).
+   */
+  const draftsRef = useRef<Record<string, string>>({});
+  const setComposing = useCallback((v: string) => {
+    setComposingState(v);
+    const id = selectedIdRef.current;
+    if (!id) return;
+    if (v) draftsRef.current[id] = v;
+    else delete draftsRef.current[id];
+  }, []);
 
   /*
    * HOW OFTEN TO ASK (RV182). Five seconds while anything is happening; fifteen after a quiet minute — the list not
@@ -155,30 +175,38 @@ export function WhatsAppInboxScreen() {
     }
   }, [statusFilter, search]);
 
+  const markRead = (convId: string) => {
+    crmApi(`/api/whatsapp/conversations/${convId}/read`, { method: 'POST' }).catch(() => {});
+    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, unreadCount: 0 } : c)));
+  };
+
   const loadMessages = useCallback(async (convId: string, silent = false) => {
     if (silent && inFlightRef.current) return;
     if (silent) inFlightRef.current = true;
     try {
-      const after = silent && messages.length ? messages[messages.length - 1].createdAt : '';
-      const d: any = await crmApi(`/api/whatsapp/conversations/${convId}` + qs({ after }));
+      // The poll asks for everything that CHANGED since the newest change on screen: new messages and ticks that moved.
+      const since = silent ? latestStamp(messagesRef.current) : '';
+      const d: any = await crmApi(`/api/whatsapp/conversations/${convId}` + qs({ since }));
       if (selectedIdRef.current !== convId) return;
       const conv = d.conversation;
-      setSelected((s) => ({ ...(s || conv), ...conv }));
-      if (!after) setRecentOrders(d.recentOrders || []);
-      if (after) {
+      if (since) {
+        // Only the first page knows whether older messages exist; a poll does not overwrite it.
+        const rest = { ...conv };
+        delete rest.hasOlder;
+        setSelected((s) => ({ ...(s || conv), ...rest }));
+        const incoming: WMsg[] = d.messages || [];
+        const known = new Set(messagesRef.current.map((m) => m.id));
+        const fresh = incoming.filter((m) => !known.has(m.id));
+        // A new message or a tick that moved is activity: back to the fast pace.
         if ((d.messages || []).length > 0) speedUp();
-        setMessages((prev) => {
-          const known = new Set(prev.map((m) => m.id));
-          return [...prev, ...(d.messages || []).filter((m: WMsg) => !known.has(m.id))];
-        });
-        const hasNewInbound = (d.messages || []).some((m: WMsg) => m.direction === 'INBOUND');
-        if (hasNewInbound) {
-          crmApi(`/api/whatsapp/conversations/${convId}/read`, { method: 'POST' }).catch(() => {});
-        }
+        setMessages((prev) => mergeMessages(prev, incoming));
+        if (fresh.some((m) => m.direction === 'INBOUND')) markRead(convId);
       } else {
+        setSelected((s) => ({ ...(s || conv), ...conv }));
+        setRecentOrders(d.recentOrders || []);
         setMessages(d.messages || []);
         if (conv.unreadCount > 0) {
-          crmApi(`/api/whatsapp/conversations/${convId}/read`, { method: 'POST' }).catch(() => {});
+          markRead(convId);
           setSelected((s) => (s ? { ...s, unreadCount: 0 } : s));
         }
       }
@@ -189,8 +217,24 @@ export function WhatsAppInboxScreen() {
       if (silent) inFlightRef.current = false;
       setMsgsLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length]);
+  }, [speedUp]);
+
+  const loadOlder = async () => {
+    const convId = selectedIdRef.current;
+    const first = messagesRef.current[0];
+    if (!convId || !first || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const d: any = await crmApi(`/api/whatsapp/conversations/${convId}` + qs({ before: first.createdAt }));
+      if (selectedIdRef.current !== convId) return;
+      setMessages((prev) => mergeMessages(prev, d.messages || []));
+      setSelected((s) => (s ? { ...s, hasOlder: Boolean(d.conversation?.hasOlder) } : s));
+    } catch (e: any) {
+      setSendError(e.message || 'تعذر تحميل الرسائل الأقدم');
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   // Initial load
   useEffect(() => {
@@ -208,11 +252,6 @@ export function WhatsAppInboxScreen() {
    * five seconds — and refreshes the moment the person comes back, or
    * the connection does.
    *
-   * These lines were the third hand-written copy of that idea (the
-   * dashboard and the orders list had the other two). They are the one
-   * hook now, and the `online` listener that only this screen had is in
-   * it for every screen.
-   *
    * It refreshes TWO things: the list, and the conversation that is
    * open. A list that updates while the thread under it does not is the
    * same staleness wearing a fresher list.
@@ -229,14 +268,31 @@ export function WhatsAppInboxScreen() {
 
   const selectConversation = (c: Conversation) => {
     speedUp();
+    selectedIdRef.current = c.id;
     setSelectedId(c.id);
     setSelected(c);
     setMessages([]);
+    messagesRef.current = [];
     setMsgsLoading(true);
     setSendError(null);
     setRetryText(null);
+    setComposingState(draftsRef.current[c.id] || '');
     setMobileView('chat');
     loadMessages(c.id);
+  };
+
+  /** What a refusal means for the screen: a closed window is drawn as closed at once. */
+  const refused = (e: any, fallback: string) => {
+    const msg = e?.message || fallback;
+    setSendError(msg);
+    if (msg === WINDOW_CLOSED_MESSAGE) setSelected((s) => (s ? { ...s, windowOpen: false } : s));
+    return msg;
+  };
+
+  const afterSent = (m: WMsg, preview: string, type: string) => {
+    setMessages((prev) => mergeMessages(prev, [m]));
+    setConversations((prev) => prev.map((c) => c.id === selectedIdRef.current
+      ? { ...c, lastMessagePreview: preview.slice(0, 120), lastMessageType: type, lastMessageAt: new Date().toISOString() } : c));
   };
 
   const sendMessage = async () => {
@@ -249,15 +305,60 @@ export function WhatsAppInboxScreen() {
         method: 'POST',
         body: JSON.stringify({ text }),
       });
-      setMessages((prev) => [...prev, d.message]);
+      afterSent(d.message, text, 'TEXT');
       setComposing('');
-      setConversations((prev) => prev.map((c) => c.id === selectedId
-        ? { ...c, lastMessagePreview: text.slice(0, 120), lastMessageAt: new Date().toISOString() } : c));
     } catch (e: any) {
-      setSendError(e.message || 'تعذر إرسال الرسالة');
+      refused(e, 'تعذر إرسال الرسالة');
       setRetryText(text);
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendFile = async (file: File, kind: 'image' | 'file', caption: string): Promise<boolean> => {
+    if (!selectedId || sending) return false;
+    speedUp();
+    setSending(true); setSendError(null); setRetryText(null);
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('kind', kind);
+      if (caption) form.append('caption', caption);
+      const d: any = await postForm(`/api/whatsapp/conversations/${selectedId}/media`, form);
+      afterSent(d.message, caption || (kind === 'image' ? 'صورة' : file.name), d.message?.messageType || 'DOCUMENT');
+      return true;
+    } catch (e: any) {
+      refused(e, 'تعذر إرسال الملف');
+      return false;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const react = async (messageId: string, emoji: string) => {
+    if (!selectedId) return;
+    speedUp();
+    try {
+      const d: any = await crmApi(`/api/whatsapp/conversations/${selectedId}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ messageId, emoji }),
+      });
+      if (d?.message) setMessages((prev) => mergeMessages(prev, [d.message]));
+    } catch (e: any) {
+      refused(e, 'تعذر إرسال التفاعل');
+    }
+  };
+
+  const sendTemplate = async () => {
+    if (!selectedId || sendingTemplate) return;
+    setSendingTemplate(true); setSendError(null);
+    try {
+      const d: any = await crmApi(`/api/whatsapp/conversations/${selectedId}/template`, { method: 'POST' });
+      if (d?.message) afterSent(d.message, d.message.text || 'قالب', 'TEMPLATE');
+    } catch (e: any) {
+      refused(e, 'تعذر إرسال القالب');
+    } finally {
+      setSendingTemplate(false);
     }
   };
 
@@ -303,7 +404,9 @@ export function WhatsAppInboxScreen() {
     }
   }, [canAssign]);
 
-  const connected = conn?.status === 'CONNECTED';
+  const columnRef = useRef<HTMLDivElement>(null);
+  useFitToWindow(columnRef);
+
   const convCountByPhone = useMemo(() => {
     const m: Record<string, number> = {};
     for (const c of conversations) m[c.customerPhone] = (m[c.customerPhone] || 0) + 1;
@@ -325,11 +428,15 @@ export function WhatsAppInboxScreen() {
     );
   }
 
+  const windowClosed = selected?.windowOpen === false;
+  // A reaction is a free-form send: the send key, an open conversation and an open window.
+  const mayReact = canSend && selected?.status === 'OPEN' && !windowClosed;
+
   return (
     <>
       {/* The window minus the header AS IT IS: the bar grows when it wraps, so a fixed 72 left the inbox
           taller than the window by the extra row and the page scrolled under it. */}
-      <div className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
+      <div ref={columnRef} className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
         {/* The header is the kit's PageShell (R10e, 18/11). It is drawn WITHOUT children on purpose: the panes below
             must take the rest of this measured column (`flex-1`), and PageShell's own body is not a flex item —
             so the panes are its next sibling in the column, not its child. */}
@@ -370,18 +477,20 @@ export function WhatsAppInboxScreen() {
           </div>
         ) : (
           /* 3-pane inbox */
-          <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
+          <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[340px_1fr_300px] gap-4 overflow-hidden">
             {/* ── Column 1: conversations list ── */}
-            <Card className={`flex flex-col min-h-0 ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
-              <div className="p-3 border-b border-[var(--sys-surface-strong)] space-y-2">
+            <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+              <div className="p-3 border-b border-[var(--sys-border)] space-y-2">
                 <div className="relative">
-                  <RiSearchLine className="absolute top-2.5 left-3 w-4 h-4 text-[var(--sys-muted)] rtl:right-3 rtl:left-auto" />
+                  <RiSearchLine className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--sys-muted)] pointer-events-none" />
                   <input
+                    type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && loadConversations()}
                     placeholder="بحث برقم أو اسم..."
-                    className="w-full pl-9 rtl:pr-9 rtl:pl-3 py-2 text-xs rounded-lg border border-[var(--sys-border-input)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
+                    aria-label="بحث في المحادثات"
+                    className="w-full ps-9 pe-3 py-2 text-sm rounded-full border border-[var(--sys-border-input)] bg-[var(--sys-surface)] text-[var(--sys-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
                   />
                 </div>
                 <Segmented
@@ -416,19 +525,24 @@ export function WhatsAppInboxScreen() {
                 ) : (
                   conversations.map((c) => (
                     <button key={c.id} onClick={() => selectConversation(c)}
-                      className={`w-full text-right flex items-start gap-3 px-4 py-3 border-b border-[var(--sys-surface)] hover:bg-[var(--sys-surface)] transition-colors ${selectedId === c.id ? 'bg-[var(--sys-primary-soft)]' : ''}`}>
-                      <div className="w-10 h-10 rounded-full bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] flex items-center justify-center shrink-0 text-sm font-bold">
-                        {(c.customerName || c.customerPhone).slice(0, 2)}
-                      </div>
+                      aria-current={selectedId === c.id ? 'true' : undefined}
+                      className={`w-full text-right flex items-center gap-3 px-3 py-3 border-b border-[var(--sys-border)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--sys-focus)] ${selectedId === c.id ? 'bg-[var(--sys-primary-soft)]' : 'hover:bg-[var(--sys-surface)]'}`}>
+                      <Avatar name={c.customerName} phone={c.customerPhone} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-[var(--sys-heading)] truncate">{c.customerName || c.customerPhone}</span>
+                          <span className="text-sm font-semibold text-[var(--sys-heading)] truncate" dir="auto">{c.customerName || c.customerPhone}</span>
+                          <span className={`shrink-0 text-note tabular-nums ${c.unreadCount > 0 ? 'text-[var(--sys-primary)] font-semibold' : 'text-[var(--sys-muted)]'}`}>{listTime(c.lastMessageAt)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                          <p className={`flex items-center gap-1 min-w-0 text-note truncate ${c.unreadCount > 0 ? 'text-[var(--sys-heading)] font-semibold' : 'text-[var(--sys-muted-foreground)]'}`}>
+                            <KindIcon type={c.lastMessageType} />
+                            <span className="truncate" dir="auto">{c.lastMessagePreview || '—'}</span>
+                          </p>
                           {c.unreadCount > 0 && (
-                            <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-xs font-bold flex items-center justify-center">{c.unreadCount}</span>
+                            <span aria-label={`${c.unreadCount} غير مقروءة`} className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-note font-bold flex items-center justify-center">{c.unreadCount}</span>
                           )}
                         </div>
-                        <p className="text-note text-[var(--sys-muted-foreground)] truncate mt-0.5">{c.lastMessagePreview || '—'}</p>
-                        {c.assignedTo && <p className="text-note text-[var(--sys-muted)] mt-0.5">مُسندة إلى: {c.assignedTo.name}</p>}
+                        {c.assignedTo && <p className="text-note text-[var(--sys-muted)] mt-0.5 truncate">مُسندة إلى: {c.assignedTo.name}</p>}
                       </div>
                     </button>
                   ))
@@ -437,38 +551,48 @@ export function WhatsAppInboxScreen() {
             </Card>
 
             {/* ── Column 2: conversation ── */}
-            <Card className={`flex flex-col min-h-0 ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
+            <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
               {!selected ? (
-                <div className="flex-1 flex items-center justify-center text-note text-[var(--sys-muted-foreground)]">اختر محادثة لعرضها</div>
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center bg-[var(--sys-surface)]">
+                  <span className="w-16 h-16 rounded-full bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] flex items-center justify-center">
+                    <RiChat3Line className="w-6 h-6" />
+                  </span>
+                  <p className="text-sm font-semibold text-[var(--sys-heading)]">اختر محادثة لعرضها</p>
+                  <p className="text-note text-[var(--sys-muted-foreground)] max-w-xs">الصور والرسائل الصوتية والملفات والمواقع تظهر هنا كما أرسلها الزبون.</p>
+                </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--sys-surface-strong)]">
+                  <div className="flex items-center gap-3 px-3 sm:px-4 py-2.5 border-b border-[var(--sys-border)]">
                     <IconButton
                       size="sm"
                       className="lg:hidden shrink-0"
                       onClick={() => setMobileView('list')}
                       label="عد إلى المحادثات"
                     ><RiArrowRightSLine className="icon-mirror w-5 h-5" /></IconButton>
-                    <div className="w-9 h-9 rounded-full bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] flex items-center justify-center text-xs font-bold">
-                      {(selected.customerName || selected.customerPhone).slice(0, 2)}
-                    </div>
+                    <Avatar name={selected.customerName} phone={selected.customerPhone} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-[var(--sys-heading)] truncate">{selected.customerName || selected.customerPhone}</p>
+                      <p className="text-sm font-bold text-[var(--sys-heading)] truncate" dir="auto">{selected.customerName || selected.customerPhone}</p>
                       <p className="text-note text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
                     </div>
+                    {windowClosed && (
+                      <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
+                        <RiTimeLine className="w-4 h-4" /> نافذة الـ24 ساعة مغلقة
+                      </span>
+                    )}
                     <Button variant="secondary" size="sm" onClick={toggleStatus} className="shrink-0">
                       {selected.status === 'OPEN' ? 'إغلاق المحادثة' : 'إعادة فتح'}
                     </Button>
                   </div>
 
                   {canAssign && (
-                    <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--sys-surface)] bg-[var(--sys-surface)]">
+                    <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
                       <span className="text-note text-[var(--sys-muted-foreground)] shrink-0">مُسندة إلى:</span>
                       <select
                         value={selected.assignedUserId || ''}
                         disabled={assigning}
                         onChange={(e) => assign(e.target.value || null)}
-                        className="min-h-11 md:min-h-0 inline-flex items-center text-xs border border-[var(--sys-border-input)] rounded-lg px-2 py-1 bg-[var(--sys-card)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
+                        aria-label="إسناد المحادثة"
+                        className="min-h-11 md:min-h-0 inline-flex items-center text-sm border border-[var(--sys-border-input)] rounded-lg px-2 py-1 bg-[var(--sys-card)] text-[var(--sys-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
                       >
                         <option value="">غير معين</option>
                         {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -477,41 +601,31 @@ export function WhatsAppInboxScreen() {
                   )}
 
                   {/* Messages */}
-                  <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-2 bg-[var(--sys-surface)]" dir="ltr">
-                    {msgsLoading ? (
-                      <div className="text-center text-note text-[var(--sys-muted-foreground)] py-8">جارٍ التحميل...</div>
-                    ) : messages.length === 0 ? (
+                  {msgsLoading ? (
+                    <div className="flex-1 flex items-center justify-center text-note text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)]">جارٍ التحميل...</div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-[var(--sys-surface)]">
                       <EmptyState
                         title="لا رسائل في هذه المحادثة"
                         why="المحادثة مفتوحة ولم يصل منها شيء بعد. رسائل واتساب لا تُسحب بأثرٍ رجعيّ — ما قبل الربط ليس هنا."
                       />
-                    ) : (
-                      messages.map((m) => (
-                        <div key={m.id} className={`flex ${m.direction === 'OUTBOUND' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[75%] rounded-lg px-3.5 py-2 text-sm shadow-raised ${m.direction === 'OUTBOUND' ? 'bg-[#d9fdd3] text-[var(--sys-heading)]' : 'bg-[var(--sys-card)] text-[var(--sys-heading)] border border-[#eef1f5]'}`}>
-                            {m.messageType !== 'TEXT' && !m.text && (
-                              <span className="text-xs font-semibold text-[var(--sys-muted-foreground)]">[{m.messageType}]</span>
-                            )}
-                            <p className="whitespace-pre-wrap break-words" dir="auto">{m.text || ''}</p>
-                            <div className="flex items-center gap-1 justify-end mt-0.5">
-                              <span className="text-xs text-[var(--sys-muted)]">{arTime(m.createdAt)}</span>
-                              {m.direction === 'OUTBOUND' && (
-                                m.status === 'READ' ? <RiCheckDoubleLine className="w-4 h-4 text-[#53bdeb]" />
-                                : m.status === 'FAILED' ? <RiCloseLine className="w-4 h-4 text-[var(--sys-destructive)]" />
-                                : <RiCheckLine className="w-4 h-4 text-[var(--sys-muted)]" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <ThreadView
+                      key={selected.id}
+                      messages={messages}
+                      hasOlder={Boolean(selected.hasOlder)}
+                      loadingOlder={loadingOlder}
+                      onLoadOlder={() => { void loadOlder(); }}
+                      onReact={mayReact ? (id, e) => { void react(id, e); } : undefined}
+                    />
+                  )}
 
                   {/* Composer */}
                   {canSend && selected.status === 'OPEN' && (
-                    <div className="border-t border-[var(--sys-surface-strong)] p-3 space-y-2">
+                    <div className="border-t border-[var(--sys-border)] p-2 sm:p-3 space-y-2">
                       {sendError && (
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note">
+                        <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note">
                           <span className="flex items-center gap-1.5"><RiErrorWarningLine className="w-4 h-4 shrink-0" />{sendError}</span>
                           {retryText && (
                             <Button variant="quiet" size="sm" onClick={() => { void retrySend(); }} className="shrink-0">
@@ -520,29 +634,35 @@ export function WhatsAppInboxScreen() {
                           )}
                         </div>
                       )}
-                      <div className="flex items-end gap-2">
-                        <textarea
+                      {windowClosed ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--sys-warning-soft)] text-note text-[var(--sys-heading)]">
+                          <RiTimeLine className="w-5 h-5 shrink-0 text-[var(--sys-warning)]" />
+                          <span className="flex-1 leading-relaxed">{WINDOW_CLOSED_MESSAGE}</span>
+                          {selected.templateReady ? (
+                            <Button variant="primary" size="sm" onClick={() => { void sendTemplate(); }} loading={sendingTemplate} className="shrink-0 self-start sm:self-auto">
+                              إرسال القالب المعتمد
+                            </Button>
+                          ) : (
+                            <span className="text-[var(--sys-muted-foreground)]">لا قالب مسمّى بعد — يسمّيه المدير من إعدادات «بعد لا يرد».</span>
+                          )}
+                        </div>
+                      ) : (
+                        <Composer
                           value={composing}
-                          onChange={(e) => setComposing(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-                          }}
-                          rows={1}
-                          placeholder="اكتب رسالة..."
-                          className="flex-1 resize-none max-h-32 px-3 py-2.5 text-sm rounded-lg border border-[var(--sys-border-input)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
+                          onChange={setComposing}
+                          onSend={() => { void sendMessage(); }}
+                          onSendFile={sendFile}
+                          sending={sending}
+                          onRefuse={(why) => setSendError(why)}
                         />
-                        <IconButton variant="primary" label="إرسال" onClick={() => { void sendMessage(); }} loading={sending} disabled={sending || !composing.trim()}
-                          className="shrink-0">
-                          <RiSendPlaneLine className="icon-mirror w-4 h-4" />
-                        </IconButton>
-                      </div>
+                      )}
                     </div>
                   )}
                   {selected.status === 'CLOSED' && (
-                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
+                    <div className="border-t border-[var(--sys-border)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
                   )}
                   {!canSend && (
-                    <div className="border-t border-[var(--sys-surface-strong)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
+                    <div className="border-t border-[var(--sys-border)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
                   )}
                 </>
               )}
@@ -555,9 +675,7 @@ export function WhatsAppInboxScreen() {
               ) : (
                 <div className="p-4 space-y-5">
                   <div className="text-center">
-                    <div className="w-16 h-16 mx-auto rounded-full bg-[var(--sys-heading)] text-[var(--sys-primary-foreground)] flex items-center justify-center text-lg font-bold">
-                      {(selected.customerName || selected.customerPhone).slice(0, 2)}
-                    </div>
+                    <div className="flex justify-center"><Avatar name={selected.customerName} phone={selected.customerPhone} size="lg" /></div>
                     <p className="mt-2 font-bold text-sm text-[var(--sys-heading)]">{selected.customerName || 'عميل غير مرتبط'}</p>
                     <p className="text-note text-[var(--sys-muted-foreground)] flex items-center justify-center gap-1 mt-1" dir="ltr">
                       <RiPhoneLine className="w-4 h-4" /> {selected.customerPhone}
@@ -568,7 +686,7 @@ export function WhatsAppInboxScreen() {
                     <p className="text-note font-bold text-[var(--sys-muted)] mb-2">المحادثات</p>
                     <p className="text-note text-[var(--sys-muted-foreground)]">{convCountByPhone[selected.customerPhone] || 1} محادثة (مفتوحة)</p>
                     {selected.customerId ? (
-                      <Link href={`/customers?search=${encodeURIComponent(selected.customerPhone)}`} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[var(--sys-primary)] hover:underline">
+                      <Link href={`/customers?search=${encodeURIComponent(selected.customerPhone)}`} className="mt-2 inline-flex items-center gap-1 text-note font-semibold text-[var(--sys-primary)] hover:underline">
                         <RiUserLine className="w-4 h-4" /> فتح العميل
                       </Link>
                     ) : (
@@ -586,9 +704,9 @@ export function WhatsAppInboxScreen() {
                       ) : (
                         <div className="space-y-1.5">
                           {recentOrders.map((o: any) => (
-                            <Link key={o.id} href={`/orders/${o.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-primary-soft)] text-xs">
+                            <Link key={o.id} href={`/orders/${o.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-primary-soft)] text-note">
                               <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">#{o.orderNumber}</span>
-                              <span className="text-xs text-[var(--sys-muted-foreground)]">{o.status}</span>
+                              <span className="text-note text-[var(--sys-muted-foreground)]">{o.status}</span>
                               <span className="font-semibold text-[var(--sys-heading)]" dir="ltr"><Money value={o.totalAmount} currency={o.currency} /></span>
                             </Link>
                           ))}
