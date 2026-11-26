@@ -105,7 +105,7 @@ function Body({ m, mine, onOpenImage }: { m: WaMessage; mine: boolean; onOpenIma
         <MediaProblem state={problem} onRetry={retry} />
       ) : (
         // eslint-disable-next-line @next/next/no-img-element -- an authenticated, per-message file
-        <img src={src} alt="ملصق" loading="lazy" onError={() => setBroken(true)} className="block w-32 h-32 object-contain" />
+        <img src={src} alt="ملصق" loading="lazy" onError={() => setBroken(true)} className="block object-contain" style={{ width: 128, height: 128 }} />
       );
     case 'AUDIO':
       if (!media) break;
@@ -258,7 +258,7 @@ export function MessageBubble({ message: m, reactions = [], onOpenImage, onReact
           style={bare ? undefined : mine ? { borderEndEndRadius: 4 } : { borderEndStartRadius: 4 }}
         >
           {m.replyTo && (
-            <div className="mb-1.5 ps-2 pe-2 py-1 rounded-lg border-s-4 border-[var(--sys-primary)] bg-[var(--sys-surface)] text-note min-w-0">
+            <div className="mb-1.5 px-2 py-1 rounded-lg border-s-4 border-[var(--sys-primary)] bg-[var(--sys-surface)] text-note min-w-0">
               <p className="font-semibold text-[var(--sys-primary)]">{m.replyTo.direction === 'OUTBOUND' ? 'أنت' : 'الزبون'}</p>
               <p className="text-[var(--sys-muted-foreground)] truncate" dir="auto">{m.replyTo.text || kindLabel(m.replyTo.messageType)}</p>
             </div>
@@ -270,7 +270,7 @@ export function MessageBubble({ message: m, reactions = [], onOpenImage, onReact
           </div>
         </div>
         {reactions.length > 0 && (
-          <div style={{ bottom: -12 }} className={`absolute ${mine ? 'end-2' : 'start-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[var(--sys-card)] shadow-raised text-sm leading-none`}>
+          <div style={mine ? { bottom: -12, insetInlineEnd: 8 } : { bottom: -12, insetInlineStart: 8 }} className={`absolute flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[var(--sys-card)] shadow-raised text-sm leading-none`}>
             {reactions.map((r) => (
               <span key={`${r.emoji}-${r.mine}`} role="img" aria-label={r.mine ? `تفاعلك ${r.emoji}` : `تفاعل الزبون ${r.emoji}`}>
                 {r.emoji}
@@ -286,7 +286,7 @@ export function MessageBubble({ message: m, reactions = [], onOpenImage, onReact
 
 function ReactControl({ picking, setPicking, onPick }: { picking: boolean; setPicking: (v: boolean) => void; onPick: (emoji: string) => void }) {
   return (
-    <div className={`relative shrink-0 transition-opacity ${picking ? 'opacity-100' : 'opacity-60 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100'}`}>
+    <div className={`relative shrink-0 transition-opacity ${picking ? 'opacity-100' : 'opacity-60 hover:opacity-100'}`}>
       <IconButton size="sm" label="تفاعل مع الرسالة" onClick={() => setPicking(!picking)} aria-expanded={picking}>
         <RiEmotionLine className="w-4 h-4" />
       </IconButton>

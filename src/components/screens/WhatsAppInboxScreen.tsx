@@ -575,7 +575,7 @@ export function WhatsAppInboxScreen() {
                       <p className="text-note text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
                     </div>
                     {windowClosed && (
-                      <span className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
+                      <span className="hidden md:flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
                         <RiTimeLine className="w-4 h-4" /> نافذة الـ24 ساعة مغلقة
                       </span>
                     )}

@@ -96,7 +96,8 @@ describe('each kind is drawn as itself', () => {
 
   it('a sticker is drawn bare, without a bubble', () => {
     render(<MessageBubble message={msg({ messageType: 'STICKER', media: media({ mimeType: 'image/webp' }) })} onOpenImage={noop} />);
-    expect(screen.getByRole('img', { name: 'ملصق' }).className).toContain('w-32');
+    // Sized inline (128 px), not by a utility: the shared stylesheet is on a budget.
+    expect((screen.getByRole('img', { name: 'ملصق' }) as HTMLImageElement).style.width).toBe('128px');
   });
 
   it('a button the customer pressed says so', () => {
