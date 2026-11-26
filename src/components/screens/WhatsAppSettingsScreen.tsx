@@ -12,6 +12,9 @@ import { arDateTime } from '@/lib/format';
 import { userCan } from '@/lib/can';
 import { WhatsAppAfterNoAnswerCard } from '@/components/settings/WhatsAppAfterNoAnswerCard';
 
+/** The order bot's card (and its practice chat) is its own chunk — fetched when this screen is opened, not by the shell. */
+const WhatsAppBotCard = React.lazy(() => import('@/components/settings/WhatsAppBotCard'));
+
 /**
  * `embedded` — a card of «الربط» (`/settings/links`), which owns the page's title: the
  * page padding and the screen's own heading are not drawn, and a plain section heading
@@ -153,6 +156,11 @@ export function WhatsAppSettingsScreen({ embedded = false }: { embedded?: boolea
 
         {/* «واتساب بعد لا يرد» — from the agent's WhatsApp or the company's number, per country. */}
         <WhatsAppAfterNoAnswerCard />
+
+        {/* «بوت الطلبات على واتساب» — the switch, the personality, the model, and «جرّبه». */}
+        <React.Suspense fallback={null}>
+          <WhatsAppBotCard />
+        </React.Suspense>
 
         {/* Details */}
         <Card>

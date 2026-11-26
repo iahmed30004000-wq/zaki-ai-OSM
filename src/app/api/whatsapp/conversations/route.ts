@@ -12,6 +12,8 @@ import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { typed } from '@/lib/text-search';
 import { inboxScopeWhere } from '@/lib/whatsapp/inbox-scope';
 import { can } from '@/lib/authorization';
+import { conversationBotView } from '@/lib/whatsapp/bot/state';
+import { botAgent } from '@/lib/whatsapp/bot/settings';
 
 export async function GET(req: Request) {
   try {
@@ -60,8 +62,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       // The linked customer's card needs the customer tier, as on the single conversation (PR-13, WA-2); the answer keeps its shape.
-      conversations: conversations.slice(0, take).map((c) => (mayCustomer ? c : { ...c, customer: null })),
+      // `bot`: the order bot's state per conversation, for the list's badge (paused, handed to staff, typing).
+      conversations: conversations.slice(0, take).map((c) => ({ ...(mayCustomer ? c : { ...c, customer: null }), bot: conversationBotView(c) })),
       nextCursor: hasMore ? conversations[take - 1].id : null,
+      botAgent: await botAgent(companyId),
     });
   } catch (error) {
     return apiErrorResponse(error);

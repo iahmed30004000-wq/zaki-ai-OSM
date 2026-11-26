@@ -141,9 +141,20 @@ describe('our messages carry their ticks', () => {
     expect(screen.getByRole('img', { name })).toBeTruthy();
   });
 
-  it('a read tick is in the brand colour, a delivered one is not', () => {
+  it('a read tick is in WhatsApp’s blue, a delivered one is not', () => {
     render(<MessageBubble message={msg({ direction: 'OUTBOUND', text: 'x', status: 'READ' })} onOpenImage={noop} />);
-    expect(screen.getByRole('img', { name: 'قُرئت' }).getAttribute('class')).toContain('--sys-primary');
+    expect(screen.getByRole('img', { name: 'قُرئت' }).getAttribute('class')).toContain('wa-tick-read');
+    cleanup();
+    render(<MessageBubble message={msg({ direction: 'OUTBOUND', text: 'x', status: 'DELIVERED' })} onOpenImage={noop} />);
+    expect(screen.getByRole('img', { name: 'وصلت' }).getAttribute('class')).not.toContain('wa-tick-read');
+  });
+
+  it('a line the order bot wrote carries its name; one a person wrote does not', () => {
+    render(<MessageBubble message={msg({ direction: 'OUTBOUND', text: 'أهلين', status: 'SENT', byBot: true })} onOpenImage={noop} botName="سارة" />);
+    expect(screen.getByText('سارة')).toBeTruthy();
+    cleanup();
+    render(<MessageBubble message={msg({ direction: 'OUTBOUND', text: 'أهلين', status: 'SENT' })} onOpenImage={noop} botName="سارة" />);
+    expect(screen.queryByText('سارة')).toBeNull();
   });
 });
 

@@ -197,6 +197,10 @@ const ACTIVITY_AR: Record<string, string> = {
   // The replies system's chat edits and cancels an order it took (`v1/order-amend.ts`): the difference is in the line, in words.
   EDITED_FROM_CHAT: 'تعديل من المحادثة (نظام الردود): الزبون عدّل طلبه',
   CANCELLED_FROM_CHAT: 'إلغاء من المحادثة (نظام الردود): الزبون تراجع عن الطلب',
+  // The WhatsApp order bot (`whatsapp/bot/order-door.ts`, `BOT_ACTION`), each in its name.
+  WHATSAPP_BOT_CONFIRMED: 'مساعد واتساب الآلي: الزبون أكّد الطلب',
+  WHATSAPP_BOT_EDITED: 'مساعد واتساب الآلي: الزبون عدّل بياناته',
+  WHATSAPP_BOT_OFFER_CHANGED: 'مساعد واتساب الآلي: الزبون غيّر العرض',
   ORDER_UPDATED: 'تعديل بيانات الطلب',
   // What the customer added on the thank-you screen: the same words the order dialog and the confirmation card use.
   UPSELL_ADDED: POST_ORDER_ADDITION_AR,

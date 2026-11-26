@@ -50,6 +50,7 @@ model Company {
   whatsappConnections   WhatsAppConnection[]
   whatsappConversations WhatsAppConversation[]
   whatsappMessages      WhatsAppMessage[]
+  whatsappBotSettings   WhatsAppBotSettings?
   telegramSources       TelegramSource[]
   telegramMessages      TelegramMessage[]
   telegramUpsells       TelegramUpsellProduct[]
@@ -2096,6 +2097,13 @@ model WhatsAppConversation {
   lastMessageType    String? // the list's icon: IMAGE, AUDIO, … (20261126120000)
   lastInboundAt      DateTime? // the customer's last message — Meta's 24-hour window opens from it
   unreadCount        Int       @default(0)
+  // The order bot (20261126190000): silent here after a staff reply, a staff press, a hand-off or a failure.
+  botPaused          Boolean   @default(false)
+  botPausedReason    String? // STAFF_REPLIED, STAFF_PAUSED, HANDOFF, FAILED, RATE_LIMIT
+  botPausedAt        DateTime?
+  botHandoff         Boolean   @default(false) // the customer asked for a person, or the bot stopped: staff should look
+  botBusyUntil       DateTime? // one bot turn at a time; the screen draws «يكتب…» while it runs
+  botChangedAt       DateTime? // the bot last changed an order here: the new amount is said before a yes counts
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -2140,6 +2148,7 @@ model WhatsAppMessage {
   reactionToExternalId String? // reaction.message_id — the wamid a REACTION row is about
   meta                 Json? // a safe subset: voice flag, place name/address, contact cards, the button's id
   statusError          String? // Meta's reason when a send FAILED
+  sentByBot            Boolean  @default(false) // written by the order bot, not by a person (20261126190000)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -2152,6 +2161,29 @@ model WhatsAppMessage {
   @@index([companyId, conversationId, updatedAt])
   @@index([companyId, status])
   @@map("whatsapp_messages")
+}
+
+// The WhatsApp order bot of a company (20261126190000): its switch, its name, the owner's words, and its model.
+// The model's key is sealed (`secrets.ts`) and never returned — only its last four characters (`apiKeyHint`).
+model WhatsAppBotSettings {
+  id              String   @id @default(uuid())
+  companyId       String   @unique
+  enabled         Boolean  @default(false)
+  name            String   @default("سارة")
+  avatarText      String?
+  persona         String   @default("")
+  productNotes    Json? // [{ productId, notes }] — short facts the owner wrote per product
+  baseUrl         String   @default("https://glm.erv.zakiai.io/v1")
+  model           String?
+  apiKeyEncrypted String?
+  apiKeyHint      String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_bot_settings")
 }
 
 // ─── Telegram Order Ingestion (additive) ───

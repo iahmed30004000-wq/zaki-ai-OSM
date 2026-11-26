@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi, qs } from '@/lib/screen-api';
 import { routeLabel } from '@/lib/route-registry';
-import { RiArrowRightSLine, RiChat3Line, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiTimeLine, RiUserLine } from '@remixicon/react';
+import { RiArrowRightSLine, RiChat3Line, RiCustomerService2Line, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiSparkling2Line, RiTimeLine, RiUserLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -17,11 +17,16 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { userCan } from '@/lib/can';
 import { FAST_POLL_MS, listSignature, paceFor } from '@/lib/inbox-pace';
 import { WINDOW_CLOSED_MESSAGE } from '@/lib/whatsapp/service-window';
-import { initials, latestStamp, listTime, mergeMessages, type WaConversation as Conversation, type WaMessage as WMsg } from '@/components/whatsapp/chat-model';
+import { initials, latestStamp, listTime, mergeMessages, type WaBotAgent, type WaConversation as Conversation, type WaMessage as WMsg } from '@/components/whatsapp/chat-model';
 import { Composer } from '@/components/whatsapp/Composer';
 import { ThreadView } from '@/components/whatsapp/ThreadView';
 import { KindIcon } from '@/components/whatsapp/KindIcon';
 import { useFitToWindow } from '@/components/whatsapp/useFitToWindow';
+import { WaStyle } from '@/components/whatsapp/WaStyle';
+import { Modal } from '@/components/ui/Modal';
+
+/** The bot's settings and practice chat are fetched the first time «البوت» is pressed — the inbox's first load does not carry them. */
+const WhatsAppBotCard = React.lazy(() => import('@/components/settings/WhatsAppBotCard'));
 
 const STATUS_COLORS: Record<string, string> = {
   CONNECTED: 'bg-[var(--sys-success-soft)] text-[var(--sys-success)]',
@@ -37,13 +42,14 @@ async function postForm(path: string, form: FormData): Promise<any> {
 }
 
 function Avatar({ name, phone, size = 'md' }: { name: string | null; phone: string; size?: 'sm' | 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'w-16 h-16 text-lg' : size === 'sm' ? 'w-9 h-9 text-sm' : 'w-11 h-11 text-sm';
   return (
-    <div aria-hidden="true" className={`${box} rounded-full bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] flex items-center justify-center shrink-0 font-bold`}>
+    <div aria-hidden="true" className={`wa-av${size === 'md' ? '' : ` ${size}`}`}>
       {initials(name, phone)}
     </div>
   );
 }
+
+const NO_BOT: WaBotAgent = { active: false, name: 'سارة', avatarText: 'س' };
 
 export function WhatsAppInboxScreen() {
   const { currentUser } = useApp();
@@ -72,6 +78,10 @@ export function WhatsAppInboxScreen() {
   const [assigning, setAssigning] = useState(false);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+  // The order bot: the company's (on, its name) and the press that gives a conversation back or stops it there.
+  const [botAgent, setBotAgent] = useState<WaBotAgent>(NO_BOT);
+  const [botBusy, setBotBusy] = useState(false);
+  const [botOpen, setBotOpen] = useState(false);
 
   const canSend = userCan(currentUser, 'whatsapp.send');
   const canManage = userCan(currentUser, 'whatsapp.manage');
@@ -150,6 +160,7 @@ export function WhatsAppInboxScreen() {
     try {
       const d: any = await crmApi('/api/whatsapp/conversations' + qs({ status: statusFilter, q: search }));
       const list: Conversation[] = d.conversations || [];
+      if (d.botAgent) setBotAgent(d.botAgent);
       setConversations((prev) => {
         // Preserve order/merge without flashing during silent polling
         if (silent && prev.length && list.length &&
@@ -189,6 +200,7 @@ export function WhatsAppInboxScreen() {
       const d: any = await crmApi(`/api/whatsapp/conversations/${convId}` + qs({ since }));
       if (selectedIdRef.current !== convId) return;
       const conv = d.conversation;
+      if (conv?.botAgent) setBotAgent(conv.botAgent);
       if (since) {
         // Only the first page knows whether older messages exist; a poll does not overwrite it.
         const rest = { ...conv };
@@ -291,8 +303,29 @@ export function WhatsAppInboxScreen() {
 
   const afterSent = (m: WMsg, preview: string, type: string) => {
     setMessages((prev) => mergeMessages(prev, [m]));
+    // A person's message silences the bot here (the server wrote it in the same save): drawn at once, not on the next poll.
+    const silenced = (c: Conversation): Conversation =>
+      c.bot && !c.bot.paused ? { ...c, bot: { ...c.bot, paused: true, reason: 'STAFF_REPLIED', reasonAr: 'رد موظف', typing: false } } : c;
+    setSelected((s) => (s ? silenced(s) : s));
     setConversations((prev) => prev.map((c) => c.id === selectedIdRef.current
-      ? { ...c, lastMessagePreview: preview.slice(0, 120), lastMessageType: type, lastMessageAt: new Date().toISOString() } : c));
+      ? silenced({ ...c, lastMessagePreview: preview.slice(0, 120), lastMessageType: type, lastMessageAt: new Date().toISOString() }) : c));
+  };
+
+  /** «رجّع البوت» / «أوقف البوت» in the open conversation. */
+  const setBot = async (action: 'pause' | 'resume') => {
+    if (!selected || botBusy) return;
+    setBotBusy(true);
+    try {
+      const d: any = await crmApi(`/api/whatsapp/conversations/${selected.id}/bot`, { method: 'POST', body: JSON.stringify({ action }) });
+      if (d?.bot) {
+        setSelected((s) => (s ? { ...s, bot: d.bot } : s));
+        setConversations((prev) => prev.map((c) => (c.id === selected.id ? { ...c, bot: d.bot } : c)));
+      }
+    } catch (e: any) {
+      setSendError(e.message || 'تعذّر تغيير حالة البوت');
+    } finally {
+      setBotBusy(false);
+    }
   };
 
   const sendMessage = async () => {
@@ -431,12 +464,16 @@ export function WhatsAppInboxScreen() {
   const windowClosed = selected?.windowOpen === false;
   // A reaction is a free-form send: the send key, an open conversation and an open window.
   const mayReact = canSend && selected?.status === 'OPEN' && !windowClosed;
+  // The order bot in the open conversation, drawn only when the company switched it on.
+  const sBot = botAgent.active ? selected?.bot : undefined;
+  const botSilent = Boolean(sBot && (sBot.paused || sBot.handoff));
 
   return (
     <>
+      <WaStyle />
       {/* The window minus the header AS IT IS: the bar grows when it wraps, so a fixed 72 left the inbox
           taller than the window by the extra row and the page scrolled under it. */}
-      <div ref={columnRef} className="flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
+      <div ref={columnRef} className="wa flex flex-col" style={{ height: 'calc(100dvh - var(--sys-header-h, 72px))' }}>
         {/* The header is the kit's PageShell (R10e, 18/11). It is drawn WITHOUT children on purpose: the panes below
             must take the rest of this measured column (`flex-1`), and PageShell's own body is not a flex item —
             so the panes are its next sibling in the column, not its child. */}
@@ -445,14 +482,27 @@ export function WhatsAppInboxScreen() {
           description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
           width="full"
           actions={
-            <>{conn?.connection && (
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-note font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
-                <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
-                {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
-              </span>
-            )}</>
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setBotOpen(true)}>
+                <RiSparkling2Line className="w-4 h-4" />
+                {botAgent.active ? `البوت: ${botAgent.name}` : 'بوت الطلبات'}
+              </Button>
+              {conn?.connection && (
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-note font-semibold ${STATUS_COLORS[conn.status] || STATUS_COLORS.NEEDS_SETUP}`}>
+                  <span className={`w-2 h-2 rounded-full ${conn.status === 'CONNECTED' ? 'bg-[var(--sys-success)]' : 'bg-[var(--sys-warning)]'}`} />
+                  {conn.status === 'CONNECTED' ? 'متصل' : 'يحتاج إعداد'}
+                </span>
+              )}
+            </>
           }
         />
+        <Modal isOpen={botOpen} onClose={() => setBotOpen(false)} title="بوت الطلبات على واتساب" maxWidth="4xl">
+          {botOpen && (
+            <React.Suspense fallback={<p className="p-6 text-center text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل...</p>}>
+              <WhatsAppBotCard embedded onSaved={(a) => setBotAgent(a)} />
+            </React.Suspense>
+          )}
+        </Modal>
 
         {/* No connection state */}
         {!loading && conn && conn.status !== 'CONNECTED' ? (
@@ -479,7 +529,7 @@ export function WhatsAppInboxScreen() {
           /* 3-pane inbox */
           <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
             {/* ── Column 1: conversations list ── */}
-            <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+            <Card className={`wa-list flex flex-col min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-3 border-b border-[var(--sys-border)] space-y-2">
                 <div className="relative">
                   <RiSearchLine className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--sys-muted)] pointer-events-none" />
@@ -490,7 +540,7 @@ export function WhatsAppInboxScreen() {
                     onKeyDown={(e) => e.key === 'Enter' && loadConversations()}
                     placeholder="بحث برقم أو اسم..."
                     aria-label="بحث في المحادثات"
-                    className="w-full ps-9 pe-3 py-2 text-sm rounded-full border border-[var(--sys-border-input)] bg-[var(--sys-surface)] text-[var(--sys-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
+                    className="wa-search w-full ps-9 pe-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sys-primary)]/20"
                   />
                 </div>
                 <Segmented
@@ -523,38 +573,56 @@ export function WhatsAppInboxScreen() {
                     {statusFilter === 'OPEN' ? 'لا توجد محادثات مفتوحة بعد' : 'لا توجد محادثات مغلقة'}
                   </div>
                 ) : (
-                  conversations.map((c) => (
+                  conversations.map((c) => {
+                    const cBot = botAgent.active ? c.bot : undefined;
+                    return (
                     <button key={c.id} onClick={() => selectConversation(c)}
                       aria-current={selectedId === c.id ? 'true' : undefined}
-                      className={`w-full text-right flex items-center gap-3 px-3 py-3 border-b border-[var(--sys-border)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--sys-primary)] ${selectedId === c.id ? 'bg-[var(--sys-primary-soft)]' : 'hover:bg-[var(--sys-surface)]'}`}>
+                      className="wa-row">
                       <Avatar name={c.customerName} phone={c.customerPhone} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-[var(--sys-heading)] truncate" dir="auto">{c.customerName || c.customerPhone}</span>
-                          <span className={`shrink-0 text-note tabular-nums ${c.unreadCount > 0 ? 'text-[var(--sys-primary)] font-semibold' : 'text-[var(--sys-muted)]'}`}>{listTime(c.lastMessageAt)}</span>
+                      <div className="wa-row-body">
+                        <div className="wa-row-top">
+                          <span className="wa-name" dir="auto">{c.customerName || c.customerPhone}</span>
+                          <span className={`wa-time${c.unreadCount > 0 ? ' unread' : ''}`}>{listTime(c.lastMessageAt)}</span>
                         </div>
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <p className={`flex items-center gap-1 min-w-0 text-note truncate ${c.unreadCount > 0 ? 'text-[var(--sys-heading)] font-semibold' : 'text-[var(--sys-muted-foreground)]'}`}>
-                            <KindIcon type={c.lastMessageType} />
-                            <span className="truncate" dir="auto">{c.lastMessagePreview || '—'}</span>
-                          </p>
-                          {c.unreadCount > 0 && (
-                            <span aria-label={`${c.unreadCount} غير مقروءة`} className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--sys-primary)] text-[var(--sys-primary-foreground)] text-note font-bold flex items-center justify-center">{c.unreadCount}</span>
+                        <div className="wa-row-bottom">
+                          {cBot?.typing ? (
+                            <p className="wa-prev typing"><span>{botAgent.name} يكتب…</span></p>
+                          ) : (
+                            <p className="wa-prev">
+                              <KindIcon type={c.lastMessageType} />
+                              <span dir="auto">{c.lastMessagePreview || '—'}</span>
+                            </p>
                           )}
+                          <span className="wa-tags">
+                            {cBot?.handoff ? (
+                              <span className="wa-tag hand" title="الزبون بدّه موظف — البوت ساكت هون">
+                                <RiCustomerService2Line className="w-4 h-4" aria-hidden="true" /> موظف
+                              </span>
+                            ) : cBot && !cBot.paused ? (
+                              <span className="wa-tag bot" title={`${botAgent.name} شغّال بهالمحادثة`}>
+                                <RiSparkling2Line className="w-4 h-4" aria-hidden="true" /> بوت
+                              </span>
+                            ) : null}
+                            {c.unreadCount > 0 && (
+                              <span aria-label={`${c.unreadCount} غير مقروءة`} className="wa-unread">{c.unreadCount}</span>
+                            )}
+                          </span>
                         </div>
-                        {c.assignedTo && <p className="text-note text-[var(--sys-muted)] mt-0.5 truncate">مُسندة إلى: {c.assignedTo.name}</p>}
+                        {c.assignedTo && <p className="wa-sub">مُسندة إلى: {c.assignedTo.name}</p>}
                       </div>
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </Card>
 
             {/* ── Column 2: conversation ── */}
-            <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
+            <Card className={`wa-pane overflow-hidden ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
               {!selected ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center bg-[var(--sys-surface)]">
-                  <span className="w-16 h-16 rounded-full bg-[var(--sys-primary-soft)] text-[var(--sys-primary)] flex items-center justify-center">
+                <div className="wa-wall flex flex-col items-center justify-center gap-3 p-6 text-center">
+                  <span className="wa-av lg">
                     <RiChat3Line className="w-6 h-6" />
                   </span>
                   <p className="text-sm font-semibold text-[var(--sys-heading)]">اختر محادثة لعرضها</p>
@@ -562,7 +630,7 @@ export function WhatsAppInboxScreen() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--sys-border)]">
+                  <div className="wa-head">
                     <IconButton
                       size="sm"
                       className="lg:hidden shrink-0"
@@ -571,13 +639,38 @@ export function WhatsAppInboxScreen() {
                     ><RiArrowRightSLine className="icon-mirror w-5 h-5" /></IconButton>
                     <Avatar name={selected.customerName} phone={selected.customerPhone} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-[var(--sys-heading)] truncate" dir="auto">{selected.customerName || selected.customerPhone}</p>
-                      <p className="text-note text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
+                      <p className="wa-head-name" dir="auto">{selected.customerName || selected.customerPhone}</p>
+                      <p className="wa-head-sub">
+                        <span dir="ltr">{selected.customerPhone}</span>
+                        {sBot && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            {sBot.typing ? (
+                              <span className="on">{botAgent.name} يكتب…</span>
+                            ) : botSilent ? (
+                              <span className="off">موقوف — {sBot.reasonAr || (sBot.handoff ? 'الزبون بدّه موظف' : 'رد موظف')}</span>
+                            ) : (
+                              <span className="bot"><RiSparkling2Line className="w-4 h-4" aria-hidden="true" /> {botAgent.name} شغّال</span>
+                            )}
+                          </>
+                        )}
+                      </p>
                     </div>
                     {windowClosed && (
                       <span className="hidden md:flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
                         <RiTimeLine className="w-4 h-4" /> نافذة الـ24 ساعة مغلقة
                       </span>
+                    )}
+                    {sBot && canSend && (
+                      botSilent ? (
+                        <Button variant="secondary" size="sm" onClick={() => { void setBot('resume'); }} loading={botBusy} className="shrink-0">
+                          رجّع البوت
+                        </Button>
+                      ) : (
+                        <Button variant="quiet" size="sm" onClick={() => { void setBot('pause'); }} loading={botBusy} className="shrink-0">
+                          أوقف البوت
+                        </Button>
+                      )
                     )}
                     <Button variant="secondary" size="sm" onClick={toggleStatus} className="shrink-0">
                       {selected.status === 'OPEN' ? 'إغلاق المحادثة' : 'إعادة فتح'}
@@ -602,9 +695,9 @@ export function WhatsAppInboxScreen() {
 
                   {/* Messages */}
                   {msgsLoading ? (
-                    <div className="flex-1 flex items-center justify-center text-note text-[var(--sys-muted-foreground)] bg-[var(--sys-surface)]">جارٍ التحميل...</div>
+                    <div className="wa-wall flex items-center justify-center text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل...</div>
                   ) : messages.length === 0 ? (
-                    <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-[var(--sys-surface)]">
+                    <div className="wa-wall overflow-y-auto px-4 py-4">
                       <EmptyState
                         title="لا رسائل في هذه المحادثة"
                         why="المحادثة مفتوحة ولم يصل منها شيء بعد. رسائل واتساب لا تُسحب بأثرٍ رجعيّ — ما قبل الربط ليس هنا."
@@ -618,12 +711,27 @@ export function WhatsAppInboxScreen() {
                       loadingOlder={loadingOlder}
                       onLoadOlder={() => { void loadOlder(); }}
                       onReact={mayReact ? (id, e) => { void react(id, e); } : undefined}
+                      botName={botAgent.name}
+                      botTyping={Boolean(sBot?.typing)}
                     />
+                  )}
+
+                  {/* The customer asked for a person, or the bot stopped: say so where the reply is written. */}
+                  {sBot?.handoff && (
+                    <div className="wa-note" role="status">
+                      <RiCustomerService2Line className="w-5 h-5" aria-hidden="true" />
+                      <p>{sBot.reason === 'HANDOFF' ? 'الزبون طلب يحكي مع موظف' : `البوت وقف: ${sBot.reasonAr || 'راجع المحادثة'}`} — {botAgent.name} ساكت بهالمحادثة لحتى ترجّعوه.</p>
+                      {canSend && (
+                        <Button variant="secondary" size="sm" onClick={() => { void setBot('resume'); }} loading={botBusy} className="shrink-0">
+                          رجّع البوت
+                        </Button>
+                      )}
+                    </div>
                   )}
 
                   {/* Composer */}
                   {canSend && selected.status === 'OPEN' && (
-                    <div className="border-t border-[var(--sys-border)] p-3 space-y-2">
+                    <div className="wa-foot space-y-2">
                       {sendError && (
                         <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note">
                           <span className="flex items-center gap-1.5"><RiErrorWarningLine className="w-4 h-4 shrink-0" />{sendError}</span>
@@ -659,10 +767,10 @@ export function WhatsAppInboxScreen() {
                     </div>
                   )}
                   {selected.status === 'CLOSED' && (
-                    <div className="border-t border-[var(--sys-border)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
+                    <div className="wa-foot p-3 text-center text-note text-[var(--sys-muted-foreground)]">المحادثة مغلقة — أعد فتحها للإرسال</div>
                   )}
                   {!canSend && (
-                    <div className="border-t border-[var(--sys-border)] p-3 text-center text-note text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
+                    <div className="wa-foot p-3 text-center text-note text-[var(--sys-muted-foreground)]">ليس لديك صلاحية لإرسال الرسائل</div>
                   )}
                 </>
               )}

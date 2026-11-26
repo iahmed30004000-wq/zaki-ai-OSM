@@ -37,7 +37,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   (a separate system) may send the order and the customer's messages to its
   configured OpenAI-compatible model (AI_BASE_URL, by default
   glm.erv.zakiai.io); nothing in this repository sends data to a model
-  because of it.
+  because of it. A second exception, the owner's decision of 2026-11-26: the
+  WhatsApp order bot in this repository (`src/lib/whatsapp/bot/`) may send the
+  customer's WhatsApp messages, name, phone, address and orders to its
+  configured OpenAI-compatible model — the same model as Sarah (by default
+  glm.erv.zakiai.io/v1, the key entered on the site and sealed) — and to no
+  other provider. Under the same decision the bot confirms an order on the
+  customer's own clear yes and changes the name, address, city, notes and offer
+  of the customer's own orders; the yes is read by code (`words.ts`), the model
+  only proposes, and the file that writes orders (`order-door.ts`) never calls a
+  model. It never cancels, prices, discounts or creates an order.
 - **Never accept a database reset.** If `prisma migrate dev` or any tool offers to reset, drop or wipe a database, answer no, STOP and report. A new migration is written by hand, applied with `prisma db execute`, and recorded with `prisma migrate resolve --applied`.
 - **Definition of Done before any work.** Every task starts with a DEFINITION OF DONE at the top of its PR — what must work · the tests · the edge cases that matter · the blockers. Reviews check against it and nothing else. Anything noticed outside it goes to `BACKLOG_P2.md` («من المراجعات») and is not fixed in the same PR. When every item is met and no blocker exists, stop. Fixed blockers in every task: CI red or an old test red · money arithmetic changed · order creation changed · customer data to an external model · a secret exposed · a destructive migration or a production write · a published contract broken · a feature removed instead of marked. At most two review rounds: «شيك» → fix the blockers only → a last «شيك» on those blockers.
 

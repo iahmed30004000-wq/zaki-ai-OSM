@@ -31,6 +31,8 @@ export interface MessageView {
   replyTo: { id: string; direction: string; messageType: string; text: string | null } | null;
   /** For a REACTION row: the message it marks (our id), or null when that message is not ours to show. */
   reactionToId: string | null;
+  /** Written by the order bot, not by a person: the thread labels it with the bot's name. */
+  byBot: boolean;
 }
 
 type Row = {
@@ -53,6 +55,7 @@ type Row = {
   replyToExternalId?: string | null;
   reactionToExternalId?: string | null;
   meta?: unknown;
+  sentByBot?: boolean | null;
 };
 
 const mediaState = (r: Row): NonNullable<MessageView['media']>['state'] => {
@@ -93,6 +96,7 @@ export function viewOf(r: Row, refs: Map<string, { id: string; direction: string
     contacts: r.messageType === 'CONTACTS' && Array.isArray(meta.contacts) ? meta.contacts : null,
     replyTo: reply ? { id: reply.id, direction: reply.direction, messageType: reply.messageType, text: reply.text ? reply.text.slice(0, 160) : null } : null,
     reactionToId: target?.id ?? null,
+    byBot: r.sentByBot === true,
   };
 }
 

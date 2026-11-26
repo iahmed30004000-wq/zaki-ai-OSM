@@ -12,6 +12,7 @@ import { getVerifyToken } from '@/lib/whatsapp/config';
 import { verifyMetaSignature } from '@/lib/whatsapp/signature';
 import { processWebhookPayload } from '@/lib/whatsapp/inbound';
 import { prefetchMedia } from '@/lib/whatsapp/media';
+import { botAfterInbound } from '@/lib/whatsapp/bot/engine';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -68,6 +69,16 @@ export async function POST(req: Request) {
         after(() => prefetchMedia(ids));
       } catch {
         /* outside a request scope (tests, scripts): the first view fetches instead */
+      }
+    }
+    // The order bot answers the customers who wrote — after the 200 too, so its few seconds of waiting and the model's
+    // answer never make Meta retry. It decides by itself whether it may speak (switched on, not paused, window open).
+    const inbound = result?.botInbound ?? [];
+    if (inbound.length > 0) {
+      try {
+        after(() => botAfterInbound(inbound));
+      } catch {
+        /* outside a request scope (tests, scripts): no bot turn */
       }
     }
   } catch (e) {
