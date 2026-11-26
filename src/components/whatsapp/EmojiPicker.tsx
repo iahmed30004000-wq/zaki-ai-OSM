@@ -52,7 +52,7 @@ export default function EmojiPicker({ onPick, onClose }: { onPick: (emoji: strin
           className="w-full"
         />
         <p className="mt-2 px-1 text-note text-[var(--sys-muted-foreground)]">{current.label}</p>
-        <div role="group" aria-label={current.label} className="mt-1 grid grid-cols-7 sm:grid-cols-8 gap-0.5 max-h-52 overflow-y-auto">
+        <div role="group" aria-label={current.label} className="mt-1 grid grid-cols-7 gap-0.5 max-h-56 overflow-y-auto">
           {current.emojis.map((e) => (
             <IconButton key={e} size="sm" label={`إدراج ${e}`} onClick={() => onPick(e)}>
               <span className="text-xl leading-none">{e}</span>

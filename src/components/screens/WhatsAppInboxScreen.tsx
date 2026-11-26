@@ -477,7 +477,7 @@ export function WhatsAppInboxScreen() {
           </div>
         ) : (
           /* 3-pane inbox */
-          <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[340px_1fr_300px] gap-4 overflow-hidden">
+          <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
             {/* ── Column 1: conversations list ── */}
             <Card className={`flex flex-col min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-3 border-b border-[var(--sys-border)] space-y-2">
@@ -526,7 +526,7 @@ export function WhatsAppInboxScreen() {
                   conversations.map((c) => (
                     <button key={c.id} onClick={() => selectConversation(c)}
                       aria-current={selectedId === c.id ? 'true' : undefined}
-                      className={`w-full text-right flex items-center gap-3 px-3 py-3 border-b border-[var(--sys-border)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--sys-focus)] ${selectedId === c.id ? 'bg-[var(--sys-primary-soft)]' : 'hover:bg-[var(--sys-surface)]'}`}>
+                      className={`w-full text-right flex items-center gap-3 px-3 py-3 border-b border-[var(--sys-border)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--sys-primary)] ${selectedId === c.id ? 'bg-[var(--sys-primary-soft)]' : 'hover:bg-[var(--sys-surface)]'}`}>
                       <Avatar name={c.customerName} phone={c.customerPhone} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
@@ -562,7 +562,7 @@ export function WhatsAppInboxScreen() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 px-3 sm:px-4 py-2.5 border-b border-[var(--sys-border)]">
+                  <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--sys-border)]">
                     <IconButton
                       size="sm"
                       className="lg:hidden shrink-0"
@@ -575,7 +575,7 @@ export function WhatsAppInboxScreen() {
                       <p className="text-note text-[var(--sys-muted-foreground)] truncate" dir="ltr">{selected.customerPhone}</p>
                     </div>
                     {windowClosed && (
-                      <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
+                      <span className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-[var(--sys-warning-soft)] text-[var(--sys-warning)] text-note font-semibold shrink-0" title={WINDOW_CLOSED_MESSAGE}>
                         <RiTimeLine className="w-4 h-4" /> نافذة الـ24 ساعة مغلقة
                       </span>
                     )}
@@ -623,7 +623,7 @@ export function WhatsAppInboxScreen() {
 
                   {/* Composer */}
                   {canSend && selected.status === 'OPEN' && (
-                    <div className="border-t border-[var(--sys-border)] p-2 sm:p-3 space-y-2">
+                    <div className="border-t border-[var(--sys-border)] p-3 space-y-2">
                       {sendError && (
                         <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-[var(--sys-destructive-soft)] border border-[var(--sys-destructive-border)] text-[var(--sys-destructive)] text-note">
                           <span className="flex items-center gap-1.5"><RiErrorWarningLine className="w-4 h-4 shrink-0" />{sendError}</span>
@@ -639,7 +639,7 @@ export function WhatsAppInboxScreen() {
                           <RiTimeLine className="w-5 h-5 shrink-0 text-[var(--sys-warning)]" />
                           <span className="flex-1 leading-relaxed">{WINDOW_CLOSED_MESSAGE}</span>
                           {selected.templateReady ? (
-                            <Button variant="primary" size="sm" onClick={() => { void sendTemplate(); }} loading={sendingTemplate} className="shrink-0 self-start sm:self-auto">
+                            <Button variant="primary" size="sm" onClick={() => { void sendTemplate(); }} loading={sendingTemplate} className="shrink-0 self-start">
                               إرسال القالب المعتمد
                             </Button>
                           ) : (

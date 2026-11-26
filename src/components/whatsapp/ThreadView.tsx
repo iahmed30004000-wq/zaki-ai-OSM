@@ -67,7 +67,7 @@ export function ThreadView({ messages, hasOlder, loadingOlder, onLoadOlder, onRe
 
   return (
     <div className="relative flex-1 min-h-0">
-      <div ref={scroller} className="h-full overflow-y-auto px-3 sm:px-4 py-4 space-y-1.5 bg-[var(--sys-surface)]" dir="ltr" aria-live="polite" aria-relevant="additions">
+      <div ref={scroller} className="h-full overflow-y-auto px-4 py-4 space-y-1.5 bg-[var(--sys-surface)]" dir="ltr" aria-live="polite" aria-relevant="additions">
         {hasOlder && (
           <div className="flex justify-center pb-2">
             <Button variant="secondary" size="sm" onClick={onLoadOlder} loading={loadingOlder}>

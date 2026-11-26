@@ -76,7 +76,7 @@ export function VoicePlayer({ src, voice, mine }: { src: string; voice: boolean;
 
   const max = duration || 0;
   return (
-    <div className="flex items-center gap-2 min-w-0 w-64 max-w-full" dir="ltr">
+    <div className="flex items-center gap-2 min-w-0 w-56 max-w-full" dir="ltr">
       <audio ref={audio} src={src} preload="none" className="hidden" />
       <span
         aria-hidden="true"

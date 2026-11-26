@@ -89,7 +89,7 @@ function Body({ m, mine, onOpenImage }: { m: WaMessage; mine: boolean; onOpenIma
                 e.preventDefault();
                 onOpenImage(src, m.text);
               }}
-              className="block rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-focus)]"
+              className="block rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-primary)]"
               aria-label="فتح الصورة"
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- an authenticated, per-message file: not for the image optimizer */}
@@ -146,7 +146,7 @@ function Body({ m, mine, onOpenImage }: { m: WaMessage; mine: boolean; onOpenIma
                 download={media.fileName || true}
                 aria-label="تنزيل الملف"
                 title="تنزيل الملف"
-                className="shrink-0 inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-lg text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-focus)]"
+                className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-lg text-[var(--sys-primary)] hover:bg-[var(--sys-primary-soft)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-primary)]"
               >
                 <RiDownloadLine className="w-5 h-5" />
               </a>
@@ -162,7 +162,7 @@ function Body({ m, mine, onOpenImage }: { m: WaMessage; mine: boolean; onOpenIma
           href={mapLink(m.location.latitude, m.location.longitude)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-surface-strong)] min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-focus)]"
+          className="flex items-center gap-3 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-surface-strong)] min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sys-primary)]"
         >
           <span className="shrink-0 w-10 h-10 rounded-lg bg-[var(--sys-destructive-soft)] text-[var(--sys-destructive)] flex items-center justify-center">
             <RiMapPinLine className="w-5 h-5" />
@@ -243,17 +243,19 @@ export function MessageBubble({ message: m, reactions = [], onOpenImage, onReact
   return (
     <div className={`group flex items-end gap-1 ${mine ? 'justify-end' : 'justify-start'}`} data-message-id={m.id}>
       {mine && onReact && <ReactControl picking={picking} setPicking={setPicking} onPick={(e) => onReact(m.id, e === myReaction ? '' : e)} />}
-      <div className={`relative max-w-[85%] sm:max-w-[70%] ${reactions.length ? 'mb-3' : ''}`}>
+      <div className={`relative max-w-[75%] ${reactions.length ? 'mb-3' : ''}`}>
         <div
           className={
             bare
               ? 'px-1 py-0.5 text-sm text-[var(--sys-heading)]'
               : `rounded-lg px-3 py-2 text-sm shadow-raised text-[var(--sys-heading)] ${
                   mine
-                    ? 'bg-[var(--sys-primary-soft)] rounded-ee-sm'
-                    : 'bg-[var(--sys-card)] border border-[var(--sys-border)] rounded-es-sm'
+                    ? 'bg-[var(--sys-primary-soft)]'
+                    : 'bg-[var(--sys-card)] border border-[var(--sys-border)]'
                 }`
           }
+          // The tail corner, inline: two one-off utilities cost the shared stylesheet more than they are worth (CSS budget).
+          style={bare ? undefined : mine ? { borderEndEndRadius: 4 } : { borderEndStartRadius: 4 }}
         >
           {m.replyTo && (
             <div className="mb-1.5 ps-2 pe-2 py-1 rounded-lg border-s-4 border-[var(--sys-primary)] bg-[var(--sys-surface)] text-note min-w-0">
@@ -268,7 +270,7 @@ export function MessageBubble({ message: m, reactions = [], onOpenImage, onReact
           </div>
         </div>
         {reactions.length > 0 && (
-          <div className={`absolute -bottom-3 ${mine ? 'end-2' : 'start-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[var(--sys-card)] shadow-raised text-sm leading-none`}>
+          <div style={{ bottom: -12 }} className={`absolute ${mine ? 'end-2' : 'start-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[var(--sys-card)] shadow-raised text-sm leading-none`}>
             {reactions.map((r) => (
               <span key={`${r.emoji}-${r.mine}`} role="img" aria-label={r.mine ? `تفاعلك ${r.emoji}` : `تفاعل الزبون ${r.emoji}`}>
                 {r.emoji}
@@ -289,7 +291,7 @@ function ReactControl({ picking, setPicking, onPick }: { picking: boolean; setPi
         <RiEmotionLine className="w-4 h-4" />
       </IconButton>
       {picking && (
-        <div role="group" aria-label="اختر تفاعلاً" className="absolute bottom-full mb-1 start-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 p-1 rounded-full bg-[var(--sys-card)] shadow-overlay">
+        <div role="group" aria-label="اختر تفاعلاً" className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 p-1 rounded-full bg-[var(--sys-card)] shadow-overlay">
           {QUICK_REACTIONS.map((e) => (
             <IconButton
               key={e}
