@@ -235,6 +235,18 @@ describe('nothing outside the warehouse doors names the new columns', () => {
     'src/components/screens/InventoryBalancesScreen.tsx',
     'src/lib/batch-grade.ts',
     'src/lib/stock-places.ts',
+    // 27/11: the swap names its sale as the swapped box's warehouse before it is counted out.
+    'src/lib/parcel-swap.ts',
+    // 27/11 («كل إشي قديم من قدسيا»): the per-warehouse figures and their read door, the one press that gives the old
+    // stock its warehouse with its door and sheet, and the two stock readers that fall back to that warehouse.
+    'src/lib/warehouse-figures.ts',
+    'src/lib/old-stock-home.ts',
+    'src/app/api/inventory/old-stock/route.ts',
+    'src/app/api/inventory/shelf/route.ts',
+    'src/components/inventory/OldStockHome.tsx',
+    'src/components/inventory/WarehouseTable.tsx',
+    'src/components/inventory/ShelfFigures.tsx',
+    'src/components/inventory/the-old-stock-press.test.tsx',
     // 20/11, W3a (the transfer inside one store): the transfer lib and its door helper, the four doors (send + list,
     // receive, cancel, difference), and the kind file that holds the stop door's «open transfer» question.
     'src/lib/stock-transfers.ts',

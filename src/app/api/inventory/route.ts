@@ -18,6 +18,8 @@ import { IntakePlaceRefused, intakePlace, intakeRefusalBody, storeIsPlaced } fro
 import { COUNT_MATCHES_AR, differenceWaitsAr, expectedInWarehouse, quickCountVerdict } from '@/lib/warehouse-count';
 import { reachesWarehouse, warehousesOfStore, warehousesReachedBy } from '@/lib/warehouses';
 import { unitsWithCourier } from '@/lib/warehouse-placement';
+import { unsourcedHolds, warehouseHolds } from '@/lib/warehouse-figures';
+import { leftWarehouseWhere } from '@/lib/order-state';
 import { countRuns } from '@/lib/batch-grade';
 import { placesOf, shownPlaces } from '@/lib/stock-places';
 import type { SessionUser } from '@/types/auth';
@@ -181,7 +183,17 @@ export async function GET() {
          * Placed store only (W2c): the same units, by place — per warehouse, «بالطريق», with no place — and the units of
          * this store's orders that are out with the courier. Absent for a store that is not placed.
          */
-        ...(places ? { places: shownPlaces(placesOf(p.batches, places.order), places.withCourier.get(p.id) ?? 0) } : {}),
+        ...(places
+          ? {
+              places: shownPlaces(placesOf(p.batches, places.order), places.withCourier.get(p.id) ?? 0, {
+                order: places.order,
+                holds: places.holds,
+                productId: p.id,
+                reserved: reserved.get(p.id) ?? 0,
+                unsourced: places.unsourced.get(p.id) ?? 0,
+              }),
+            }
+          : {}),
       };
     });
 
@@ -201,6 +213,10 @@ export async function GET() {
        * may receive goods into it (`reachesWarehouse`, the rule the receive door asks). Absent for a store not placed.
        */
       ...(places ? { warehouses: places.warehouses } : {}),
+      // 27/11: the old stock still has no warehouse — the screen offers its press (`old-stock-home.ts`).
+      ...(places?.oldStockPending && stockSummary.some((s) => s.places && (s.places.unsourcedWithCourier !== 0 || (s.places.unplaced ?? s.places.withCourier) !== 0))
+        ? { oldStockPending: true }
+        : {}),
     });
   } catch (error: any) {
     if (error instanceof UncostedSurplus) {
@@ -239,7 +255,13 @@ async function storePlaces(user: SessionUser, companyId: string, storeId: string
     ...own.map((w) => ({ id: w.id, name: w.name, mayReceive: reached.has(w.id) })),
     ...stopped.map((w) => ({ id: w.id, name: w.name, mayReceive: false })),
   ];
-  return { warehouses, order: warehouses.map((w) => w.id), withCourier };
+  const order = warehouses.map((w) => w.id);
+  const [holds, unsourced, placement] = await Promise.all([
+    warehouseHolds(db, { companyId, storeId, warehouseIds: order, productIds }),
+    unsourcedHolds(db, { companyId, storeId, productIds, left: { AND: [leftWarehouseWhere()] } }),
+    db.warehousePlacement.findUnique({ where: { storeId }, select: { oldStockWarehouseId: true } }),
+  ]);
+  return { warehouses, order, withCourier, holds, unsourced, oldStockPending: !placement?.oldStockWarehouseId };
 }
 
 /** The unit cost of this product's newest costed stock in this store, if any. */

@@ -17,6 +17,8 @@
  * door keeps sending `remaining` as it always did.
  */
 
+import { figureOf, type WarehouseHold } from './warehouse-figures';
+
 export interface PlaceRow {
   quantityRemaining: number;
   warehouseId?: string | null;
@@ -49,7 +51,12 @@ export function placesOf(rows: readonly PlaceRow[], warehouseOrder: readonly str
 }
 
 export interface ShownPlaces {
-  warehouses: { id: string; onHand: number }[];
+  /** 27/11: «على الرف · محجوز · متاح» of each warehouse (`warehouse-figures.ts`); `pending` = asked by an exit or a transfer. */
+  warehouses: { id: string; onHand: number; held?: number; free?: number; pending?: number }[];
+  /** 27/11: units reserved by orders that are in no warehouse yet (confirmed, not on a shipment). */
+  unassigned?: number;
+  /** 27/11: units with the courier of orders that name no warehouse — the old stock, until its press. */
+  unsourcedWithCourier?: number;
   inTransit: number;
   /** Units of this store's orders that have left and still hold their reservation (`warehouse-placement.unitsWithCourier`). */
   withCourier: number;
@@ -63,11 +70,20 @@ export interface ShownPlaces {
 }
 
 /** What the balances card prints for a placed store: the places, and the courier's units beside them. */
-export function shownPlaces(p: ProductPlaces, withCourier: number): ShownPlaces {
-  return {
-    warehouses: p.warehouses,
-    inTransit: p.inTransit,
-    withCourier,
-    ...(p.unplaced !== withCourier ? { unplaced: p.unplaced } : {}),
-  };
+export function shownPlaces(
+  p: ProductPlaces,
+  withCourier: number,
+  held?: { order: readonly string[]; holds: ReadonlyMap<string, ReadonlyMap<string, WarehouseHold>>; productId: string; reserved: number; unsourced: number }
+): ShownPlaces {
+  const rest = { inTransit: p.inTransit, withCourier, ...(p.unplaced !== withCourier ? { unplaced: p.unplaced } : {}) };
+  // No holds asked: the places alone.
+  if (!held) return { warehouses: p.warehouses, ...rest };
+  const onHandOf = new Map(p.warehouses.map((w) => [w.id, w.onHand]));
+  const ids = [...new Set([...held.order, ...onHandOf.keys()])];
+  const warehouses = ids
+    .map((id) => ({ id, ...figureOf(onHandOf.get(id) ?? 0, held.holds.get(id)?.get(held.productId)) }))
+    // A warehouse with nothing on its shelf is still shown when something of it is held.
+    .filter((w) => w.onHand !== 0 || w.held !== 0);
+  const sourced = warehouses.reduce((s, w) => s + w.held - w.pending, 0);
+  return { warehouses, unassigned: held.reserved - sourced - held.unsourced, unsourcedWithCourier: held.unsourced, ...rest };
 }

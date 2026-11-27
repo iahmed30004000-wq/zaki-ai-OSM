@@ -7,7 +7,9 @@ import { repoFile, stripComments } from '@/lib/guard-source';
 /**
  * THE STOCK SCREENS NAME THEIR WAREHOUSES — for a store placed in warehouses only (the warehouse plan, W2c).
  *
- *   «أرصدة المخزون»   per-warehouse chips on each card (and «بالطريق», «مع الشحن», «بلا مكان»), a warehouse filter, and
+ *   «أرصدة المخزون»   per warehouse «على الرف · محجوز · متاح» on each card (27/11: the owner — «لازم متاح محجوز و ع الرف لكل
+ *                     مخزن»; they were one chip of the shelf each), the chips «بالطريق», «محجوز لسا بلا مخزن», «مع الشحن بلا
+ *                     مخزن» (it was «مع الشحن», which counted goods a second time beside the warehouses) and «بلا مكان», a warehouse filter, and
  *                     a receive dialog that asks which warehouse the goods landed in (the door refuses a placed store's
  *                     receipt without one: `WAREHOUSE_REQUIRED`).
  *   «حركات المخزون»   a warehouse column and a warehouse filter.
@@ -52,12 +54,15 @@ const ROWS = [
   {
     id: 'A', name: 'منتج A', sku: 'SKU-A', sourceType: 'PURCHASED', produced: 20, sold: 8, remaining: 12, reserved: 2,
     lastUnitCost: 3, health,
-    places: { warehouses: [{ id: 'w-a', onHand: 7 }, { id: 'w-b', onHand: 3 }], inTransit: 1, withCourier: 1 },
+    places: {
+      warehouses: [{ id: 'w-a', onHand: 7, held: 4, free: 3, pending: 0 }, { id: 'w-b', onHand: 3, held: 0, free: 3, pending: 0 }],
+      unassigned: 2, unsourcedWithCourier: 1, inTransit: 1, withCourier: 1,
+    },
   },
   {
     id: 'B', name: 'منتج B', sku: 'SKU-B', sourceType: 'PURCHASED', produced: 9, sold: 0, remaining: 9, reserved: 0,
     lastUnitCost: 2, health,
-    places: { warehouses: [{ id: 'w-b', onHand: 6 }], inTransit: 0, withCourier: 0, unplaced: 3 },
+    places: { warehouses: [{ id: 'w-b', onHand: 6, held: 0, free: 6, pending: 0 }], unassigned: 0, unsourcedWithCourier: 0, inTransit: 0, withCourier: 5, unplaced: 3 },
   },
 ];
 
@@ -81,23 +86,30 @@ afterEach(() => {
 });
 
 const card = (name: string) => screen.getByText(name).closest('div[class*="space-y-3"]') as HTMLElement;
+const rows = (name: string) =>
+  [...card(name).querySelectorAll('[data-warehouse]')].map((row) => [
+    row.querySelector('p')!.textContent,
+    ...['onHand', 'held', 'free'].map((f) => row.querySelector(`[data-figure="${f}"]`)!.textContent),
+  ]);
 
 describe('«أرصدة المخزون» of a placed store', () => {
   it('each card prints the server’s figures by place — named warehouses, the road, the courier, no place', async () => {
     render(<InventoryBalancesScreen />);
     await screen.findByText('منتج A');
     const a = within(card('منتج A'));
-    expect(a.getByText('مخزن الشمال · 7')).toBeTruthy();
-    expect(a.getByText('مخزن الجنوب · 3')).toBeTruthy();
+    // One row per warehouse: its name, on the shelf, reserved, available — the server's figures, in that order.
+    expect(rows('منتج A')).toEqual([['مخزن الشمال', '7', '4', '3'], ['مخزن الجنوب', '3', '0', '3']]);
     expect(a.getByText('بالطريق · 1')).toBeTruthy();
-    expect(a.getByText('مع الشحن · 1')).toBeTruthy();
+    expect(a.getByText('محجوز لسا بلا مخزن · 2')).toBeTruthy();
+    expect(a.getByText('مع الشحن بلا مخزن · 1')).toBeTruthy();
     expect(a.queryByText(/بلا مكان/)).toBeNull();
     const b = within(card('منتج B'));
-    expect(b.getByText('مخزن الجنوب · 6')).toBeTruthy();
+    expect(rows('منتج B')).toEqual([['مخزن الجنوب', '6', '0', '6']]);
     expect(b.getByText('بلا مكان · 3')).toBeTruthy();
-    // NEGATIVE: a zero is not drawn as a chip.
+    // NEGATIVE: a zero is not drawn as a chip, and the courier's whole figure is no chip of its own.
     expect(b.queryByText(/بالطريق/)).toBeNull();
     expect(b.queryByText(/مع الشحن/)).toBeNull();
+    expect(b.queryByText(/محجوز لسا/)).toBeNull();
     // The store figures are untouched: the shelf is the server's 12, not a sum of the chips.
     expect(a.getByText('12')).toBeTruthy();
   });
@@ -110,7 +122,7 @@ describe('«أرصدة المخزون» of a placed store', () => {
     fireEvent.change(filter, { target: { value: 'w-a' } });
     expect(screen.queryByText('منتج B')).toBeNull();
     expect(screen.getByText('منتج A')).toBeTruthy();
-    expect(screen.getByText('مخزن الشمال · 7').className).toContain('ring-2');
+    expect(card('منتج A').querySelector('[data-warehouse="w-a"]')!.className).toContain('ring-2');
     fireEvent.change(filter, { target: { value: 'all' } });
     expect(screen.getByText('منتج B')).toBeTruthy();
   });

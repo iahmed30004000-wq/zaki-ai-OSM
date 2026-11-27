@@ -155,6 +155,8 @@ vi.mock('@/lib/db', () => {
   const names = [
     'store', 'country', 'product', 'productionBatch', 'productionBatchCost', 'inventoryMovement', 'user', 'warehouse',
     'warehousePlacement', 'userCountryAccess', 'userStoreAccess', 'userWarehouseAccess',
+    // 27/11: the balances of a placed store also read what each warehouse holds (`warehouse-figures.ts`) — none here.
+    'orderItem', 'orderAddOn', 'stockExitLine', 'stockTransferLine',
   ];
   const db: Row = Object.fromEntries(names.map((n) => [n, t(n)]));
   db.$executeRaw = async () => 1;

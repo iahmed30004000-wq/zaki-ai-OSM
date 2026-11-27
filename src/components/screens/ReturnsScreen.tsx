@@ -627,7 +627,9 @@ function ReceiveAllDialog({
   const warehouses = useReceiveWarehouses();
   const toast = useToast();
   const [acknowledged, setAcknowledged] = useState(false);
-  const [into, setInto] = useState('');
+  /** 27/11: a person who reaches exactly one warehouse receives into it; anybody else chooses. */
+  const [picked, setInto] = useState<string | null>(null);
+  const into = picked ?? (warehouses?.length === 1 ? warehouses[0].id : '');
   const [running, setRunning] = useState(false);
   const [totals, setTotals] = useState<ReceiveAllTotals>(emptyTotals());
   const stop = useRef(false);
@@ -747,9 +749,11 @@ function ReceiveDialog({
   const warehouses = useReceiveWarehouses();
   /** The warehouse it left from, when this person may receive into it (names are unique within a country). */
   const fromSource = warehouses?.find((w) => w.name === order.sourceWarehouseName);
+  /** 27/11: the keeper's own warehouse — a person who reaches exactly one receives into it («مصطفى بعين ترما»). */
+  const mine = warehouses?.length === 1 ? warehouses[0] : undefined;
   const [picked, setInto] = useState<string | null>(null);
-  /** Until the person picks, the warehouse it left from is the choice. */
-  const into = picked ?? fromSource?.id ?? '';
+  /** Until the person picks: their one warehouse, else the warehouse it left from. */
+  const into = picked ?? mine?.id ?? fromSource?.id ?? '';
   const toast = useToast();
   const phone = useIsPhone();
   const formId = useId();
@@ -889,7 +893,9 @@ function ReceiveDialog({
             sends one — the receipt is written exactly as before. A parcel with no source warehouse draws nothing. */}
         {order.sourceWarehouseName && (
           <p className="text-note text-[var(--sys-muted-foreground)]">
-            طلع من مخزن {order.sourceWarehouseName} — رجّعه عليه.
+            {mine && mine.name !== order.sourceWarehouseName
+              ? `طلع من مخزن ${order.sourceWarehouseName} — وبيدخل على مخزنك «${mine.name}».`
+              : `طلع من مخزن ${order.sourceWarehouseName} — رجّعه عليه.`}
           </p>
         )}
         {/* W2b: WHERE IT IS RECEIVED — a placed store only. The warehouse it left from comes chosen; another may be picked. */}

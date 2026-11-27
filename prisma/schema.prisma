@@ -780,6 +780,10 @@ model WarehousePlacement {
   /// The system user who pressed. Distinct from countedByName by design.
   recordedById  String
   createdAt     DateTime @default(now())
+  /// 27/11: the warehouse all the OLD stock belongs to (`old-stock-home.ts`) — written once by its press. An order that
+  /// names no warehouse draws from it first. Null = not pressed.
+  oldStockWarehouseId String?
+  oldStockMovedAt     DateTime?
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
 
