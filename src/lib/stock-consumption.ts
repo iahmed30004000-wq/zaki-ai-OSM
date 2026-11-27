@@ -183,7 +183,7 @@ export async function consumeOrderStock(
       // The currency's minor unit, read from the order rather than asked of
       // the caller: it is a property of the order, and four callers would
       // otherwise each have to find it and could each find a different one.
-      store: { select: { country: { select: { minorUnit: true } } } },
+      store: { select: { country: { select: { minorUnit: true } }, warehousePlacement: { select: { oldStockWarehouseId: true } } } },
     },
   });
   if (!order) return { taken: 0, short: 0, alreadyDone: false, cost: 0 };
@@ -225,7 +225,8 @@ export async function consumeOrderStock(
    * order the figure × the units, whichever batch they left; a product without one costs what its batches cost, and
    * those can be other batches than the store-wide oldest — that is the disclosed point, and nothing else moves.
    */
-  const source = order.sourceWarehouseId ?? null;
+  // 27/11: an order that names no warehouse is old stock's (`old-stock-home.ts`) — never another warehouse's shelf first.
+  const source = order.sourceWarehouseId ?? order.store?.warehousePlacement?.oldStockWarehouseId ?? null;
   const elsewhereLines: { productId: string; productName: string; fromSource: number; elsewhere: ElsewherePlace[] }[] = [];
   let names: Map<string, string> | null = null;
   for (const line of lines) {
@@ -811,7 +812,7 @@ export async function takeOffUnreturned(
       // The warehouse it left from (W4a) — read only when the desk named a receiving warehouse (W2b).
       ...(receiver ? { sourceWarehouseId: true } : {}),
       items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
-      store: { select: { country: { select: { minorUnit: true } } } },
+      store: { select: { country: { select: { minorUnit: true } }, warehousePlacement: { select: { oldStockWarehouseId: true } } } },
     },
   });
   if (!order) return skip('NO_ORDER');
@@ -821,7 +822,12 @@ export async function takeOffUnreturned(
    * W2b: where the broken and missing units leave from, and the warehouse their lines name. Empty for a store that is not
    * placed (no receiver): every draw below is then the very draw it always was.
    */
-  const source = receiver ? ((order as { sourceWarehouseId?: string | null }).sourceWarehouseId ?? null) : null;
+  // 27/11: no warehouse named = the old stock's warehouse, when the store has one (`old-stock-home.ts`).
+  const source = receiver
+    ? ((order as { sourceWarehouseId?: string | null }).sourceWarehouseId ??
+      (order.store as { warehousePlacement?: { oldStockWarehouseId: string | null } | null } | null)?.warehousePlacement?.oldStockWarehouseId ??
+      null)
+    : null;
   const from: { prefer?: string; unplacedFirst?: boolean } = receiver ? (source ? { prefer: source } : { unplacedFirst: true }) : {};
   let moved = 0;
 

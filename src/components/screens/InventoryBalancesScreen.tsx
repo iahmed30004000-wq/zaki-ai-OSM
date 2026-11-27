@@ -16,6 +16,8 @@ import { PageShell } from '@/components/ui/PageShell';
 import { OpeningStockCountBanner } from '@/components/inventory/OpeningStockCount';
 import { ReceiveDialog } from '@/components/inventory/ReceiveDialog';
 import { PlacementBanner } from '@/components/inventory/PlacementSheet';
+import { OldStockBanner } from '@/components/inventory/OldStockHome';
+import { WarehouseTable } from '@/components/inventory/WarehouseTable';
 import { userCan } from '@/lib/can';
 import {
   IDLE_WINDOW_DAYS,
@@ -75,7 +77,9 @@ interface StockRow {
    * `unplaced` comes only when it is not the courier's figure (`stock-places.shownPlaces`).
    */
   places?: {
-    warehouses: { id: string; onHand: number }[];
+    warehouses: { id: string; onHand: number; held?: number; free?: number; pending?: number }[];
+    unassigned?: number;
+    unsourcedWithCourier?: number;
     inTransit: number;
     withCourier: number;
     unplaced?: number;
@@ -182,6 +186,9 @@ export function InventoryBalancesScreen() {
   const [receivedDismissed, setReceivedDismissed] = useState(false);
   const [received, setReceived] = useState<string | null>(null);
 
+  /** 27/11: a placed store whose old stock has no warehouse yet — the server says so. */
+  const [oldStockPending, setOldStockPending] = useState(false);
+
   /** Which alert the reader pressed. One at a time — a screen, not a query builder. */
   const [only, setOnly] = useState<StockState | 'restock' | null>(null);
   /** Which card has its score opened. A grade whose bands are hidden is a grade. */
@@ -197,6 +204,7 @@ export function InventoryBalancesScreen() {
         setAlerts(data.alerts || []);
         setLedgerDays(typeof data.ledgerDays === 'number' ? data.ledgerDays : null);
         setWarehouses(Array.isArray(data.warehouses) ? data.warehouses : null);
+        setOldStockPending(data.oldStockPending === true);
         if (data.stockSummary?.length > 0 && !productId) {
           setProductId(data.stockSummary[0].id);
         }
@@ -355,6 +363,9 @@ export function InventoryBalancesScreen() {
         {/* Once per store, when it has warehouses and is not yet placed (warehouse plan W1b): the keepers' counts
             divide the book between them. A store with no warehouse draws nothing — today's screen. */}
         <PlacementBanner onPlaced={loadData} />
+
+        {/* 27/11: the old stock still names no warehouse — one press gives it one (`old-stock-home.ts`). */}
+        {oldStockPending && <OldStockBanner onDone={loadData} />}
 
         {received && (
           <p className="text-sm text-[var(--sys-success)] bg-[var(--sys-success-soft)] border border-[var(--sys-success)]/30 rounded-lg p-3">
@@ -553,36 +564,10 @@ export function InventoryBalancesScreen() {
                   )}
 
                   {/*
-                    WHERE THE UNITS ARE — a placed store only (W2c). Each chip is a figure the server sent: the units in
-                    each warehouse, on the road between two of them, and with the courier. Nothing is added up here.
+                    WHERE THE UNITS ARE — a placed store only (W2c; 27/11: «على الرف · محجوز · متاح» of each warehouse). Every
+                    figure is the server's. Nothing is added up here.
                   */}
-                  {s.places && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {s.places.warehouses.map((w) => (
-                        <span
-                          key={w.id}
-                          className={`inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)] ${place === w.id ? 'ring-2 ring-[var(--sys-primary)]' : ''}`}
-                        >
-                          {warehouseName.get(w.id) ?? 'مخزن'} · {w.onHand}
-                        </span>
-                      ))}
-                      {s.places.inTransit !== 0 && (
-                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="بضاعة طالعة من مخزن ولسا ما وصلت المخزن التاني.">
-                          بالطريق · {s.places.inTransit}
-                        </span>
-                      )}
-                      {s.places.withCourier !== 0 && (
-                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="قطع طلبات طلعت مع شركة الشحن ولسا ما تسلّمت ولا رجعت.">
-                          مع الشحن · {s.places.withCourier}
-                        </span>
-                      )}
-                      {s.places.unplaced !== undefined && s.places.unplaced !== 0 && (
-                        <span className="inline-block rounded-full bg-[var(--sys-surface-strong)] px-2 py-0.5 text-note font-semibold text-[var(--sys-foreground)]" title="قطع بالدفتر ما إلها مخزن: كانت مع الشحن وقت التوزيع.">
-                          بلا مكان · {s.places.unplaced}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {s.places && <WarehouseTable places={s.places} nameOf={(id) => warehouseName.get(id) ?? 'مخزن'} chosen={place} />}
 
                   <div className={phone ? 'flex flex-wrap items-center justify-between gap-2 pt-1' : 'flex items-center justify-between gap-2 pt-1'}>
                     <span className="text-note text-[var(--sys-muted)]">

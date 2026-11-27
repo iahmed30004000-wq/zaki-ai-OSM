@@ -440,11 +440,16 @@ export async function drawDownVariants(tx: Tx, orderId: string) {
     select: { variantId: true, quantity: true, freeQuantity: true },
   });
   if (pieces.length > 0) {
-    const order = await tx.order.findFirst({ where: { id: orderId }, select: { companyId: true, storeId: true, sourceWarehouseId: true } });
+    const order = await tx.order.findFirst({
+      where: { id: orderId },
+      select: { companyId: true, storeId: true, sourceWarehouseId: true, store: { select: { warehousePlacement: { select: { oldStockWarehouseId: true } } } } },
+    });
     if (order && (await variantsArePlaced(tx, order.storeId))) {
+      // 27/11: an order naming no warehouse leaves the old stock's one, as its batches do (`stock-consumption.ts`).
+      const source = order.sourceWarehouseId ?? order.store?.warehousePlacement?.oldStockWarehouseId ?? null;
       await drawPlacedVariants(
         tx,
-        { companyId: order.companyId, storeId: order.storeId, orderId, sourceWarehouseId: order.sourceWarehouseId ?? null },
+        { companyId: order.companyId, storeId: order.storeId, orderId, sourceWarehouseId: source },
         pieces.map((x) => ({ variantId: x.variantId!, quantity: x.quantity + x.freeQuantity }))
       );
       return;

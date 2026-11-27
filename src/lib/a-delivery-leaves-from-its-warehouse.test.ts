@@ -56,7 +56,8 @@ const RELATIONS: Record<string, Record<string, (data: Data, row: Row) => Row[] |
     addOns: (data, row) => data.orderAddOn.filter((i) => i.orderId === row.id),
     store: (data, row) => data.store.find((s) => s.id === row.storeId) ?? null,
   },
-  store: { country: (_data, row) => ({ minorUnit: row.minorUnit }) },
+  // 27/11: the delivery also reads the store's old-stock warehouse (`old-stock-home.ts`); none here.
+  store: { country: (_data, row) => ({ minorUnit: row.minorUnit }), warehousePlacement: () => null },
 };
 
 function makeDb(data: Data) {

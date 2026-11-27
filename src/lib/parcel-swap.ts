@@ -109,6 +109,7 @@ const SWAP_ORDER_SELECT = {
   ...REPLACEMENT_SOURCE_SELECT,
   ...SETTLEMENT_ORDER_SELECT,
   companyId: true,
+  sourceWarehouseId: true,
   version: true,
   confirmationStatus: true,
   settlementStatus: true,
@@ -572,6 +573,9 @@ export async function recordParcelSwap(tx: Tx, p: SwapInput): Promise<SwapResult
   const saleFee = made.fee ?? 0;
 
   // ── 5. the stock: the goods leave the shelf ONCE, on the sale ──
+  // 27/11: they are Y's box, so they left Y's warehouse — the sale is named as that warehouse's before it is counted out
+  // (an order with none would draw from the old stock's warehouse, `old-stock-home.ts`).
+  if (y.sourceWarehouseId) await tx.order.update({ where: { id: made.id }, data: { sourceWarehouseId: y.sourceWarehouseId } });
   const consumed = await consumeOrderStock(tx as never, {
     orderId: made.id,
     companyId: p.companyId,

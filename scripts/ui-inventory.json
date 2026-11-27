@@ -337,6 +337,16 @@
     "links": 0,
     "tabs": 0
   },
+  "src/components/inventory/OldStockHome.tsx": {
+    "buttons": 3,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 1,
+    "modals": 1,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/inventory/OpeningStockCount.tsx": {
     "buttons": 3,
     "inputs": 6,

@@ -60,6 +60,8 @@ function makeDb(data: Data) {
     if (table === 'order' && key === 'addOns') return data.orderAddOn.filter((i) => i.orderId === r.id);
     if (table === 'order' && key === 'store') return data.store.find((s) => s.id === r.storeId) ?? null;
     if (table === 'store' && key === 'country') return { minorUnit: r.minorUnit };
+    // 27/11: the receipt also reads the store's old-stock warehouse (`old-stock-home.ts`); none here.
+    if (table === 'store' && key === 'warehousePlacement') return null;
     throw new Error(`relation ${table}.${key}`);
   };
   const project = (table: string, r: Row, select?: Row): Row => {

@@ -40,6 +40,8 @@ import {
   type RateCurrencies,
   type RoadAnswer,
 } from '@/components/inventory/TransferAcross';
+// 27/11: «متاح» of the warehouse the goods leave, beside each line (`ShelfFigures.tsx`).
+import { ShelfLine, overFree, useShelf } from '@/components/inventory/ShelfFigures';
 // A client-made id, made once when the form opens: the same press sent twice is one transfer at the door.
 import { newId } from '@/lib/client-id';
 import {
@@ -605,7 +607,10 @@ function SendDialog({
   // 22/11 (F2): between two currencies the press waits for a rate (the door judges it again).
   const asksRate = goesAcross && !!dest?.rate;
   const rateReady = !asksRate || rateTyped(rate);
-  const ready = !!reading && !keyMissing && linesReady && unpaired.length === 0 && !badCombo && rateReady && !busy;
+  // 27/11: «النقل من المتاح» — a line asking more than the warehouse has free keeps the press shut (the door asks again).
+  const shelf = useShelf(from);
+  const tooMuch = lines.some((l) => overFree(shelf, l.productId, l.quantity));
+  const ready = !!reading && !keyMissing && linesReady && unpaired.length === 0 && !badCombo && rateReady && !tooMuch && !busy;
 
   const setLine = (key: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -738,6 +743,7 @@ function SendDialog({
                   </IconButton>
                 )}
               </div>
+              <ShelfLine shelf={shelf} productId={l.productId} typed={l.quantity} warehouseName={fromW?.name ?? ''} />
               {goesAcross && dest ? (
                 // 21/11 (W7c): across stores, the twin of this line's product in the other store.
                 l.productId !== '' && (

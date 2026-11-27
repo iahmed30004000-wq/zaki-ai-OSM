@@ -284,7 +284,7 @@ function makeWorld() {
         // `variantSummary` (product variants, 2026-11-18): the delivery reads it to know whether a line's pieces leave
         // their combinations' counts too. Null — a product without variants — draws down exactly as before.
         items: [{ id: `${id}-i1`, productId: 'p1', productName: 'كريم', quantity: 2, freeQuantity: 0, unitPrice: 10, discountShare: 0, lineTotal: 20, deliveredQty: null, returnedQty: null, variantSummary: null, reservedQty: 2 }],
-        addOns: [], returnReceipt: null, store: { country: { minorUnit: 2 } },
+        addOns: [], returnReceipt: null, store: { country: { minorUnit: 2 }, warehousePlacement: null },
         // 20/11 (W4b): the delivery reads the warehouse the order left from. Null — a store that is not placed — draws as before.
         sourceWarehouseId: null,
         ...over,
