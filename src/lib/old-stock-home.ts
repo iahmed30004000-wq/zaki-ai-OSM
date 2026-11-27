@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { splitBatch } from './batch-split';
 import { lockProductsStock } from './reservation';
@@ -175,9 +175,97 @@ export async function readOldStockFacts(tx: Tx, companyId: string, storeId: stri
     }),
     tx.productVariant.findMany({ where: { companyId, status: 'ACTIVE', productId: { in: productIds } }, select: { productId: true } }),
   ]);
-  const ledger = new Map<string, number>(lines.map((l) => [`${l.warehouseId}|${l.productId}`, l._sum?.quantity ?? 0]));
+  const written = new Map<string, number>(lines.map((l) => [`${l.warehouseId}|${l.productId}`, l._sum?.quantity ?? 0]));
+  const refused = await refusedSince(tx, companyId, storeId, placedAt);
+  const ledger = correctedLedger(written, refused.receipts, refused.damagedBack);
   const looseSales = new Map<string, number>(sales.map((s) => [s.productId, Math.max(0, -(s._sum?.quantity ?? 0))]));
   return { warehouses, products, rows, holds, oldHeld, ledger, looseSales, combined: new Set(variants.map((v) => v.productId)), orders };
+}
+
+/** One refused parcel received since the placement, as the books moved its sound units with no ledger line. */
+export interface RefusedReceipt {
+  /** The warehouse that received it. */
+  into: string;
+  /** The warehouse the order named; null = none (an old order). */
+  from: string | null;
+  /** The units split into the receiver («movedToWarehouse» of the receipt's audit line). */
+  moved: number;
+  /** The order's lines, in order: what each still owed back. */
+  lines: { productId: string; units: number }[];
+}
+
+/**
+ * THE LEDGER PUT RIGHT — pure. A refused parcel's sound units reach the receiving warehouse by a SPLIT (no ledger line),
+ * and a line with broken units comes back there as a `DMG-` batch (none either). Left out, the warehouse's «what its
+ * ledger says went in» is too low by those units and the suggestion with it (and too high at the warehouse they left).
+ * The split units are laid over the order's lines in their order, as the receipt moved them.
+ */
+export function correctedLedger(
+  ledger: ReadonlyMap<string, number>,
+  receipts: readonly RefusedReceipt[],
+  damagedBack: readonly { warehouseId: string; productId: string; quantity: number }[]
+): Map<string, number> {
+  const out = new Map(ledger);
+  const add = (warehouseId: string, productId: string, n: number) => {
+    const key = `${warehouseId}|${productId}`;
+    out.set(key, (out.get(key) ?? 0) + n);
+  };
+  for (const r of receipts) {
+    if (r.from === r.into) continue;
+    let left = r.moved;
+    for (const line of r.lines) {
+      if (left <= 0) break;
+      const n = Math.min(left, Math.max(0, line.units));
+      if (n === 0) continue;
+      add(r.into, line.productId, n);
+      if (r.from) add(r.from, line.productId, -n);
+      left -= n;
+    }
+  }
+  for (const d of damagedBack) add(d.warehouseId, d.productId, d.quantity);
+  return out;
+}
+
+/** The two ledgerless ways a refused parcel's units reached a warehouse since the placement, read back. */
+async function refusedSince(tx: Tx, companyId: string, storeId: string, placedAt: Date) {
+  const [audits, damaged] = await Promise.all([
+    tx.auditLog.findMany({
+      where: { companyId, action: 'RETURN_RECEIVED', createdAt: { gte: placedAt } },
+      orderBy: { createdAt: 'asc' },
+      select: { entityId: true, newData: true },
+    }),
+    tx.productionBatch.findMany({
+      where: { companyId, storeId, batchNumber: { startsWith: 'DMG-' }, createdAt: { gte: placedAt }, warehouseId: { not: null } },
+      select: { warehouseId: true, productId: true, quantityProduced: true },
+    }),
+  ]);
+  const said = audits.flatMap((a) => {
+    try {
+      const d = JSON.parse(a.newData ?? '{}') as { warehouseId?: unknown; movedToWarehouse?: unknown };
+      return typeof d.warehouseId === 'string' && typeof d.movedToWarehouse === 'number' && d.movedToWarehouse > 0
+        ? [{ orderId: a.entityId, into: d.warehouseId, moved: d.movedToWarehouse }]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const orders = said.length
+    ? await tx.order.findMany({
+        where: { companyId, storeId, id: { in: said.map((s) => s.orderId) } },
+        select: { id: true, sourceWarehouseId: true, items: { select: { productId: true, quantity: true, freeQuantity: true, deliveredQty: true } } },
+      })
+    : [];
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  const receipts: RefusedReceipt[] = said.flatMap((s) => {
+    const o = byId.get(s.orderId);
+    if (!o) return [];
+    const lines = o.items.map((i) => ({ productId: i.productId, units: i.quantity + i.freeQuantity - (i.deliveredQty ?? 0) }));
+    return [{ into: s.into, from: o.sourceWarehouseId ?? null, moved: s.moved, lines }];
+  });
+  return {
+    receipts,
+    damagedBack: damaged.map((d) => ({ warehouseId: d.warehouseId!, productId: d.productId, quantity: d.quantityProduced })),
+  };
 }
 
 /**
@@ -286,13 +374,18 @@ export async function moveOldStockHome(
   );
   if (short) throw new OldStockRefused('RESTORE_SHORT');
 
-  const orders = await tx.order.updateMany({
-    where: oldOrdersWhere(companyId, storeId, placement.createdAt),
-    data: { sourceWarehouseId: homeWarehouseId },
-  });
-  // The shipments of that time left the same warehouse: named, so a second «assign» never clears an order's stamp.
+  // Named by a statement that leaves `updatedAt` alone: a stamp is not work on the order, and the screens that age returns,
+  // warn about a recent one or count «closed today» read that column.
+  const old = await tx.order.findMany({ where: oldOrdersWhere(companyId, storeId, placement.createdAt), select: { id: true } });
+  let stamped = 0;
+  for (let i = 0; i < old.length; i += 1000) {
+    const ids = old.slice(i, i + 1000).map((o) => o.id);
+    stamped += await tx.$executeRaw`UPDATE "orders" SET "sourceWarehouseId" = ${homeWarehouseId} WHERE "companyId" = ${companyId} AND "storeId" = ${storeId} AND "sourceWarehouseId" IS NULL AND "id" IN (${Prisma.join(ids)})`;
+  }
+  // The shipments of that time that have left: named, so a second «assign» never clears an order's stamp. A trolley still
+  // being packed is left as it is — named, it would take new parcels beside old ones.
   await tx.shippingBatch.updateMany({
-    where: { companyId, storeId, warehouseId: null, createdAt: { lt: placement.createdAt } },
+    where: { companyId, storeId, warehouseId: null, createdAt: { lt: placement.createdAt }, status: { not: 'READY' } },
     data: { warehouseId: homeWarehouseId },
   });
   const rows = await tx.productionBatch.updateMany({
@@ -316,5 +409,5 @@ export async function moveOldStockHome(
     if (left > 0) throw new OldStockRefused('RESTORE_SHORT');
   }
 
-  return { rows: before, orders: orders.count, batchRows: rows.count };
+  return { rows: before, orders: stamped, batchRows: rows.count };
 }

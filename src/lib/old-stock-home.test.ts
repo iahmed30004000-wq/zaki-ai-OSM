@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { planOldStock, type OldStockFacts } from './old-stock-home';
+import { correctedLedger, planOldStock, type OldStockFacts } from './old-stock-home';
 import { shownPlaces, placesOf } from './stock-places';
 import { figureOf } from './warehouse-figures';
 
@@ -102,6 +102,36 @@ describe('the old stock’s table on the shop’s six products', () => {
   it('NEGATIVE: a product with combinations gets no suggestion', () => {
     const row = planOldStock(facts({ combined: new Set(['ماء']) }), Q).find((r) => r.productId === 'ماء')!;
     expect(row.warehouses.every((w) => w.restore === 0)).toBe(true);
+  });
+});
+
+describe('a refused parcel received since the placement moves units with no ledger line', () => {
+  const written = new Map([[`${T}|أذن`, 157]]);
+
+  it('received INTO Ain Tarma: the suggestion still says what the old sales took, on top of the parcel’s units', () => {
+    const ledger = correctedLedger(written, [{ into: T, from: null, moved: 2, lines: [{ productId: 'أذن', units: 2 }] }], []);
+    const f = facts({ ledger, rows: facts().rows.map((r) => (r.productId === 'أذن' && r.warehouseId === T ? { ...r, quantityRemaining: 157 } : r)) });
+    // 155 + the 2 received = 157 on the shelf; the books should say 159.
+    expect(planOldStock(f, Q).find((r) => r.productId === 'أذن')!.warehouses.find((w) => w.id === T)!.restore).toBe(2);
+  });
+
+  it('an Ain Tarma parcel received in Qudsaya is taken off Ain Tarma’s figure: nothing is suggested back for it', () => {
+    const ledger = correctedLedger(written, [{ into: Q, from: T, moved: 3, lines: [{ productId: 'أذن', units: 3 }] }], []);
+    expect(ledger.get(`${T}|أذن`)).toBe(154);
+    expect(ledger.get(`${Q}|أذن`)).toBe(3);
+  });
+
+  it('the moved units are laid over the lines in order, and broken-line returns count where they came back', () => {
+    const ledger = correctedLedger(
+      new Map(),
+      [{ into: T, from: null, moved: 3, lines: [{ productId: 'a', units: 2 }, { productId: 'b', units: 5 }] }],
+      [{ warehouseId: T, productId: 'b', quantity: 4 }]
+    );
+    expect([ledger.get(`${T}|a`), ledger.get(`${T}|b`)]).toEqual([2, 5]);
+  });
+
+  it('NEGATIVE: received into the warehouse it named moves nothing', () => {
+    expect(correctedLedger(written, [{ into: T, from: T, moved: 2, lines: [{ productId: 'أذن', units: 2 }] }], [])).toEqual(written);
   });
 });
 
