@@ -117,11 +117,33 @@ export function cartOrderName(customerName: string | null | undefined): { name: 
 export const AUTO_ORDER_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK'];
 
 /**
- * Whether this cart is one the owner asked to become an order: still open, a product of this company — with a name or
- * without one (26/11). Its phone the landing door already checked; the order door checks it again against the country.
+ * A PHONE-ONLY CART NEEDS A NUMBER OF ITS OWN COUNTRY (the owner, 27/11). The first run turned «+888888888888888», «+900…» and
+ * «+954…» into orders named «بدون اسم» — numbers nobody answers. A cart with a name keeps the old rule (the visitor gave more
+ * than a number); one without a name becomes an order only when its number is the country's own national form. A country
+ * with no phone rule cannot be told apart, and keeps the old rule.
  */
-export function cartQualifiesForOrder(cart: { status: string; productId: string | null; orderId: string | null }): boolean {
-  return (AUTO_ORDER_STATUSES as string[]).includes(cart.status) && !cart.orderId && !!cart.productId;
+export function cartPhoneIsLocal(phoneNormalized: string | null | undefined, countryCode: string | null | undefined): boolean {
+  const key = (phoneNormalized ?? '').trim();
+  if (!key) return false;
+  const rule = ruleFor(countryCode);
+  return rule ? rule.national.test(key) : true;
+}
+
+/**
+ * Whether this cart is one the owner asked to become an order: still open, a product of this company — with a name, or
+ * without one (26/11) when its number is the country's own (27/11). Its phone the landing door already checked; the order
+ * door checks it again against the country.
+ */
+export function cartQualifiesForOrder(cart: {
+  status: string;
+  productId: string | null;
+  orderId: string | null;
+  customerName: string | null;
+  phoneNormalized: string;
+  country: string | null;
+}): boolean {
+  if (!(AUTO_ORDER_STATUSES as string[]).includes(cart.status) || cart.orderId || !cart.productId) return false;
+  return !cartOrderName(cart.customerName).missing || cartPhoneIsLocal(cart.phoneNormalized, cart.country);
 }
 
 /**

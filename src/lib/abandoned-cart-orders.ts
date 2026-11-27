@@ -255,7 +255,7 @@ export async function convertWaitingCarts(now: Date, limit = 20): Promise<{ conv
       where: { companyId, ...waiting },
       orderBy: { lastSeenAt: 'asc' },
       take: (limit - out.tried) * 3,
-      select: { id: true, status: true, customerName: true, productId: true, orderId: true },
+      select: { id: true, status: true, customerName: true, productId: true, orderId: true, phoneNormalized: true, country: true },
     });
     for (const c of carts) {
       if (out.tried >= limit) break;
