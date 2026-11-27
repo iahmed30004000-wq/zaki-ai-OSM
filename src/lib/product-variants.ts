@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import type { db } from './db';
 import { holdingWhere } from './reservation';
-import { drawPlacedVariants, restorePlacedVariant, variantsArePlaced } from './variant-stock';
+import { drawPlacedVariants, restorePlacedVariant, takeOffPlacedPieces, variantsArePlaced, type RefusedVariant } from './variant-stock';
 
 /**
  * A PRODUCT WITH VARIANTS — the owner's decision of 2026-11-18 (docs/planner-questions.md, «متغيّرات المنتج»).
@@ -473,12 +473,18 @@ export async function drawDownVariants(tx: Tx, orderId: string) {
  * 20/11 (W2b): the desk now passes it (`stock-consumption.restoreOrderStock`, after `warehouse-intake.returnPlace` checked
  * it for the person). It is checked AGAIN here, on its own facts, because it decides where pieces land: a warehouse of the
  * order's company and of its store's country, or nothing is written (`assertReturnWarehouse`).
+ *
+ * 27/11: `orderItemId` names the line that is coming back. Asked by product alone, two lines of one product both started at
+ * the first line's pieces — and on a partial delivery that line may be the one the customer kept.
  */
-export async function restoreVariants(tx: Tx, p: { orderId: string; productId: string; take: number; warehouseId?: string | null }) {
+export async function restoreVariants(
+  tx: Tx,
+  p: { orderId: string; orderItemId?: string; productId: string; take: number; warehouseId?: string | null }
+) {
   let left = p.take;
   if (left <= 0) return;
   const pieces = await tx.orderItemVariant.findMany({
-    where: { orderId: p.orderId, productId: p.productId, variantId: { not: null } },
+    where: { orderId: p.orderId, ...(p.orderItemId ? { orderItemId: p.orderItemId } : {}), productId: p.productId, variantId: { not: null } },
     orderBy: { createdAt: 'asc' },
     select: { variantId: true, quantity: true, freeQuantity: true },
   });
@@ -504,6 +510,88 @@ export async function restoreVariants(tx: Tx, p: { orderId: string; productId: s
     const back = Math.min(left, x.quantity + x.freeQuantity);
     left -= back;
     await tx.productVariant.update({ where: { id: x.variantId! }, data: { onHand: { increment: back } } });
+  }
+}
+
+/** What the returns desk counted of one chosen-pieces line of a refused parcel. */
+export interface RefusedPieces {
+  orderItemId: string;
+  sound: number;
+  damaged: number;
+  missing: number;
+}
+
+/**
+ * A REFUSED PARCEL'S COMBINATIONS (27/11) — the twin of `stock-consumption.takeOffUnreturned`, which calls it once, after
+ * its batch rows. The parcel was never consumed, so every piece is still in its combination's count: the broken and the
+ * missing ones leave it, and the sound ones stay — in a placed store they move (`move`) into the receiving warehouse.
+ *
+ * The desk counts per line, not per combination, so the line's pieces are taken in their own order (paid, then gifts):
+ * sound first, then broken, then missing — `restoreVariants`' guess, put right from the product's variants screen.
+ * A count never goes below zero.
+ */
+export async function takeOffRefusedVariants(
+  tx: Tx,
+  p: {
+    orderId: string;
+    orderNumber: string;
+    lines: readonly RefusedPieces[];
+    userId?: string | null;
+    /** Where a broken or missing piece leaves first, in a placed store. */
+    sourceWarehouseId: string | null;
+    /** Given for a placed store's receipt: the sound pieces go from `from` (then «بلا مكان») into `to`. */
+    move?: { from: string | null; to: string };
+  }
+) {
+  // Received where it left from: no sound piece changes place.
+  const move = p.move && p.move.from !== p.move.to ? p.move : null;
+  // Nothing to write — no broken or missing piece, and no sound one going anywhere: nothing is read either.
+  if (!p.lines.some((l) => l.damaged + l.missing > 0 || (move && l.sound > 0))) return;
+
+  const per = new Map<string, RefusedVariant>();
+  for (const line of p.lines) {
+    if (line.sound + line.damaged + line.missing <= 0) continue;
+    const rows = await tx.orderItemVariant.findMany({
+      where: { orderId: p.orderId, orderItemId: line.orderItemId, variantId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: { variantId: true, quantity: true, freeQuantity: true },
+    });
+    const left = { sound: line.sound, damaged: line.damaged, missing: line.missing };
+    for (const row of rows) {
+      let room = row.quantity + row.freeQuantity;
+      const v = per.get(row.variantId!) ?? { variantId: row.variantId!, sound: 0, damaged: 0, missing: 0 };
+      for (const kind of ['sound', 'damaged', 'missing'] as const) {
+        const n = Math.min(room, left[kind]);
+        v[kind] += n;
+        left[kind] -= n;
+        room -= n;
+      }
+      per.set(row.variantId!, v);
+    }
+  }
+  const changes = [...per.values()]
+    .filter((v) => v.damaged + v.missing > 0 || (move && v.sound > 0))
+    .sort((a, b) => (a.variantId < b.variantId ? -1 : a.variantId > b.variantId ? 1 : 0));
+  if (changes.length === 0) return;
+
+  const order = await tx.order.findFirst({ where: { id: p.orderId }, select: { companyId: true, storeId: true } });
+  if (!order) return;
+  if (await variantsArePlaced(tx, order.storeId)) {
+    if (p.move) await assertReturnWarehouse(tx, { companyId: order.companyId, storeId: order.storeId }, p.move.to);
+    await takeOffPlacedPieces(
+      tx,
+      { companyId: order.companyId, storeId: order.storeId, orderId: p.orderId, userId: p.userId ?? null },
+      { orderNumber: p.orderNumber, sourceWarehouseId: p.sourceWarehouseId, ...(move ? { move } : {}) },
+      changes
+    );
+    return;
+  }
+  for (const v of changes) {
+    const gone = v.damaged + v.missing;
+    if (gone <= 0) continue;
+    // Atomic, so two receipts naming one combination at once cannot both write over the same figure.
+    const took = await tx.productVariant.updateMany({ where: { id: v.variantId, onHand: { gte: gone } }, data: { onHand: { decrement: gone } } });
+    if (took.count === 0) await tx.productVariant.updateMany({ where: { id: v.variantId, onHand: { gt: 0 } }, data: { onHand: 0 } });
   }
 }
 

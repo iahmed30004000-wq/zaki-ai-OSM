@@ -3,9 +3,10 @@ import type { db as prismaDb } from './db';
 import { drawDownStock, onHandTotal } from './receiving';
 import { roundMinor } from './money';
 import { costWhenEveryLineHasAFigure, fixedCostsOf } from './product-fixed-cost';
-import { drawDownVariants, restoreVariants } from './product-variants';
+import { drawDownVariants, restoreVariants, takeOffRefusedVariants, type RefusedPieces } from './product-variants';
 import { sourceWarehouseNames } from './order-source-warehouse';
 import { splitBatch } from './batch-split';
+import { addOnUnitsBack, lineUnitsBack } from './returning-units';
 
 type Tx = Prisma.TransactionClient | typeof prismaDb;
 
@@ -514,6 +515,9 @@ export function absorbDamaged(input: {
  * single unit and the shipment screen still reported a shortage. Units go
  * into a batch of their own, at the cost they left at, so a return cannot
  * quietly rewrite the cost of goods on stock that never moved.
+ *
+ * WHAT COMES BACK IS WHAT WAS NOT KEPT (27/11, `returning-units.ts` — the desk's own count): each line's units less
+ * `deliveredQty`, then each add-on when nothing was taken. A line the customer kept whole gets nothing back.
  */
 export async function restoreOrderStock(
   tx: Tx,
@@ -577,7 +581,7 @@ export async function restoreOrderStock(
        * and were never sellable again by the store that lost them.
        */
       storeId: true,
-      items: { select: { productId: true, quantity: true, freeQuantity: true, variantSummary: true } },
+      items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, deliveredQty: true, variantSummary: true } },
       // Counted back in after the lines: they left in the same parcel (`consumeOrderStock`).
       addOns: { select: { productId: true, quantity: true } },
       // Read from the order for the same reason `consumeOrderStock` reads it:
@@ -599,27 +603,49 @@ export async function restoreOrderStock(
   let damagedLeft = Math.max(0, Math.trunc(input.damagedQty ?? 0));
   const soundTotal = input.receivedQty;
 
-  const returnLines = [...order.items, ...(order.addOns ?? []).map((a) => ({ productId: a.productId, quantity: a.quantity, freeQuantity: 0 }))];
+  const returnLines = [
+    ...order.items.map((i) => ({
+      productId: i.productId,
+      units: lineUnitsBack(i),
+      addOn: false,
+      variantLine: i.variantSummary ? i.id : null,
+    })),
+    ...(order.addOns ?? []).map((a) => ({
+      productId: a.productId,
+      units: addOnUnitsBack(order.items, a),
+      addOn: true,
+      variantLine: null,
+    })),
+  ];
+  /** What each product cost when this receipt first asked — an add-on of the same product is priced by it. */
+  const askedCost = new Map<string, number>();
+  const batchNumbers = new Set<string>();
   for (const line of returnLines) {
     if (remaining <= 0) break;
-    const take = Math.min(remaining, line.quantity + line.freeQuantity);
+    const take = Math.min(remaining, line.units);
     if (take <= 0) continue;
     remaining -= take;
 
     // What did this unit cost when it left? Its own batches are the honest
     // answer, and a return at an invented cost silently moves the profit.
-    const lastCost = await tx.productionBatch.findFirst({
-      // The store's own last cost. Another store's batch is another shelf's
-      // money, and a return priced off it moves this store's profit.
-      where: {
-        companyId: input.companyId,
-        productId: line.productId,
-        ...(order.storeId ? { storeId: order.storeId } : {}),
-      },
-      orderBy: { productionDate: 'desc' },
-      select: { costPerUnit: true },
-    });
-    const costPerUnit = lastCost?.costPerUnit ?? 0;
+    // An ADD-ON of a product this receipt already priced takes that same figure: asked again, the «last batch» would be the
+    // one written a moment ago, carrying the line's broken units' money.
+    let costPerUnit = line.addOn ? askedCost.get(line.productId) : undefined;
+    if (costPerUnit === undefined) {
+      const lastCost = await tx.productionBatch.findFirst({
+        // The store's own last cost. Another store's batch is another shelf's
+        // money, and a return priced off it moves this store's profit.
+        where: {
+          companyId: input.companyId,
+          productId: line.productId,
+          ...(order.storeId ? { storeId: order.storeId } : {}),
+        },
+        orderBy: { productionDate: 'desc' },
+        select: { costPerUnit: true },
+      });
+      costPerUnit = lastCost?.costPerUnit ?? 0;
+      if (!askedCost.has(line.productId)) askedCost.set(line.productId, costPerUnit);
+    }
 
     // This line's share of the damage, with the last line to take units
     // absorbing whatever the rounding left, so no unit's cost is dropped.
@@ -629,6 +655,12 @@ export async function restoreOrderStock(
     const carried = absorbDamaged({ sound: take, damaged: damagedHere, costPerUnit, minorUnit: restoreUnit });
     absorbedTotal += carried.absorbed;
 
+    // A batch number is unique in a company: an add-on of a product a line already brought back is numbered «+2».
+    const plain = `RET-${order.orderNumber}-${line.productId.slice(0, 6)}`;
+    let batchNumber = plain;
+    for (let n = 2; line.addOn && batchNumbers.has(batchNumber); n++) batchNumber = `${plain}+${n}`;
+    batchNumbers.add(batchNumber);
+
     const batch = await tx.productionBatch.create({
       data: {
         companyId: input.companyId,
@@ -637,7 +669,7 @@ export async function restoreOrderStock(
         // …and into the warehouse that received it (W2b) — only when the desk named one.
         ...(receiver ? { warehouseId: receiver } : {}),
         productId: line.productId,
-        batchNumber: `RET-${order.orderNumber}-${line.productId.slice(0, 6)}`,
+        batchNumber,
         quantityProduced: take,
         quantityRemaining: take,
         quantitySold: 0,
@@ -678,9 +710,15 @@ export async function restoreOrderStock(
       },
     });
 
-    // The pieces come back onto the combinations they left (product variants — `restoreVariants`).
-    if ('variantSummary' in line && line.variantSummary) {
-      await restoreVariants(tx, { orderId: input.orderId, productId: line.productId, take, ...(receiver ? { warehouseId: receiver } : {}) });
+    // The pieces come back onto the combinations they left (product variants — `restoreVariants`) — this line's own.
+    if (line.variantLine !== null) {
+      await restoreVariants(tx, {
+        orderId: input.orderId,
+        orderItemId: line.variantLine,
+        productId: line.productId,
+        take,
+        ...(receiver ? { warehouseId: receiver } : {}),
+      });
     }
 
     restored += take;
@@ -733,6 +771,11 @@ export interface UnreturnedOutcome {
  *
  * Which line a broken or missing unit belongs to, the count does not say. They are laid over the lines in order — the sound
  * units first, then the broken, then the missing: exact on a single-line parcel, and one fixed answer on any other.
+ *
+ * ADD-ONS AND COMBINATIONS (27/11). The add-ons are laid after the lines — they are in the same box, and a refused parcel
+ * owes them all back (`returning-units.ts`). A line with chosen pieces (size, colour) takes its combinations' counts with it:
+ * the line's first pieces are the sound ones, then the broken, then the missing — the broken and missing leave the count,
+ * and in a placed store the sound ones move into the receiving warehouse (`product-variants.takeOffRefusedVariants`).
  *
  * NOTHING HERE TOUCHES A PARCEL THAT WAS CONSUMED (a SALE, or a RETURN the restore wrote): its broken and missing units already
  * left at delivery, and taking them again is the double count this whole file exists to prevent. Nor one whose goods left
@@ -811,7 +854,8 @@ export async function takeOffUnreturned(
       source: true,
       // The warehouse it left from (W4a) — read only when the desk named a receiving warehouse (W2b).
       ...(receiver ? { sourceWarehouseId: true } : {}),
-      items: { select: { productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true } },
+      items: { select: { id: true, productId: true, quantity: true, freeQuantity: true, reservedQty: true, deliveredQty: true, variantSummary: true } },
+      addOns: { select: { productId: true, quantity: true } },
       store: { select: { country: { select: { minorUnit: true } }, warehousePlacement: { select: { oldStockWarehouseId: true } } } },
     },
   });
@@ -835,13 +879,16 @@ export async function takeOffUnreturned(
    * THE LINES THE DESK COUNTED, AND ONLY WHAT EACH OWES BACK.
    *
    * The count is over `expectedBackTotal` (partial-delivery.ts): each LINE's shipped units less what the customer kept
-   * (`deliveredQty`), and no add-on. So the units are laid over the same thing — a line the customer kept whole owes nothing
-   * back and is never touched, which is the parcel swap's box Y: its kept units went to the new order and were consumed there.
+   * (`deliveredQty`), then each add-on when nothing was kept. So the units are laid over the same thing — a line the
+   * customer kept whole owes nothing back and is never touched, which is the parcel swap's box Y: its kept units went to
+   * the new order and were consumed there.
    */
-  const lines = order.items.map((i) => ({
-    productId: i.productId,
-    units: Math.max(0, i.quantity + i.freeQuantity - (i.deliveredQty ?? 0)),
-  }));
+  const lines = [
+    ...order.items.map((i) => ({ productId: i.productId, units: lineUnitsBack(i), variantLine: i.variantSummary ? i.id : null })),
+    ...(order.addOns ?? []).map((a) => ({ productId: a.productId, units: addOnUnitsBack(order.items, a), variantLine: null })),
+  ];
+  /** What the count says of each chosen-pieces line — its combinations follow after every batch row is written. */
+  const pieceLines: RefusedPieces[] = [];
 
   let soundLeft = sound;
   let brokenLeft = broken;
@@ -894,6 +941,7 @@ export async function takeOffUnreturned(
     brokenLeft -= d;
     const m = Math.min(goneLeft, room);
     goneLeft -= m;
+    if (line.variantLine !== null) pieceLines.push({ orderItemId: line.variantLine, sound: s, damaged: d, missing: m });
 
     if (d > 0) {
       let off = 0;
@@ -981,6 +1029,18 @@ export async function takeOffUnreturned(
         to: receiver,
       });
     }
+  }
+
+  // The combinations' counts, after the batch rows — the order the delivery and the split keep.
+  if (pieceLines.length > 0) {
+    await takeOffRefusedVariants(tx, {
+      orderId: input.orderId,
+      orderNumber: order.orderNumber,
+      lines: pieceLines,
+      userId: input.userId ?? null,
+      sourceWarehouseId: source,
+      ...(receiver ? { move: { from: source, to: receiver } } : {}),
+    });
   }
 
   return {

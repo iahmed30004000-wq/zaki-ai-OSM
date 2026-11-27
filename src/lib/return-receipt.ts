@@ -117,11 +117,14 @@ export async function receiveReturn(
       store: { select: { warehousePlacement: { select: { id: true } } } },
       returnReceipt: { select: { id: true, receivedQty: true, damagedQty: true, missingQty: true, courierFeeCharged: true } },
       items: { select: { id: true, productId: true, productName: true, quantity: true, freeQuantity: true, deliveredQty: true } },
+      // The add-ons travel in the same box (27/11): expected back, locked, and released with the lines.
+      addOns: { select: { id: true, productId: true, productName: true, quantity: true } },
     },
   });
   if (!order) return { ok: false, code: 'NOT_FOUND', status: 404, body: { error: 'الطلب غير موجود' } };
 
-  const expectedQty = expectedBackTotal(order.items);
+  const addOns = order.addOns ?? [];
+  const expectedQty = expectedBackTotal(order.items, addOns);
   // The bulk door's whole count — known only now, from the order this very call read.
   const receivedQty = whole ? expectedQty : (input.receivedQty as number);
 
@@ -188,7 +191,7 @@ export async function receiveReturn(
    * the sentence in the note and the sentence in the response are the same
    * sentence and cannot drift apart.
    */
-  const units = doorUnits(order.items);
+  const units = doorUnits(order.items, addOns);
   const completion = completionOf({
     deliveredUnits: units.delivered,
     refusedUnits: units.refused,
@@ -253,7 +256,7 @@ export async function receiveReturn(
       ? await returnPlace(tx, {
           companyId,
           storeId,
-          productIds: order.items.map((i) => i.productId),
+          productIds: [...order.items, ...addOns].map((i) => i.productId),
           warehouseId: asked,
           mayUse: ctx.mayUse,
         })
@@ -336,6 +339,10 @@ export async function receiveReturn(
     at.moved = off?.moved ?? 0;
 
     await tx.orderItem.updateMany({ where: { orderId: order.id, reservedQty: { gt: 0 } }, data: { reservedQty: 0 } });
+    // And the add-ons' holds (27/11): left behind, the unit was never sellable again. An order without one writes nothing more.
+    if (addOns.length > 0) {
+      await tx.orderAddOn.updateMany({ where: { orderId: order.id, reservedQty: { gt: 0 } }, data: { reservedQty: 0 } });
+    }
     await tx.order.update({
       where: { id: order.id },
       // A PARTIAL delivery is not turned into a return by the refused
