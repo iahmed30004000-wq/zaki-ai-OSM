@@ -351,6 +351,21 @@ describe('a cart with a name and a phone becomes ONE order in the queue', () => 
     expect(o.customerNotes).toBe(`${CART_NO_NAME_NOTE}\nالمدينة كما كتبها الزائر: ماركا الجنوبية`);
   });
 
+  it('a phone-only cart with a foreign number stays a cart (27/11) — no order «بدون اسم» for a number nobody answers', async () => {
+    for (const [i, phone] of ['+888888888888888', '+900123456789', '+96178899346'].entries()) {
+      const r = await upsertLandingCart('c1', cart({ externalId: `far-${i}`, customerName: '', phone }));
+      expect(r.body.status).toBe('NEW');
+    }
+    expect(await convertWaitingCarts(new Date())).toEqual({ converted: 0, skipped: 0, tried: 0 });
+    expect(s.orders).toHaveLength(0);
+    expect(cartLines(CART_AUTO_ACTION.SKIPPED)).toEqual([]);
+  });
+
+  it('the same foreign number WITH a name keeps the old rule and is tried as an order', async () => {
+    await upsertLandingCart('c1', cart({ customerName: 'سامي', phone: '+96178899346' }));
+    expect(cartRow().autoOrderAt).toBeInstanceOf(Date);
+  });
+
   it('a phone-only cart whose number is blocked stays a cart, with the reason on its history', async () => {
     h.spies.isBlocked.mockResolvedValue(true);
     const r = await upsertLandingCart('c1', cart({ customerName: '' }));
