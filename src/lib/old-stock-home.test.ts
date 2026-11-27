@@ -125,9 +125,18 @@ describe('a refused parcel received since the placement moves units with no ledg
     const ledger = correctedLedger(
       new Map(),
       [{ into: T, from: null, moved: 3, lines: [{ productId: 'a', units: 2 }, { productId: 'b', units: 5 }] }],
-      [{ warehouseId: T, productId: 'b', quantity: 4 }]
+      [{ warehouseId: T, from: null, productId: 'b', quantity: 4 }]
     );
     expect([ledger.get(`${T}|a`), ledger.get(`${T}|b`)]).toEqual([2, 5]);
+  });
+
+  it('broken-line returns: from Ain Tarma into Qudsaya moves the sound units between the two figures', () => {
+    const ledger = correctedLedger(written, [], [{ warehouseId: Q, from: T, productId: 'أذن', quantity: 2 }]);
+    expect([ledger.get(`${Q}|أذن`), ledger.get(`${T}|أذن`)]).toEqual([2, 155]);
+  });
+
+  it('NEGATIVE: broken-line returns received where they came from change nothing', () => {
+    expect(correctedLedger(written, [], [{ warehouseId: T, from: T, productId: 'أذن', quantity: 2 }])).toEqual(written);
   });
 
   it('NEGATIVE: received into the warehouse it named moves nothing', () => {

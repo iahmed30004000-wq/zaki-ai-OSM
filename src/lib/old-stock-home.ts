@@ -196,14 +196,15 @@ export interface RefusedReceipt {
 
 /**
  * THE LEDGER PUT RIGHT — pure. A refused parcel's sound units reach the receiving warehouse by a SPLIT (no ledger line),
- * and a line with broken units comes back there as a `DMG-` batch (none either). Left out, the warehouse's «what its
- * ledger says went in» is too low by those units and the suggestion with it (and too high at the warehouse they left).
+ * and a line with broken units comes back there as a `DMG-` batch (its only line writes the BROKEN units, at the warehouse
+ * they were drawn from). Either way, when the receiver is not that warehouse, the receiver's «what its ledger says went in»
+ * is too low by the sound units and the other's too high by them. Received where they came from, nothing is missing.
  * The split units are laid over the order's lines in their order, as the receipt moved them.
  */
 export function correctedLedger(
   ledger: ReadonlyMap<string, number>,
   receipts: readonly RefusedReceipt[],
-  damagedBack: readonly { warehouseId: string; productId: string; quantity: number }[]
+  damagedBack: readonly { warehouseId: string; from: string | null; productId: string; quantity: number }[]
 ): Map<string, number> {
   const out = new Map(ledger);
   const add = (warehouseId: string, productId: string, n: number) => {
@@ -222,9 +223,16 @@ export function correctedLedger(
       left -= n;
     }
   }
-  for (const d of damagedBack) add(d.warehouseId, d.productId, d.quantity);
+  for (const d of damagedBack) {
+    if (d.from === d.warehouseId) continue;
+    add(d.warehouseId, d.productId, d.quantity);
+    if (d.from) add(d.from, d.productId, -d.quantity);
+  }
   return out;
 }
+
+/** «DMG-<order number>-<6 of the product>» → the order number. */
+const orderOf = (batchNumber: string) => batchNumber.slice('DMG-'.length, batchNumber.lastIndexOf('-'));
 
 /** The two ledgerless ways a refused parcel's units reached a warehouse since the placement, read back. */
 async function refusedSince(tx: Tx, companyId: string, storeId: string, placedAt: Date) {
@@ -236,9 +244,26 @@ async function refusedSince(tx: Tx, companyId: string, storeId: string, placedAt
     }),
     tx.productionBatch.findMany({
       where: { companyId, storeId, batchNumber: { startsWith: 'DMG-' }, createdAt: { gte: placedAt }, warehouseId: { not: null } },
-      select: { warehouseId: true, productId: true, quantityProduced: true },
+      select: { id: true, batchNumber: true, warehouseId: true, productId: true, quantityProduced: true },
     }),
   ]);
+  // Where each `DMG-` batch's units were drawn from: the warehouse its own DAMAGE line names (none = an old order's).
+  const brokenLines = damaged.length
+    ? await tx.inventoryMovement.findMany({
+        where: { companyId, storeId, type: { in: ['DAMAGE'] }, batchId: { in: damaged.map((d) => d.id) } },
+        select: { batchId: true, warehouseId: true },
+      })
+    : [];
+  const drawnFrom = new Map(brokenLines.map((l) => [l.batchId as string, l.warehouseId ?? null]));
+  // No line (the shelf came up short): the warehouse the order names.
+  const lineless = damaged.filter((d) => !drawnFrom.has(d.id));
+  const named = lineless.length
+    ? await tx.order.findMany({
+        where: { companyId, storeId, orderNumber: { in: lineless.map((d) => orderOf(d.batchNumber)) } },
+        select: { orderNumber: true, sourceWarehouseId: true },
+      })
+    : [];
+  for (const d of lineless) drawnFrom.set(d.id, named.find((o) => o.orderNumber === orderOf(d.batchNumber))?.sourceWarehouseId ?? null);
   const said = audits.flatMap((a) => {
     try {
       const d = JSON.parse(a.newData ?? '{}') as { warehouseId?: unknown; movedToWarehouse?: unknown };
@@ -264,7 +289,12 @@ async function refusedSince(tx: Tx, companyId: string, storeId: string, placedAt
   });
   return {
     receipts,
-    damagedBack: damaged.map((d) => ({ warehouseId: d.warehouseId!, productId: d.productId, quantity: d.quantityProduced })),
+    damagedBack: damaged.map((d) => ({
+      warehouseId: d.warehouseId!,
+      from: drawnFrom.get(d.id) ?? null,
+      productId: d.productId,
+      quantity: d.quantityProduced,
+    })),
   };
 }
 
