@@ -607,17 +607,15 @@ export async function restoreOrderStock(
     ...order.items.map((i) => ({
       productId: i.productId,
       units: lineUnitsBack(i),
-      addOn: false,
       variantLine: i.variantSummary ? i.id : null,
     })),
     ...(order.addOns ?? []).map((a) => ({
       productId: a.productId,
       units: addOnUnitsBack(order.items, a),
-      addOn: true,
       variantLine: null,
     })),
   ];
-  /** What each product cost when this receipt first asked — an add-on of the same product is priced by it. */
+  /** What each product cost when this receipt first asked — a later line or add-on of the same product takes it. */
   const askedCost = new Map<string, number>();
   const batchNumbers = new Set<string>();
   for (const line of returnLines) {
@@ -628,9 +626,9 @@ export async function restoreOrderStock(
 
     // What did this unit cost when it left? Its own batches are the honest
     // answer, and a return at an invented cost silently moves the profit.
-    // An ADD-ON of a product this receipt already priced takes that same figure: asked again, the «last batch» would be the
-    // one written a moment ago, carrying the line's broken units' money.
-    let costPerUnit = line.addOn ? askedCost.get(line.productId) : undefined;
+    // A product this receipt already priced takes that same figure: asked again, the «last batch» would be the one written a
+    // moment ago, carrying the earlier line's broken units' money.
+    let costPerUnit = askedCost.get(line.productId);
     if (costPerUnit === undefined) {
       const lastCost = await tx.productionBatch.findFirst({
         // The store's own last cost. Another store's batch is another shelf's
@@ -644,7 +642,7 @@ export async function restoreOrderStock(
         select: { costPerUnit: true },
       });
       costPerUnit = lastCost?.costPerUnit ?? 0;
-      if (!askedCost.has(line.productId)) askedCost.set(line.productId, costPerUnit);
+      askedCost.set(line.productId, costPerUnit);
     }
 
     // This line's share of the damage, with the last line to take units
@@ -655,10 +653,11 @@ export async function restoreOrderStock(
     const carried = absorbDamaged({ sound: take, damaged: damagedHere, costPerUnit, minorUnit: restoreUnit });
     absorbedTotal += carried.absorbed;
 
-    // A batch number is unique in a company: an add-on of a product a line already brought back is numbered «+2».
+    // A batch number is unique in a company: a second batch of one product (two lines of it, or a line and an add-on) is
+    // numbered «+2», the third «+3».
     const plain = `RET-${order.orderNumber}-${line.productId.slice(0, 6)}`;
     let batchNumber = plain;
-    for (let n = 2; line.addOn && batchNumbers.has(batchNumber); n++) batchNumber = `${plain}+${n}`;
+    for (let n = 2; batchNumbers.has(batchNumber); n++) batchNumber = `${plain}+${n}`;
     batchNumbers.add(batchNumber);
 
     const batch = await tx.productionBatch.create({

@@ -488,6 +488,72 @@ describe('2 · a return after a partial delivery puts back what was refused', ()
   });
 });
 
+/* ───────────── 2b. one product on two lines ───────────── */
+
+describe('2 · one product on two lines of a consumed parcel', () => {
+  /** Two cream lines, optionally behind a soap line; every one consumed. */
+  const twice = (a: Row, b: Row, soapFirst = false) =>
+    shop({
+      batches: [batch('c', CREAM, null, 10, 10), batch('s', SOAP, null, 10, 7)],
+      items: [
+        ...(soapFirst ? [line('i0', SOAP, 1, { deliveredQty: 0, reservedQty: 0 })] : []),
+        line('i1', CREAM, a.quantity, { deliveredQty: a.deliveredQty, reservedQty: 0 }),
+        line('i2', CREAM, b.quantity, { deliveredQty: b.deliveredQty, reservedQty: 0 }),
+      ],
+      order: { shippingStatus: 'PARTIALLY_DELIVERED' },
+      more: consumed(),
+    });
+  const back = () =>
+    t('productionBatch')
+      .filter((x) => x.batchNumber.startsWith('RET-'))
+      .map((x) => [x.batchNumber, x.quantityRemaining, x.costPerUnit]);
+
+  it('both lines partly refused: the receipt is saved, in two batches with two numbers', async () => {
+    twice({ quantity: 3, deliveredQty: 2 }, { quantity: 2, deliveredQty: 1 });
+    expect(await receive(2)).toMatchObject({ ok: true, missingQty: 0 });
+    expect(back()).toEqual([['RET-ORD-1-pcream', 1, 10], ['RET-ORD-1-pcream+2', 1, 10]]);
+    expect(shelf(CREAM)).toBe(12);
+  });
+
+  it('…and behind another product', async () => {
+    twice({ quantity: 3, deliveredQty: 2 }, { quantity: 2, deliveredQty: 1 }, true);
+    expect(await receive(3)).toMatchObject({ ok: true, missingQty: 0 });
+    expect(back()).toEqual([['RET-ORD-1-psoap0', 1, 7], ['RET-ORD-1-pcream', 1, 10], ['RET-ORD-1-pcream+2', 1, 10]]);
+    expect([shelf(CREAM), shelf(SOAP)]).toEqual([12, 11]);
+  });
+
+  it('a broken unit’s money stays on the first line’s batch; the second is priced at the cost before this receipt', async () => {
+    twice({ quantity: 2, deliveredQty: 1 }, { quantity: 3, deliveredQty: 1 });
+    expect(await receive(2, 1)).toMatchObject({ ok: true, missingQty: 0 });
+    expect(back()).toEqual([['RET-ORD-1-pcream', 1, 20], ['RET-ORD-1-pcream+2', 1, 10]]);
+  });
+
+  it('delivered then returned whole, two lines of one product (RV2710)', async () => {
+    twice({ quantity: 1, deliveredQty: null }, { quantity: 1, deliveredQty: null });
+    expect(await receive('WHOLE')).toMatchObject({ ok: true });
+    expect(back()).toEqual([['RET-ORD-1-pcream', 1, 10], ['RET-ORD-1-pcream+2', 1, 10]]);
+  });
+
+  it('a line and two add-ons of one product: «+2» then «+3»', async () => {
+    shop({
+      batches: [batch('c', CREAM, null, 10, 10)],
+      items: [line('i1', CREAM, 1, { reservedQty: 0 })],
+      addOns: [addOn('a1', CREAM, 1, { reservedQty: 0 }), addOn('a2', CREAM, 1, { reservedQty: 0 })],
+      more: consumed(),
+    });
+    expect(await receive(3)).toMatchObject({ ok: true });
+    expect(back().map((x) => x[0])).toEqual(['RET-ORD-1-pcream', 'RET-ORD-1-pcream+2', 'RET-ORD-1-pcream+3']);
+  });
+
+  it('a second receipt of it writes nothing', async () => {
+    twice({ quantity: 3, deliveredQty: 2 }, { quantity: 2, deliveredQty: 1 });
+    await receive(2);
+    const before = picture();
+    expect(await receive(2)).toMatchObject({ ok: false, code: 'ALREADY_RECEIVED' });
+    expect(picture()).toBe(before);
+  });
+});
+
 /* ───────────── 3. combinations ───────────── */
 
 describe('3 · a refused parcel of a product with sizes', () => {

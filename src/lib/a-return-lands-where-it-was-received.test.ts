@@ -331,22 +331,27 @@ describe.runIf(MAIN_DIR)('recording osm/main (only with W2B_MAIN_DIR)', () => {
 /* ───────────── 1. main's answers ───────────── */
 
 /**
- * 27/11 (RV2667) — THE ONE ANSWER OF MAIN'S THIS FILE PINNED THAT WAS WRONG. A parcel that left the shelf (consumed, or
- * gone before the opening count) with units the customer KEPT: main laid the counted sound units over every line at its
- * FULL quantity, so they could land on kept units — the wrong product restored. Read off the random store itself, without
- * the functions under test: do the two walks of the count bring back different products or numbers? (Two lines of one
- * product trading units write the same rows.) Those seeds differ from the frozen answers, and no other seed may. The
- * golden file is not re-recorded.
+ * 27/11 — THE TWO ANSWERS OF MAIN'S THIS FILE PINNED THAT WERE WRONG, both about a parcel that left the shelf (consumed, or
+ * gone before the opening count):
+ *   · KEPT (RV2667): main laid the counted sound units over every line at its FULL quantity, so they could land on units
+ *     the customer kept — the wrong product restored.
+ *   · TWICE (RV2710): one product brought back on two lines was written as two batches of ONE number (which the database
+ *     refuses; this memory one did not), the second priced from the first.
+ * Read off the random store itself, without the functions under test: do the two walks of the count bring back different
+ * products or numbers (two lines of one product trading units write the same rows), or does the walk by what was not kept
+ * bring one product back on two lines? Those seeds differ from the frozen answers, and no other seed may. The golden file
+ * is not re-recorded.
  */
-function mainRestoredAKeptUnit(seed: number): boolean {
+function mainAnswersWrongly(seed: number): { kept: boolean; twice: boolean } {
   const { data, calls } = randomStore(seed);
-  return calls.some((c) => {
+  const found = { kept: false, twice: false };
+  for (const c of calls) {
     const order = data.order.find((o) => o.id === c.orderId)!;
     const items = data.orderItem.filter((i) => i.orderId === c.orderId);
     const left =
       data.inventoryMovement.some((m) => m.referenceId === c.orderId && m.type === 'SALE') ||
       (order.source === 'Legacy import' && items.every((i) => i.reservedQty === 0));
-    if (!left) return false;
+    if (!left) continue;
     const walk = (room: (i: Row) => number) => {
       let remaining = c.received;
       return items.flatMap((i) => {
@@ -357,19 +362,24 @@ function mainRestoredAKeptUnit(seed: number): boolean {
     };
     const main = walk((i) => i.quantity + i.freeQuantity);
     const now = walk((i) => i.quantity + i.freeQuantity - (i.deliveredQty ?? 0));
-    return main.join() !== now.join();
-  });
+    if (main.join() !== now.join()) found.kept = true;
+    const products = now.map((x) => x.split(':')[0]);
+    if (new Set(products).size !== products.length) found.twice = true;
+  }
+  return found;
 }
 
 describe('a store that is not placed: osm/main’s answers, frozen — 1,500 random stores', () => {
-  it.skipIf(MAIN_DIR)(`${PER} stores receive their returns exactly as main did — but the ones where main restored a kept unit (27/11)`, async () => {
+  it.skipIf(MAIN_DIR)(`${PER} stores receive their returns exactly as main did — but the ones where main answered wrongly (27/11)`, async () => {
     const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as { unplaced: string[] };
     expect(golden.unplaced).toHaveLength(PER);
     const now = await record(NEW);
     const differ = now.map((h, i) => (h === golden.unplaced[i] ? 0 : i + 1)).filter(Boolean);
-    const pinned = golden.unplaced.map((_, i) => (mainRestoredAKeptUnit(i + 1) ? i + 1 : 0)).filter(Boolean);
+    const wrong = golden.unplaced.map((_, i) => ({ seed: i + 1, ...mainAnswersWrongly(i + 1) }));
+    const pinned = wrong.filter((w) => w.kept || w.twice).map((w) => w.seed);
     expect(differ, `seeds that differ from main: ${differ.slice(0, 10).join(', ')}`).toEqual(pinned);
-    expect(pinned).toHaveLength(64);
+    const count = (f: (w: (typeof wrong)[number]) => boolean) => wrong.filter(f).length;
+    expect({ all: pinned.length, kept: count((w) => w.kept), twiceOnly: count((w) => w.twice && !w.kept) }).toEqual({ all: 269, kept: 64, twiceOnly: 205 });
   }, 180_000);
 
   it('the stores are not trivial: restores, take-offs, legacy parcels, replays and short shelves all happen', async () => {
