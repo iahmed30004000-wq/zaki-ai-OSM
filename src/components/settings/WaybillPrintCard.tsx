@@ -18,17 +18,32 @@ import { StoreBrandField } from './StoreBrandField';
  * the preview is that renderer's own page for a made-up order, on the paper this device prints on — what is seen is
  * what prints. The parts the courier works from are drawn ticked and locked, with the reason (the door refuses them too).
  * Until «حفظ» nothing changes; with nothing saved the waybill is today's, byte for byte.
+ *
+ * «التصميم» (27/11) picks the current waybill or one of the ready designs; the offer ticket's tick box appears with them,
+ * since only they draw it. Each product's drawing and unit word are chosen on the product's own page.
  */
 
 type LogoChoice = 'store' | 'own' | 'none';
+type DesignChoice = 'classic' | 'a' | 'b';
 interface Element { key: string; ar: string; locked: boolean }
+/** What is sent and what is saved. No `design` is the current waybill. */
+interface Choice { hide: string[]; logo: LogoChoice; design?: DesignChoice }
 interface Loaded {
-  settings: { hide: string[]; logo: LogoChoice };
+  settings: Choice;
   ownLogo: string | null;
   storeLogo: string | null;
   elements: Element[];
+  /** The parts only the new designs draw. */
+  designElements?: Element[];
+  designs?: { value: DesignChoice; ar: string }[];
   lockedReason: string;
 }
+
+const choiceOf = (hide: string[], logo: LogoChoice, design: DesignChoice): Choice => ({
+  hide,
+  logo,
+  ...(design === 'classic' ? {} : { design }),
+});
 
 const LOGO_OPTIONS = [
   { value: 'store', label: 'شعار المتجر' },
@@ -41,6 +56,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hide, setHide] = useState<string[]>([]);
   const [logo, setLogo] = useState<LogoChoice>('store');
+  const [design, setDesign] = useState<DesignChoice>('classic');
   const [ownLogo, setOwnLogo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -58,6 +74,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
         setLoaded(d);
         setHide(d.settings.hide);
         setLogo(d.settings.logo);
+        setDesign(d.settings.design ?? 'classic');
         setOwnLogo(d.ownLogo);
       })
       .catch((e) => alive && setLoadError(e instanceof Error ? e.message : 'تعذّر التحميل'));
@@ -75,7 +92,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
         const res = await apiFetch(`/api/geo/stores/${storeId}/waybill/preview`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hide, logo, width, height, sheetWidth, sheetHeight }),
+          body: JSON.stringify({ ...choiceOf(hide, logo, design), width, height, sheetWidth, sheetHeight }),
         });
         if (!alive) return;
         if (!res.ok) {
@@ -92,21 +109,23 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
       alive = false;
       clearTimeout(timer);
     };
-  }, [loaded, storeId, hide, logo, ownLogo, width, height, sheetWidth, sheetHeight]);
+  }, [loaded, storeId, hide, logo, design, ownLogo, width, height, sheetWidth, sheetHeight]);
 
   if (loadError) return <Card padding="md"><p className="text-note text-[var(--sys-destructive)]">{loadError}</p></Card>;
   if (!loaded) return <Card padding="md"><RiLoader4Line className="h-4 w-4 animate-spin" aria-label="جارٍ التحميل" /></Card>;
 
-  const changed = logo !== loaded.settings.logo || hide.join(',') !== loaded.settings.hide.join(',');
-  const isDefault = logo === 'store' && hide.length === 0;
+  const savedDesign = loaded.settings.design ?? 'classic';
+  const changed = logo !== loaded.settings.logo || design !== savedDesign || hide.join(',') !== loaded.settings.hide.join(',');
+  const isDefault = logo === 'store' && design === 'classic' && hide.length === 0;
+  const elements = design === 'classic' ? loaded.elements : [...loaded.elements, ...(loaded.designElements ?? [])];
   const toggle = (key: string, shown: boolean) =>
     setHide((cur) => (shown ? cur.filter((k) => k !== key) : [...cur, key]));
 
-  async function save(next: { hide: string[]; logo: LogoChoice }) {
+  async function save(next: Choice) {
     setSaving(true);
     setMsg(null);
     try {
-      const d = await apiJson<{ settings: { hide: string[]; logo: LogoChoice } }>(`/api/geo/stores/${storeId}/waybill`, {
+      const d = await apiJson<{ settings: Choice }>(`/api/geo/stores/${storeId}/waybill`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
@@ -114,6 +133,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
       setLoaded((cur) => (cur ? { ...cur, settings: d.settings } : cur));
       setHide(d.settings.hide);
       setLogo(d.settings.logo);
+      setDesign(d.settings.design ?? 'classic');
       setMsg({ ok: true, text: 'تم الحفظ — البوالص اللي بتنطبع من هلق بتطلع هيك' });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'تعذّر الحفظ' });
@@ -136,6 +156,25 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
 
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="space-y-3">
+          {loaded.designs && (
+            <div className="space-y-2 border-b border-[var(--sys-border)] pb-3">
+              <p className="text-note font-semibold text-[var(--sys-heading)]">التصميم</p>
+              <Segmented
+                aria-label="تصميم البوليصة"
+                options={loaded.designs.map((d) => ({ value: d.value, label: d.ar }))}
+                value={design}
+                onChange={(v) => setDesign(v as DesignChoice)}
+                disabled={!mayManage}
+              />
+              {design !== 'classic' && (
+                <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+                  عدد القطع كبير وواضح للمغلّف، وإذا ما وسعت الورقة كل المنتجات بتطلع ورقة تانية لنفس الطلب. شكل القطعة
+                  وكلمتها (عبوة، قطّارة، زوج…) بينختاروا من صفحة كل منتج.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-2">
             <p className="text-note font-semibold text-[var(--sys-heading)]">الشعار</p>
             <Segmented
@@ -165,7 +204,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
 
           <div className="space-y-2 border-t border-[var(--sys-border)] pt-3">
             <p className="text-note font-semibold text-[var(--sys-heading)]">العناصر</p>
-            {loaded.elements.map((e) => (
+            {elements.map((e) => (
               <Checkbox
                 key={e.key}
                 id={`waybill-${storeId}-${e.key}`}
@@ -180,7 +219,7 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
 
           {mayManage && (
             <div className="flex items-center gap-2">
-              <Button type="button" onClick={() => void save({ hide, logo })} disabled={!changed || saving}>
+              <Button type="button" onClick={() => void save(choiceOf(hide, logo, design))} disabled={!changed || saving}>
                 {saving && <RiLoader4Line className="h-4 w-4 animate-spin" />}
                 حفظ
               </Button>

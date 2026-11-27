@@ -6,15 +6,15 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { logAudit } from '@/lib/audit';
 import { updateCompanySettings } from '@/lib/company-settings';
 import {
-  LOCKED_REASON, WAYBILL_ELEMENTS, WAYBILL_PRINT_DEFAULT, WAYBILL_PRINT_SETTINGS_KEY, isOwnWaybillLogo, readDocument,
+  DESIGN_CHOICES, DESIGN_ELEMENTS, LOCKED_REASON, WAYBILL_ELEMENTS, WAYBILL_PRINT_DEFAULT, WAYBILL_PRINT_SETTINGS_KEY, isOwnWaybillLogo, readDocument,
   readWaybillPrint, storeEntry, validateWaybillPrint, type WaybillPrintDocument,
 } from '@/lib/waybill-print-settings';
 
 /**
  * «البوليصة المطبوعة» of ONE store (25/11, F15) — see `src/lib/waybill-print-settings.ts`.
  *
- *   GET  → { settings: { hide, logo }, ownLogo, storeLogo, elements, lockedReason }   key `geo.view`
- *   PUT  { hide, logo } → the saved choice                                            key `geo.manage`
+ *   GET  → { settings: { hide, logo, design? }, ownLogo, storeLogo, elements, designElements, designs, lockedReason }   key `geo.view`
+ *   PUT  { hide, logo, design? } → the saved choice                                   key `geo.manage`
  *
  * The same keys as the store's identity beside it (the logo door asks `geo.manage`). The store must be this
  * company's; the choice is written under that store's id only, so one store's waybill never changes another's.
@@ -41,10 +41,16 @@ export async function GET(_req: Request, { params }: Ctx) {
     const entry = storeEntry(await readWaybillPrint(db, companyId), store.id);
     const ownLogo = isOwnWaybillLogo(entry?.ownLogo, companyId, store.id) ? entry!.ownLogo! : null;
     return NextResponse.json({
-      settings: { hide: entry?.hide ?? WAYBILL_PRINT_DEFAULT.hide, logo: entry?.logo ?? WAYBILL_PRINT_DEFAULT.logo },
+      settings: {
+        hide: entry?.hide ?? WAYBILL_PRINT_DEFAULT.hide,
+        logo: entry?.logo ?? WAYBILL_PRINT_DEFAULT.logo,
+        ...(entry?.design ? { design: entry.design } : {}),
+      },
       ownLogo,
       storeLogo: store.logo ?? null,
       elements: WAYBILL_ELEMENTS,
+      designElements: DESIGN_ELEMENTS,
+      designs: DESIGN_CHOICES,
       lockedReason: LOCKED_REASON,
     });
   } catch (error) {
@@ -81,7 +87,7 @@ export async function PUT(req: Request, { params }: Ctx) {
       action: 'WAYBILL_PRINT_SAVED',
       entity: 'Store',
       entityId: store.id,
-      previousData: { hide: before?.hide ?? [], logo: before?.logo ?? 'store' },
+      previousData: { hide: before?.hide ?? [], logo: before?.logo ?? 'store', ...(before?.design ? { design: before.design } : {}) },
       newData: check.value,
     });
     return NextResponse.json({ settings: check.value });

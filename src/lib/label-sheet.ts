@@ -1,5 +1,9 @@
-import { code128Bars, encodableCode128 } from './labels';
+import { encodableCode128 } from './labels';
 import { STORE_LOGO_PREFIX } from './store-logo';
+import { barcodeSvg, esc } from './label-ink';
+import { designCss, designOrder, type Parcel, type WaybillDesign } from './waybill-designs';
+
+export { barcodeSvg, esc, QUIET_MODULES } from './label-ink';
 
 /**
  * THE PRINTED SHEET OF WAYBILLS, AS A STRING.
@@ -65,6 +69,11 @@ export interface LabelView {
   cod: string;
   /** Pre-rendered QR svg (async library, so the caller makes it). */
   qrSvg: string;
+  /**
+   * What the new designs list: each line with its variant, its shape and whether it is the main product, and the saved
+   * offer's name. Read by `waybill-designs.ts` alone — the current waybill prints `items` and never looks here.
+   */
+  parcel?: Parcel;
 }
 
 export interface SheetStore {
@@ -106,7 +115,12 @@ export interface SheetOptions {
    * `label-sheet.main-golden.json`). The parts a courier needs (name, phones, address, COD, barcode)
    * have no switch here at all: they cannot be left off. The logo is `store.logoUrl` (null = none).
    */
-  show?: SheetShow;
+  show?: DesignShow;
+  /**
+   * 27/11: one of the ready designs (`waybill-designs.ts`). Omitted — the current waybill, byte for byte.
+   * A design may follow an order's label with contents labels; they commit nothing and count as no order.
+   */
+  design?: WaybillDesign;
 }
 
 /** The parts of a waybill a store may leave off. Every one `true` is today's waybill. */
@@ -120,6 +134,9 @@ export interface SheetShow {
   qr: boolean;
   supportPhone: boolean;
 }
+
+/** The switches of a new design: the same parts, and the offer ticket only they draw (left out means shown). */
+export type DesignShow = SheetShow & { offer?: boolean };
 
 /**
  * Labels per print run when the batch is large. A print preview of two
@@ -605,41 +622,6 @@ export function needOf(l: LabelView, store: SheetStore): LabelNeed {
   };
 }
 
-export function esc(value: string): string {
-  return String(value ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
-  );
-}
-
-/** Ten modules of white each side — the Code 128 quiet zone. */
-export const QUIET_MODULES = 10;
-
-/**
- * A Code 128 barcode as ONE svg path, its quiet zones drawn into the symbol.
- *
- * One path for the whole symbol: the old one-rect-per-bar version put about
- * ten thousand elements into a run of two hundred labels. `crispEdges` keeps
- * bars from being anti-aliased into grey, which a scanner reads as width.
- */
-export function barcodeSvg(value: string, heightMm: number): string {
-  const bars = code128Bars(value);
-  const total = bars.reduce((a, b) => a + b, 0) + QUIET_MODULES * 2;
-  let x = QUIET_MODULES;
-  let dark = true;
-  let d = '';
-  for (const w of bars) {
-    if (dark) d += `M${x} 0h${w}v10h-${w}z`;
-    x += w;
-    dark = !dark;
-  }
-  return (
-    `<svg viewBox="0 0 ${total} 10" preserveAspectRatio="none" width="100%" height="${heightMm}mm" ` +
-    `shape-rendering="crispEdges" role="img" aria-label="${esc(encodableCode128(value))}">` +
-    `<path d="${d}" fill="#000"/></svg>`
-  );
-}
-
 /** How many labels one sheet holds. A sheet that fits none still gets one per page rather than clipping it. */
 export function labelsPerPage(size: SheetSize): number {
   const pageW = size.sheetWidth ?? size.width;
@@ -815,16 +797,44 @@ export const LABEL_CSS = `  .label { overflow: hidden; display: grid; gap: calc(
           padding-top: calc(${MM.footPad}mm * var(--s)); }
 `;
 
+/**
+ * The pages of a design. An order may be more than one label (its contents labels follow it), so a print run is filled
+ * order by order — never splitting an order between two runs, where the second would print without being asked for —
+ * and each run starts on a page of its own.
+ */
+function designPages(labels: LabelView[], size: SheetSize, opts: SheetOptions & { design: WaybillDesign }) {
+  const perPage = labelsPerPage(size);
+  const runs: { sections: string[]; from: number; to: number }[] = [];
+  let extra = 0;
+  labels.forEach((l, i) => {
+    const drawn = designOrder(opts.design, l, size, opts.store, opts.show);
+    extra += drawn.more.length;
+    const group = [drawn.main, ...drawn.more];
+    let run = runs[runs.length - 1];
+    if (!run || run.sections.length + group.length > PRINT_CHUNK) runs.push((run = { sections: [], from: i + 1, to: i + 1 }));
+    run.sections.push(...group);
+    run.to = i + 1;
+  });
+  const sheets = runs.flatMap((run, r) =>
+    Array.from(
+      { length: Math.ceil(run.sections.length / perPage) },
+      (_, p) => `<div class="page" data-run="${r}">${run.sections.slice(p * perPage, (p + 1) * perPage).join('')}</div>`
+    )
+  );
+  return { sheets, ranges: runs.map((r) => ({ from: r.from, to: r.to })), extra };
+}
+
 export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: SheetOptions): string {
   const pageW = size.sheetWidth ?? size.width;
   const pageH = size.sheetHeight ?? size.height;
   const perPage = labelsPerPage(size);
-  const pages = Math.ceil(labels.length / perPage);
+  const designed = opts.design ? designPages(labels, size, { ...opts, design: opts.design }) : null;
+  const pages = designed ? designed.sheets.length : Math.ceil(labels.length / perPage);
   const t = fitFor(size);
   const pdf = opts.mode === 'pdf';
 
-  const sheets: string[] = [];
-  for (let p = 0; p < pages; p++) {
+  const sheets: string[] = designed ? designed.sheets : [];
+  for (let p = 0; !designed && p < pages; p++) {
     const chunk = labels.slice(p * perPage, (p + 1) * perPage);
     const run = Math.floor((p * perPage) / PRINT_CHUNK);
     sheets.push(
@@ -833,7 +843,7 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
   }
 
   // PDF mode is one file of everything; runs exist only to keep a printer honest.
-  const runs = pdf ? 1 : Math.ceil(labels.length / PRINT_CHUNK);
+  const runs = pdf ? 1 : designed ? designed.ranges.length : Math.ceil(labels.length / PRINT_CHUNK);
   const chunked = runs > 1;
 
   const runRules = chunked
@@ -842,8 +852,8 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
 
   const runButtons = chunked
     ? Array.from({ length: runs }, (_, r) => {
-        const from = r * PRINT_CHUNK + 1;
-        const to = Math.min((r + 1) * PRINT_CHUNK, labels.length);
+        const from = designed ? designed.ranges[r].from : r * PRINT_CHUNK + 1;
+        const to = designed ? designed.ranges[r].to : Math.min((r + 1) * PRINT_CHUNK, labels.length);
         return `<button type="button" class="run" data-print-run="${r}">${from}–${to}</button>`;
       }).join('')
     : '';
@@ -885,9 +895,13 @@ export function renderLabelSheet(labels: LabelView[], size: SheetSize, opts: She
      LABEL_CSS: every colour in it is black or white, and no white is ever
      drawn on black — Chrome prints without background graphics unless it
      is told otherwise, and then white-on-black is white on nothing. */
-${LABEL_CSS}
+${
+  designed
+    ? designCss(size)
+    : `${LABEL_CSS}
   .label { --s: ${t.fit}; --c: ${t.codes}; --qr: ${t.qr}mm;
-           width: ${size.width}mm; height: ${size.height}mm; padding: ${t.pad}mm; }
+           width: ${size.width}mm; height: ${size.height}mm; padding: ${t.pad}mm; }`
+}
 
   @media print {
     ${runRules}
@@ -906,7 +920,9 @@ ${LABEL_CSS}
 <body>
 <div class="bar">
   <strong>${labels.length} بوليصة</strong>
-  <span class="muted">${pages} ${pages === 1 ? 'صفحة' : 'صفحات'}</span>
+  <span class="muted">${pages} ${pages === 1 ? 'صفحة' : 'صفحات'}</span>${
+    designed?.extra ? `\n  <span class="muted">منها أوراق محتويات إضافية: ${designed.extra}</span>` : ''
+  }
   ${
     pdf
       ? `<span class="muted">اختر «حفظ بصيغة PDF» في نافذة الطباعة — الحفظ لا يعلّم الطلبات مطبوعة.</span>`

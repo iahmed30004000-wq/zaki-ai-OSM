@@ -7,6 +7,8 @@ import { placeLine } from './address';
 import { formatPhoneNumber } from './phone';
 import type { LabelBatch } from './labels';
 import type { LabelView } from './label-sheet';
+import { cleanOfferName, type Parcel, type ParcelLine } from './waybill-designs';
+import { GENERIC_SHAPE, type ProductShape } from './product-shapes';
 import { isAutomated, type ProviderLike } from './couriers';
 
 /**
@@ -224,6 +226,65 @@ export async function toLabelView(order: WaybillOrder, minorUnit: number, countr
     cod: formatMoney(cod, order.currency, minorUnit),
     qrSvg: await qrSvg(ref),
   };
+}
+
+/**
+ * What a NEW design lists besides the label itself: each line with its variant apart from its name, whose product it
+ * is (for the shape) and the order's saved offer. Read only when a store prints one of the new designs — the current
+ * waybill and the courier's file never ask for it.
+ */
+export const PARCEL_SELECT = {
+  id: true,
+  productId: true,
+  offer: { select: { name: true, productId: true, quantity: true, freeQuantity: true } },
+  items: {
+    select: { productId: true, productName: true, quantity: true, freeQuantity: true, variantSummary: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  },
+  addOns: { select: { productId: true, productName: true, quantity: true } },
+} satisfies Prisma.OrderSelect;
+
+export type ParcelOrder = Prisma.OrderGetPayload<{ select: typeof PARCEL_SELECT }>;
+
+/**
+ * The parcel of one order, the main product's lines first.
+ *
+ * THE OFFER TICKET is the order's saved offer (`Order.offerId`), and it stands beside the main product only: the offer
+ * must be that product's, and the pieces of that product must still be whole bundles of it (paid and free together). An
+ * order whose lines were edited since keeps its `offerId`; a ticket reading «قطعتين + قطعة هدية» over one piece would
+ * send the packer for gifts nobody sold, so there is no ticket then.
+ */
+export function parcelOf(order: ParcelOrder, shapes: Readonly<Record<string, ProductShape>>): Parcel {
+  const shapeOf = (productId: string) => shapes[productId] ?? GENERIC_SHAPE;
+  const isMain = (productId: string) => productId === order.productId;
+  const items = [...order.items.filter((i) => isMain(i.productId)), ...order.items.filter((i) => !isMain(i.productId))];
+
+  const offer = order.offer && order.offer.productId === order.productId ? order.offer : null;
+  const units = order.items.filter((i) => isMain(i.productId)).reduce((s, i) => s + i.quantity + i.freeQuantity, 0);
+  const bundle = offer ? offer.quantity + offer.freeQuantity : 0;
+  const ticket = offer && bundle > 0 && units > 0 && units % bundle === 0 ? cleanOfferName(offer.name) : null;
+
+  const lines: ParcelLine[] = [
+    ...items.map((i, n) => ({
+      name: i.productName,
+      variant: i.variantSummary || null,
+      qty: i.quantity + i.freeQuantity,
+      shape: shapeOf(i.productId),
+      ...(n === 0 && isMain(i.productId) ? { main: true } : {}),
+    })),
+    ...order.addOns.map((a) => ({ name: a.productName, qty: a.quantity, shape: shapeOf(a.productId), addOn: true })),
+  ];
+  return { lines, offer: ticket };
+}
+
+/** The parcels of these orders, by order id — inside the session's company and store, like every other read here. */
+export async function loadParcels(
+  orderIds: string[],
+  scope: { companyId: string; storeId: string },
+  shapes: Readonly<Record<string, ProductShape>>
+): Promise<Map<string, Parcel>> {
+  const rows = await db.order.findMany({ where: { id: { in: orderIds }, ...scope }, select: PARCEL_SELECT });
+  return new Map(rows.map((r) => [r.id, parcelOf(r, shapes)]));
 }
 
 /**

@@ -5,6 +5,7 @@ import { requireCompanyTenant } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { renderLabelSheet, type LabelView } from '@/lib/label-sheet';
+import { DESIGN_SAMPLES } from '@/lib/waybill-design-samples';
 import { qrSvg } from '@/lib/waybill';
 import {
   isOwnWaybillLogo, readWaybillPrint, resolveWaybillPrint, storeEntry, validateWaybillPrint,
@@ -13,8 +14,8 @@ import {
 /**
  * POST /api/geo/stores/[id]/waybill/preview — the LIVE PREVIEW of «البوليصة المطبوعة» (25/11, F15).
  *
- * Body: `{ hide, logo, width, height, sheetWidth?, sheetHeight? }` — the choice being edited, not yet saved, and the
- * paper this device prints on. Answers the page the print door would print, drawn by the SAME renderer
+ * Body: `{ hide, logo, design?, width, height, sheetWidth?, sheetHeight? }` — the choice being edited, not yet saved,
+ * and the paper this device prints on. A new design is previewed on two made-up orders: one product, and several. Answers the page the print door would print, drawn by the SAME renderer
  * (`renderLabelSheet`), so what is previewed is what prints. One made-up order: no customer of the store is read, and
  * the page is in «PDF» mode, so it can commit nothing. The screen shows it in a frame that runs no script.
  * Key `geo.view` — the key that opens the card.
@@ -64,7 +65,10 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const stored = storeEntry(await readWaybillPrint(db, companyId), store.id);
     const ownLogo = isOwnWaybillLogo(stored?.ownLogo, companyId, store.id) ? stored!.ownLogo : undefined;
-    const check = validateWaybillPrint({ hide: body?.hide, logo: body?.logo }, { ownLogo: Boolean(ownLogo) });
+    const check = validateWaybillPrint(
+      { hide: body?.hide, logo: body?.logo, ...(body?.design !== undefined ? { design: body.design } : {}) },
+      { ownLogo: Boolean(ownLogo) }
+    );
     if (!check.ok) return refuse(400, check.code, check.errorAr);
 
     const choice = resolveWaybillPrint(
@@ -72,10 +76,12 @@ export async function POST(req: Request, { params }: Ctx) {
       { companyId, storeId: store.id },
       store.logo
     );
-    const label: LabelView = { ...SAMPLE, qrSvg: await qrSvg(SAMPLE.ref) };
-    const html = renderLabelSheet([label], size.data, {
+    const samples = choice.design ? DESIGN_SAMPLES : [SAMPLE];
+    const labels: LabelView[] = await Promise.all(samples.map(async (s) => ({ ...s, qrSvg: await qrSvg(s.ref) })));
+    const html = renderLabelSheet(labels, size.data, {
       store: { name: store.name, logoUrl: choice.logoUrl, supportPhone: store.supportPhone ?? null },
       ...(choice.show ? { show: choice.show } : {}),
+      ...(choice.design ? { design: choice.design } : {}),
       mode: 'pdf',
       token: '-', // a preview commits nothing: no batch, no token
       stampUrl: '',

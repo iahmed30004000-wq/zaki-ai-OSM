@@ -17,6 +17,7 @@ import { ProductOffers } from '@/components/products/ProductOffers';
 import { ProductStock } from '@/components/products/ProductStock';
 import { ProductAttributes } from '@/components/products/ProductAttributes';
 import { ProductVariants } from '@/components/products/ProductVariants';
+import { ProductShapePicker } from '@/components/products/ProductShapePicker';
 import { ProductHeadline } from '@/components/products/ProductHeadline';
 import { ProductPerformance } from '@/components/products/ProductPerformance';
 import { ProductRecentOrders } from '@/components/products/ProductRecentOrders';
@@ -453,6 +454,14 @@ export function ProductDetailScreen() {
               canChangePrice={!!canManage && userCan(currentUser, 'products.change_price')}
               currency={currencyCode}
             />
+          </CardContent>
+        </Card>
+
+        {/* What one piece looks like on the printed waybill, and the word it is counted in (the owner, 27/11). */}
+        <Card>
+          <CardHeader title="شكل القطعة على البوليصة" />
+          <CardContent>
+            <ProductShapePicker productId={productId} canManage={!!canManage} />
           </CardContent>
         </Card>
 

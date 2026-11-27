@@ -6,7 +6,8 @@ import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
 import { renderLabelSheet } from '@/lib/label-sheet';
 import { readWaybillPrint, resolveWaybillPrint } from '@/lib/waybill-print-settings';
-import { altPhoneForLabel, csvCell, loadWaybillOrders, printRefusal, toLabelView, waybillCod } from '@/lib/waybill';
+import { altPhoneForLabel, csvCell, loadParcels, loadWaybillOrders, printRefusal, toLabelView, waybillCod } from '@/lib/waybill';
+import { readProductShapes } from '@/lib/product-shapes';
 import { formatMoney } from '@/lib/money';
 import { placeLine } from '@/lib/address';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
@@ -117,11 +118,16 @@ export async function GET(req: Request) {
       select: { name: true, logo: true, supportPhone: true },
     });
 
-    // F15 (25/11): the store's own choices — which logo, which parts left off. A store that never chose answers
-    // exactly what this page drew before: `storeLogoForPrint(store.logo)` and no `show`.
+    // F15 (25/11): the store's own choices — which logo, which parts left off, which design. A store that never chose
+    // answers exactly what this page drew before: `storeLogoForPrint(store.logo)`, no `show` and no `design`.
     const choice = resolveWaybillPrint(await readWaybillPrint(db, companyId), { companyId, storeId }, store?.logo);
 
-    const labels = await Promise.all(printable.map((o) => toLabelView(o, minorUnit, country.code)));
+    const views = await Promise.all(printable.map((o) => toLabelView(o, minorUnit, country.code)));
+    // A new design also lists each line's variant and shape and the saved offer's name; the current one asks for nothing more.
+    const parcels = choice.design
+      ? await loadParcels(printable.map((o) => o.id), { companyId, storeId }, await readProductShapes(db, companyId))
+      : null;
+    const labels = parcels ? views.map((v) => ({ ...v, parcel: parcels.get(v.orderId) })) : views;
     const mode = url.searchParams.get('mode') === 'pdf' ? 'pdf' : 'print';
     const day = new Date().toISOString().slice(0, 10);
 
@@ -132,6 +138,7 @@ export async function GET(req: Request) {
         supportPhone: store?.supportPhone ?? null,
       },
       ...(choice.show ? { show: choice.show } : {}),
+      ...(choice.design ? { design: choice.design } : {}),
       mode,
       token,
       stampUrl: '/api/ops/labels/printed',
