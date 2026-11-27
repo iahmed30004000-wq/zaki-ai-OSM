@@ -1940,15 +1940,15 @@
     "iconButtons": 1
   },
   "src/components/screens/WhatsAppInboxScreen.tsx": {
-    "buttons": 9,
-    "inputs": 2,
+    "buttons": 13,
+    "inputs": 5,
     "columns": 0,
     "cards": 5,
-    "modals": 1,
-    "icons": 20,
+    "modals": 3,
+    "icons": 22,
     "links": 3,
     "tabs": 0,
-    "iconButtons": 1
+    "iconButtons": 2
   },
   "src/components/screens/WhatsAppSettingsScreen.tsx": {
     "buttons": 2,

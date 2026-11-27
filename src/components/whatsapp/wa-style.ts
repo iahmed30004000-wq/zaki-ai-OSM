@@ -142,4 +142,31 @@ export const WA_CSS = `
 .wa-trace{font-size:11.5px;color:var(--wa-meta);align-self:center;max-width:92%;text-align:center;background:var(--wa-chip);border-radius:8px;padding:3px 10px;margin:4px 0;direction:ltr;overflow-wrap:anywhere}
 .wa-trace.bad{color:var(--wa-warn)}
 @media (prefers-reduced-motion:reduce){.wa-dots i{animation:none}.wa-react{transition:none}}
+
+/* ── a phone (the owner, 27/11: «حسّن واجهة واتساب الشات بنسخة الموبايل») ──
+   The list takes the screen under a short header; an open conversation takes the WHOLE screen, over the app's bars, as
+   WhatsApp does — under the kit's dialogs (z-50), so «⋮» and «محادثة جديدة» still open above it. */
+.wa-mob{display:none}
+@media (max-width:1023.98px){
+  .wa-top p{display:none}
+  .wa-desk{display:none}
+  .wa-mob{display:inline-flex}
+  .wa-list{border-radius:12px;overflow:visible}
+  .wa-panes,.wa-rows{overflow:visible}
+  .wa-panes{padding-inline:8px}
+  .wa-pane.wa-full{position:fixed;inset:0;z-index:45;border-radius:0;border:0;height:100dvh;
+    padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  .wa-pane.wa-full .wa-head{min-height:56px;padding:6px 8px}
+  .wa-scroll{padding:10px 3% 12px}
+  .wa-holder{max-width:86%}
+  .wa-foot{padding:6px 6px 8px}
+  .wa-head-sub{font-size:12px}
+}
+/* A narrow desk (a laptop, a half window): three columns left the conversation a strip. The customer column steps aside and
+   «⋮» brings it, as on a phone. */
+@media (min-width:1024px) and (max-width:1279.98px){
+  .wa-panes{grid-template-columns:300px 1fr}
+  .wa-side{display:none}
+  .wa-mob{display:inline-flex}
+}
 `;

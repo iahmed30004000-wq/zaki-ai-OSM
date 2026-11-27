@@ -71,11 +71,12 @@ export interface WaBotAgent {
 }
 
 /** Two letters for an avatar: the first letters of the first two words of a name, or a number's last two digits. */
-export function initials(name: string | null | undefined, phone: string): string {
+export function initials(name: string | null | undefined, phone: string | null | undefined): string {
   const words = (name || '').trim().split(/\s+/).filter(Boolean);
   if (words.length >= 2) return (Array.from(words[0])[0] + Array.from(words[1])[0]).toUpperCase();
   if (words.length === 1) return Array.from(words[0]).slice(0, 2).join('').toUpperCase();
-  const digits = phone.replace(/\D/g, '');
+  // No number yet (a thread still loading) is «؟», never a broken screen.
+  const digits = String(phone ?? '').replace(/\D/g, '');
   return digits.slice(-2) || '؟';
 }
 

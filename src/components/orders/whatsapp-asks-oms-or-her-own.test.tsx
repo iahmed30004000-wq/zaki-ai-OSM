@@ -10,10 +10,10 @@ import React from 'react';
  * today's button with no question.
  */
 
-const { apiJson, may } = vi.hoisted(() => ({ apiJson: vi.fn(), may: { inbox: true } }));
+const { apiJson, may } = vi.hoisted(() => ({ apiJson: vi.fn(), may: { inbox: true, send: false } }));
 vi.mock('@/lib/api-client', () => ({ apiJson: (...a: unknown[]) => apiJson(...a) }));
 vi.mock('@/context/signed-in-user', () => ({ useSignedInUser: () => ({ id: 'u1' }) }));
-vi.mock('@/lib/can', () => ({ userCan: (_u: unknown, p: string) => (p === 'whatsapp.view' ? may.inbox : false) }));
+vi.mock('@/lib/can', () => ({ userCan: (_u: unknown, p: string) => (p === 'whatsapp.view' ? may.inbox : p === 'whatsapp.send' ? may.send : false) }));
 
 import { ContactButtons } from './ContactButtons';
 
@@ -26,7 +26,10 @@ let opened: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   may.inbox = true;
-  apiJson.mockImplementation(async (url: string) => (url === '/api/whatsapp/conversations/for-order' ? { id: 'conv-9' } : { templates: [TEMPLATE] }));
+  may.send = false;
+  apiJson.mockImplementation(async (url: string) =>
+    url === '/api/whatsapp/conversations/for-order' || url === '/api/whatsapp/conversations/start' ? { id: 'conv-9' } : { templates: [TEMPLATE] }
+  );
   went = vi.fn();
   opened = vi.fn(() => null);
   vi.stubGlobal('open', opened);
@@ -70,6 +73,39 @@ describe('the WhatsApp press asks which WhatsApp', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('مش موصول');
     expect(screen.getByText('واتساب الخارجي')).toBeTruthy();
     expect(went).not.toHaveBeenCalled();
+  });
+});
+
+describe('a customer’s own number, with no order (the customers screen, 27/11)', () => {
+  it('asks too; «واتساب OMS» opens the thread of that number; «واتساب الخارجي» is her app on it, with no ready messages', async () => {
+    may.send = true;
+    render(<ContactButtons phone="0952554562" countryCode="963" plain omsChat context={{}} />);
+    fireEvent.click(screen.getByTitle('واتساب'));
+    fireEvent.click(await screen.findByText('واتساب OMS'));
+    await vi.waitFor(() => expect(went).toHaveBeenCalledWith('/growth/whatsapp/inbox?c=conv-9'));
+    const call = apiJson.mock.calls.find(([u]) => u === '/api/whatsapp/conversations/start')!;
+    expect(JSON.parse(String(call[1].body))).toEqual({ phone: '0952554562' });
+  });
+
+  it('«واتساب الخارجي» opens her WhatsApp on the number at once', async () => {
+    may.send = true;
+    render(<ContactButtons phone="0952554562" countryCode="963" plain omsChat context={{}} />);
+    fireEvent.click(screen.getByTitle('واتساب'));
+    fireEvent.click(await screen.findByText('واتساب الخارجي'));
+    expect(new URL(String(opened.mock.calls[0][0])).pathname).toBe('/963952554562');
+  });
+
+  it('without the send key, or on a courier’s number (no `omsChat`), it is her app at once, as before', async () => {
+    may.send = false;
+    render(<ContactButtons phone="0952554562" countryCode="963" plain omsChat context={{}} />);
+    fireEvent.click(screen.getByTitle('واتساب'));
+    expect(opened).toHaveBeenCalledTimes(1);
+    cleanup();
+    may.send = true;
+    render(<ContactButtons phone="0952554562" countryCode="963" plain context={{}} />);
+    fireEvent.click(screen.getByTitle('واتساب'));
+    expect(opened).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('واتساب OMS')).toBeNull();
   });
 });
 
