@@ -100,6 +100,12 @@ export const LABEL_SIZES: readonly LabelSize[] = [
 ];
 
 /**
+ * A sticker too small for the ready designs (under 70 mm either way — `tierFor`'s «tiny»): it prints the current
+ * waybill whatever the store chose. Here, beside the sizes, so the print doors and the settings card ask one rule.
+ */
+export const isTinyPaper = (width: number, height: number): boolean => width < 70 || height < 70;
+
+/**
  * Code 128B barcode as SVG paths — no runtime dependency, no external call.
  * Used for the courier barcode; our own reference is printed as a QR.
  */

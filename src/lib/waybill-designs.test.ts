@@ -41,7 +41,8 @@ const TALL = { width: 100, height: 150 };
 const SQUARE = { width: 100, height: 100 };
 const ORIENTATIONS: [string, SheetSize][] = [['عرضي', WIDE], ['طولي', TALL], ['مربّع', SQUARE]];
 const OFFERED: SheetSize[] = LABEL_SIZES.map((s) => ({ width: s.width, height: s.height }));
-const SMALL: SheetSize[] = [{ width: 80, height: 60 }, { width: 75, height: 50 }, { width: 60, height: 40 }, { width: 40, height: 40 }, { width: 120, height: 40 }, { width: 40, height: 300 }];
+/** The smallest papers a design is drawn on: under 70 mm either way the doors print the current waybill. */
+const SMALL: SheetSize[] = [{ width: 70, height: 70 }, { width: 80, height: 75 }, { width: 75, height: 100 }, { width: 100, height: 70 }, { width: 70, height: 300 }, { width: 300, height: 70 }];
 
 const ALL: DesignShow = { storeName: true, courierName: true, ref: true, items: true, note: true, qr: true, supportPhone: true };
 
@@ -191,7 +192,8 @@ describe.each(WAYBILL_DESIGNS)('design «%s»', (design) => {
       for (const size of [...everything]) {
         const p = draw(design, size, long);
         expect(p.all, `${size.width}×${size.height}`).toContain('آخر-الملاحظة');
-        if (!p.main[0].includes('آخر-الملاحظة')) expect(p.main[0]).toContain('ملاحظة الزبون بالورقة الثانية');
+        // The courier-only label (an address nothing else can hold) says «الباقي …» where it has a line to spare.
+        if (!p.main[0].includes('آخر-الملاحظة') && !p.main[0].includes('wb-tight')) expect(p.main[0]).toContain('ملاحظة الزبون بالورقة الثانية');
       }
     });
 
@@ -268,7 +270,7 @@ describe.each(WAYBILL_DESIGNS)('design «%s»', (design) => {
       `ع${evil}`
     );
 
-    it.each([...ORIENTATIONS.map(([, s]) => s), { width: 60, height: 40 }])('$width×$height: every customer and product string is escaped', (size) => {
+    it.each([...ORIENTATIONS.map(([, s]) => s), { width: 70, height: 70 }])('$width×$height: every customer and product string is escaped', (size) => {
       const p = draw(design, size, bad, { store: { name: `م${evil}`, logoUrl: null, supportPhone: `0${evil}` } });
       expect(p.all).not.toContain('<script');
       expect(p.all).toContain('&lt;script&gt;alert(1)&lt;/script&gt;&quot;&amp;&#39;');
@@ -309,7 +311,7 @@ describe.each(WAYBILL_DESIGNS)('design «%s»', (design) => {
 
     it('follows its own first label, in the same print run', () => {
       const labels = Array.from({ length: 70 }, (_, i) => view(i % 3 === 0 ? ten : one(1), {}, null, i + 1));
-      for (const size of [SQUARE, { width: 105, height: 148, sheetWidth: 210, sheetHeight: 297 }, { width: 60, height: 40 }]) {
+      for (const size of [SQUARE, { width: 105, height: 148, sheetWidth: 210, sheetHeight: 297 }, { width: 70, height: 70 }]) {
         const html = renderLabelSheet(labels, size, opts(design));
         const pages = html.slice(0, html.indexOf('<script>')).split('<div class="page" data-run="').slice(1);
         const ids: string[] = [];

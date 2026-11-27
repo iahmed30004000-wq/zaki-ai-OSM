@@ -1,11 +1,29 @@
 import { code128Bars, encodableCode128 } from './labels';
 
 /**
- * WHAT EVERY WAYBILL DESIGN PRINTS WITH — one escape and one barcode.
+ * WHAT EVERY WAYBILL DESIGN PRINTS WITH — one escape, one barcode, and the floors under the courier's type.
  *
- * Moved out of `label-sheet.ts` unchanged (27/11) so the new designs (`waybill-designs.ts`) draw the very same bars
- * and escape the very same way, without the two files importing each other. `label-sheet.ts` re-exports all three.
+ * Moved out of `label-sheet.ts` unchanged (27/11) so the new designs (`waybill-designs.ts`) draw the very same bars,
+ * escape the very same way and hold the very same floors, without the two files importing each other. `label-sheet.ts`
+ * re-exports all of them.
  */
+
+/** The floor the type never goes under where the paper can hold it (≥ 50 mm tall, ≥ 60 wide). */
+export const FLOOR_PT = { body: 9, name: 13, phones: 12, codAmount: 14 } as const;
+
+/**
+ * The scale the label printed at BEFORE 2/11, for this paper: four steps by
+ * size. Kept only as a floor: no paper prints smaller type than it did then.
+ * Every size in PT is at least the pre-2/11 one, so a scale at least this
+ * one is type at least that big.
+ */
+export function legacyScale(size: { width: number; height: number }): number {
+  const { width: w, height: h } = size;
+  if (w < 70 || h < 70) return 0.78;
+  if (w < 95 || h < 110) return 0.9;
+  if (w <= 110 && h <= 160) return 1;
+  return 1.3;
+}
 
 export function esc(value: string): string {
   return String(value ?? '').replace(

@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { requireCompanyTenant } from '@/lib/auth';
 import { requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
-import { renderLabelSheet, type LabelView } from '@/lib/label-sheet';
+import { renderLabelSheet, tierFor, type LabelView } from '@/lib/label-sheet';
 import { DESIGN_SAMPLES } from '@/lib/waybill-design-samples';
 import { qrSvg } from '@/lib/waybill';
 import {
@@ -76,12 +76,14 @@ export async function POST(req: Request, { params }: Ctx) {
       { companyId, storeId: store.id },
       store.logo
     );
-    const samples = choice.design ? DESIGN_SAMPLES : [SAMPLE];
+    // As the print door: a sticker too small for the ready designs shows, and prints, the current waybill.
+    const design = tierFor(size.data) === 'tiny' ? undefined : choice.design;
+    const samples = design ? DESIGN_SAMPLES : [SAMPLE];
     const labels: LabelView[] = await Promise.all(samples.map(async (s) => ({ ...s, qrSvg: await qrSvg(s.ref) })));
     const html = renderLabelSheet(labels, size.data, {
       store: { name: store.name, logoUrl: choice.logoUrl, supportPhone: store.supportPhone ?? null },
       ...(choice.show ? { show: choice.show } : {}),
-      ...(choice.design ? { design: choice.design } : {}),
+      ...(design ? { design } : {}),
       mode: 'pdf',
       token: '-', // a preview commits nothing: no batch, no token
       stampUrl: '',

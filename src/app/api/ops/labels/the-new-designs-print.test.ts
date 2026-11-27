@@ -55,8 +55,8 @@ const parcelRow = (over: Partial<ParcelOrder> = {}): ParcelOrder => ({
 const stored = (waybillPrint: unknown, productShapes?: unknown) =>
   db.company.findUnique.mockResolvedValue({ settings: JSON.stringify({ waybillPrint, productShapes }) });
 
-async function sheet(format?: 'csv') {
-  const t = await signLabelBatch({ storeId: 's1', orderIds: [A], width: 100, height: 150 } as never);
+async function sheet(format?: 'csv', paper: { width: number; height: number } = { width: 100, height: 150 }) {
+  const t = await signLabelBatch({ storeId: 's1', orderIds: [A], ...paper } as never);
   const res = await GET(new Request(`http://localhost/x?t=${t}${format ? '&format=csv' : ''}`));
   expect(res.status).toBe(200);
   return (await res.text()).replace(/var TOKEN = [^;]+;/, '').replace(/<title>[^<]*<\/title>/, '');
@@ -94,6 +94,29 @@ describe('«التصميم الأساسي» — the page it always was', () => {
     const never = await sheet();
     stored({ v: 1, stores: { s2: { hide: [], logo: 'store', design: 'b' } } });
     expect(await sheet()).toBe(never);
+  });
+});
+
+describe('a sticker under 70 mm prints the current waybill, whatever was chosen', () => {
+  const TINY = [{ width: 60, height: 40 }, { width: 69, height: 150 }, { width: 150, height: 69 }, { width: 40, height: 40 }];
+
+  it.each(TINY)('$width×$height: the same page as a store that never chose, and no second read of the order', async (paper) => {
+    db.company.findUnique.mockResolvedValue({ settings: null });
+    const never = await sheet(undefined, paper);
+    for (const hide of [[], ['offer']]) {
+      for (const design of ['a', 'b']) {
+        db.order.findMany.mockClear();
+        stored({ v: 1, stores: { s1: { hide, logo: 'store', design } } }, { 'prod-1': 'jar' });
+        expect(await sheet(undefined, paper)).toBe(never);
+        expect(db.order.findMany).toHaveBeenCalledTimes(1);
+      }
+    }
+    expect(never).not.toContain('wb-');
+  });
+
+  it('from 70×70 the chosen design prints', async () => {
+    stored({ v: 1, stores: { s1: { hide: [], logo: 'store', design: 'a' } } });
+    expect(await sheet(undefined, { width: 70, height: 70 })).toContain('wb wb-a ');
   });
 });
 

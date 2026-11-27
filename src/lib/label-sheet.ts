@@ -1,9 +1,9 @@
-import { encodableCode128 } from './labels';
+import { encodableCode128, isTinyPaper } from './labels';
 import { STORE_LOGO_PREFIX } from './store-logo';
-import { barcodeSvg, esc } from './label-ink';
+import { barcodeSvg, esc, FLOOR_PT, legacyScale } from './label-ink';
 import { designCss, designOrder, type Parcel, type WaybillDesign } from './waybill-designs';
 
-export { barcodeSvg, esc, QUIET_MODULES } from './label-ink';
+export { barcodeSvg, esc, FLOOR_PT, legacyScale, QUIET_MODULES } from './label-ink';
 
 /**
  * THE PRINTED SHEET OF WAYBILLS, AS A STRING.
@@ -160,7 +160,7 @@ export type Tier = 'tiny' | 'compact' | 'standard' | 'large';
  */
 export function tierFor(size: SheetSize): Tier {
   const { width: w, height: h } = size;
-  if (w < 70 || h < 70) return 'tiny';
+  if (isTinyPaper(w, h)) return 'tiny';
   if (w < 95 || h < 110) return 'compact';
   if (Math.min(w, h) >= 140) return 'large';
   return 'standard';
@@ -179,9 +179,6 @@ const TIER = {
   standard: { qr: true, items: MAX_ITEMS, note: 2, place: 3 },
   large: { qr: true, items: MAX_ITEMS, note: 3, place: 3 },
 } as const;
-
-/** The floor the type never goes under where the paper can hold it (≥ 50 mm tall, ≥ 60 wide). */
-export const FLOOR_PT = { body: 9, name: 13, phones: 12, codAmount: 14 } as const;
 
 /**
  * The type sizes of one label at scale 1, in points — and scale 1 is the
@@ -274,20 +271,6 @@ function textMm(text: string, pt: number, s: number, weight: 'regular' | 'bold')
 const linesOf = (widthMm: number, innerW: number) =>
   widthMm <= innerW ? 1 : Math.ceil(widthMm / (innerW * WRAP_SLACK));
 const r2 = (n: number) => Math.round(n * 100) / 100;
-
-/**
- * The scale the label printed at BEFORE 2/11, for this paper: four steps by
- * size. Kept only as a floor: no paper prints smaller type than it did then.
- * Every size in PT is at least the pre-2/11 one, so a scale at least this
- * one is type at least that big.
- */
-export function legacyScale(size: SheetSize): number {
-  const { width: w, height: h } = size;
-  if (w < 70 || h < 70) return 0.78;
-  if (w < 95 || h < 110) return 0.9;
-  if (w <= 110 && h <= 160) return 1;
-  return 1.3;
-}
 
 /**
  * The scale of the barcode, the QR and the padding — the millimetres

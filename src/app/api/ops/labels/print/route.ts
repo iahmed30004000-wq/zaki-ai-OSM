@@ -4,7 +4,7 @@ import { requireContext } from '@/lib/geo-context';
 import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { verifyLabelBatch } from '@/lib/labels';
-import { renderLabelSheet } from '@/lib/label-sheet';
+import { renderLabelSheet, tierFor } from '@/lib/label-sheet';
 import { readWaybillPrint, resolveWaybillPrint } from '@/lib/waybill-print-settings';
 import { altPhoneForLabel, csvCell, loadParcels, loadWaybillOrders, printRefusal, toLabelView, waybillCod } from '@/lib/waybill';
 import { readProductShapes } from '@/lib/product-shapes';
@@ -123,8 +123,10 @@ export async function GET(req: Request) {
     const choice = resolveWaybillPrint(await readWaybillPrint(db, companyId), { companyId, storeId }, store?.logo);
 
     const views = await Promise.all(printable.map((o) => toLabelView(o, minorUnit, country.code)));
+    // A sticker too small for the ready designs prints the current waybill, whatever the store chose.
+    const design = tierFor(batch) === 'tiny' ? undefined : choice.design;
     // A new design also lists each line's variant and shape and the saved offer's name; the current one asks for nothing more.
-    const parcels = choice.design
+    const parcels = design
       ? await loadParcels(printable.map((o) => o.id), { companyId, storeId }, await readProductShapes(db, companyId))
       : null;
     const labels = parcels ? views.map((v) => ({ ...v, parcel: parcels.get(v.orderId) })) : views;
@@ -138,7 +140,7 @@ export async function GET(req: Request) {
         supportPhone: store?.supportPhone ?? null,
       },
       ...(choice.show ? { show: choice.show } : {}),
-      ...(choice.design ? { design: choice.design } : {}),
+      ...(design ? { design } : {}),
       mode,
       token,
       stampUrl: '/api/ops/labels/printed',

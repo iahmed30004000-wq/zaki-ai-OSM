@@ -116,6 +116,17 @@ describe('the preview', () => {
     expect((await preview({ design, hide: ['offer'] })).html).not.toContain('class="wb-ticket"');
   });
 
+  it.each(['a', 'b'])('design «%s» on a paper under 70 mm: the preview is the current waybill, as the print will be', async (design) => {
+    const small = { width: 60, height: 40 };
+    const basic = await preview(small);
+    const chosen = await preview({ ...small, design });
+    expect(chosen.status).toBe(200);
+    expect(chosen.html).toBe(basic.html);
+    expect(chosen.html).not.toContain('wb-');
+    expect((await preview({ ...small, design, hide: ['offer'] })).html).toBe(basic.html);
+    expect((await preview({ width: 70, height: 70, design })).html).toContain(`wb wb-${design} `);
+  });
+
   it('NEGATIVE: a design nobody offers is refused', async () => {
     expect((await preview({ design: 'z' })).status).toBe(400);
   });

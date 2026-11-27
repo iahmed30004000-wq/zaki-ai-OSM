@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Segmented } from '@/components/ui/Segmented';
 import { useLabelSize } from '@/components/labels/LabelSize';
+import { isTinyPaper } from '@/lib/labels';
 import { StoreBrandField } from './StoreBrandField';
 
 /**
@@ -235,6 +236,11 @@ export function WaybillPrintCard({ storeId, mayManage }: { storeId: string; mayM
           <p className="text-note font-semibold text-[var(--sys-heading)]">
             معاينة — {dims.width}×{dims.height} مم (مقاس الطباعة على هالجهاز)
           </p>
+          {design !== 'classic' && isTinyPaper(width, height) && (
+            <p className="text-note leading-relaxed text-[var(--sys-muted-foreground)]">
+              هالمقاس صغير (أقل من 70 مم)، فبينطبع عليه «التصميم الأساسي»؛ التصميم المختار بيطلع من 70×70 مم وطالع.
+            </p>
+          )}
           {previewError && <p className="text-note text-[var(--sys-destructive)]">{previewError}</p>}
           {preview && (
             // No script runs in the frame (an empty sandbox list but same-origin, so the logo loads with the session).

@@ -18,6 +18,7 @@ vi.mock('@/lib/api-client', () => ({
 }));
 
 import { WaybillPrintCard } from './WaybillPrintCard';
+import { forgetLabelSize } from '@/components/labels/LabelSize';
 
 const STORE = '11111111-1111-4111-8111-111111111111';
 const loaded = (settings: Record<string, unknown> = { hide: [], logo: 'store' }) => ({
@@ -34,7 +35,18 @@ beforeEach(() => {
   serve();
   apiFetch.mockImplementation(async () => new Response('<!DOCTYPE html><p>ورقة</p>', { status: 200 }));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  forgetLabelSize();
+});
+
+/** This device's printer, as the size picker remembers it. */
+const printer = (width: number, height: number) => {
+  localStorage.setItem('salesflow.labelSize', JSON.stringify({ key: 'custom', custom: { width, height } }));
+  forgetLabelSize();
+};
+const SMALL_PAPER = /بينطبع عليه «التصميم الأساسي»/;
 
 const designs = () => within(screen.getByRole('radiogroup', { name: 'تصميم البوليصة' })).getAllByRole('radio');
 const pick = (name: string) => fireEvent.click(screen.getByRole('radio', { name }));
@@ -75,6 +87,26 @@ describe('the design picker', () => {
     expect(offerBox()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
     await waitFor(() => expect(sent()).toEqual({ hide: [], logo: 'store' }));
+  });
+
+  it('on a paper under 70 mm a new design says, in one sentence, that the basic one prints there', async () => {
+    printer(60, 40);
+    render(<WaybillPrintCard storeId={STORE} mayManage />);
+    await screen.findByText('البوليصة المطبوعة');
+    expect(screen.queryByText(SMALL_PAPER)).toBeNull();
+    pick('التصميم ب');
+    expect(screen.getByText(SMALL_PAPER)).toBeTruthy();
+    pick('التصميم الأساسي');
+    expect(screen.queryByText(SMALL_PAPER)).toBeNull();
+  });
+
+  it('NEGATIVE: on 70×70 and up there is no such sentence', async () => {
+    printer(70, 70);
+    serve({ hide: [], logo: 'store', design: 'a' });
+    render(<WaybillPrintCard storeId={STORE} mayManage />);
+    await screen.findByText('البوليصة المطبوعة');
+    await waitFor(() => expect(lastPreview()).toMatchObject({ width: 70, height: 70 }));
+    expect(screen.queryByText(SMALL_PAPER)).toBeNull();
   });
 
   it('NEGATIVE: without geo.manage the design is shown and cannot be changed', async () => {

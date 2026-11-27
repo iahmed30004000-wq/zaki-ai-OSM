@@ -1,5 +1,5 @@
 import type { DesignShow, LabelView, SheetSize, SheetStore } from './label-sheet';
-import { barcodeSvg, esc } from './label-ink';
+import { barcodeSvg, esc, FLOOR_PT, legacyScale } from './label-ink';
 import { encodableCode128 } from './labels';
 import { SHAPE_INFO, unitWord, type ProductShape } from './product-shapes';
 
@@ -18,10 +18,12 @@ import { SHAPE_INFO, unitWord, type ProductShape } from './product-shapes';
  *   NOTHING IS HIDDEN FROM THE PACKER. A name wraps and is never cut. When the paper cannot hold every line, the
  *   order gets a SECOND label (and a third, if it takes one) that lists all of the contents — never «و N أصناف أخرى».
  *
- *   THE COURIER'S PARTS ARE NEVER HIDDEN OR CLIPPED. The name, every phone, the whole address, the amount and the
- *   barcode are on the first label at every size: when room runs out, the optional parts give way first (the support
- *   number, the store's name, the QR, the header, then the note — which moves whole to a second label), and last of
- *   all the type gets smaller.
+ *   THE COURIER'S PARTS ARE NEVER HIDDEN OR CLIPPED, AND NEVER SMALLER THAN TODAY'S. The name, every phone, the
+ *   whole address, the amount and the barcode are on the first label at every size. Their type starts at no less than
+ *   the current waybill's floor on that paper, and the bars are never shorter than the ones it draws there. When room
+ *   runs out, the contents move to the next labels and the optional parts give way (the support number, the store's
+ *   name, the QR, the header, the note — which moves whole — and the big total). Nothing on the first label is shrunk
+ *   to make room. Papers under 70 mm either way never reach this file: the doors print the current waybill.
  *
  *   BLACK INK ONLY. Every line, letter and drawing is black on white. Nothing is white on a colour, nothing relies on
  *   a printed background, nothing is grey.
@@ -79,12 +81,20 @@ export function cleanOfferName(name: string | null | undefined): string | null {
 const PT_MM = 25.4 / 72;
 /** Every line of every text, in the CSS and in the sums. */
 const LH = 1.3;
+/** The courier-only label's line height (`.wb-tight`): closer lines before smaller type. */
+const TIGHT_LH = 1.15;
+/** The unit word under a big count never goes under 7 pt. */
+const MIN_WORD_MM = (7 * 25.4) / 72;
 /** The dashed outline of a label, one CSS pixel each side. */
 const OUTLINE_MM = 25.4 / 96;
 /** Height kept back from the paper: browsers round line boxes and borders up. */
 const SLACK_MM = 1.2;
 
-/** The type sizes at scale 1, in points: `[base, floor]`. Nothing goes under its floor until nothing else is left. */
+/**
+ * The type sizes at scale 1, in points: `[base, floor]`. For the courier's own (`COURIER_FLOOR`) the floor is the
+ * current waybill's instead. A first label never goes under these floors; only a single contents line too tall for a
+ * whole label is drawn smaller (`contentsPages`).
+ */
 const TYPE = {
   brand: [15, 9],
   courier: [10, 8],
@@ -108,6 +118,20 @@ const TYPE = {
   title: [12, 8.5],
 } as const;
 type TypeKey = keyof typeof TYPE;
+
+/**
+ * The floors of the courier's type, in points at the paper's own floor scale: what the current waybill prints at its
+ * smallest — name 13, phones 12, address 9, and the amount a point over its 14.
+ */
+const COURIER_FLOOR = {
+  name: FLOOR_PT.name,
+  phone: FLOOR_PT.phones,
+  gov: FLOOR_PT.body,
+  place: FLOOR_PT.body,
+  amount: FLOOR_PT.codAmount + 1,
+} as const;
+type CourierKey = keyof typeof COURIER_FLOOR;
+const isCourier = (k: TypeKey): k is CourierKey => k in COURIER_FLOOR;
 
 /**
  * Width of one character as a share of the type size, on the generous side (Tahoma: bold Arabic 0.47–0.58 em,
@@ -195,6 +219,8 @@ interface Paper {
   ih: number;
   /** The scale the paper calls for, before the label's own text is fitted. */
   base: number;
+  /** The scale the current waybill's type never goes under on this paper — the courier's floors follow it. */
+  floor: number;
 }
 
 function paperOf(size: SheetSize): Paper {
@@ -210,24 +236,40 @@ function paperOf(size: SheetSize): Paper {
     iw: w - 2 * pad - 2 * OUTLINE_MM,
     ih: h - 2 * pad - 2 * OUTLINE_MM - SLACK_MM,
     base: clamp(Math.min(w / rw, h / rh), 0.72, 2.2),
+    floor: Math.max(1, legacyScale(size)),
   };
 }
 
-/** The sizes of one attempt: scale `s`, and `m` under 1 only when the floors themselves must give way. */
+/**
+ * The sizes of one attempt: scale `s`, and `m` under 1 only for a contents line no label can hold at the floors
+ * (`contentsPages`). `m` never touches the courier's type.
+ */
 interface Sizes {
   s: number;
   m: number;
   /** A type size in millimetres. */
   of: (k: TypeKey) => number;
+  /** The smallest this courier part is printed at on this paper, in millimetres. */
+  floorOf: (k: CourierKey) => number;
   /** A length that follows the scale, in millimetres. */
   mm: (v: number) => number;
 }
 
-function sizesAt(s: number, m: number): Sizes {
+/**
+ * `under` is for a text no layout can hold at the floor (see `courierOnly`): the one case where a courier's type goes
+ * smaller, because the other choice is to cut it.
+ */
+function sizesAt(paper: Paper, s: number, m: number, under: { address: number; all: number } = { address: 1, all: 1 }): Sizes {
+  const shrink = (k: CourierKey) => under.all * (k === 'gov' || k === 'place' ? under.address : 1);
+  const floorOf = (k: CourierKey) => r2(COURIER_FLOOR[k] * paper.floor * PT_MM * shrink(k));
   return {
     s,
     m,
-    of: (k) => r2(Math.max(TYPE[k][1], TYPE[k][0] * s) * PT_MM * m),
+    floorOf,
+    of: (k) =>
+      isCourier(k)
+        ? Math.max(floorOf(k), r2(TYPE[k][0] * s * PT_MM * shrink(k)))
+        : r2(Math.max(TYPE[k][1], TYPE[k][0] * s) * PT_MM * m),
     mm: (v) => r2(v * clamp(s, 0.7, 2.2) * m),
   };
 }
@@ -407,24 +449,33 @@ const PIN_PATH = 'M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm
 const mark = (d: string, size: number) =>
   `<svg class="wb-mark" viewBox="0 0 24 24" style="width:${r2(size)}mm;height:${r2(size)}mm" aria-hidden="true"><path d="${d}" fill="#000" fill-rule="evenodd"/></svg>`;
 
+/** A phone's width as a share of its type size, with its letter spacing. */
+const phoneEms = (x: string) => ems(x, true) + x.length * 0.03;
+
+/** The width the longest phone needs on one line at the smallest size it may print at. */
+const phoneFloorWidth = (o: Order, z: Sizes) => Math.max(0, ...o.l.phones.filter(Boolean).map(phoneEms)) * z.floorOf('phone') * 1.05;
+
 /** Name, every phone, the whole address, and the note when this plan keeps it here. Nothing is clamped. */
-function who(o: Order, p: Plan, z: Sizes, width: number, marks = false): Block {
+function who(o: Order, p: Plan, z: Sizes, width: number, marks = false, lh = LH): Block {
   const nameS = z.of('name');
   const phones = o.l.phones.filter(Boolean);
   // Design أ marks the phone and the address, where the column is wide enough to spare the room.
-  const markS = marks && width >= 45 ? r2(z.of('gov')) : 0;
+  const wantMark = r2(z.of('gov'));
+  const markS = marks && width >= 45 && width - wantMark - 1.4 >= phoneFloorWidth(o, z) ? wantMark : 0;
   const markW = markS ? markS + 1.4 : 0;
   const textW = width - markW;
-  // A phone stays on one line, whole: its size follows the width when the column is narrow.
-  const longest = Math.max(1, ...phones.map((x) => ems(x, true) + x.length * 0.03));
-  const phoneS = r2(Math.min(z.of('phone'), textW / (longest * 1.05)));
+  // A phone stays on one line, whole: its size follows the width of a narrow column, but never under its floor.
+  const longest = Math.max(1, ...phones.map(phoneEms));
+  const phoneS = Math.max(z.floorOf('phone'), r2(Math.min(z.of('phone'), textW / (longest * 1.05))));
   const { gov, rest } = splitPlace(o.l.place);
   const govS = z.of('gov');
   const placeS = z.of('place');
   const placeN = wrapRuns([{ text: gov, size: govS, bold: true }, { text: rest ? `— ${rest}` : '', size: placeS, bold: false }], textW);
-  const phoneRows = phones.length ? packRows(phones.map((x) => (ems(x, true) + x.length * 0.03) * phoneS), textW, 4) : 0;
+  // A «phone» no line can hold (two numbers typed into one box) wraps rather than shrink or run off the paper.
+  const tooLong = (x: string) => phoneEms(x) * phoneS > textW;
+  const phoneRows = phones.length ? packRows(phones.map((x) => phoneEms(x) * phoneS), textW, 4) : 0;
   const gap = z.mm(0.5);
-  let h = lines(o.l.name, nameS, width, true) * nameS * LH + phoneRows * phoneS * 1.2 + placeN * govS * LH + 2 * gap;
+  let h = lines(o.l.name, nameS, width, true) * nameS * lh + phoneRows * phoneS * Math.min(1.2, lh) + placeN * govS * lh + 2 * gap;
   let note = '';
   if (o.note && p.noteHere) {
     const noteS = z.of('note');
@@ -437,7 +488,7 @@ function who(o: Order, p: Plan, z: Sizes, width: number, marks = false): Block {
       `<p class="wb-name" dir="auto" style="${fs(nameS)}">${esc(o.l.name)}</p>` +
       (phones.length
         ? `<div class="wb-line">${markS ? mark(PHONE_PATH, markS) : ''}` +
-          `<p class="wb-phones" dir="ltr" style="${fs(phoneS)}">${phones.map((x) => `<span>${esc(x)}</span>`).join('')}</p></div>`
+          `<p class="wb-phones" dir="ltr" style="${fs(phoneS)}">${phones.map((x) => `<span${tooLong(x) ? ' class="wb-long"' : ''}>${esc(x)}</span>`).join('')}</p></div>`
         : '') +
       `<div class="wb-line">${markS ? mark(PIN_PATH, markS) : ''}` +
       `<p class="wb-place" style="${fs(govS)}"><b>${esc(gov)}</b>${rest ? `<span style="${fs(placeS)}"> — ${esc(rest)}</span>` : ''}</p></div>` +
@@ -454,6 +505,7 @@ function amountParts(cod: string) {
 }
 
 const COD_LABEL = 'المبلغ عند الاستلام';
+const COD_SHORT = 'المبلغ';
 const COD_FRAME = 1.1;
 
 /** The amount the driver collects: a thick black frame. Stacked beside the recipient, or a full-width bar. */
@@ -463,33 +515,62 @@ function cod(o: Order, z: Sizes, width: number, shape: 'stack' | 'bar'): Block {
   const curS = z.of('currency');
   const inner = width - 2 * (COD_FRAME + 1);
   const amountEm = ems(amount, true) * 1.04;
+  const floor = z.floorOf('amount');
+  // The amount follows the width of its box, never under its floor; one no box can hold at the floor wraps.
+  const sized = (wanted: number, em: number) => Math.max(floor, r2(Math.min(wanted, inner / em)));
+  const strong = (size: number) =>
+    `<strong${amountEm * size > inner ? ' class="wb-long"' : ''} dir="ltr" style="${fs(size)}">${esc(amount)}</strong>`;
+  const amountLines = (size: number) => Math.max(1, Math.ceil((amountEm * size) / inner));
   if (shape === 'stack') {
-    const amountS = r2(Math.min(z.of('amount'), inner / amountEm));
+    const amountS = sized(z.of('amount'), amountEm);
     return {
       html:
         `<div class="wb-cod wb-cod-stack" style="${fs(labelS)}"><span>${COD_LABEL}</span>` +
-        `<strong dir="ltr" style="${fs(amountS)}">${esc(amount)}</strong>` +
+        strong(amountS) +
         (currency ? `<em dir="ltr" style="${fs(curS)}">${esc(currency)}</em>` : '') +
         `</div>`,
-      h: lines(COD_LABEL, labelS, inner, true) * labelS * LH + amountS * 1.15 + (currency ? curS * LH : 0) + 2 * (COD_FRAME + 0.8),
+      h: lines(COD_LABEL, labelS, inner, true) * labelS * LH + amountLines(amountS) * amountS * 1.15 + (currency ? curS * LH : 0) + 2 * (COD_FRAME + 0.8),
     };
   }
-  const amountS = r2(Math.min(z.of('amount') * 0.95, inner / (amountEm + ems(currency, true) * (curS / z.of('amount')) + 0.3)));
-  const need = [widthOf(COD_LABEL, labelS, true), amountEm * amountS, currency ? widthOf(currency, curS, true) + 1 : 0].filter(Boolean);
+  const amountS = sized(z.of('amount') * 0.95, amountEm + ems(currency, true) * (curS / z.of('amount')) + 0.3);
+  const need = [widthOf(COD_LABEL, labelS, true), Math.min(inner - 2, amountEm * amountS), currency ? widthOf(currency, curS, true) + 1 : 0].filter(Boolean);
   const rows = packRows(need, inner - 2, 2.5);
   return {
     html:
       `<div class="wb-cod wb-cod-bar" style="${fs(labelS)}"><span>${COD_LABEL}</span>` +
-      `<strong dir="ltr" style="${fs(amountS)}">${esc(amount)}</strong>` +
+      strong(amountS) +
       (currency ? `<em dir="ltr" style="${fs(curS)}">${esc(currency)}</em>` : '') +
       `</div>`,
-    h: amountS * 1.15 + (rows - 1) * Math.max(labelS, curS) * LH + 2 * (COD_FRAME + 0.5),
+    h: amountLines(amountS) * amountS * 1.15 + (rows - 1) * Math.max(labelS, curS) * LH + 2 * (COD_FRAME + 0.5),
+  };
+}
+
+/** The amount on one thin row with the short word, for the courier-only label: the figure keeps its size. */
+function codTight(o: Order, z: Sizes, width: number): Block {
+  const { amount, currency } = amountParts(o.l.cod);
+  const labelS = z.of('codLabel');
+  const curS = z.of('currency');
+  const inner = width - 2 * (0.7 + 1);
+  const amountEm = ems(amount, true) * 1.04;
+  const size = z.floorOf('amount');
+  const wide = amountEm * size > inner;
+  const rows = packRows(
+    [widthOf(COD_SHORT, labelS, true), Math.min(inner, amountEm * size), currency ? widthOf(currency, curS, true) + 1 : 0].filter(Boolean),
+    inner - 1,
+    2
+  );
+  return {
+    html:
+      `<div class="wb-cod wb-cod-bar wb-cod-tight" style="${fs(labelS)}"><span>${COD_SHORT}</span>` +
+      `<strong${wide ? ' class="wb-long"' : ''} dir="ltr" style="${fs(size)}">${esc(amount)}</strong>` +
+      (currency ? `<em dir="ltr" style="${fs(curS)}">${esc(currency)}</em>` : '') +
+      `</div>`,
+    h: Math.max(1, Math.ceil((amountEm * size) / inner)) * size * 1.15 + (rows - 1) * Math.max(labelS, curS) * LH + 2 * (0.7 + 0.2),
   };
 }
 
 /** The millimetres of the barcode's bars: never less than the current waybill draws on the same paper. */
-const barHeight = (paper: Paper, z: Sizes) =>
-  r2(clamp(14 * Math.min(paper.width / 100, paper.height / 110), 9.8, 31) * Math.max(0.55, z.m));
+const barHeight = (paper: Paper) => r2(clamp(14 * Math.min(paper.width / 100, paper.height / 110), 9.8, 31));
 
 const qrSide = (paper: Paper, z: Sizes) => {
   const base = paper.orient === 'tall' ? 21 : 17;
@@ -500,7 +581,7 @@ const qrSide = (paper: Paper, z: Sizes) => {
 /** The courier's barcode in its frame — the frame sits outside the symbol, whose own quiet zones stay as they were. */
 function barcode(o: Order, paper: Paper, z: Sizes, width: number): Block {
   const code = encodableCode128(o.l.courierCode);
-  const bar = barHeight(paper, z);
+  const bar = barHeight(paper);
   const inner = width - 2 * 0.4 - 2 * 0.4;
   const size = r2(Math.min(z.of('caption'), inner / (code.length * 0.72)));
   const spacing = r2(clamp((inner - code.length * size * 0.72) / code.length, 0, size * 0.28));
@@ -641,7 +722,7 @@ function single(o: Order, paper: Paper, z: Sizes, width: number, height: number)
         const count = String(line.qty);
         const word = unitWord(line.shape, line.qty);
         const numS = r2(Math.min(d * 0.46, (d * 0.78) / ems(count, true)));
-        const wordS = r2(Math.min(d * 0.15, (d * 0.78) / ems(word, true)));
+        const wordS = r2(Math.max(MIN_WORD_MM * z.m, Math.min(d * 0.15, (d * 0.78) / ems(word, true))));
         return {
           html:
             `<div class="wb-one wb-one-${arrangement}" style="gap:${column ? gap : 3.5}mm">` +
@@ -659,7 +740,7 @@ function single(o: Order, paper: Paper, z: Sizes, width: number, height: number)
 
 /** One line of a list: the count in a box, the drawing, the name (and what each piece is), the ticket on the main one. */
 function listRow(line: ParcelLine, offer: string | null, z: Sizes, size: number, width: number): Block {
-  const variantS = r2(size * 0.86);
+  const variantS = r2(Math.max(MIN_WORD_MM * z.m, size * 0.86));
   const count = String(line.qty);
   const qtyS = r2(size * 1.18);
   const qtyW = r2(Math.max(size * 2, ems(count, true) * qtyS + 2.2));
@@ -706,7 +787,8 @@ function listHtml(columns: Block[][]): string {
 function list(o: Order, paper: Paper, z: Sizes, width: number, height: number): Block | null {
   const few = o.list.length <= 3;
   for (const k of [1, 0.9, 0.8]) {
-    const size = r2(Math.max(z.of(few ? 'row' : 'row') * k, z.of(few ? 'rowFew' : 'row') * k));
+    // Tighter steps for a long list, never under the rows' floor.
+    const size = r2(Math.max(TYPE.row[1] * PT_MM * z.m, z.of(few ? 'rowFew' : 'row') * k));
     for (const cols of columnsFor(paper, width, o.list.length)) {
       const colW = (width - (cols - 1) * COLUMN_GAP) / cols;
       const rows = o.list.map((line, i) => listRow(line, i === o.ticketAt ? o.offer : null, z, size, colW));
@@ -791,7 +873,7 @@ function contentsPages(o: Order, paper: Paper, withNote: boolean): MoreBody[] {
   const compact = paper.ih < 70 || paper.iw < 55;
 
   const attempt = (s: number, m: number, onePage: boolean): MoreBody[] | null => {
-    const z = sizesAt(s, m);
+    const z = sizesAt(paper, s, m);
     const width = paper.iw;
     const head = moreHead(o, z, width, 2, 2, compact);
     const gap = z.mm(compact ? 0.7 : 1.2);
@@ -949,16 +1031,20 @@ function designA(a: Attempt): string | null {
   let mid: Block;
   let amount: Block | null = null;
   const codW = r2(clamp(W * (paper.orient === 'wide' ? 0.34 : 0.36), Math.min(26, W * 0.42), 80));
-  const figure = ems(amountParts(o.l.cod).amount, true) * z.of('amount');
-  if (paper.orient === 'tall' || (W >= 60 && figure * 0.7 > codW - 2 * (COD_FRAME + 1))) {
+  const figure = ems(amountParts(o.l.cod).amount, true);
+  const box = codW - 2 * (COD_FRAME + 1);
+  // Beside each other only while both keep their size: else the recipient takes the width and the amount a bar of it.
+  const cramped =
+    figure * z.of('amount') * 0.7 > box || figure * 1.04 * z.floorOf('amount') > box || phoneFloorWidth(o, z) > W - codW - 2.5;
+  if (paper.orient === 'tall' || cramped) {
     mid = who(o, plan, z, W, true);
     amount = cod(o, z, W, 'bar');
   } else {
     const person = who(o, plan, z, W - codW - 2.5, true);
-    const box = cod(o, z, codW, 'stack');
+    const stacked = cod(o, z, codW, 'stack');
     mid = {
-      html: `<div class="wb-mid" style="grid-template-columns:minmax(0,1fr) ${codW}mm">${person.html}${box.html}</div>`,
-      h: Math.max(person.h, box.h),
+      html: `<div class="wb-mid" style="grid-template-columns:minmax(0,1fr) ${codW}mm">${person.html}${stacked.html}</div>`,
+      h: Math.max(person.h, stacked.h),
     };
   }
   const blocks = [head, mid, amount, noteElsewhere(a, W), codesRow(o, plan, paper, z, W), footA(o, plan, z, W)];
@@ -971,7 +1057,7 @@ function bigTotal(o: Order, z: Sizes, width: number, k: number): Block & { numS:
   const n = String(totalUnits(o.list));
   const word = unitWord(parcelShape(o.list), totalUnits(o.list));
   const numS = r2(Math.min(46 * PT_MM * clamp(z.s, 0.7, 2.2) * k * z.m, width / ems(n, true)));
-  const wordS = r2(Math.min(numS * 0.36, width / ems(word, true)));
+  const wordS = r2(Math.max(MIN_WORD_MM * z.m, Math.min(numS * 0.36, width / ems(word, true))));
   return {
     html: `<div class="wb-big"><b style="${fs(numS)}">${n}</b><span style="${fs(wordS)}">${word}</span></div>`,
     h: numS * 0.95 + wordS * LH,
@@ -1020,7 +1106,9 @@ function designBSide(a: Attempt): string | null {
   let foot: Block | null = null;
   if (wantQr) foot = qrFigure(o, paper, z, qrS, o.show.ref);
   else if (o.show.ref) foot = refPart(o, z, inner);
-  const total = o.list.length ? bigTotal(o, z, inner, 1) : null;
+  const total = o.list.length && plan.total ? bigTotal(o, z, inner, 1) : null;
+  // A column with nothing but our reference is width taken from the courier's parts for nothing: the band instead.
+  if (!total && !brandBlock && !wantQr) return designBBand(a, 1);
   const fixed = [brandBlock, total, foot].filter((b): b is Block => b !== null);
   const used = fixed.reduce((s, b) => s + b.h, 0) + frame + Math.max(0, fixed.length - 1) * 1.2;
   if (used > sideH) return null;
@@ -1059,7 +1147,7 @@ function designBBand(a: Attempt, k: number): string | null {
   const wantQr = plan.qr && o.show.qr;
   const qrS = r2(qrSide(paper, z) * 0.95 * k);
   const qr = wantQr ? qrFigure(o, paper, z, qrS, o.show.ref) : null;
-  const total = o.list.length ? bigTotal(o, z, inner * 0.34, 0.72 * k) : null;
+  const total = o.list.length && plan.total ? bigTotal(o, z, inner * 0.34, 0.72 * k) : null;
   const refInBand = !qr && o.show.ref ? refPart(o, z, inner * (brand.length ? 0.4 : 0.58)) : null;
   const cells = [
     brand.length
@@ -1113,7 +1201,8 @@ function draw(design: WaybillDesign, a: Attempt): string | null {
  *   SEVERAL: every part and every line; else every part and the list on the labels after it; then optional parts given
  *   up one at a time (PLANS), every line first, then the pointer.
  *
- *   Last of all, the type goes under its floors until the courier's parts fit — they are never cut.
+ *   Then the first label carries the courier's parts alone, drawn tight (`courierOnly`). The courier's type stays at or
+ *   above today's floor throughout, and is never cut.
  */
 export function designOrder(
   design: WaybillDesign,
@@ -1141,7 +1230,7 @@ export function designOrder(
   };
   const tryAt = (plan: Plan, mode: 'full' | 'over', s: number, m: number): DesignedOrder | null => {
     const more = sheetsFor(plan, mode);
-    const main = draw(design, { o, paper, plan, z: sizesAt(s, m), mode, sheets: more.length });
+    const main = draw(design, { o, paper, plan, z: sizesAt(paper, s, m), mode, sheets: more.length });
     return main === null ? null : { main, more: more.map((p) => p.html) };
   };
 
@@ -1162,22 +1251,55 @@ export function designOrder(
       }
     }
   }
-  const last = PLANS[PLANS.length - 1];
-  const mode = modes[modes.length - 1];
-  for (let m = 0.96; m > 0.2; m = r2(m - 0.04)) {
-    const done = tryAt(last, mode, 0.72, m);
-    if (done) return done;
-  }
-  // Nothing fits (a paper smaller than any offered, under a very long address): the courier's parts, whole, at the
-  // smallest size — never a label with a part missing.
-  const z = sizesAt(0.72, 0.2);
-  const parts = [who(o, last, z, paper.iw), cod(o, z, paper.iw, 'bar'), barcode(o, paper, z, paper.iw)];
+  const bare: Plan = { ...PLANS[PLANS.length - 1], noteHere: false };
+  const more = sheetsFor(bare, o.list.length ? 'over' : 'full');
   return {
-    main:
-      `<section class="label wb wb-${design} wb-${paper.orient}" data-order="${esc(label.orderId)}" style="gap:0.4mm">` +
-      `${parts.map((p) => p.html).join('')}</section>`,
-    more: sheetsFor({ ...last, noteHere: false }, o.list.length ? 'over' : 'full').map((p) => p.html),
+    main: courierOnly(design, o, paper, bare, more.length),
+    more: more.map((p) => p.html),
   };
+}
+
+/** How far under its floor a courier's type may be taken, and in what steps, when nothing else can print it whole. */
+const UNDER_STEPS: readonly { address: number; all: number }[] = (() => {
+  const steps = [{ address: 1, all: 1 }];
+  for (let a = 0.95; a >= 0.7; a = r2(a - 0.05)) steps.push({ address: a, all: 1 });
+  for (let all = 0.96; all >= 0.2; all = r2(all - 0.04)) steps.push({ address: 0.7, all });
+  return steps;
+})();
+
+/**
+ * THE FIRST LABEL WITH THE COURIER'S PARTS ALONE, drawn tight — the recipient across the whole width, the amount on a
+ * thin row, the barcode, and one line saying the rest is on the next label where it still fits.
+ *
+ * Reached only when no design fits: a long address on a paper near 70 mm. Everything is tried at the floor first. A text
+ * that cannot be printed whole at the floor — in practice hundreds of characters — is then drawn smaller, the address
+ * before anything else, because the current waybill's answer, cutting it, is the one thing these designs never do.
+ */
+function courierOnly(design: WaybillDesign, o: Order, paper: Paper, plan: Plan, sheets: number): string {
+  const gap = 0.5;
+  let blocks: Block[] = [];
+  for (const under of UNDER_STEPS) {
+    const z = sizesAt(paper, 0.72, 1, under);
+    blocks = [who(o, plan, z, paper.iw, false, TIGHT_LH), codTight(o, z, paper.iw), barcode(o, paper, z, paper.iw)];
+    const used = blocks.reduce((s, b) => s + b.h, 0) + (blocks.length - 1) * gap;
+    if (used > paper.ih) continue;
+    if (sheets) {
+      // The packer's line: the count and where the list is; on the tightest label, only that there is more.
+      const room = paper.ih - used - gap;
+      const size = z.of('note');
+      const text = sheets > 1 ? 'الباقي بالأوراق التالية' : 'الباقي بالورقة الثانية';
+      const h = lines(text, size, paper.iw, true) * size * TIGHT_LH;
+      const where =
+        (o.list.length ? pointer(o, z, paper.iw, room, sheets) : null) ??
+        (h <= room ? { html: `<p class="wb-elsewhere" style="${fs(size)}">${text}</p>`, h } : null);
+      if (where) blocks.splice(1, 0, where);
+    }
+    break;
+  }
+  return (
+    `<section class="label wb wb-${design} wb-${paper.orient} wb-tight" data-order="${esc(o.l.orderId)}" style="gap:${gap}mm">` +
+    `${blocks.map((b) => b.html).join('')}</section>`
+  );
 }
 
 // ── the stylesheet ──────────────────────────────────────────────────────
@@ -1196,6 +1318,9 @@ export function designCss(size: SheetSize): string {
   .label.wb { width: ${size.width}mm; height: ${size.height}mm; padding: ${paper.pad}mm; overflow: hidden;
               display: flex; flex-direction: column; border: 1px dashed #000; color: #000; background: #fff; line-height: ${LH}; }
   .wb p, .wb figure { margin: 0; }
+  /* The dashed edge is the screen's alone — said again here, after the rule that draws it and more specific than the
+     sheet's own print rule, so it never reaches the paper. */
+  @media print { .label.wb { border-color: transparent; } }
   .wb > *, .wb-main > *, .wb-side > * { flex: 0 0 auto; min-width: 0; }
   .wb .wb-items { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center;
                   border-top: 0.5mm solid #000; border-bottom: 0.5mm solid #000; padding: 0.6mm 0; }
@@ -1216,6 +1341,7 @@ export function designCss(size: SheetSize): string {
   .wb-name { font-weight: bold; }
   .wb-phones { direction: ltr; display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 4mm; font-weight: bold; line-height: 1.2; }
   .wb-phones span { white-space: nowrap; letter-spacing: 0.03em; }
+  .wb-phones span.wb-long { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
   .wb-place b { font-weight: bold; }
   .wb-note { border-top: 0.3mm dashed #000; padding-top: 0.6mm; overflow-wrap: anywhere; }
   .wb-elsewhere { font-weight: bold; }
@@ -1224,7 +1350,11 @@ export function designCss(size: SheetSize): string {
   .wb-cod-stack { flex-direction: column; justify-content: center; padding: 0.8mm 1mm; }
   .wb-cod-bar { flex-wrap: wrap; justify-content: space-between; column-gap: 2.5mm; padding: 0.5mm 2mm; }
   .wb-cod strong { line-height: 1.15; white-space: nowrap; }
+  .wb-cod strong.wb-long { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
   .wb-cod em { font-style: normal; letter-spacing: 0.08em; }
+
+  .wb-tight .wb-who p { line-height: ${TIGHT_LH}; }
+  .wb-cod-tight { border-width: 0.7mm; border-radius: 2mm; padding: 0.2mm 1mm; column-gap: 2mm; }
 
   .wb-codes { display: flex; align-items: center; gap: 2mm; }
   .wb-bc { min-width: 0; border: 0.4mm solid #000; border-radius: 2.5mm; padding: 0.8mm 0.4mm 0; text-align: center; }
