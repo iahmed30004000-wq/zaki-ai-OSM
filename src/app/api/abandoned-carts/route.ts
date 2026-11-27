@@ -25,7 +25,7 @@ import { ruleFor } from '@/lib/phone-rules';
 import { zonedParts, zonedTimeToInstant } from '@/lib/business-calendar';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { CART_RANGES, CART_STATUSES, cartPhoneShown, isCartStatus, type CartRange } from '@/lib/abandoned-cart-rules';
-import { cartPowers, cartSearchWhere, cartStoreWhere, cartVisibilityWhere, ordersBehindCarts } from '@/lib/abandoned-carts';
+import { blockedCarts, cartPowers, cartSearchWhere, cartStoreWhere, cartVisibilityWhere, ordersBehindCarts } from '@/lib/abandoned-carts';
 
 const NO_VIEW = { error: 'لا تملك صلاحية عرض الطلبات — والسلات معها.' };
 
@@ -111,6 +111,7 @@ export async function GET(req: Request) {
     });
 
     const behind = await ordersBehindCarts(companyId, rows, now);
+    const blocked = await blockedCarts(companyId, rows);
     // Contact details left the building: the tally is the person's, as on every list that hands them out.
     await noteCustomersHandedOut({
       companyId,
@@ -138,6 +139,7 @@ export async function GET(req: Request) {
         productName: product?.name ?? r.productName,
         phoneShown: cartPhoneShown(phoneNormalized, r.country ?? country.code) || r.phone,
         hasOrder: behind.get(r.id) ?? null,
+        blocked: blocked.has(r.id),
       })),
       pagination: { total, page, limit, totalPages },
       facts,

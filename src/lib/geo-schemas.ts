@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { landingThemeSchema } from './landing-theme';
 import { toLatinDigits } from './latin-digits';
+import { STORE_WHATSAPP_MODES } from './store-whatsapp';
 import { WORK_HOURS_FORMAT_MESSAGE } from './work-hours';
 
 /** Request schemas for /api/geo/* — shared so create and update stay identical. */
@@ -106,6 +107,14 @@ export const storeUpdateSchema = z
       .string()
       .transform((v) => toLatinDigits(v).trim() || null)
       .refine((v) => v === null || /^\+?[\d\s()-]{6,24}$/.test(v), 'رقم هاتف الدعم غير صالح — أرقام فقط، ويمكن أن يبدأ بـ +')
+      .nullable(),
+    // «زر واتساب بالمتجر» (the owner, 26/11): which way the shop's WhatsApp button opens (`store-whatsapp.ts`).
+    whatsappMode: z.enum(STORE_WHATSAPP_MODES),
+    // The number for «تطبيق خارجي», international with its code so wa.me opens it; '' clears it (the support phone then).
+    whatsappNumber: z
+      .string()
+      .transform((v) => toLatinDigits(v).trim() || null)
+      .refine((v) => v === null || /^\+?[\d\s()-]{8,24}$/.test(v), 'رقم الواتساب غير صالح — اكتبه مع رمز البلد، مثل +963 9xx xxx xxx')
       .nullable(),
     // `domain` is deliberately absent, for the same reason as `theme` and
     // with a sharper edge.

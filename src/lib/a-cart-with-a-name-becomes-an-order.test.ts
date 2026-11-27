@@ -225,7 +225,7 @@ import { upsertLandingCart, recoverLandingCart, landingCartSchema } from './v1/l
 import { takeLandingOrder } from './v1/landing-door';
 import { autoOrderForCart, convertWaitingCarts } from './abandoned-cart-orders';
 import { FROM_ABANDONED_CART_ACTION } from './landing-order-schema';
-import { CART_AUTO_ACTION, CART_ORDER_SOURCE, CUSTOMER_ORDERED_HIMSELF_AR } from './abandoned-cart-rules';
+import { CART_AUTO_ACTION, CART_NO_NAME_AR, CART_NO_NAME_NOTE, CART_ORDER_SOURCE, CUSTOMER_ORDERED_HIMSELF_AR } from './abandoned-cart-rules';
 
 const STORE = {
   id: 'store-jo',
@@ -329,20 +329,34 @@ describe('a cart with a name and a phone becomes ONE order in the queue', () => 
     expect(both.filter((b) => 'kind' in b && b.kind === 'CONVERTED').length + (both[2] as { converted: number }).converted).toBe(1);
   });
 
-  it('a phone-only cart stays a cart — and becomes an order when its name arrives', async () => {
+  it('a phone-only cart becomes an order too (26/11), in the name «بدون اسم», with a note to ask for it', async () => {
+    const r = await upsertLandingCart('c1', cart({ customerName: '' }));
+    expect(r.body.status).toBe('CONVERTED');
+    expect(autoOrders()).toHaveLength(1);
+    const o = autoOrders()[0];
+    expect(o).toMatchObject({ status: 'NEW', confirmationStatus: 'NEW', source: CART_ORDER_SOURCE });
+    expect(o.customerNotes).toBe(CART_NO_NAME_NOTE);
+    expect(s.customers.find((c) => c.id === o.customerId)?.fullName).toBe(CART_NO_NAME_AR);
+    expect(cartLines(CART_AUTO_ACTION.SKIPPED)).toEqual([]);
+
+    // a name that arrives later is the same cart and makes no second order
+    expect((await upsertLandingCart('c1', cart({ customerName: 'سارة' }))).body.status).toBe('CONVERTED');
+    expect(autoOrders()).toHaveLength(1);
+  });
+
+  it('one letter is no name: the order is «بدون اسم», and a typed city that matched nothing is on the note too', async () => {
+    await upsertLandingCart('c1', cart({ customerName: 'م', city: 'ماركا الجنوبية' }));
+    const o = autoOrders()[0];
+    expect(s.customers.find((c) => c.id === o.customerId)?.fullName).toBe(CART_NO_NAME_AR);
+    expect(o.customerNotes).toBe(`${CART_NO_NAME_NOTE}\nالمدينة كما كتبها الزائر: ماركا الجنوبية`);
+  });
+
+  it('a phone-only cart whose number is blocked stays a cart, with the reason on its history', async () => {
+    h.spies.isBlocked.mockResolvedValue(true);
     const r = await upsertLandingCart('c1', cart({ customerName: '' }));
     expect(r.body.status).toBe('NEW');
     expect(s.orders).toHaveLength(0);
-    expect(cartRow().autoOrderAt).toBeNull();
-    expect(cartLines(CART_AUTO_ACTION.SKIPPED)).toEqual([]);
-
-    // one letter is not a name either
-    expect((await upsertLandingCart('c1', cart({ customerName: 'م' }))).body.status).toBe('NEW');
-    expect(s.orders).toHaveLength(0);
-
-    const named = await upsertLandingCart('c1', cart({ customerName: 'سارة' }));
-    expect(named.body.status).toBe('CONVERTED');
-    expect(autoOrders()).toHaveLength(1);
+    expect(JSON.parse(cartLines(CART_AUTO_ACTION.SKIPPED)[0].metadata)).toEqual({ reason: 'BLOCKED' });
   });
 
   it('the engine throws AFTER the order was saved ⇒ that order is the cart’s, tied — never a second one', async () => {

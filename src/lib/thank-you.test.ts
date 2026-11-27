@@ -72,7 +72,7 @@ describe('«زر تأكيد اختياري عبر واتساب برسالة مع
     expect(stripComments(repoFile('src/components/landing/LandingPageView.tsx')))
       .toContain('whatsapp={formChoices?.whatsappNumber?.trim() || lp.store?.supportPhone || null}');
     expect(stripComments(repoFile('src/app/s/[store]/p/[sku]/page.tsx')))
-      .toContain('whatsapp={store.supportPhone}');
+      .toContain('whatsapp={store.whatsappPhone ?? store.supportPhone}');
   });
 });
 

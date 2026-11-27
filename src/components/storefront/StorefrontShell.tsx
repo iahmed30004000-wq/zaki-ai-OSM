@@ -85,7 +85,8 @@ export function StorefrontShell({
   const headerMenu = store.menus.HEADER ?? [];
   // One owner for the shop's own contact links — see store-contact.ts on
   // why this is not `ContactButtons`.
-  const contact = { whatsapp: whatsappHref(store.supportPhone), tel: telHref(store.supportPhone) };
+  // The WhatsApp button's number is the store's setting (`store-whatsapp.ts`: its own number, or the API one); the phone stays the support line.
+  const contact = { whatsapp: whatsappHref(store.whatsappPhone ?? store.supportPhone), tel: telHref(store.supportPhone) };
   const footerMenu = store.menus.FOOTER ?? [];
   // The store-looks port's rules, only the slices this shop asked for: '' —
   // and no <style>, no attribute, no band — for a shop that asked for none.

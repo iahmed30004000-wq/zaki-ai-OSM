@@ -195,6 +195,7 @@ describe('her list', () => {
       {
         id: 'w1', orderNumber: 'WB-1', productId: 'scar', productNameSnapshot: 'كريم', quantity: 3, totalAmount: 20, currency: 'USD', confirmationStatus: 'NEW',
         winbackListAt: new Date('2026-11-25T10:00:00Z'), _count: { contactAttempts: 0 },
+        customer: { rawPhone: '0791234567' },
         replaces: { orderNumber: 'ORD-9', quantity: 6, freeQuantity: 0, items: [] },
       },
     ];
@@ -202,7 +203,9 @@ describe('her list', () => {
     const body = (await res.json()) as any;
     expect(state.listWhere).toMatchObject({ companyId: 'c1', storeId: 's1', winbackListUserId: 'sara', claimedById: 'sara' });
     expect(body.rows[0]).toMatchObject({ pieces: 3, total: 20, oldOrderNumber: 'ORD-9', oldPieces: 6, options: { one: 12, three: 20 }, touched: false, leavesAt: '2026-11-28T10:00:00.000Z' });
-    expect(JSON.stringify(body)).not.toMatch(/phone|fullName|address/);
+    // Since 26/11 («اتصال» on each card) the customer's number is on the row — and only it: no name, no address.
+    expect(body.rows[0]).toMatchObject({ phone: '0791234567', attempts: 0 });
+    expect(JSON.stringify(body)).not.toMatch(/fullName|address/);
   });
 
   it('another agent’s list is a manager’s to read only', async () => {

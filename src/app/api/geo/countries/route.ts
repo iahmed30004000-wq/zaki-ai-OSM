@@ -37,7 +37,7 @@ export async function GET() {
             // The storefront's own settings, so the panel edits what is
             // stored rather than a copy it fetched separately.
             storefrontEnabled: true, theme: true, tagline: true, landingPageId: true,
-            about: true, supportPhone: true, domain: true,
+            about: true, supportPhone: true, domain: true, whatsappMode: true, whatsappNumber: true,
           },
         },
         // Orders decide whether the currency may still change (see PATCH).

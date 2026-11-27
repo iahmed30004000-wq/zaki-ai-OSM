@@ -919,6 +919,11 @@ model Customer {
   totalPurchaseValue Float     @default(0.0)
   firstOrderDate     DateTime?
   lastOrderDate      DateTime?
+  /// «إلغاء نهائي» on «قايمة الاسترجاع» (the owner, 26/11): from this moment the customer is never offered for win-back
+  /// again — no view, no hand-out, no daily list reads him (`winback-filters.ts` `baseWhere`, `winback-daily.ts`). Who
+  /// pressed it is `winbackNeverById`; the order's own history and the audit say the rest.
+  winbackNeverAt     DateTime?
+  winbackNeverById   String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -2432,6 +2437,11 @@ model Store {
   tagline               String?
   about                 String?      @db.Text
   supportPhone          String?
+  /// «زر واتساب بالمتجر» (the owner, 26/11), picked in the store's settings: EXTERNAL opens wa.me with
+  /// `whatsappNumber` (the support phone when blank) in the shopper's own app; API opens wa.me with the
+  /// company's WhatsApp Business API number, so the message lands in the OMS inbox. src/lib/store-whatsapp.ts.
+  whatsappMode          String       @default("EXTERNAL")
+  whatsappNumber        String?
   /// A hostname of the seller's own. Unique across stores, and checked
   /// against landing page domains too — the proxy must never find two
   /// answers for one host.

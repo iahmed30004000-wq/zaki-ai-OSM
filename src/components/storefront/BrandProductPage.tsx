@@ -77,6 +77,8 @@ export interface BrandPageShop {
   minorUnit: number;
   dir: 'rtl' | 'ltr';
   supportPhone: string | null;
+  /** The number the WhatsApp buttons open (`store-whatsapp.ts`); the support phone when absent. */
+  whatsappPhone?: string | null;
 }
 
 export function BrandProductPage({
@@ -131,7 +133,8 @@ export function BrandProductPage({
 }) {
   const show = new Set(brandSections(content));
   const money = (n: number) => moneyText(n, shop.currency, shop.minorUnit);
-  const wa = whatsappHref(shop.supportPhone);
+  const waPhone = shop.whatsappPhone ?? shop.supportPhone;
+  const wa = whatsappHref(waPhone);
 
   return (
     /*
@@ -358,7 +361,7 @@ export function BrandProductPage({
             phonePlaceholder={phonePlaceholder}
             showOfferPicker={offers.length === 0}
             dir={shop.dir}
-            whatsapp={shop.supportPhone}
+            whatsapp={waPhone}
             endpoint={endpoint}
             checkout={checkout}
           />
