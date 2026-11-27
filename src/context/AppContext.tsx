@@ -7,6 +7,7 @@ import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared
 import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { pollSignal } from '@/lib/poll-timeout';
 import { setContactLineOwner } from '@/lib/contact-line';
+import { SignedInUserContext } from './signed-in-user';
 
 /**
  * App-wide client context. The interface is Arabic RTL only (contract
@@ -201,7 +202,7 @@ export function AppProvider({
         refreshUser,
       }}
     >
-      {children}
+      <SignedInUserContext.Provider value={currentUser}>{children}</SignedInUserContext.Provider>
     </AppContext.Provider>
   );
 }

@@ -2,6 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
+import { useSignedInUser } from '@/context/signed-in-user';
+import { Button } from '@/components/ui/Button';
+import { userCan } from '@/lib/can';
 import { onAndroid } from '@/lib/call-helper/android';
 import { markOnCall } from '@/lib/exposure';
 import {
@@ -110,7 +113,39 @@ export function ContactButtons({
   callHref?: string | null;
 }) {
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
-  const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | null>(null);
+  /** `CHOOSE`: the two ways to WhatsApp (27/11) — the OMS inbox, or her own app with the ready messages (`WHATSAPP`). */
+  const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | 'CHOOSE' | null>(null);
+  // Optional: the strip is drawn in places with no signed-in shell around it (a courier's office, tests) — there it offers no OMS.
+  const currentUser = useSignedInUser();
+  /** «واتساب OMS» is offered to whoever may open the inbox, on a strip that has an order to find the customer by. */
+  const omsWhatsapp = !!orderId && userCan(currentUser, 'whatsapp.view');
+  const [omsBusy, setOmsBusy] = useState(false);
+  const [omsError, setOmsError] = useState<string | null>(null);
+
+  /**
+   * «واتساب OMS» (the owner, 27/11): «يحولها للواتساب اللي داخل النظام». The order's conversation is found or opened on the
+   * company's number (`/api/whatsapp/conversations/for-order`) and the inbox opens on it; she writes there, under the inbox's
+   * own rules (a template when the 24-hour window is shut). Nothing is sent by this press and no contact line is written —
+   * the message she sends in the inbox is the contact.
+   */
+  const openOmsWhatsapp = async () => {
+    if (!orderId) return;
+    setOmsBusy(true);
+    setOmsError(null);
+    try {
+      const r = await apiJson<{ id: string }>('/api/whatsapp/conversations/for-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      setOpen(null);
+      window.location.assign(`/growth/whatsapp/inbox?c=${encodeURIComponent(r.id)}`);
+    } catch (e) {
+      setOmsError(e instanceof Error ? e.message : 'ما انفتح واتساب الـOMS');
+    } finally {
+      setOmsBusy(false);
+    }
+  };
   /** The log refused this press — said beside the strip, see `noteContact`. */
   const [notLogged, setNotLogged] = useState<string | null>(null);
   /** The browser's WhatsApp link, offered when the app's own address opened nothing (`preferApp`). */
@@ -368,7 +403,15 @@ export function ContactButtons({
         title={waReady ? 'واتساب' : NO_COUNTRY}
         aria-label={waReady ? undefined : NO_COUNTRY}
         disabled={!waReady}
-        onClick={plain ? openPlainWhatsapp : () => setOpen(open === 'WHATSAPP' ? null : 'WHATSAPP')}
+        onClick={
+          plain
+            ? openPlainWhatsapp
+            : () => {
+                setOmsError(null);
+                // With the OMS inbox on offer the press asks which WhatsApp first; without it, her own app as always.
+                setOpen(open ? null : omsWhatsapp ? 'CHOOSE' : 'WHATSAPP');
+              }
+        }
         className={waReady ? btn : shutBtn}
       >
         <RiChat3Line className="w-4 h-4" />
@@ -417,7 +460,21 @@ export function ContactButtons({
              */
             className="fixed inset-x-2 bottom-2 z-40 max-h-[60vh] overflow-y-auto rounded-lg border border-[var(--sys-border)] bg-[var(--sys-card)] shadow-overlay p-1.5 sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:end-0 sm:z-30 sm:mt-1 sm:w-72 sm:max-h-none sm:shadow-overlay"
           >
-            {templates === null ? (
+            {open === 'CHOOSE' ? (
+              <div className="flex flex-col gap-1">
+                <Button size="sm" variant="quiet" loading={omsBusy} onClick={() => void openOmsWhatsapp()} title="من رقم الشركة، بصندوق الواتس جوّا النظام">
+                  واتساب OMS
+                </Button>
+                <Button size="sm" variant="quiet" onClick={() => setOpen('WHATSAPP')} title="من واتسابك على تلفونك، مع الرسائل الجاهزة">
+                  واتساب الخارجي
+                </Button>
+                {omsError && (
+                  <p role="alert" className="p-2 text-note text-[var(--sys-destructive)]">
+                    {omsError}
+                  </p>
+                )}
+              </div>
+            ) : templates === null ? (
               <p className="p-2 text-xs text-[var(--sys-muted)]">جارٍ التحميل…</p>
             ) : shown.length === 0 ? (
               <p className="p-2 text-xs text-[var(--sys-muted)]">
