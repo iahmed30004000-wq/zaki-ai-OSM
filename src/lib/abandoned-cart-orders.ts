@@ -22,10 +22,10 @@ import { takeCartOrder } from './v1/landing-door';
  *
  * ── WHICH CART ──
  *
- * One whose product is this company's, with a name of two letters at least (`cartQualifiesForOrder`; its phone the
- * landing door already checked), still open and not closed by a person as «غير مهتم» or «رقم غير صالح»
- * (`AUTO_ORDER_STATUSES`), with the company's switch on (`abandonedCarts.autoConvert`, ON by default). A phone-only cart
- * stays a cart. A cart that gets its name later qualifies on that send.
+ * One whose product is this company's (`cartQualifiesForOrder`; its phone the landing door already checked), still open
+ * and not closed by a person as «غير مهتم» or «رقم غير صالح» (`AUTO_ORDER_STATUSES`), with the company's switch on
+ * (`abandonedCarts.autoConvert`, ON by default). Since 26/11 a phone-only cart qualifies too: its order is taken in the
+ * name «بدون اسم» with a note to ask for it (`cartOrderName`), and the agent writes the name on the call.
  *
  * ── ONCE ──
  *
@@ -123,7 +123,7 @@ async function tryCart(companyId: string, cartId: string, now: Date, switchOn?: 
     const result = await takeCartOrder(companyId, {
       id: cart.id,
       productId: cart.productId!,
-      customerName: cart.customerName!,
+      customerName: cart.customerName ?? '',
       phone: cartPhoneShown(cart.phoneNormalized, cart.country) || cart.phone,
       city: cart.region?.name ?? '',
       typedCity: !cart.region && cart.city ? cart.city : null,
@@ -244,7 +244,6 @@ export async function convertWaitingCarts(now: Date, limit = 20): Promise<{ conv
     orderId: null,
     status: { in: AUTO_ORDER_STATUSES },
     productId: { not: null },
-    customerName: { not: null },
     lastSeenAt: { gte: since },
   };
   const companies = await db.abandonedCart.groupBy({ by: ['companyId'], where: waiting });

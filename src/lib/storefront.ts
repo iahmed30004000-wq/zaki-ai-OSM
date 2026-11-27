@@ -8,6 +8,8 @@ import { liveOfferWhere } from './offers';
 import { parseCategoryAttributes, parseProductAttributes, type ProductAttributes } from './product-attributes';
 import { publicizeMedia } from './public-media';
 import { firstShown, missingStoredImages } from './storefront-images';
+import { storeWhatsappModeOf, storeWhatsappPhone } from './store-whatsapp';
+import { getActiveConnection } from './whatsapp/connection';
 import type { CatalogItem } from '@/components/landing/blocks/PageBlocks';
 
 /**
@@ -92,6 +94,12 @@ export interface Storefront {
   tagline: string | null;
   about: string | null;
   supportPhone: string | null;
+  /**
+   * The number the shop's WhatsApp buttons open — the store's «زر واتساب» setting resolved (`store-whatsapp.ts`): its own
+   * number, the support phone, or the company's WhatsApp Business API number. Absent on a hand-built storefront (a
+   * preview, a fixture): the buttons then use the support phone, as they always did.
+   */
+  whatsappPhone?: string | null;
   domain: string | null;
   type: 'SINGLE_PRODUCT' | 'MULTI_PRODUCT';
   /**
@@ -179,11 +187,16 @@ export const getStorefront = cache(async function getStorefront(slug: string): P
     select: {
       id: true, name: true, slug: true, logo: true, favicon: true, tagline: true, about: true,
       supportPhone: true, domain: true, type: true, theme: true, homeLive: true, language: true,
-      companyId: true, countryId: true, landingPageId: true,
+      companyId: true, countryId: true, landingPageId: true, whatsappMode: true, whatsappNumber: true,
       country: { select: { code: true, currencyCode: true } },
     },
   });
   if (!store) return null;
+  // The API number is asked only when the store chose it; never able to cost the shopper the page.
+  const apiNumber =
+    storeWhatsappModeOf(store.whatsappMode) === 'API'
+      ? await getActiveConnection(store.companyId).then((c) => c?.phoneNumber ?? null, () => null)
+      : null;
 
   return {
     id: store.id,
@@ -194,6 +207,7 @@ export const getStorefront = cache(async function getStorefront(slug: string): P
     tagline: store.tagline,
     about: store.about,
     supportPhone: store.supportPhone,
+    whatsappPhone: storeWhatsappPhone(store, apiNumber),
     domain: store.domain,
     type: store.type === 'SINGLE_PRODUCT' ? 'SINGLE_PRODUCT' : 'MULTI_PRODUCT',
     theme: storeTheme(store.theme),

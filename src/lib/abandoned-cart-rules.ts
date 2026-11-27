@@ -82,8 +82,12 @@ export function retentionDaysOf(raw: unknown): number {
  *
  * «بدي السلات المهجورة تتحول لطلب مباشرة وتنبعت للطابور». A cart that carries a name (two letters at least) and a
  * valid phone becomes an ordinary NEW order in the confirmation queue, through the same engine the landing orders use
- * (`abandoned-cart-orders.ts`). A phone-only cart stays a cart. The switch is the company's
- * (`abandonedCarts.autoConvert`, ON unless somebody turned it off).
+ * (`abandoned-cart-orders.ts`). The switch is the company's (`abandonedCarts.autoConvert`, ON unless somebody turned it
+ * off).
+ *
+ * Since 26/11 (the owner) A PHONE-ONLY CART BECOMES AN ORDER TOO: «كل سلة فيها رقم صالح تتحول لحالها لطلب جديد بطابور
+ * التأكيد (الاسم بتكمّله البنت بالمكالمة)». The order is taken in the name `CART_NO_NAME_AR`, with a note telling the
+ * agent to ask for it (`CART_NO_NAME_NOTE`); she writes the real name on the confirmation card like any other edit.
  */
 
 /** The switch as stored: ON unless it was turned off in so many words. */
@@ -91,8 +95,20 @@ export function autoConvertOf(raw: unknown): boolean {
   return raw !== false;
 }
 
-/** A name, by the order door's own measure (`full_name` is two letters at least). */
+/** A name, by the order door's own measure (`full_name` is two letters at least). Shorter is no name. */
 export const AUTO_ORDER_MIN_NAME = 2;
+
+/** The name a phone-only cart's order is taken in, until the agent writes the real one on the call. */
+export const CART_NO_NAME_AR = 'بدون اسم';
+
+/** The note on that order, read by the agent before she calls. */
+export const CART_NO_NAME_NOTE = 'الزبون ما كتب اسمه — اسأله عن اسمه بالمكالمة.';
+
+/** The name the order is taken in: the cart's own when it is a name, else `CART_NO_NAME_AR`. */
+export function cartOrderName(customerName: string | null | undefined): { name: string; missing: boolean } {
+  const typed = (customerName ?? '').trim();
+  return typed.length >= AUTO_ORDER_MIN_NAME ? { name: typed.slice(0, 80), missing: false } : { name: CART_NO_NAME_AR, missing: true };
+}
 
 /**
  * The statuses a cart may become an order from by itself: still open, and not closed by a person as «غير مهتم» or
@@ -100,14 +116,12 @@ export const AUTO_ORDER_MIN_NAME = 2;
  */
 export const AUTO_ORDER_STATUSES: CartStatus[] = ['NEW', 'CONTACTED', 'NO_ANSWER', 'CALLBACK'];
 
-/** Whether this cart is one the owner asked to become an order: a product of this company and a name. */
-export function cartQualifiesForOrder(cart: { status: string; customerName: string | null; productId: string | null; orderId: string | null }): boolean {
-  return (
-    (AUTO_ORDER_STATUSES as string[]).includes(cart.status) &&
-    !cart.orderId &&
-    !!cart.productId &&
-    (cart.customerName ?? '').trim().length >= AUTO_ORDER_MIN_NAME
-  );
+/**
+ * Whether this cart is one the owner asked to become an order: still open, a product of this company — with a name or
+ * without one (26/11). Its phone the landing door already checked; the order door checks it again against the country.
+ */
+export function cartQualifiesForOrder(cart: { status: string; productId: string | null; orderId: string | null }): boolean {
+  return (AUTO_ORDER_STATUSES as string[]).includes(cart.status) && !cart.orderId && !!cart.productId;
 }
 
 /**

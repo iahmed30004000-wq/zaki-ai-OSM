@@ -157,6 +157,32 @@ export async function ordersBehindCarts(
   return out;
 }
 
+/**
+ * «رقم محظور» — THE OPEN CARTS WHOSE PHONE IS ON THE BLACKLIST (the owner, 26/11).
+ *
+ * Such a cart never becomes an order by itself (`abandoned-cart-orders.ts`, reason BLOCKED), and the team asked why three
+ * named carts stayed. The list and the cart's page now say it. One query for the whole page: the block is matched the
+ * way `activeBlock` matches it — company-wide, on every stored form of the number (`phoneKeys`), only while not released.
+ */
+export async function blockedCarts(
+  companyId: string,
+  carts: ReadonlyArray<{ id: string; status: string; phoneNormalized: string }>
+): Promise<Set<string>> {
+  const open = carts.filter((c) => !isClosedCart(c.status) && c.phoneNormalized);
+  const out = new Set<string>();
+  if (open.length === 0) return out;
+  const keysOf = new Map(open.map((c) => [c.id, phoneKeys(c.phoneNormalized)]));
+  const allKeys = [...new Set([...keysOf.values()].flat())];
+  const blocks = await db.customerBlock.findMany({
+    where: { companyId, phone: { in: allKeys }, releasedAt: null },
+    select: { phone: true },
+  });
+  if (blocks.length === 0) return out;
+  const blocked = new Set(blocks.map((b) => b.phone));
+  for (const c of open) if ((keysOf.get(c.id) ?? []).some((k) => blocked.has(k))) out.add(c.id);
+  return out;
+}
+
 /** The company's `abandonedCarts` settings block, or nothing when there is none or it cannot be read. */
 async function cartSettings(companyId: string): Promise<Record<string, unknown>> {
   const row = await db.company.findUnique({ where: { id: companyId }, select: { settings: true } });

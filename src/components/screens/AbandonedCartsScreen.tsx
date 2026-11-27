@@ -24,6 +24,8 @@ import { arDateTime } from '@/lib/format';
 import { usePagedList, type PagedRead, type Paging } from '@/hooks/usePagedList';
 import { CART_STATUSES, CART_STATUS_AR } from '@/lib/abandoned-cart-rules';
 import {
+  BlockedMark,
+  CART_BLOCKED_NOTE,
   CartContact,
   CartStatusChip,
   CartStatusControls,
@@ -209,7 +211,8 @@ function AbandonedCartsList() {
             {c.customerName || 'بلا اسم'}
           </Link>
           <HasOrderMark cart={c} />
-          {c.hasOrder && <OrderRef id={c.hasOrder.id} number={c.hasOrder.orderNumber} className="font-mono text-note text-[var(--sys-primary)]" />}
+          <BlockedMark cart={c} />
+          {c.hasOrder &&<OrderRef id={c.hasOrder.id} number={c.hasOrder.orderNumber} className="font-mono text-note text-[var(--sys-primary)]" />}
         </div>
       ),
     },
@@ -324,8 +327,14 @@ function AbandonedCartsList() {
               rows={rows}
               keyOf={(c) => c.id}
               columns={columns}
-              alert={(c) => (c.hasOrder ? 'warn' : null)}
-              notice={(c) => (c.hasOrder ? <p className="text-note text-[var(--sys-warning)]">نفس الرقم طلب نفس المنتج هالأسبوع — لا تتصل قبل ما تشوف الطلب.</p> : null)}
+              alert={(c) => (c.hasOrder || c.blocked ? 'warn' : null)}
+              notice={(c) =>
+                c.hasOrder ? (
+                  <p className="text-note text-[var(--sys-warning)]">نفس الرقم طلب نفس المنتج هالأسبوع — لا تتصل قبل ما تشوف الطلب.</p>
+                ) : c.blocked ? (
+                  <p className="text-note text-[var(--sys-warning)]">{CART_BLOCKED_NOTE}</p>
+                ) : null
+              }
               actions={actions}
               empty={empty}
             />
@@ -343,7 +352,7 @@ function AbandonedCartsList() {
 }
 
 /**
- * «حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا» (the owner, 17/11) — the company's switch, ON by default. Everybody who
+ * «حوّل السلات تلقائيًا لطلبات» (the owner, 17/11; phone-only carts too since 26/11) — the company's switch, ON by default. Everybody who
  * sees the carts reads which way it is; whoever may edit the system's settings flips it.
  */
 function AutoConvertSwitch({ on, mayEdit, onSaved }: { on: boolean; mayEdit: boolean; onSaved: (on: boolean) => void }) {
@@ -370,10 +379,10 @@ function AutoConvertSwitch({ on, mayEdit, onSaved }: { on: boolean; mayEdit: boo
         checked={on}
         disabled={!mayEdit}
         onChange={flip}
-        label="حوّل السلات اللي فيها اسم ورقم لطلبات تلقائيًا"
+        label="حوّل السلات تلقائيًا لطلبات"
         hint={
           on
-            ? 'السلة اللي فيها اسم ورقم بتصير طلب جديد بطابور التأكيد، بدون عنوان — أكّد العنوان والمحافظة مع الزبون. السلة اللي فيها رقم بس بتضل هون.'
+            ? 'كل سلة فيها رقم صالح بتصير طلب جديد بطابور التأكيد، بدون عنوان — أكّد العنوان والمحافظة مع الزبون. إذا ما في اسم بينكتب «بدون اسم» واسأله عن اسمه بالمكالمة. بتضل هون السلة اللي رقمها محظور أو صاحبها عنده طلب لنفس المنتج.'
             : 'موقوف: كل السلات بتضل هون لحتى حدا يحوّلها باليد.'
         }
       />

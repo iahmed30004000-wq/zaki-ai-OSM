@@ -18,7 +18,7 @@ import {
 } from '../public-order';
 import { ADDON_TOKEN_MINUTES, LANDING_PAGE_SOURCE, verifyAddonToken } from '../landing-pages';
 import { ORDER_VALIDATION_ERROR_BODY, buildPublicOrderSchema } from '../landing-order-schema';
-import { CART_ORDER_SOURCE } from '../abandoned-cart-rules';
+import { CART_NO_NAME_NOTE, CART_ORDER_SOURCE, cartOrderName } from '../abandoned-cart-rules';
 import { cartsRecoveredBy, replaceableCartOrders, standDownCartOrders, type CartOrder } from '../cart-order-stand-down';
 import { resolveCampaign } from '../campaigns-server';
 import { checkoutRules, parseStoreTheme } from '../store-theme';
@@ -518,6 +518,7 @@ async function passesTheForm(store: { countryId: string; country: { code: string
 export interface CartForOrder {
   id: string;
   productId: string;
+  /** What the visitor typed — '' or a single letter on a phone-only cart, taken as `CART_NO_NAME_AR`. */
   customerName: string;
   /** The number in the national form the country's rule reads (`cartPhoneShown`). */
   phone: string;
@@ -576,13 +577,18 @@ export async function takeCartOrder(companyId: string, cart: CartForOrder): Prom
     },
   };
 
+  // A phone-only cart (26/11) is taken in a stand-in name, and its note tells the agent to ask for the real one.
+  const named = cartOrderName(cart.customerName);
+  const notes = [named.missing ? CART_NO_NAME_NOTE : '', cart.typedCity ? `المدينة كما كتبها الزائر: ${cart.typedCity}` : '']
+    .filter(Boolean)
+    .join('\n');
   const result = await createPublicOrder(surface, {
-    full_name: cart.customerName.trim().slice(0, 80),
+    full_name: named.name,
     phone: cart.phone,
     alt_phone: '',
     address: '',
     city: cart.city,
-    notes: cart.typedCity ? `المدينة كما كتبها الزائر: ${cart.typedCity}`.slice(0, 500) : '',
+    notes: notes.slice(0, 500),
     offerId: offer?.id ?? '',
     website: '',
   });

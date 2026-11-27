@@ -656,10 +656,15 @@ export function RejectDialog({
   canLogContact = true,
   onClose,
   onSubmit,
+  title = 'إلغاء الطلب',
+  lead = 'يُغلق الطلب ويعود المحجوز من بضاعته إلى المخزون. القرار يُسجَّل باسمك.',
 }: {
   open: boolean;
   orderNumber: string;
   busy?: boolean;
+  /** «إلغاء نهائي» on «قايمة الاسترجاع» names itself and says what else it does; everywhere else the defaults. */
+  title?: string;
+  lead?: string;
   /**
    * Does the order carry a contact attempt? Only the desk («طلباتي») knows, and only there is the rule in force;
    * every other caller leaves it out and every reason stays open. Without an attempt the reasons that need a word
@@ -682,7 +687,7 @@ export function RejectDialog({
     <Modal
       isOpen={open}
       onClose={onClose}
-      title="إلغاء الطلب"
+      title={title}
       subtitle={orderNumber}
       maxWidth="sm"
       footer={
@@ -698,9 +703,7 @@ export function RejectDialog({
         }}
         className="space-y-3"
       >
-        <p className="text-xs text-[var(--sys-muted-foreground)]">
-          يُغلق الطلب ويعود المحجوز من بضاعته إلى المخزون. القرار يُسجَّل باسمك.
-        </p>
+        <p className="text-xs text-[var(--sys-muted-foreground)]">{lead}</p>
         <Field label="السبب">
           <select value={rejectionReason} onChange={(e) => setReason(e.target.value)} className={FIELD_CLS}>
             {!hasAttempt && (

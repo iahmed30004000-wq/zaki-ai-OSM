@@ -114,7 +114,8 @@ describe('the census, step by step (the same numbers before and after the kit)',
     await draw();
     fireEvent.click(screen.getAllByRole('button', { name: 'الهوية والواجهة' })[0]);
     await screen.findByText('هوية المتجر');
-    expect(census()).toEqual({ buttons: 13, ticks: 4, fields: 4, links: 4, headings: 1 });
+    // 26/11 «زر واتساب بالمتجر» inside the identity card: its two choices and its number (+3 fields) and its own save (+1 button).
+    expect(census()).toEqual({ buttons: 14, ticks: 4, fields: 7, links: 4, headings: 1 });
   });
 
   it('with the new-country form open (one form at a time: the screen holds one «adding»)', async () => {

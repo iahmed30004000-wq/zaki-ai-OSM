@@ -5,14 +5,16 @@ import { can, requirePermission } from '@/lib/authorization';
 import { apiErrorResponse } from '@/lib/api-error';
 import { LIST_DAYS, listRowsWhere } from '@/lib/winback-private-list';
 import { readWinbackPrices, priceOf } from '@/lib/winback-prices';
+import { noteCustomersHandedOut } from '@/lib/pii-alert';
 
 /**
  * GET /api/confirmation/winback/list — «قايمة الاسترجاع تبعي»: HER private win-back list (`winback-private-list.ts`).
  *
  * The orders handed to her by «وزّع على الموظفات», still open: the order, the product, the option it stands at (1 or 3 pieces) and the
  * two prices, the cancelled order's own quantity (information only), and the day it leaves her list if nobody touches it. She works
- * each order through the doors she works any order she holds through — the order opens where it is listed. No customer field: the
- * order opens under the usual access.
+ * each order through the doors she works any order she holds through — the order opens where it is listed. Since 26/11 (the owner)
+ * each card carries four presses — «اتصال», «تأكيد», «إلغاء نهائي», «واتساب» — so the row also answers the customer's number (for the
+ * dialler, counted by `noteCustomersHandedOut`) and its attempts (the reject reasons that need a word with him).
  *
  * Who: `confirmation.work` (her own list). A manager (`orders.assign`) may read an agent's list with `?agentId=`.
  */
@@ -40,12 +42,15 @@ export async function GET(req: Request) {
           currency: true,
           confirmationStatus: true,
           winbackListAt: true,
+          customer: { select: { rawPhone: true } },
           _count: { select: { contactAttempts: true } },
           replaces: { select: { orderNumber: true, quantity: true, freeQuantity: true, items: { select: { quantity: true, freeQuantity: true } } } },
         },
       }),
       readWinbackPrices(companyId),
     ]);
+    // The customer's number, for «اتصال» on her own list (the owner, 26/11) — counted against her like every list that hands one out.
+    await noteCustomersHandedOut({ companyId, storeId, user, where: 'قايمة الاسترجاع', rows: rows.map((o) => ({ phone: o.customer?.rawPhone ?? '' })) });
     return NextResponse.json({
       listDays: LIST_DAYS,
       rows: rows.map((o) => {
@@ -60,6 +65,8 @@ export async function GET(req: Request) {
           total: o.totalAmount,
           currency: o.currency,
           status: o.confirmationStatus,
+          phone: o.customer?.rawPhone ?? null,
+          attempts: o._count.contactAttempts,
           touched: o._count.contactAttempts > 0 || o.confirmationStatus !== 'NEW',
           oldOrderNumber: src?.orderNumber ?? null,
           oldPieces,

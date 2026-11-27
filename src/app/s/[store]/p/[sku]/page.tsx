@@ -323,6 +323,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
             minorUnit,
             dir: store.dir,
             supportPhone: store.supportPhone,
+            whatsappPhone: store.whatsappPhone,
           }}
           product={product}
           content={content}
@@ -511,7 +512,7 @@ export default async function StorefrontProductPage({ params, searchParams }: Pr
               // with it.
               dir={store.dir}
               // Same number the header's WhatsApp button uses.
-              whatsapp={store.supportPhone}
+              whatsapp={store.whatsappPhone ?? store.supportPhone}
               endpoint={`/api/public/stores/${store.slug}/products/${product.sku}/orders`}
               checkout={checkout}
             />

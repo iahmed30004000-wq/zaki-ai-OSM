@@ -15,6 +15,8 @@ import { useLiveRefresh } from '@/hooks/useLiveRefresh';
 import { arDateTime } from '@/lib/format';
 import { CART_AUTO_ACTION, CART_STATUS_AR, isCartStatus } from '@/lib/abandoned-cart-rules';
 import {
+  BlockedMark,
+  CART_BLOCKED_NOTE,
   CartContact,
   CartStatusChip,
   CartStatusControls,
@@ -89,7 +91,7 @@ function activityText(a: Activity, people: Map<string, string>): string {
     case 'ASSIGNED':
       return meta.to ? `انسندت لـ ${people.get(String(meta.to)) ?? 'موظف'}` : 'انشال الإسناد';
     case 'CONVERTED':
-      return `${meta.auto ? 'صارت طلب تلقائيًا (فيها اسم ورقم)' : 'انحوّلت لطلب'}${meta.orderNumber ? ` ${String(meta.orderNumber)}` : ''}`;
+      return `${meta.auto ? 'صارت طلب تلقائيًا' : 'انحوّلت لطلب'}${meta.orderNumber ? ` ${String(meta.orderNumber)}` : ''}`;
     default:
       return a.action;
   }
@@ -183,8 +185,13 @@ export function AbandonedCartDetailScreen({ id }: { id: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <CartStatusChip status={cart.status} />
           <HasOrderMark cart={cart} />
+          <BlockedMark cart={cart} />
         </div>
       </PageHeader>
+
+      {cart.blocked && (
+        <p className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-3">{CART_BLOCKED_NOTE}</p>
+      )}
 
       {cart.hasOrder && (
         <p className="text-sm text-[var(--sys-warning)] bg-[var(--sys-warning-soft)] border border-[var(--sys-warning)]/40 rounded-lg p-3">

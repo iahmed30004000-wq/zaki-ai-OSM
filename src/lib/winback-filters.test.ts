@@ -139,6 +139,8 @@ interface OrderRow {
   rejectionReason: string | null;
   productNameSnapshot: string | null;
   statusLogs: Log[];
+  /** «إلغاء نهائي» (26/11): a customer closed for good on the win-back list. */
+  customer: { winbackNeverAt: Date | null };
 }
 
 /** The receipt a write-off writes (and a zero count at the desk): nothing received, nothing damaged, all of it missing. */
@@ -159,6 +161,7 @@ const order = (over: Partial<OrderRow> = {}): OrderRow => ({
   rejectionReason: 'PRICE_TOO_HIGH',
   productNameSnapshot: 'منتج',
   statusLogs: [lost(ago(30))],
+  customer: { winbackNeverAt: null },
   ...over,
 });
 
@@ -745,6 +748,17 @@ describe('a receipt that says nothing came back is never a win-back call', () =>
     const asked = JSON.stringify(viewWhere('ready', RULE, NOW)) + JSON.stringify(periodWhere('30', NOW, RULE));
     for (const piece of ['"receivedQty":{"gt":0}', '"damagedQty":{"gt":0}', '"missingQty":0']) {
       expect(asked.split(piece).length - 1, piece).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe('«إلغاء نهائي» on «قايمة الاسترجاع» (the owner, 26/11)', () => {
+  it('a customer closed for good is in no base and so in no view — a cancellation as much as a return', () => {
+    for (const o of [order(), back()]) {
+      expect(inBase(o)).toBe(true);
+      const never = { ...o, customer: { winbackNeverAt: ago(1) } };
+      expect(inBase(never)).toBe(false);
+      expect(VIEWS.filter((v) => matches({ ...baseWhere(scope, RULE, NOW), AND: [viewWhere(v, RULE, NOW)] }, never as unknown as Any))).toEqual([]);
     }
   });
 });

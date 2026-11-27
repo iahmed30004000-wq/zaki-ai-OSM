@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiJson } from '@/lib/api-client';
 import { StoreBrandField } from './StoreBrandField';
+import { StoreWhatsappButtonField } from './StoreWhatsappButtonField';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { RiLoader4Line, RiVerifiedBadgeLine } from '@remixicon/react';
@@ -24,6 +25,8 @@ interface IdentityRow {
   logo?: string | null;
   favicon?: string | null;
   supportPhone?: string | null;
+  whatsappMode?: string | null;
+  whatsappNumber?: string | null;
 }
 
 export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSaved?: () => void }) {
@@ -119,6 +122,8 @@ export function StoreIdentityCard({ store, onSaved }: { store: IdentityRow; onSa
         <StoreBrandField storeId={store.id} kind="logo" value={logo} onChange={(v) => { setLogo(v); onSaved?.(); }} />
         <StoreBrandField storeId={store.id} kind="favicon" value={favicon} onChange={(v) => { setFavicon(v); onSaved?.(); }} />
       </div>
+
+      <StoreWhatsappButtonField store={store} onSaved={onSaved} />
     </Card>
   );
 }

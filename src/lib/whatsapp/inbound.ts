@@ -45,11 +45,23 @@ async function findCustomer(companyId: string, waId: string) {
   return null;
 }
 
-async function ensureConnectionWebhookTs(connectionId: string) {
+/**
+ * The webhook's own word for the business number (`metadata.display_phone_number`), digits only, or null. Kept on the
+ * connection while it has none, so the store's «زر واتساب» in API mode knows which number to open (`store-whatsapp.ts`)
+ * without anybody typing it.
+ */
+export function displayNumberOf(value: unknown): string | null {
+  const raw = (value as { metadata?: { display_phone_number?: unknown } } | null)?.metadata?.display_phone_number;
+  if (typeof raw !== 'string') return null;
+  const digits = raw.replace(/\D/g, '');
+  return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+}
+
+async function ensureConnectionWebhookTs(connectionId: string, display: string | null = null, known: string | null = null) {
   try {
     await db.whatsAppConnection.update({
       where: { id: connectionId },
-      data: { lastWebhookAt: new Date() },
+      data: { lastWebhookAt: new Date(), ...(display && !known ? { phoneNumber: display } : {}) },
     });
   } catch {
     /* non-fatal */
@@ -79,7 +91,7 @@ export async function processWebhookPayload(
         result.skipped++;
         continue;
       }
-      await ensureConnectionWebhookTs(conn.id);
+      await ensureConnectionWebhookTs(conn.id, displayNumberOf(value), conn.phoneNumber);
 
       // ── Inbound messages ──
       const messages = Array.isArray(value?.messages) ? value.messages : [];

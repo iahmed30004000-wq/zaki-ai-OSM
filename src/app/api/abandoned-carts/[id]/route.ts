@@ -17,7 +17,7 @@ import { zodMessage } from '@/lib/zod-message';
 import { ruleFor } from '@/lib/phone-rules';
 import { noteCustomersHandedOut } from '@/lib/pii-alert';
 import { CART_STATUSES, cartPhoneShown } from '@/lib/abandoned-cart-rules';
-import { actOnCart, cartPowers, findVisibleCart, ordersBehindCarts, type CartAction } from '@/lib/abandoned-carts';
+import { actOnCart, blockedCarts, cartPowers, findVisibleCart, ordersBehindCarts, type CartAction } from '@/lib/abandoned-carts';
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -78,6 +78,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     if (!cart) return NextResponse.json(NOT_FOUND, { status: 404 });
 
     const behind = await ordersBehindCarts(companyId, [cart]);
+    const blocked = await blockedCarts(companyId, [cart]);
     await noteCustomersHandedOut({ companyId, storeId, user, where: 'السلات المهجورة', rows: [{ phone: cart.phoneNormalized }] });
     const powers = cartPowers(user);
     const people = powers.assign
@@ -92,6 +93,7 @@ export async function GET(_req: Request, ctx: Ctx) {
         productId: product?.id ?? null,
         phoneShown: cartPhoneShown(phoneNormalized, rest.country ?? country.code) || rest.phone,
         hasOrder: behind.get(cart.id) ?? null,
+        blocked: blocked.has(cart.id),
       },
       people,
       dialCode: ruleFor(country.code)?.dialCode ?? null,

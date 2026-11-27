@@ -1961,12 +1961,12 @@
     "tabs": 0
   },
   "src/components/screens/WinbackListScreen.tsx": {
-    "buttons": 0,
+    "buttons": 4,
     "inputs": 0,
     "columns": 6,
     "cards": 1,
     "modals": 0,
-    "icons": 0,
+    "icons": 2,
     "links": 0,
     "tabs": 0
   },
@@ -2827,6 +2827,16 @@
     "inputs": 2,
     "columns": 0,
     "cards": 1,
+    "modals": 0,
+    "icons": 2,
+    "links": 0,
+    "tabs": 0
+  },
+  "src/components/settings/StoreWhatsappButtonField.tsx": {
+    "buttons": 1,
+    "inputs": 2,
+    "columns": 0,
+    "cards": 0,
     "modals": 0,
     "icons": 2,
     "links": 0,

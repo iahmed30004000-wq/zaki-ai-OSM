@@ -64,9 +64,13 @@ export async function POST(req: Request) {
       return refuse(403, 'ما عندك صلاحية «إرسال رسائل واتساب» من رقم الشركة.', 'WHATSAPP_SEND_NOT_ALLOWED');
     }
 
-    const body = (await req.json().catch(() => null)) as { orderId?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { orderId?: unknown; purpose?: unknown } | null;
     const orderId = body && typeof body.orderId === 'string' ? body.orderId : '';
-    if (!orderId || Object.keys(body ?? {}).some((k) => k !== 'orderId')) {
+    // «واتساب» on «قايمة الاسترجاع» (the owner, 26/11) says `purpose: 'winback'`: the owner chose the company's number for it in so
+    // many words, so the per-country «بعد لا يرد» route is not asked. Everything else — the template, the connection, holding the
+    // order, the limits — is the same door's.
+    const winback = body?.purpose === 'winback';
+    if (!orderId || Object.keys(body ?? {}).some((k) => k !== 'orderId' && k !== 'purpose') || (body?.purpose !== undefined && !winback)) {
       return NextResponse.json({ error: 'أرسل رقم الطلب فقط.', errorAr: 'أرسل رقم الطلب فقط.', code: 'INVALID_BODY' }, { status: 400 });
     }
 
@@ -95,7 +99,7 @@ export async function POST(req: Request) {
     const dialCode = ruleFor(orderCountry?.code ?? country.code)?.dialCode ?? null;
 
     const setting = await afterNoAnswer(db, companyId);
-    if (routeFor(setting, dialCode) !== 'COMPANY') {
+    if (!winback && routeFor(setting, dialCode) !== 'COMPANY') {
       return refuse(409, 'هالدولة مضبوطة على واتساب الموظفة — ابعتي من واتسابك.', 'ROUTE_IS_AGENT');
     }
     if (!setting.templateName) {
@@ -198,7 +202,13 @@ export async function POST(req: Request) {
       entity: 'Order',
       entityId: order.id,
       // `afterHerOwnPress` is there only when the send went through the exception: why a message left on an order she no longer held.
-      newData: { templateName: setting.templateName, dialCode, messageId, ...(afterHerPress ? { afterHerOwnPress: true } : {}) },
+      newData: {
+        templateName: setting.templateName,
+        dialCode,
+        messageId,
+        ...(afterHerPress ? { afterHerOwnPress: true } : {}),
+        ...(winback ? { purpose: 'winback' } : {}),
+      },
     }).catch(() => {});
 
     return NextResponse.json({ ok: true, logged });

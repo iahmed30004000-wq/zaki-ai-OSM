@@ -10,6 +10,7 @@ import {
   type DailyKind,
 } from './winback-daily-words';
 import type { db } from './db';
+import { WINBACK_NOT_NEVER } from './winback-filters';
 
 type Client = Prisma.TransactionClient | typeof db;
 
@@ -106,6 +107,8 @@ export async function readDailyList(client: Client, scope: { companyId: string; 
           shippedAt: null,
           replacedBy: null,
           replacesOrderId: null,
+          // «إلغاء نهائي» on «قايمة الاسترجاع»: never on the daily list either.
+          ...WINBACK_NOT_NEVER,
         },
       },
       select: { orderId: true, createdAt: true, order: { select: { orderNumber: true, rejectionReason: true } } },

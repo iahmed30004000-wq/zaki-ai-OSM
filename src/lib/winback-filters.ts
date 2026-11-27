@@ -123,8 +123,13 @@ export function baseWhere(scope: WinbackScope, rule: WinbackRule, now: Date): Wh
     // At the top as an OR, never as an AND: the page and the counts spread this and add an `AND` of their own.
     ...(rule.afterShipping === true ? { OR: [lost, cameBack()] } : lost),
     createdAt: { gte: new Date(now.getTime() - rule.lookbackDays * DAY) },
+    // «إلغاء نهائي» (the owner, 26/11): a customer an agent closed for good on «قايمة الاسترجاع» is in no view, ever.
+    ...WINBACK_NOT_NEVER,
   };
 }
+
+/** The customer was not closed for good on the win-back list (`Customer.winbackNeverAt`). Every win-back reader spreads it. */
+export const WINBACK_NOT_NEVER = { customer: { is: { winbackNeverAt: null } } } satisfies Where;
 
 /**
  * Lost before it shipped, and passes every refusal in `winbackVerdict` except the cooling — written for the database.

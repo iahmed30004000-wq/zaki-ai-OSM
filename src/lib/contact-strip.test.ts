@@ -210,6 +210,7 @@ describe('the contact strip', () => {
   it('and the shop’s own WhatsApp link is built, in its own place', () => {
     expect(stripComments(repoFile('src/lib/store-contact.ts'))).toContain('wa.me/');
     expect(stripComments(repoFile('src/components/storefront/StorefrontShell.tsx')))
-      .toContain('whatsappHref(store.supportPhone)');
+      // The button's number is the store's «زر واتساب» setting (26/11), the support phone when it has none.
+      .toContain('whatsappHref(store.whatsappPhone ?? store.supportPhone)');
   });
 });

@@ -44,7 +44,12 @@ export interface CartRow {
   assignedTo: { id: string; name: string } | null;
   order: { id: string; orderNumber: string } | null;
   hasOrder: { id: string; orderNumber: string } | null;
+  /** The phone is on the blacklist: the cart never becomes an order by itself (absent from an older answer). */
+  blocked?: boolean;
 }
+
+/** Why a blocked cart stays a cart, in one sentence for the list and the cart's page. */
+export const CART_BLOCKED_NOTE = 'الرقم محظور بالقائمة السوداء — لهيك ما تحوّلت لطلب. إذا الحظر غلط، فكّه من «القائمة السوداء» وحوّلها بزر «حوّل لطلب».';
 
 export function CartStatusChip({ status }: { status: string }) {
   const s = isCartStatus(status) ? CART_STATUS_AR[status] : null;
@@ -195,6 +200,12 @@ export function ConvertCartButton({ cart, may, onStart }: { cart: CartRow; may: 
       <RiShoppingCartLine className="w-4 h-4 ml-1" /> حوّل لطلب
     </Button>
   );
+}
+
+/** «رقم محظور»: the phone is on the blacklist, so the cart stays a cart. */
+export function BlockedMark({ cart }: { cart: Pick<CartRow, 'blocked'> }) {
+  if (!cart.blocked) return null;
+  return <StatusChip tone="bad">رقم محظور</StatusChip>;
 }
 
 /** «له طلب»: the same phone ordered the same product in the last seven days — say it before anybody calls. */

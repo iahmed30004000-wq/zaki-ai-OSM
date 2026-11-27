@@ -90,6 +90,8 @@ interface Row {
   rejectionReason: string | null;
   productNameSnapshot: string | null;
   statusLogs: { statusType: string; newValue: string | null; createdAt: Date }[];
+  /** «إلغاء نهائي» (26/11): a customer closed for good on the win-back list. */
+  customer: { winbackNeverAt: Date | null };
 }
 
 let n = 0;
@@ -110,6 +112,7 @@ const row = (over: Partial<Row> & { closedDaysAgo?: number | null } = {}): Row =
     rejectionReason: 'PRICE_TOO_HIGH',
     productNameSnapshot: 'قطرة',
     statusLogs: closedDaysAgo === null ? [] : [{ statusType: 'CONFIRMATION', newValue: 'REJECTED', createdAt: ago(closedDaysAgo) }],
+    customer: { winbackNeverAt: null },
     ...rest,
   };
 };
