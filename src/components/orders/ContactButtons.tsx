@@ -46,7 +46,13 @@ export function ContactButtons({
   only,
   preferApp,
   callHref,
+  omsChat,
 }: {
+  /**
+   * A customer's own number with no order behind it (the customers screen): WhatsApp asks «واتساب OMS» or «واتساب الخارجي»
+   * like an order's strip does (the owner, 27/11). Off for a courier's office or a rep — they are not the inbox's.
+   */
+  omsChat?: boolean;
   phone: string | null | undefined;
   context: FillContext;
   /**
@@ -117,8 +123,11 @@ export function ContactButtons({
   const [open, setOpen] = useState<'SMS' | 'WHATSAPP' | 'CHOOSE' | null>(null);
   // Optional: the strip is drawn in places with no signed-in shell around it (a courier's office, tests) — there it offers no OMS.
   const currentUser = useSignedInUser();
-  /** «واتساب OMS» is offered to whoever may open the inbox, on a strip that has an order to find the customer by. */
-  const omsWhatsapp = !!orderId && userCan(currentUser, 'whatsapp.view');
+  /**
+   * «واتساب OMS» is offered to whoever may open the inbox on a strip that has an order to find the customer by — and, on a
+   * customer's own number with no order (`omsChat`, the customers screen), to whoever may send from the company number.
+   */
+  const omsWhatsapp = !!orderId ? userCan(currentUser, 'whatsapp.view') : !!omsChat && userCan(currentUser, 'whatsapp.send');
   const [omsBusy, setOmsBusy] = useState(false);
   const [omsError, setOmsError] = useState<string | null>(null);
 
@@ -129,14 +138,15 @@ export function ContactButtons({
    * the message she sends in the inbox is the contact.
    */
   const openOmsWhatsapp = async () => {
-    if (!orderId) return;
+    if (!orderId && !phone) return;
     setOmsBusy(true);
     setOmsError(null);
     try {
-      const r = await apiJson<{ id: string }>('/api/whatsapp/conversations/for-order', {
+      // An order finds its customer by itself; a bare number is read the way the inbox's «محادثة جديدة» reads it.
+      const r = await apiJson<{ id: string }>(orderId ? '/api/whatsapp/conversations/for-order' : '/api/whatsapp/conversations/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify(orderId ? { orderId } : { phone }),
       });
       setOpen(null);
       window.location.assign(`/growth/whatsapp/inbox?c=${encodeURIComponent(r.id)}`);
@@ -404,7 +414,7 @@ export function ContactButtons({
         aria-label={waReady ? undefined : NO_COUNTRY}
         disabled={!waReady}
         onClick={
-          plain
+          plain && !omsWhatsapp
             ? openPlainWhatsapp
             : () => {
                 setOmsError(null);
@@ -465,7 +475,17 @@ export function ContactButtons({
                 <Button size="sm" variant="quiet" loading={omsBusy} onClick={() => void openOmsWhatsapp()} title="من رقم الشركة، بصندوق الواتس جوّا النظام">
                   واتساب OMS
                 </Button>
-                <Button size="sm" variant="quiet" onClick={() => setOpen('WHATSAPP')} title="من واتسابك على تلفونك، مع الرسائل الجاهزة">
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  onClick={() => {
+                    // A plain number has no ready messages to pick: her WhatsApp opens on it at once.
+                    if (plain) {
+                      setOpen(null);
+                      openPlainWhatsapp();
+                    } else setOpen('WHATSAPP');
+                  }}
+                  title="من واتسابك على تلفونك، مع الرسائل الجاهزة">
                   واتساب الخارجي
                 </Button>
                 {omsError && (

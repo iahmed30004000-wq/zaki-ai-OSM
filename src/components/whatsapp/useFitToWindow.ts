@@ -16,6 +16,12 @@ export function useFitToWindow(ref: RefObject<HTMLElement | null>, minPx = 420) 
     const el = ref.current;
     if (!el || typeof window === 'undefined') return;
     const fit = () => {
+      // A phone (under the `lg` break, 27/11): the list is the page and scrolls with it, and an open conversation is drawn
+      // over the whole screen by its own rule (`wa-full`) — nothing here to fit.
+      if (window.innerWidth < 1024) {
+        el.style.height = 'auto';
+        return;
+      }
       const top = el.getBoundingClientRect().top + window.scrollY;
       const parent = el.parentElement;
       const after = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0;
