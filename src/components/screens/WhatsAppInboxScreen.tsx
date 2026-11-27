@@ -255,6 +255,10 @@ export function WhatsAppInboxScreen() {
       const c = await loadConnection();
       if (c?.status === 'CONNECTED') await loadConversations();
       setLoading(false);
+      // «واتساب OMS» from an order (27/11) arrives as `?c=<conversation>`: that thread opens at once, with its full head read by
+      // `loadMessages` — the conversation may be new and not in the list yet.
+      const asked = new URLSearchParams(window.location.search).get('c');
+      if (c?.status === 'CONNECTED' && asked) selectConversation({ id: asked } as Conversation);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
