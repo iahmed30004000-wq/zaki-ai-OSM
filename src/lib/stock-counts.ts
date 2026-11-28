@@ -67,8 +67,9 @@ type Tx = Prisma.TransactionClient | typeof prismaDb;
  *   · an order whose waybill was printed outside a trolley has no `sourceWarehouseId`: its units are in some warehouse's
  *     rows and are subtracted from none, so the expected figure is too HIGH by them (a shortfall that is not real). The
  *     line carries `unsourcedWithCourier` — the store's units with the courier that name no warehouse — for the approver.
- *   · an add-on's reservation is not released when its parcel is received back (a bug on main): such units still count
- *     as «with the courier», so the expected figure is too LOW by them (a surplus that is not real).
+ *   · an add-on whose parcel was received back BEFORE the 27/11 fix kept its reservation (the receipt released the lines
+ *     only): such units still count as «with the courier», so the expected figure is too LOW by them (a surplus that is
+ *     not real). Receipts since then release them; the old ones are not backfilled.
  *
  * LOCKS, in one order: the sheet row FOR UPDATE → the products' stock lock (sorted) → the warehouse row (FOR UPDATE to
  * open; FOR SHARE inside a receipt) → the batch rows → the combination rows.

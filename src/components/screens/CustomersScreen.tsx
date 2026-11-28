@@ -440,6 +440,7 @@ export function CustomersScreen() {
                     <ContactButtons
                       compact
                       plain
+                      omsChat
                       phone={c.rawPhone || c.phone}
                       countryCode={dialCode}
                       context={{ customerName: c.fullName, region: c.city }}

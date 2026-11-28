@@ -10,6 +10,7 @@ import { roundMinor } from './money';
 import { doorMoney, SETTLEMENT_ORDER_SELECT, type SettlementLine } from './settlement';
 import { consumeOrderStock } from './stock-consumption';
 import { appendDeliveryAttempt } from './delivery-attempts';
+import { addOnUnitsBack, anythingKept, lineUnitsBack } from './returning-units';
 
 type Tx = Prisma.TransactionClient | typeof db;
 
@@ -513,7 +514,16 @@ export interface SettledLineFacts {
   deliveredQty?: number | null;
 }
 
+/** An accepted add-on of the order (`OrderAddOn`): units in the same parcel, with no line of their own. */
+export interface AddOnFacts {
+  id?: string;
+  productId?: string;
+  productName?: string;
+  quantity: number;
+}
+
 export interface SettledLine {
+  /** The line's id — or the add-on's, for an add-on's row. */
   itemId: string;
   productId: string;
   productName: string;
@@ -534,9 +544,12 @@ export interface SettledLine {
  * it: its screen listed every line at the full shipped quantity, so a clerk
  * holding one refused unit was told to expect three, and the one figure that
  * was right — the total in the next column — contradicted the list beside it.
+ *
+ * The order's add-ons come after the lines (27/11): they are units in the same box, and the desk counts them with it.
+ * One is kept when anything was taken, and comes back whole otherwise (`returning-units.addOnUnitsBack`).
  */
-export function settledLines(items: SettledLineFacts[]): SettledLine[] {
-  return items.map((i) => {
+export function settledLines(items: SettledLineFacts[], addOns: readonly AddOnFacts[] = []): SettledLine[] {
+  const lines: SettledLine[] = items.map((i) => {
     const shipped = i.quantity + i.freeQuantity;
     const delivered = i.deliveredQty ?? null;
     return {
@@ -547,15 +560,27 @@ export function settledLines(items: SettledLineFacts[]): SettledLine[] {
       delivered,
       // A line the door never spoke about owes the whole parcel back: that
       // is the announced-return case, where nothing was handed over.
-      expectedBack: Math.max(0, shipped - (delivered ?? 0)),
+      expectedBack: lineUnitsBack(i),
     };
   });
+  const spoke = items.some((i) => i.deliveredQty != null);
+  return [
+    ...lines,
+    ...addOns.map((a) => ({
+      itemId: a.id ?? '',
+      productId: a.productId ?? '',
+      productName: `${a.productName ?? ''} (إضافة)`,
+      shipped: a.quantity,
+      delivered: spoke ? (anythingKept(items) ? a.quantity : 0) : null,
+      expectedBack: addOnUnitsBack(items, a),
+    })),
+  ];
 }
 
 /**
  * How many units are actually coming back.
  *
- * The whole parcel, LESS whatever the customer kept at the door. Counting
+ * The whole parcel — add-ons included — LESS whatever the customer kept at the door. Counting
  * the full ordered quantity made every partial return read as a shortage —
  * two units "missing" that the customer is holding and has paid for — and
  * put that shortfall on the courier's record for goods he delivered right.
@@ -564,12 +589,15 @@ export function settledLines(items: SettledLineFacts[]): SettledLine[] {
  * route and the screen now read the same arithmetic, so the list of lines
  * and the total above it cannot disagree again.
  */
-export function expectedBackTotal(items: SettledLineFacts[]): number {
-  return settledLines(items).reduce((sum, l) => sum + l.expectedBack, 0);
+export function expectedBackTotal(items: SettledLineFacts[], addOns: readonly AddOnFacts[] = []): number {
+  return settledLines(items, addOns).reduce((sum, l) => sum + l.expectedBack, 0);
 }
 
-/** Units kept and units refused, and whether the door spoke at all. */
-export function doorUnits(items: SettledLineFacts[]): {
+/**
+ * Units kept and units refused, and whether the door spoke at all. `delivered` counts the LINES' units; `refused` is
+ * everything owed back to a shelf, add-ons included when they are handed in.
+ */
+export function doorUnits(items: SettledLineFacts[], addOns: readonly AddOnFacts[] = []): {
   delivered: number;
   refused: number;
   recorded: boolean;
@@ -577,7 +605,7 @@ export function doorUnits(items: SettledLineFacts[]): {
   const lines = settledLines(items);
   return {
     delivered: lines.reduce((sum, l) => sum + (l.delivered ?? 0), 0),
-    refused: lines.reduce((sum, l) => sum + l.expectedBack, 0),
+    refused: expectedBackTotal(items, addOns),
     // Null everywhere means no door settlement yet — an announced return,
     // not a customer who refused every unit.
     recorded: items.some((i) => i.deliveredQty != null),

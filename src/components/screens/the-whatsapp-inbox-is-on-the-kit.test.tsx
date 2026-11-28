@@ -217,6 +217,8 @@ describe('5 · nothing new is sent, and the phone is where it was', () => {
   it('the phone number shows in the same two places as before: the conversation head and the customer panel', async () => {
     await openConversation();
     // the head of the conversation and the customer panel: the same two places as before R10e
-    expect(screen.getAllByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').trim() === CONV.customerPhone)).toHaveLength(2);
+    // Since 27/11 the number is read with its + (WhatsApp keys it as bare digits).
+    const shown = `+${CONV.customerPhone.replace(/^\+/, '')}`;
+    expect(screen.getAllByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').trim() === shown)).toHaveLength(2);
   });
 });

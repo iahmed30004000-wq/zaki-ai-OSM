@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { screenApi as crmApi, qs } from '@/lib/screen-api';
 import { routeLabel } from '@/lib/route-registry';
-import { RiArrowRightSLine, RiChat3Line, RiCustomerService2Line, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiSparkling2Line, RiTimeLine, RiUserLine } from '@remixicon/react';
+import { RiAddLine, RiMore2Line, RiArrowRightSLine, RiChat3Line, RiCustomerService2Line, RiErrorWarningLine, RiPhoneLine, RiRefreshLine, RiSearchLine, RiSettings3Line, RiShieldFlashLine, RiShoppingBagLine, RiSparkling2Line, RiTimeLine, RiUserLine } from '@remixicon/react';
 import { PageShell } from '@/components/ui/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Button } from '@/components/ui/Button';
@@ -50,6 +50,9 @@ function Avatar({ name, phone, size = 'md' }: { name: string | null; phone: stri
 }
 
 const NO_BOT: WaBotAgent = { active: false, name: 'سارة', avatarText: 'س' };
+
+/** A thread's number as a person reads it: WhatsApp keys it as bare international digits, the screen shows the +. */
+const plus = (p: string | null | undefined) => (p ? `+${String(p).replace(/^\+/, '')}` : '');
 
 export function WhatsAppInboxScreen() {
   const { currentUser } = useApp();
@@ -258,7 +261,7 @@ export function WhatsAppInboxScreen() {
       // «واتساب OMS» from an order (27/11) arrives as `?c=<conversation>`: that thread opens at once, with its full head read by
       // `loadMessages` — the conversation may be new and not in the list yet.
       const asked = new URLSearchParams(window.location.search).get('c');
-      if (c?.status === 'CONNECTED' && asked) selectConversation({ id: asked } as Conversation);
+      if (c?.status === 'CONNECTED' && asked) void openById(asked);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -295,6 +298,19 @@ export function WhatsAppInboxScreen() {
     setComposingState(draftsRef.current[c.id] || '');
     setMobileView('chat');
     loadMessages(c.id);
+  };
+
+  /**
+   * A conversation reached by its id alone (`?c=` from «واتساب OMS», «محادثة جديدة»): its head is read FIRST, then it opens like a
+   * pressed row. Drawn from the bare id it had no number, and the avatar broke the whole screen (27/11).
+   */
+  const openById = async (id: string) => {
+    try {
+      const d: any = await crmApi(`/api/whatsapp/conversations/${id}`);
+      if (d?.conversation?.id) selectConversation(d.conversation as Conversation);
+    } catch (e: any) {
+      setError(e?.message || 'تعذّر فتح المحادثة');
+    }
   };
 
   /** What a refusal means for the screen: a closed window is drawn as closed at once. */
@@ -441,6 +457,41 @@ export function WhatsAppInboxScreen() {
     }
   }, [canAssign]);
 
+  /*
+   * «محادثة جديدة» (the owner, 27/11): «اقدر ادخل اي رقم يدوي واتواصل معه كجهة اتصال». The number (and a name, if she gives
+   * one) opens — or finds — its thread on the company number; the inbox opens on it. A first message to a number that has not
+   * written in 24 hours is the approved template, which the thread then offers.
+   */
+  const [newOpen, setNewOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newBusy, setNewBusy] = useState(false);
+  const [newError, setNewError] = useState<string | null>(null);
+  const startChat = async () => {
+    if (!newPhone.trim() || newBusy) return;
+    setNewBusy(true);
+    setNewError(null);
+    try {
+      const d: any = await crmApi('/api/whatsapp/conversations/start', {
+        method: 'POST',
+        body: JSON.stringify({ phone: newPhone.trim(), ...(newName.trim() ? { name: newName.trim() } : {}) }),
+      });
+      setNewOpen(false);
+      setNewPhone('');
+      setNewName('');
+      if (statusFilter !== 'OPEN') setStatusFilter('OPEN');
+      void loadConversations(true);
+      await openById(d.id);
+    } catch (e: any) {
+      setNewError(e?.message || 'تعذّر فتح المحادثة');
+    } finally {
+      setNewBusy(false);
+    }
+  };
+
+  /** On a phone the conversation's own presses (customer, orders, assignment, bot, close) live behind «⋮». */
+  const [moreOpen, setMoreOpen] = useState(false);
+
   const columnRef = useRef<HTMLDivElement>(null);
   useFitToWindow(columnRef);
 
@@ -465,6 +516,54 @@ export function WhatsAppInboxScreen() {
     );
   }
 
+  /** The customer beside the thread: on a desk the third column, on a phone inside «⋮». */
+  const customerPanel = selected ? (
+        <div className="p-4 space-y-5">
+          <div className="text-center">
+            <div className="flex justify-center"><Avatar name={selected.customerName} phone={selected.customerPhone} size="lg" /></div>
+            <p className="mt-2 font-bold text-sm text-[var(--sys-heading)]">{selected.customerName || 'عميل غير مرتبط'}</p>
+            <p className="text-note text-[var(--sys-muted-foreground)] flex items-center justify-center gap-1 mt-1" dir="ltr">
+              <RiPhoneLine className="w-4 h-4" /> {plus(selected.customerPhone)}
+            </p>
+          </div>
+  
+          <div>
+            <p className="text-note font-bold text-[var(--sys-muted)] mb-2">المحادثات</p>
+            <p className="text-note text-[var(--sys-muted-foreground)]">{convCountByPhone[selected.customerPhone] || 1} محادثة (مفتوحة)</p>
+            {selected.customerId ? (
+              <Link href={`/customers?search=${encodeURIComponent(selected.customerPhone)}`} className="mt-2 inline-flex items-center gap-1 text-note font-semibold text-[var(--sys-primary)] hover:underline">
+                <RiUserLine className="w-4 h-4" /> فتح العميل
+              </Link>
+            ) : (
+              <p className="mt-2 text-note text-[var(--sys-muted)]">عميل غير مرتبط</p>
+            )}
+          </div>
+  
+          <div>
+            <p className="text-note font-bold text-[var(--sys-muted)] mb-2">الطلبات الأخيرة</p>
+            {selected.customerId ? (
+              recentOrders.length === 0 ? (
+                <p className="text-note text-[var(--sys-muted-foreground)]">
+                  لا طلبَ لهذا الرقم بعد — المحادثة سابقةٌ لأوّل طلب.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {recentOrders.map((o: any) => (
+                    <Link key={o.id} href={`/orders/${o.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-primary-soft)] text-note">
+                      <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">#{o.orderNumber}</span>
+                      <span className="text-note text-[var(--sys-muted-foreground)]">{o.status}</span>
+                      <span className="font-semibold text-[var(--sys-heading)]" dir="ltr"><Money value={o.totalAmount} currency={o.currency} /></span>
+                    </Link>
+                  ))}
+                </div>
+              )
+            ) : (
+              <p className="text-note text-[var(--sys-muted)] flex items-center gap-1"><RiShoppingBagLine className="w-4 h-4" /> لا يوجد عميل مرتبط</p>
+            )}
+          </div>
+        </div>
+  ) : null;
+
   const windowClosed = selected?.windowOpen === false;
   // A reaction is a free-form send: the send key, an open conversation and an open window.
   const mayReact = canSend && selected?.status === 'OPEN' && !windowClosed;
@@ -481,6 +580,8 @@ export function WhatsAppInboxScreen() {
         {/* The header is the kit's PageShell (R10e, 18/11). It is drawn WITHOUT children on purpose: the panes below
             must take the rest of this measured column (`flex-1`), and PageShell's own body is not a flex item —
             so the panes are its next sibling in the column, not its child. */}
+        {/* `wa-top`: on a phone the header keeps its title and presses and drops the sentence under it (`wa-style.ts`). */}
+        <div className="wa-top">
         <PageShell
           title={routeLabel('/growth/whatsapp/inbox')}
           description="صندوق وارد مشترك لكل الموظفين — WhatsApp Business Cloud API"
@@ -500,11 +601,89 @@ export function WhatsAppInboxScreen() {
             </>
           }
         />
+        </div>
         <Modal isOpen={botOpen} onClose={() => setBotOpen(false)} title="بوت الطلبات على واتساب" maxWidth="4xl">
           {botOpen && (
             <React.Suspense fallback={<p className="p-6 text-center text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل...</p>}>
               <WhatsAppBotCard embedded onSaved={(a) => setBotAgent(a)} />
             </React.Suspense>
+          )}
+        </Modal>
+
+        <Modal isOpen={newOpen} onClose={() => setNewOpen(false)} title="محادثة جديدة" maxWidth="sm">
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void startChat();
+            }}
+          >
+            <label className="block text-note font-medium text-[var(--sys-foreground)]">
+              الرقم
+              <input
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                dir="ltr"
+                inputMode="tel"
+                autoFocus
+                maxLength={30}
+                placeholder="+963 9xx xxx xxx"
+                className="mt-1 block h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-left text-sm focus:border-[var(--sys-primary)] focus:outline-none"
+              />
+              <span className="mt-1 block text-note text-[var(--sys-muted)]">مع رمز البلد، أو رقم محلي من بلد المتجر.</span>
+            </label>
+            <label className="block text-note font-medium text-[var(--sys-foreground)]">
+              الاسم (اختياري)
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                maxLength={80}
+                className="mt-1 block h-11 md:h-10 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-sm focus:border-[var(--sys-primary)] focus:outline-none"
+              />
+            </label>
+            <p className="text-note text-[var(--sys-muted-foreground)] leading-relaxed">
+              إذا الرقم ما كتبلنا خلال آخر 24 ساعة، أول رسالة لازم تكون القالب المعتمد — المحادثة بتعرضه عليك.
+            </p>
+            {newError && (
+              <p role="alert" className="text-note text-[var(--sys-destructive)]">
+                {newError}
+              </p>
+            )}
+            <Button type="submit" variant="primary" className="w-full" loading={newBusy} disabled={!newPhone.trim()}>
+              افتح المحادثة
+            </Button>
+          </form>
+        </Modal>
+
+        <Modal isOpen={moreOpen && !!selected} onClose={() => setMoreOpen(false)} title="خيارات المحادثة" maxWidth="sm">
+          {selected && (
+            <div className="space-y-4">
+              {customerPanel}
+              {canAssign && (
+                <label className="block text-note font-medium text-[var(--sys-foreground)] px-4">
+                  مُسندة إلى
+                  <select
+                    value={selected.assignedUserId || ''}
+                    disabled={assigning}
+                    onChange={(e) => assign(e.target.value || null)}
+                    className="mt-1 block h-11 w-full rounded-lg border border-[var(--sys-border-input)] bg-[var(--sys-card)] px-3 text-sm focus:border-[var(--sys-primary)] focus:outline-none"
+                  >
+                    <option value="">غير معين</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <div className="flex flex-col gap-2 px-4 pb-2">
+                {sBot && canSend && (
+                  <Button variant="secondary" className="w-full" loading={botBusy} onClick={() => { void setBot(botSilent ? 'resume' : 'pause'); }}>
+                    {botSilent ? 'رجّع البوت' : 'أوقف البوت'}
+                  </Button>
+                )}
+                <Button variant="secondary" className="w-full" onClick={() => { setMoreOpen(false); void toggleStatus(); }}>
+                  {selected.status === 'OPEN' ? 'إغلاق المحادثة' : 'إعادة فتح'}
+                </Button>
+              </div>
+            </div>
           )}
         </Modal>
 
@@ -531,10 +710,15 @@ export function WhatsAppInboxScreen() {
           </div>
         ) : (
           /* 3-pane inbox */
-          <div className="flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
+          <div className="wa-panes flex-1 min-h-0 px-4 md:px-6 pb-4 grid grid-cols-1 lg:grid-cols-[320px_1fr_300px] gap-4 overflow-hidden">
             {/* ── Column 1: conversations list ── */}
             <Card className={`wa-list flex flex-col min-h-0 overflow-hidden ${mobileView === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
               <div className="p-3 border-b border-[var(--sys-border)] space-y-2">
+                {canSend && (
+                  <Button variant="primary" size="sm" className="w-full" onClick={() => { setNewError(null); setNewOpen(true); }}>
+                    <RiAddLine className="w-4 h-4" /> محادثة جديدة
+                  </Button>
+                )}
                 <div className="relative">
                   <RiSearchLine className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-[var(--sys-muted)] pointer-events-none" />
                   <input
@@ -558,7 +742,7 @@ export function WhatsAppInboxScreen() {
                   onChange={(v) => setStatusFilter(v as 'OPEN' | 'CLOSED')}
                 />
               </div>
-              <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="wa-rows flex-1 overflow-y-auto min-h-0">
                 {loading ? (
                   <div className="p-6 text-center text-note text-[var(--sys-muted-foreground)]">جارٍ التحميل...</div>
                 ) : error && !offline ? (
@@ -586,7 +770,7 @@ export function WhatsAppInboxScreen() {
                       <Avatar name={c.customerName} phone={c.customerPhone} />
                       <div className="wa-row-body">
                         <div className="wa-row-top">
-                          <span className="wa-name" dir="auto">{c.customerName || c.customerPhone}</span>
+                          <span className="wa-name" dir="auto">{c.customerName || plus(c.customerPhone)}</span>
                           <span className={`wa-time${c.unreadCount > 0 ? ' unread' : ''}`}>{listTime(c.lastMessageAt)}</span>
                         </div>
                         <div className="wa-row-bottom">
@@ -623,7 +807,8 @@ export function WhatsAppInboxScreen() {
             </Card>
 
             {/* ── Column 2: conversation ── */}
-            <Card className={`wa-pane overflow-hidden ${mobileView === 'list' ? 'hidden lg:flex' : 'flex'}`}>
+            {/* On a phone an open conversation takes the whole screen, as WhatsApp does (`wa-full`, `wa-style.ts`). */}
+            <Card className={`wa-pane overflow-hidden ${mobileView === 'list' ? 'hidden lg:flex' : 'flex wa-full'}`}>
               {!selected ? (
                 <div className="wa-wall flex flex-col items-center justify-center gap-3 p-6 text-center">
                   <span className="wa-av lg">
@@ -643,9 +828,9 @@ export function WhatsAppInboxScreen() {
                     ><RiArrowRightSLine className="icon-mirror w-5 h-5" /></IconButton>
                     <Avatar name={selected.customerName} phone={selected.customerPhone} size="sm" />
                     <div className="flex-1 min-w-0">
-                      <p className="wa-head-name" dir="auto">{selected.customerName || selected.customerPhone}</p>
+                      <p className="wa-head-name" dir="auto">{selected.customerName || plus(selected.customerPhone)}</p>
                       <p className="wa-head-sub">
-                        <span dir="ltr">{selected.customerPhone}</span>
+                        <span dir="ltr">{plus(selected.customerPhone)}</span>
                         {sBot && (
                           <>
                             <span aria-hidden="true">·</span>
@@ -667,22 +852,26 @@ export function WhatsAppInboxScreen() {
                     )}
                     {sBot && canSend && (
                       botSilent ? (
-                        <Button variant="secondary" size="sm" onClick={() => { void setBot('resume'); }} loading={botBusy} className="shrink-0">
+                        <Button variant="secondary" size="sm" onClick={() => { void setBot('resume'); }} loading={botBusy} className="shrink-0 wa-desk">
                           رجّع البوت
                         </Button>
                       ) : (
-                        <Button variant="quiet" size="sm" onClick={() => { void setBot('pause'); }} loading={botBusy} className="shrink-0">
+                        <Button variant="quiet" size="sm" onClick={() => { void setBot('pause'); }} loading={botBusy} className="shrink-0 wa-desk">
                           أوقف البوت
                         </Button>
                       )
                     )}
-                    <Button variant="secondary" size="sm" onClick={toggleStatus} className="shrink-0">
+                    <Button variant="secondary" size="sm" onClick={toggleStatus} className="shrink-0 wa-desk">
                       {selected.status === 'OPEN' ? 'إغلاق المحادثة' : 'إعادة فتح'}
                     </Button>
+                    {/* A phone: the customer, his orders, the assignment, the bot and «إغلاق» behind one press. */}
+                    <IconButton size="sm" className="shrink-0 wa-mob" onClick={() => setMoreOpen(true)} label="خيارات المحادثة">
+                      <RiMore2Line className="w-5 h-5" />
+                    </IconButton>
                   </div>
 
                   {canAssign && (
-                    <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
+                    <div className="wa-desk flex items-center gap-2 px-4 py-2 border-b border-[var(--sys-border)] bg-[var(--sys-surface)]">
                       <span className="text-note text-[var(--sys-muted-foreground)] shrink-0">مُسندة إلى:</span>
                       <select
                         value={selected.assignedUserId || ''}
@@ -703,8 +892,8 @@ export function WhatsAppInboxScreen() {
                   ) : messages.length === 0 ? (
                     <div className="wa-wall overflow-y-auto px-4 py-4">
                       <EmptyState
-                        title="لا رسائل في هذه المحادثة"
-                        why="المحادثة مفتوحة ولم يصل منها شيء بعد. رسائل واتساب لا تُسحب بأثرٍ رجعيّ — ما قبل الربط ليس هنا."
+                        title="لا رسائل بعد"
+                        why="ابدأ المحادثة من تحت. إذا الرقم ما كتبلنا خلال آخر 24 ساعة، أول رسالة بتكون القالب المعتمد. رسائل واتساب ما بتنسحب بأثر رجعي — اللي قبل الربط مش هون."
                       />
                     </div>
                   ) : (
@@ -781,54 +970,11 @@ export function WhatsAppInboxScreen() {
             </Card>
 
             {/* ── Column 3: customer panel ── */}
-            <Card className="overflow-y-auto min-h-0 hidden lg:block">
+            <Card className="wa-side overflow-y-auto min-h-0 hidden lg:block">
               {!selected ? (
                 <div className="flex items-center justify-center h-full text-note text-[var(--sys-muted-foreground)]">لوحة العميل</div>
               ) : (
-                <div className="p-4 space-y-5">
-                  <div className="text-center">
-                    <div className="flex justify-center"><Avatar name={selected.customerName} phone={selected.customerPhone} size="lg" /></div>
-                    <p className="mt-2 font-bold text-sm text-[var(--sys-heading)]">{selected.customerName || 'عميل غير مرتبط'}</p>
-                    <p className="text-note text-[var(--sys-muted-foreground)] flex items-center justify-center gap-1 mt-1" dir="ltr">
-                      <RiPhoneLine className="w-4 h-4" /> {selected.customerPhone}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-note font-bold text-[var(--sys-muted)] mb-2">المحادثات</p>
-                    <p className="text-note text-[var(--sys-muted-foreground)]">{convCountByPhone[selected.customerPhone] || 1} محادثة (مفتوحة)</p>
-                    {selected.customerId ? (
-                      <Link href={`/customers?search=${encodeURIComponent(selected.customerPhone)}`} className="mt-2 inline-flex items-center gap-1 text-note font-semibold text-[var(--sys-primary)] hover:underline">
-                        <RiUserLine className="w-4 h-4" /> فتح العميل
-                      </Link>
-                    ) : (
-                      <p className="mt-2 text-note text-[var(--sys-muted)]">عميل غير مرتبط</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <p className="text-note font-bold text-[var(--sys-muted)] mb-2">الطلبات الأخيرة</p>
-                    {selected.customerId ? (
-                      recentOrders.length === 0 ? (
-                        <p className="text-note text-[var(--sys-muted-foreground)]">
-                          لا طلبَ لهذا الرقم بعد — المحادثة سابقةٌ لأوّل طلب.
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {recentOrders.map((o: any) => (
-                            <Link key={o.id} href={`/orders/${o.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--sys-surface)] hover:bg-[var(--sys-primary-soft)] text-note">
-                              <span className="font-semibold text-[var(--sys-heading)]" dir="ltr">#{o.orderNumber}</span>
-                              <span className="text-note text-[var(--sys-muted-foreground)]">{o.status}</span>
-                              <span className="font-semibold text-[var(--sys-heading)]" dir="ltr"><Money value={o.totalAmount} currency={o.currency} /></span>
-                            </Link>
-                          ))}
-                        </div>
-                      )
-                    ) : (
-                      <p className="text-note text-[var(--sys-muted)] flex items-center gap-1"><RiShoppingBagLine className="w-4 h-4" /> لا يوجد عميل مرتبط</p>
-                    )}
-                  </div>
-                </div>
+                customerPanel
               )}
             </Card>
           </div>
