@@ -1115,6 +1115,16 @@
     "links": 2,
     "tabs": 0
   },
+  "src/components/products/ProductShapePicker.tsx": {
+    "buttons": 0,
+    "inputs": 1,
+    "columns": 0,
+    "cards": 0,
+    "modals": 0,
+    "icons": 0,
+    "links": 0,
+    "tabs": 0
+  },
   "src/components/products/ProductStock.tsx": {
     "buttons": 1,
     "inputs": 0,
@@ -1622,7 +1632,7 @@
     "buttons": 6,
     "inputs": 1,
     "columns": 6,
-    "cards": 5,
+    "cards": 6,
     "modals": 1,
     "icons": 9,
     "links": 1,

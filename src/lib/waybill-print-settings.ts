@@ -1,6 +1,7 @@
 import type { db } from './db';
-import type { SheetShow } from './label-sheet';
+import type { DesignShow, SheetShow } from './label-sheet';
 import { storeLogoForPrint } from './label-sheet';
+import { WAYBILL_DESIGNS, type WaybillDesign } from './waybill-designs';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════
@@ -12,8 +13,13 @@ import { storeLogoForPrint } from './label-sheet';
  * that one renderer which parts to leave off, and which logo to draw.
  *
  * ── THE DOCUMENT ── `Company.settings.waybillPrint` (no migration; one key of the company's settings document):
- *   { v: 1, stores: { [storeId]: { hide: HideableKey[], logo: 'store' | 'own' | 'none', ownLogo?: string } } }
+ *   { v: 1, stores: { [storeId]: { hide: HideableKey[], logo: 'store' | 'own' | 'none', ownLogo?: string,
+ *                                  design?: 'a' | 'b' } } }
  * A store with no entry prints today's waybill, byte for byte: the renderer is not even handed a choice.
+ *
+ * ── THE DESIGN ── (27/11) the current waybill, or one of the ready designs of `waybill-designs.ts`. No `design` is the
+ * current one — a store that never chose, and one that went back to it, store the same thing. The offer ticket is a part
+ * only the new designs draw, so its switch is listed apart and means nothing on the current waybill.
  *
  * ── WHAT CANNOT BE LEFT OFF ── the parts the courier works from: the customer's name, the phones, the address,
  * the amount to collect and the courier's barcode. They are LOCKED, not warned about: the screen draws them ticked
@@ -28,7 +34,12 @@ import { storeLogoForPrint } from './label-sheet';
 
 export const WAYBILL_PRINT_SETTINGS_KEY = 'waybillPrint';
 
+/** The parts the current waybill draws. */
 export type HideableKey = keyof SheetShow;
+/** The parts only the new designs draw. */
+export type DesignKey = 'offer';
+export type AnyHideableKey = HideableKey | DesignKey;
+export type DesignChoice = 'classic' | WaybillDesign;
 export type LockedKey = 'name' | 'phones' | 'place' | 'cod' | 'barcode';
 export type LogoChoice = 'store' | 'own' | 'none';
 
@@ -55,6 +66,20 @@ export const WAYBILL_ELEMENTS: readonly WaybillElement[] = Object.freeze([
   { key: 'supportPhone', ar: 'رقم الاستفسار بالأسفل', locked: false },
 ] as WaybillElement[]);
 
+/** The ready designs, the current waybill first — «التصميم الأساسي», the owner's own words — the screen's list. */
+export const DESIGN_CHOICES: readonly { value: DesignChoice; ar: string }[] = Object.freeze([
+  { value: 'classic', ar: 'التصميم الأساسي' },
+  { value: 'a', ar: 'التصميم أ' },
+  { value: 'b', ar: 'التصميم ب' },
+]);
+
+/** The parts the new designs add, each with its switch. */
+export const DESIGN_ELEMENTS: readonly { key: DesignKey; ar: string; locked: false }[] = Object.freeze([
+  { key: 'offer' as const, ar: 'بطاقة العرض (اسم العرض)', locked: false as const },
+]);
+
+export const DESIGN_KEYS: readonly DesignKey[] = DESIGN_ELEMENTS.map((e) => e.key);
+
 export const HIDEABLE_KEYS: readonly HideableKey[] = WAYBILL_ELEMENTS.filter((e) => !e.locked).map((e) => e.key as HideableKey);
 export const LOCKED_KEYS: readonly LockedKey[] = WAYBILL_ELEMENTS.filter((e) => e.locked).map((e) => e.key as LockedKey);
 
@@ -64,8 +89,10 @@ export const WAYBILL_LOGO_MAX_BYTES = 2 * 1024 * 1024;
 export const LOCKED_REASON ='ثابتة — شركة الشحن بتشتغل عليها، فما بتنشال عن البوليصة.';
 
 export interface StoreWaybillPrint {
-  hide: HideableKey[];
+  hide: AnyHideableKey[];
   logo: LogoChoice;
+  /** Absent is the current waybill. */
+  design?: WaybillDesign;
   /** The store's own waybill logo, once uploaded: `/api/media/companies/<company>/products/<store>/<uuid>.<ext>`. */
   ownLogo?: string;
 }
@@ -78,6 +105,8 @@ export interface WaybillPrintDocument {
 export const WAYBILL_PRINT_DEFAULT: StoreWaybillPrint = Object.freeze({ hide: [], logo: 'store' }) as StoreWaybillPrint;
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const isDesign = (v: unknown): v is WaybillDesign => (WAYBILL_DESIGNS as readonly unknown[]).includes(v);
+const EVERY_HIDEABLE: readonly AnyHideableKey[] = [...HIDEABLE_KEYS, ...DESIGN_KEYS];
 
 /** The exact shape of a waybill logo this store's own door wrote — nothing typed in, nothing of another store. */
 export function isOwnWaybillLogo(url: unknown, companyId: string, storeId: string): url is string {
@@ -88,17 +117,17 @@ export function isOwnWaybillLogo(url: unknown, companyId: string, storeId: strin
 }
 
 export type Validation =
-  | { ok: true; value: Pick<StoreWaybillPrint, 'hide' | 'logo'> }
+  | { ok: true; value: Pick<StoreWaybillPrint, 'hide' | 'logo' | 'design'> }
   | { ok: false; code: string; errorAr: string };
 
 /**
- * What a person sent from the screen: `{ hide, logo }` and nothing else. The whole thing or nothing — one Arabic
- * sentence and a stable code for the first fault. The own logo is never sent: only its upload door writes it.
+ * What a person sent from the screen: `{ hide, logo, design? }` and nothing else. The whole thing or nothing — one
+ * Arabic sentence and a stable code for the first fault. The own logo is never sent: only its upload door writes it.
  */
 export function validateWaybillPrint(input: unknown, has: { ownLogo: boolean }): Validation {
   const fail = (code: string, errorAr: string): Validation => ({ ok: false, code, errorAr });
   if (!isObject(input)) return fail('INVALID', 'الإعدادات لازم تنبعت كاملة: شو بينشال، وأي شعار.');
-  if (Object.keys(input).some((k) => k !== 'hide' && k !== 'logo')) return fail('INVALID', 'في خانة مش من إعدادات البوليصة.');
+  if (Object.keys(input).some((k) => k !== 'hide' && k !== 'logo' && k !== 'design')) return fail('INVALID', 'في خانة مش من إعدادات البوليصة.');
   if (!Array.isArray(input.hide) || input.hide.some((k) => typeof k !== 'string')) return fail('INVALID', 'قائمة العناصر المخفية مش مفهومة.');
   const hide = [...new Set(input.hide as string[])];
   const locked = hide.find((k) => (LOCKED_KEYS as readonly string[]).includes(k));
@@ -106,12 +135,16 @@ export function validateWaybillPrint(input: unknown, has: { ownLogo: boolean }):
     const ar = WAYBILL_ELEMENTS.find((e) => e.key === locked)!.ar;
     return fail('COURIER_FIELD_LOCKED', `«${ar}» ما بتنشال عن البوليصة: شركة الشحن بتشتغل عليها.`);
   }
-  if (hide.some((k) => !(HIDEABLE_KEYS as readonly string[]).includes(k))) return fail('INVALID', 'في عنصر بالقائمة مش من عناصر البوليصة.');
+  if (hide.some((k) => !(EVERY_HIDEABLE as readonly string[]).includes(k))) return fail('INVALID', 'في عنصر بالقائمة مش من عناصر البوليصة.');
   if (input.logo !== 'store' && input.logo !== 'own' && input.logo !== 'none') return fail('INVALID', 'اختار الشعار: شعار المتجر، أو شعار خاص، أو بلا شعار.');
   if (input.logo === 'own' && !has.ownLogo) return fail('NO_OWN_LOGO', 'ارفع شعار البوليصة أول، بعدين اختارو.');
+  const design = input.design;
+  if (design !== undefined && design !== 'classic' && !isDesign(design)) {
+    return fail('INVALID', 'اختار تصميم البوليصة: التصميم الأساسي، أو التصميم أ، أو التصميم ب.');
+  }
   // In the order the waybill prints them, so two saves of the same choice store the same bytes.
-  const ordered = HIDEABLE_KEYS.filter((k) => hide.includes(k));
-  return { ok: true, value: { hide: ordered, logo: input.logo } };
+  const ordered = EVERY_HIDEABLE.filter((k) => hide.includes(k));
+  return { ok: true, value: { hide: ordered, logo: input.logo, ...(isDesign(design) ? { design } : {}) } };
 }
 
 /** The stored document, or null when it is not exactly one (a broken document prints today's waybill). */
@@ -124,20 +157,23 @@ export function readDocument(raw: unknown): WaybillPrintDocument | null {
 export function storeEntry(doc: WaybillPrintDocument | null, storeId: string): StoreWaybillPrint | null {
   const e = doc?.stores?.[storeId];
   if (!isObject(e)) return null;
-  const hide = Array.isArray(e.hide) ? HIDEABLE_KEYS.filter((k) => (e.hide as unknown[]).includes(k)) : [];
+  const hide = Array.isArray(e.hide) ? EVERY_HIDEABLE.filter((k) => (e.hide as unknown[]).includes(k)) : [];
   const logo: LogoChoice = e.logo === 'own' || e.logo === 'none' ? e.logo : 'store';
-  return { hide, logo, ...(typeof e.ownLogo === 'string' ? { ownLogo: e.ownLogo } : {}) };
+  return { hide, logo, ...(typeof e.ownLogo === 'string' ? { ownLogo: e.ownLogo } : {}), ...(isDesign(e.design) ? { design: e.design } : {}) };
 }
 
 export interface ResolvedWaybillPrint {
   logoUrl: string | null;
   /** Omitted when nothing is hidden: the renderer then draws today's waybill, untouched. */
-  show?: SheetShow;
+  show?: DesignShow;
+  /** Omitted for the current waybill. */
+  design?: WaybillDesign;
 }
 
 /**
  * What the print page hands the renderer for this store. No entry, or an entry that hides nothing and keeps the
- * store's logo, is EXACTLY what the page handed it before this existed: `storeLogoForPrint(store.logo)` and no `show`.
+ * store's logo and the current design, is EXACTLY what the page handed it before this existed:
+ * `storeLogoForPrint(store.logo)`, no `show` and no `design`.
  */
 export function resolveWaybillPrint(
   doc: WaybillPrintDocument | null,
@@ -150,9 +186,13 @@ export function resolveWaybillPrint(
     : e.logo === 'own' && isOwnWaybillLogo(e.ownLogo, ids.companyId, ids.storeId)
       ? storeLogoForPrint(e.ownLogo)
       : null;
-  if (!e || e.hide.length === 0) return { logoUrl };
-  const show = Object.fromEntries(HIDEABLE_KEYS.map((k) => [k, !e.hide.includes(k)])) as unknown as SheetShow;
-  return { logoUrl, show };
+  const design = e?.design;
+  // The offer's switch is the new designs' alone: on the current waybill, hiding it hides nothing.
+  const offerOff = Boolean(design && e?.hide.includes('offer'));
+  if (!e || (!offerOff && !HIDEABLE_KEYS.some((k) => e.hide.includes(k)))) return { logoUrl, ...(design ? { design } : {}) };
+  const show = Object.fromEntries(HIDEABLE_KEYS.map((k) => [k, !e.hide.includes(k)])) as unknown as DesignShow;
+  if (offerOff) show.offer = false;
+  return { logoUrl, show, ...(design ? { design } : {}) };
 }
 
 /** Reads the company's settings document once and answers this store's choices; a read that throws is today's. */

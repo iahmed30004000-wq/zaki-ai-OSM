@@ -79,7 +79,8 @@ export async function POST(req: Request, { params }: Ctx) {
       previous = entry?.ownLogo;
       return {
         v: 1,
-        stores: { ...doc.stores, [store.id]: { hide: entry?.hide ?? [], logo: 'own', ownLogo: stored.url } },
+        // The rest of the choice stays as it was — a new logo never changes the design.
+        stores: { ...doc.stores, [store.id]: { hide: entry?.hide ?? [], logo: 'own', ownLogo: stored.url, ...(entry?.design ? { design: entry.design } : {}) } },
       };
     });
     await logAudit({
@@ -113,7 +114,7 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       if (!entry) return current === undefined ? undefined : doc;
       return {
         v: 1,
-        stores: { ...doc.stores, [store.id]: { hide: entry.hide, logo: entry.logo === 'own' ? 'store' : entry.logo } },
+        stores: { ...doc.stores, [store.id]: { hide: entry.hide, logo: entry.logo === 'own' ? 'store' : entry.logo, ...(entry.design ? { design: entry.design } : {}) } },
       };
     });
     await logAudit({
