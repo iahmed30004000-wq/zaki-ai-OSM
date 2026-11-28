@@ -49,13 +49,15 @@ vi.mock('@/lib/db', () => {
   const rel = (table: string, key: string, r: Row): Row | Row[] | null => {
     const d = S.data;
     if (table === 'order' && key === 'items') return (d.orderItem ?? []).filter((i) => i.orderId === r.id);
+    // 27/11: the receipt reads the order's add-ons too — they are in the same box.
+    if (table === 'order' && key === 'addOns') return (d.orderAddOn ?? []).filter((i) => i.orderId === r.id);
     if (table === 'order' && key === 'store') return (d.store ?? []).find((s) => s.id === r.storeId) ?? null;
     if (table === 'order' && key === 'returnReceipt') return (d.returnReceipt ?? []).find((x) => x.orderId === r.id) ?? null;
     if (table === 'store' && key === 'warehousePlacement') return (d.warehousePlacement ?? []).find((p) => p.storeId === r.id) ?? null;
     if (key === 'order') return (d.order ?? []).find((o) => o.id === r.orderId) ?? null;
     throw new Error(`relation ${table}.${key}`);
   };
-  const SUB: Record<string, string> = { items: 'orderItem', store: 'store', returnReceipt: 'returnReceipt', warehousePlacement: 'warehousePlacement', order: 'order' };
+  const SUB: Record<string, string> = { items: 'orderItem', addOns: 'orderAddOn', store: 'store', returnReceipt: 'returnReceipt', warehousePlacement: 'warehousePlacement', order: 'order' };
   const matches = (table: string, r: Row, w: Row = {}): boolean =>
     Object.entries(w).every(([k, c]) => {
       if (c === undefined) return true;

@@ -69,6 +69,7 @@ export async function POST(req: Request) {
         settlementStatus: true,
         returnReceipt: { select: { id: true } },
         items: { select: { id: true, quantity: true, freeQuantity: true, deliveredQty: true } },
+        addOns: { select: { id: true, quantity: true } },
         deliveryProvider: { select: { name: true } },
         replacedBy: { select: { orderNumber: true } },
       },
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
     }
 
     // What was expected back: the same sum the desk uses, so the two receipts read alike.
-    const loss = lossReceiptCounts(expectedBackTotal(order.items));
+    const loss = lossReceiptCounts(expectedBackTotal(order.items, order.addOns ?? []));
 
     const result = await db.$transaction(async (tx) => {
       // The units left the building and will not come back. Consuming is

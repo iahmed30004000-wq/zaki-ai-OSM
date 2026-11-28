@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { db as prismaDb } from './db';
 import { splitBatch } from './batch-split';
+import { addOnUnitsBack, lineUnitsBack } from './returning-units';
 import { lockProductsStock } from './reservation';
 import { leftWarehouseWhere } from './order-state';
 import { placesOf } from './stock-places';
@@ -190,7 +191,7 @@ export interface RefusedReceipt {
   from: string | null;
   /** The units split into the receiver («movedToWarehouse» of the receipt's audit line). */
   moved: number;
-  /** The order's lines, in order: what each still owed back. */
+  /** The order's lines then its add-ons, in the receipt's order: what each still owed back. */
   lines: { productId: string; units: number }[];
 }
 
@@ -277,14 +278,22 @@ async function refusedSince(tx: Tx, companyId: string, storeId: string, placedAt
   const orders = said.length
     ? await tx.order.findMany({
         where: { companyId, storeId, id: { in: said.map((s) => s.orderId) } },
-        select: { id: true, sourceWarehouseId: true, items: { select: { productId: true, quantity: true, freeQuantity: true, deliveredQty: true } } },
+        select: {
+          id: true,
+          sourceWarehouseId: true,
+          items: { select: { productId: true, quantity: true, freeQuantity: true, deliveredQty: true } },
+          addOns: { select: { productId: true, quantity: true } },
+        },
       })
     : [];
   const byId = new Map(orders.map((o) => [o.id, o]));
   const receipts: RefusedReceipt[] = said.flatMap((s) => {
     const o = byId.get(s.orderId);
     if (!o) return [];
-    const lines = o.items.map((i) => ({ productId: i.productId, units: i.quantity + i.freeQuantity - (i.deliveredQty ?? 0) }));
+    const lines = [
+      ...o.items.map((i) => ({ productId: i.productId, units: lineUnitsBack(i) })),
+      ...(o.addOns ?? []).map((a) => ({ productId: a.productId, units: addOnUnitsBack(o.items, a) })),
+    ];
     return [{ into: s.into, from: o.sourceWarehouseId ?? null, moved: s.moved, lines }];
   });
   return {

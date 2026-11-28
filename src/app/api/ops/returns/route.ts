@@ -121,9 +121,9 @@ export async function GET(req: Request) {
           region: { select: { id: true, name: true } },
           deliveryProvider: { select: { id: true, name: true } },
           items: { select: { id: true, productName: true, quantity: true, freeQuantity: true, deliveredQty: true, productId: true } },
-          // The record of the count — only the record view shows it.
+          // Pending: the add-ons in the same box, counted by the desk. Received: the record of the count.
           ...(pending
-            ? {}
+            ? { addOns: { select: { id: true, productId: true, productName: true, quantity: true } } }
             : {
                 returnReceipt: {
                   select: {
@@ -170,10 +170,10 @@ export async function GET(req: Request) {
       mayChargeFee: can(user, 'ops.return_fee'),
       // «استلام الكل»'s own key — granted to nobody; the owner's full access holds it. No key, no button.
       mayReceiveAll: can(user, 'ops.returns_receive_all'),
-      // `items` is deliberately NOT spread out below: `lines` is the same
+      // `items` and `addOns` are deliberately NOT spread out below: `lines` is the same
       // fact in the shape the desk needs, and shipping both invites the
       // screen to reach for the raw one again.
-      orders: orders.map(({ items, returnReceipt, failedAt, deliveredAt, updatedAt, ...whole }) => {
+      orders: orders.map(({ items, addOns, returnReceipt, failedAt, deliveredAt, updatedAt, ...whole }) => {
         // The id leaves; the name joins only when the parcel has a source warehouse (W4d).
         const o = withSourceWarehouseName(whole, places);
         const customer = redactCustomerForWarehouse(o.customer, maySeeContact);
@@ -187,7 +187,8 @@ export async function GET(req: Request) {
               : null,
           };
         }
-        const units = doorUnits(items);
+        const extra = addOns ?? [];
+        const units = doorUnits(items, extra);
         // Every row in this list is a return that has NOT been received yet,
         // so the goods half is open by construction.
         const completion = completionOf({
@@ -199,7 +200,7 @@ export async function GET(req: Request) {
         return {
           ...o,
           customer,
-          expectedQty: expectedBackTotal(items),
+          expectedQty: expectedBackTotal(items, extra),
           /** Whole days since the courier last spoke of it — the number the age filter's piles are cut from. */
           daysWaited: daysWaitedOf(sinceOf({ returnedAt: o.returnedAt, failedAt, deliveredAt, updatedAt }), now),
           /**
@@ -211,7 +212,7 @@ export async function GET(req: Request) {
            * total in the next column said different things about the same
            * parcel, and the list was the one a person believes.
            */
-          lines: settledLines(items),
+          lines: settledLines(items, extra),
           completion,
           /**
            * THE EXTRA ACTION, DECIDED HERE AND WORDED HERE.

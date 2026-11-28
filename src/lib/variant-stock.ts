@@ -405,6 +405,55 @@ export async function restorePlacedVariant(
   });
 }
 
+/** One combination's pieces in a refused parcel, as the returns desk's count lays them. */
+export interface RefusedVariant {
+  variantId: string;
+  sound: number;
+  damaged: number;
+  missing: number;
+}
+
+/**
+ * A REFUSED PARCEL RECEIVED IN A PLACED STORE (27/11). Every combination is locked first, in one sorted statement; then,
+ * for each: the broken pieces leave (`DAMAGE`) and the missing ones (`LOSS`) by `drawPlan` — the order's warehouse, «بلا
+ * مكان», the fullest — and the sound ones move (`RETURN`, lines that add to nothing) from the warehouse the parcel left,
+ * then from «بلا مكان», into the receiving one: never from a third warehouse, never from a road — as the product's own
+ * units move (`stock-consumption.moveReturnedUnits`). A place never goes below zero.
+ */
+export async function takeOffPlacedPieces(
+  tx: Tx,
+  who: Who,
+  p: { orderNumber: string; sourceWarehouseId: string | null; move?: { from: string | null; to: string } },
+  changes: readonly RefusedVariant[]
+) {
+  await lockVariants(tx, changes.map((c) => c.variantId));
+  for (const c of changes) {
+    const found = await placesOf(tx, who, c.variantId);
+    if (!found) continue;
+    const write = (type: VariantMoveType, moves: PlaceMove[], reason: string) =>
+      writePlaces(tx, who, { productId: found.productId, variantId: c.variantId, places: found.places, type, moves, reason });
+    if (c.damaged > 0) {
+      await write(VARIANT_MOVE.DAMAGE, drawPlan(found.places, c.damaged, p.sourceWarehouseId), `تالف من مرتجع ${p.orderNumber} — رُفض عند الباب`);
+    }
+    if (c.missing > 0) {
+      await write(VARIANT_MOVE.LOSS, drawPlan(found.places, c.missing, p.sourceWarehouseId), `ناقص من مرتجع ${p.orderNumber} — ما رجع مع الطرد`);
+    }
+    if (p.move && c.sound > 0) {
+      const { from, to } = p.move;
+      const out: PlaceMove[] = [];
+      let left = c.sound;
+      for (const warehouseId of from ? [from, null] : [null]) {
+        const n = Math.min(left, Math.max(0, placeHolds(found.places, { warehouseId })));
+        if (n <= 0) continue;
+        out.push({ warehouseId, delta: -n });
+        left -= n;
+      }
+      const moved = c.sound - left;
+      if (moved > 0) await write(VARIANT_MOVE.RETURN, [...out, { warehouseId: to, delta: moved }], `مرتجع ${p.orderNumber} — استُلم بمخزن`);
+    }
+  }
+}
+
 /**
  * A KEEPER'S COUNT of one warehouse, for several combinations of one product: `counts` maps a combination to what the
  * warehouse holds of it. Combinations whose count does not change write nothing. Returns how many changed. The caller has

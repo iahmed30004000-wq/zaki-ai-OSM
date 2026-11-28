@@ -21,6 +21,8 @@ const { db, requireContext, requirePermission, logAudit, reverseForOrder } = vi.
     inventoryMovement: { findFirst: vi.fn(), create: vi.fn() },
     productionBatch: { findFirst: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
     orderItem: { updateMany: vi.fn() },
+    // 27/11: a receipt of an order with add-ons releases their holds too.
+    orderAddOn: { updateMany: vi.fn() },
     orderNote: { create: vi.fn() },
     deliveryFee: { findFirst: vi.fn() },
     $transaction: vi.fn(async (fn: any) => fn(db)),
@@ -422,6 +424,31 @@ describe('the returns list', () => {
     expect(orders[0].action).toBeNull();
     expect(orders[0].lines[0].delivered).toBeNull();
     expect(orders[0].expectedQty).toBe(3);
+  });
+
+  it('counts the add-ons in the box, and the receipt accepts exactly the number the list showed (27/11)', async () => {
+    const items = [{ id: 'i1', productId: 'p1', productName: 'ماء الكمأ', quantity: 2, freeQuantity: 0, deliveredQty: null }];
+    const addOns = [{ id: 'a1', productId: 'p2', productName: 'صابون', quantity: 1 }];
+    listed(items, { addOns });
+    const { orders } = await (await get()).json();
+    expect(orders[0].expectedQty).toBe(3);
+    expect(orders[0].lines.map((l: { productName: string; expectedBack: number }) => [l.productName, l.expectedBack])).toEqual([
+      ['ماء الكمأ', 2],
+      ['صابون (إضافة)', 1],
+    ]);
+    // One fact, one shape: the raw add-ons are not sent beside the lines.
+    expect(orders[0].addOns).toBeUndefined();
+
+    db.order.findFirst.mockResolvedValue({
+      id: ORDER_ID, orderNumber: 'ORD-1', shippingStatus: 'RETURN_REQUESTED', regionId: 'r1', deliveryProviderId: 'dp1',
+      returnReceipt: null, items, addOns,
+    });
+    const over = await POST(body({ orderId: ORDER_ID, receivedQty: 4, countedAndInspected: true }));
+    expect((await over.json()).code).toBe('OVER_RECEIVED');
+    const res = await POST(body({ orderId: ORDER_ID, receivedQty: orders[0].expectedQty, countedAndInspected: true }));
+    expect(res.status).toBe(201);
+    expect((await res.json()).missingQty).toBe(0);
+    expect(db.orderAddOn.updateMany).toHaveBeenCalledWith({ where: { orderId: ORDER_ID, reservedQty: { gt: 0 } }, data: { reservedQty: 0 } });
   });
 
   it('shows both halves as open — nothing in this list has been received yet', async () => {
